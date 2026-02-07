@@ -1,7 +1,5 @@
 # Fluxbase - Database Practice Web App
 
-![Fluxbase Hero](https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=2070&auto=format&fit=crop)
-
 > **Data Management Redefined.**
 > The modern, AI-powered spreadsheet and data analysis tool. Manage projects, create tables, and unlock insights with natural language queries.
 
