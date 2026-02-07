@@ -1,0 +1,22 @@
+{
+    "Hero": {
+        "badge": "The Intelligent AI Spreadsheet",
+        "title1": "Data Management",
+        "title2": "Reimagined.",
+        "description": "The modern, AI-powered spreadsheet and database tool. Manage projects, create tables, and execute SQL with natural language.",
+        "getStarted": "Get Started Free",
+        "docs": "Read Documentation"
+    },
+    "Auth": {
+        "login": "Login",
+        "signup": "Sign Up",
+        "welcome": "Welcome to Fluxbase",
+        "logout": "Log Out"
+    },
+    "Common": {
+        "loading": "Loading...",
+        "error": "Something went wrong",
+        "save": "Save",
+        "cancel": "Cancel"
+    }
+}
