@@ -1,146 +1,106 @@
-# ⚡ Fluxbase
+# Fluxbase - Database Practice Web App
 
-Fluxbase is a modern, self-hosted data management platform featuring a spreadsheet-like interface for intuitive project and data handling.
-Built with Next.js, React, and Tailwind CSS, it delivers a fast, responsive UI for creating and managing complex data tables.
-Key features include an AI-powered SQL editor, a draggable ERD visualizer for database schema, and automated API generation.
-Designed for performance and control, Fluxbase empowers developers to manage their data with simplicity and power on their own infrastructure.
+![Fluxbase Hero](https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=2070&auto=format&fit=crop)
 
-> ⚠ **Note:** Fluxbase is built to run **only on a dedicated server or your own computer**.  
-> It will not work properly on platforms like Vercel, Render, Railway, or inside Docker containers, because those environments don't provide reliable local file storage.
+> **Data Management Redefined.**
+> The modern, AI-powered spreadsheet and data analysis tool. Manage projects, create tables, and unlock insights with natural language queries.
 
----
-## 🖥️ Recommended Hardware
+## 🚀 Overview
 
-Fluxbase is lightweight but benefits from stable, persistent storage and a decent processor.
-Here’s what we recommend:
+Fluxbase is a comprehensive web application designed to help students and developers practice database management and SQL execution without the hassle of setting up local database servers. It provides a familiar spreadsheet-like interface combined with powerful SQL capabilities, supporting multiple dialects (PostgreSQL, MySQL, Oracle) and AI-driven assistance.
 
-### Recommended for Production (Dedicated Server / VPS)
+## ✨ Key Features
 
-- CPU: Quad-core or better (Intel Xeon, AMD Ryzen, or similar)
-- RAM: 4–8 GB (more if you have many users/projects)
-- Storage: 20+ GB SSD (fast read/write improves performance)
-- OS: Ubuntu 22.04 LTS or similar Linux distro (most reliable for servers)
-- Backup: External storage or automated snapshot backup recommended
----
+-   **Multi-Dialect SQL Support**: seamlessly switch between PostgreSQL, MySQL, and Oracle syntax.
+-   **AI-Powered Assistant**: Convert natural language questions into complex SQL queries using Google's Genkit.
+-   **Spreadsheet Interface**: Edit data inline with a familiar grid view, supports bulk operations.
+-   **Visual Database Design**: Automatically generated ERD diagrams that update as your schema evolves.
+-   **Instant API Generation**: capable of generating REST endpoints for your tables instantly.
+-   **Data Integrity & Safety**: Strict row validation, primary key enforcement, and a "Panic Button" to reset databases.
+-   **Secure Authentication**: Robust login and signup with email and social providers (Google, GitHub), featuring password strength indicators.
+-   **Project Management**: Organize your work into distinct projects with isolated schemas and data.
 
-## ✨ Features
+## 🛠️ Tech Stack
 
-- 🗂 **Multi-Project Management** – Create, switch, and organize multiple projects with ease.  
-- 🔑 **Reliable Data Handling** – Every record has its own unique ID, so updates and deletes never break anything.  
-- 🖥 **Clean & Modern UI** – Built with Next.js, Tailwind CSS, and shadcn/ui for a seamless experience.  
-- ⚡ **Fast CRUD Operations** – Add, edit, delete, and view data instantly — no page reloads.  
-- 🌐 **Self-Hosted** – Run it on your computer, VPS, or private server for full control.  
-- 🔌 **Future-Friendly** – Easily extendable to connect to external databases or APIs later.  
+-   **Framework**: [Next.js 15](https://nextjs.org/) (App Router)
+-   **Language**: [TypeScript](https://www.typescriptlang.org/)
+-   **Styling**: [Tailwind CSS](https://tailwindcss.com/) & [Shadcn UI](https://ui.shadcn.com/)
+-   **Animations**: [Framer Motion](https://www.framer.com/motion/)
+-   **Backend / Database**: [Firebase](https://firebase.google.com/) (Auth, Firestore)
+-   **AI / LLM**: [Genkit](https://firebase.google.com/docs/genkit)
+-   **SQL Parsing**: `node-sql-parser`
+-   **Data Grid**: `recharts` & `@mui/x-data-grid`
 
----
+## 🏁 Getting Started
 
-## 📂 Project Structure
+Follow these steps to set up the project locally.
 
-```
-Fluxbase/
-├── docs/                # Documentation and planning
-├── src/
-│   ├── ai/              # AI-related helpers and logic
-│   ├── app/             # Next.js App Router pages & APIs
-│   ├── components/      # Reusable UI building blocks
-│   ├── database/        # Data storage & unique ID handling
-│   ├── hooks/           # Custom React hooks
-│   └── lib/             # Utility functions & helpers
-│   └── middleware.ts    # Session/auth middleware
-├── next.config.ts       # Next.js configuration
-├── package.json         # Dependencies & scripts
-├── tailwind.config.ts   # Tailwind setup
-├── tsconfig.json        # TypeScript configuration
-└── README.md
-```
+### Prerequisites
 
----
-
-## 🧩 Tech Stack
-
-Fluxbase is built with a modern, production-ready stack:
-
-### Frontend
-- **Next.js 14+ (App Router)** – React-based full-stack framework  
-- **TypeScript** – Strongly typed JavaScript for better reliability  
-- **Tailwind CSS** – Utility-first styling for fast UI building  
-- **shadcn/ui** – Accessible, prebuilt UI components  
-- **Lucide Icons** – Clean, customizable icon set  
-
-### Backend
-- **Next.js API Routes** – Lightweight server-side logic  
-- **Custom Storage Layer** – Manages data persistence and unique row IDs  
-- **Middleware** – Auth/session handling and route protection  
-
-### Tooling & Ops
-- **PostCSS** – For Tailwind & CSS transformations  
-- **ESLint + TypeScript** – Code quality and linting  
-- **PM2** – Keeps production server alive  
-- **NGINX/Caddy (Optional)** – For HTTPS & reverse proxy setups  
-
----
-
-## 🚀 Getting Started
-
-### Requirements
-
-- **Node.js v18+**
-- **npm** or **yarn**
-- A dedicated server or computer where you control file storage
+-   Node.js 18+
+-   npm or yarn
 
 ### Installation
 
-```bash
-git clone https://github.com/SumithU2104/Fluxbase.git
-cd fluxbase
-npm install
-```
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/fluxbase.git
+    cd fluxbase
+    ```
 
-### Local Development
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
 
-```bash
-npm run dev
-```
+3.  **Configure Environment:**
+    Create a `.env.local` file in the root directory and add your Firebase and Genkit credentials:
+    ```env
+    NEXT_PUBLIC_FIREBASE_API_KEY=...
+    NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=...
+    NEXT_PUBLIC_FIREBASE_PROJECT_ID=...
+    # ... other firebase config
+    ```
 
-Open your browser and go to **http://localhost:3000**.
+4.  **Run the development server:**
+    ```bash
+    npm run dev
+    ```
 
-### Production Server
+5.  **Open the app:**
+    Visit `http://localhost:3000` (or `http://localhost:9004` if configured) in your browser.
 
-```bash
-npm run build
-npm start
-```
-
-Keep it running in the background:
-
-```bash
-npm install -g pm2
-pm2 start npm --name "Fluxbase" -- run start
-```
-
-(Optional) Configure NGINX or Caddy to serve Fluxbase under HTTPS.
-
-### Environment Variables
-
-Create `.env.local` in the root folder:
+## 📂 Project Structure
 
 ```bash
-PORT=3000
-# Add other env vars here
+src/
+├── app/                  # Next.js App Router pages
+│   ├── (app)/            # Authenticated app routes (Dashboard, Editor)
+│   ├── api/              # API Routes (SQL execution, Auth)
+│   └── page.tsx          # Landing Page
+├── components/
+│   ├── auth/             # Login/Signup dialogs
+│   ├── layout/           # Navbar, Sidebar, Dock
+│   ├── ui/               # Reusable UI components (Buttons, Inputs)
+│   └── ...
+├── lib/                  # Utility functions, Firebase init, Types
+└── ai/                   # Genkit AI configurations
 ```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1.  Fork the Project
+2.  Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3.  Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4.  Push to the Branch (`git push origin feature/AmazingFeature`)
+5.  Open a Pull Request
+
+## 📄 License
+
+Distributed under the MIT License. See `LICENSE` for more information.
 
 ---
 
-## 🌍 Deployment Options
-
-- 🖥 Dedicated servers (Linux, macOS, Windows)  
-- ☁ Cloud services (Render, DigitalOcean, Railway, AWS EC2)  
-- 📦 Containers (Docker support can be added for one-command deploys)  
-
----
-
-## 👥 Contributing
-
-Got ideas or fixes? Open an issue or create a pull request — contributions are welcome!
-
----
+Built with ❤️ by Sumith
