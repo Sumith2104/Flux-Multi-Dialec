@@ -118,20 +118,43 @@ export function EditorClient({
     }, [initialConstraints]);
 
 
+    const abortControllerRef = React.useRef<AbortController | null>(null);
+
     const fetchTableData = useCallback(async (model: { page: number, pageSize: number }) => {
         if (!tableId || !tableName) return;
+
+        // Cancel previous request
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
         setIsTableLoading(true);
         try {
-            const response = await fetch(`/api/table-data?projectId=${projectId}&tableName=${tableName}&page=${model.page + 1}&pageSize=${model.pageSize}`);
+            const response = await fetch(`/api/table-data?projectId=${projectId}&tableName=${tableName}&page=${model.page + 1}&pageSize=${model.pageSize}`, {
+                signal: controller.signal
+            });
             if (!response.ok) throw new Error('Failed to fetch table data');
             const data = await response.json();
             setRows(data.rows);
             setRowCount(data.totalRows);
-        } catch (error) {
+        } catch (error: any) {
+            if (error.name === 'AbortError') {
+                return;
+            }
             console.error(error);
             toast({ variant: 'destructive', title: 'Error', description: 'Could not load table data.' });
         } finally {
-            setIsTableLoading(false);
+            // Only turn off loading if this is the active request?
+            // Actually, if aborted, we don't care.
+            // But if we have a race condition where a new request starts before this finally block?
+            // The new request sets loading=true.
+            // This finally sets loading=false.
+            // We should check if the signal is aborted?
+            if (!controller.signal.aborted) {
+                setIsTableLoading(false);
+            }
         }
     }, [projectId, tableId, tableName, toast]);
 
@@ -498,7 +521,7 @@ export function EditorClient({
                                             }}
                                         />
                                     </TabsContent>
-                                    <TabsContent value="structure" className="mt-4 space-y-6">
+                                    <TabsContent value="structure" className="mt-4 space-y-6 overflow-y-auto flex-1 min-h-0 pb-24">
                                         <Card>
                                             <CardHeader>
                                                 <CardTitle>Table Structure</CardTitle>

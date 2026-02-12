@@ -8,23 +8,27 @@ import { Plus, Table, Edit, Rows, Database } from "lucide-react"
 import Link from "next/link"
 import { getTablesForProject, Table as DbTable, getProjectAnalytics, ProjectAnalytics } from "@/lib/data";
 import {
-  Table as ShadcnTable,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+    Table as ShadcnTable,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
 } from "@/components/ui/table"
 import { StorageChart } from "@/components/storage-chart";
+import { RealtimeLineChart } from "@/components/realtime-line-chart";
 import { ProjectContext } from '@/contexts/project-context';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useRealtimeAnalytics } from '@/hooks/use-realtime-analytics';
 
 export default function DashboardPage() {
     const { project: selectedProject } = useContext(ProjectContext);
     const [tables, setTables] = useState<DbTable[]>([]);
     const [analytics, setAnalytics] = useState<ProjectAnalytics | null>(null);
     const [loading, setLoading] = useState(true);
-    
+
+    const realtimeStats = useRealtimeAnalytics(selectedProject?.project_id);
+
     useEffect(() => {
         async function loadDashboardData() {
             if (!selectedProject) {
@@ -32,8 +36,13 @@ export default function DashboardPage() {
                 return;
             };
 
-            setLoading(true);
+            // Don't show global loading spinner on background refreshes
+            if (!analytics) setLoading(true); // Only show loading on initial fetch
+
             try {
+                // Fetch tables once (or less frequently) if structure doesn't change often, 
+                // but for "realtime" we can fetch everything.
+                // Optimally: Separate fetch for lightweight analytics.
                 const [tablesData, analyticsData] = await Promise.all([
                     getTablesForProject(selectedProject.project_id),
                     getProjectAnalytics(selectedProject.project_id),
@@ -42,24 +51,25 @@ export default function DashboardPage() {
                 setAnalytics(analyticsData);
             } catch (error) {
                 console.error("Failed to load dashboard data:", error);
-                // Optionally, show a toast notification
             } finally {
                 setLoading(false);
             }
         }
+
         loadDashboardData();
     }, [selectedProject]);
 
 
-    const formatSize = (kb: number) => {
-        if (kb > 1000) {
-            return `${(kb / 1024).toFixed(2)} MB`;
-        }
-        return `${kb} KB`;
+    const formatSize = (bytes: number) => {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
     if (loading) {
-         return (
+        return (
             <div className="space-y-6">
                 <Skeleton className="h-10 w-48" />
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -88,7 +98,13 @@ export default function DashboardPage() {
     return (
         <div className="container mx-auto px-0">
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold">Dashboard</h1>
+                <h1 className="text-3xl font-bold flex items-center gap-3">
+                    Dashboard
+                    <span className="relative flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                    </span>
+                </h1>
                 <div className="flex items-center gap-2">
                     <Button asChild>
                         <Link href={`/dashboard/tables/create?projectId=${selectedProject.project_id}`}>
@@ -100,54 +116,85 @@ export default function DashboardPage() {
             </div>
 
             <div className="space-y-6">
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">
-                            Total Tables
-                        </CardTitle>
-                        <Table className="h-4 w-4 text-muted-foreground" />
+
+                {/* Real-time Metrics Grid */}
+                <div className="grid gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-4">
+                    <Card className="aspect-square flex flex-col justify-between">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">
+                                Total Requests
+                            </CardTitle>
+                            <div className="h-4 w-4 animate-pulse rounded-full bg-green-500 shadow-[0_0_12px_#22c55e]" />
                         </CardHeader>
                         <CardContent>
-                        <div className="text-2xl font-bold">{tables.length}</div>
-                        <p className="text-xs text-muted-foreground">
-                            Tables in this project
-                        </p>
+                            <div className="text-4xl font-bold">{realtimeStats?.total_requests ?? 0}</div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Real-time Interactions
+                            </p>
                         </CardContent>
                     </Card>
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">
-                            Total Rows
-                        </CardTitle>
-                        <Rows className="h-4 w-4 text-muted-foreground" />
+
+                    <Card className="aspect-square flex flex-col justify-between">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">
+                                API Calls
+                            </CardTitle>
                         </CardHeader>
                         <CardContent>
-                        <div className="text-2xl font-bold">{analytics?.totalRows ?? 0}</div>
-                            <p className="text-xs text-muted-foreground">
-                            Across all tables
-                        </p>
+                            <div className="text-4xl font-bold text-blue-500">{realtimeStats?.type_api_call ?? 0}</div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Data Fetches
+                            </p>
                         </CardContent>
                     </Card>
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">
-                            Total Storage
-                        </CardTitle>
-                        <Database className="h-4 w-4 text-muted-foreground" />
+
+                    <Card className="aspect-square flex flex-col justify-between">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">
+                                SQL Executions
+                            </CardTitle>
                         </CardHeader>
                         <CardContent>
-                        <div className="text-2xl font-bold">{formatSize(analytics?.totalSize ?? 0)}</div>
-                            <p className="text-xs text-muted-foreground">
-                            Total size of all CSV files
-                        </p>
+                            <div className="text-4xl font-bold text-purple-500">{realtimeStats?.type_sql_execution ?? 0}</div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Queries Run
+                            </p>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="aspect-square flex flex-col justify-between">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">
+                                Storage
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold truncate">{formatSize(analytics?.totalSize ?? 0)}</div>
+                            <p className="text-xs text-muted-foreground mt-1 w-full truncate">
+                                {tables.length} Tables, {analytics?.totalRows ?? 0} Rows
+                            </p>
                         </CardContent>
                     </Card>
                 </div>
-                
-                {analytics && analytics.tables.length > 0 && (
-                    <StorageChart data={analytics.tables} />
-                )}
+
+                {/* Charts Section */}
+                <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-7">
+                    {/* Line Chart takes up more space */}
+                    <div className="col-span-4">
+                        <RealtimeLineChart currentStats={realtimeStats} />
+                    </div>
+
+                    {/* Storage Chart takes up less */}
+                    <div className="col-span-3">
+                        {analytics && analytics.tables.length > 0 ? (
+                            <StorageChart data={analytics.tables} />
+                        ) : (
+                            <Card className="h-full flex items-center justify-center p-6 text-muted-foreground border-dashed">
+                                No tables to display storage data.
+                            </Card>
+                        )}
+                    </div>
+                </div>
 
                 <Card>
                     <CardHeader>
@@ -177,7 +224,7 @@ export default function DashboardPage() {
                                                 <TableCell>
                                                     <Button asChild variant="outline" size="sm">
                                                         <Link href={`/editor?projectId=${selectedProject.project_id}&tableId=${table.table_id}&tableName=${table.table_name}`}>
-                                                            <Edit className="mr-2 h-4 w-4"/>
+                                                            <Edit className="mr-2 h-4 w-4" />
                                                             Edit
                                                         </Link>
                                                     </Button>
@@ -188,7 +235,7 @@ export default function DashboardPage() {
                                 </ShadcnTable>
                             </div>
                         ) : (
-                                <div className="text-center text-muted-foreground py-10 border-2 border-dashed rounded-lg">
+                            <div className="text-center text-muted-foreground py-10 border-2 border-dashed rounded-lg">
                                 <p>No tables yet.</p>
                                 <Button variant="link" asChild>
                                     <Link href={`/dashboard/tables/create?projectId=${selectedProject.project_id}`}>Create your first table</Link>

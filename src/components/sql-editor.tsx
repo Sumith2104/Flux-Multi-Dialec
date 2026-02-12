@@ -1,7 +1,7 @@
 
 'use client';
 
-import { Play, Save, History, Download, Loader2 } from 'lucide-react';
+import { Play, Save, Download, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
 import { Textarea } from './ui/textarea';
@@ -12,24 +12,21 @@ interface SqlEditorProps {
     setQuery: (query: string) => void;
     onRun: () => void;
     isGenerating: boolean;
-    results: { rows: any[], columns: string[] } | null;
+    results: any | null;
 }
 
 export function SqlEditor({ query, setQuery, onRun, isGenerating, results }: SqlEditorProps) {
-    
+
     const handleExport = () => {
-        if (!results || results.rows.length === 0) {
-            // In a real app, you might want to show a toast notification here.
-            console.log("No data to export.");
+        if (!results || !results.rows || results.rows.length === 0) {
             return;
         }
 
         const { columns, rows } = results;
         const header = columns.join(',');
-        const csvRows = rows.map(row => 
-            columns.map(colName => {
+        const csvRows = rows.map((row: any) =>
+            columns.map((colName: string) => {
                 let cell = row[colName] === null || row[colName] === undefined ? '' : String(row[colName]);
-                // Escape quotes and wrap in quotes if it contains a comma or quote
                 if (cell.includes('"') || cell.includes(',')) {
                     cell = `"${cell.replace(/"/g, '""')}"`;
                 }
@@ -50,38 +47,53 @@ export function SqlEditor({ query, setQuery, onRun, isGenerating, results }: Sql
     };
 
     return (
-        <Card className="h-full flex flex-col">
-            <CardHeader className="p-2 border-b">
-                 <div className="flex items-center gap-2">
-                    <Button size="sm" onClick={onRun} disabled={isGenerating}>
+        <Card className="h-full flex flex-col shadow-none rounded-none border-0 bg-transparent">
+            <CardHeader className="p-2 border-b bg-muted/10 shrink-0 flex flex-row items-center justify-between space-y-0 h-10">
+                <div className="flex items-center gap-1">
+                    {/* Placeholder for future toolbar items or empty */}
+                </div>
+                <div className="flex items-center gap-1">
+                    <Button
+                        size="sm"
+                        variant="default"
+                        onClick={onRun}
+                        disabled={isGenerating}
+                        className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white border-green-700 font-medium px-3"
+                    >
                         {isGenerating ? (
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
                         ) : (
-                            <Play className="h-4 w-4 mr-2" />
+                            <Play className="h-3 w-3 mr-1.5 fill-current" />
                         )}
                         Run
                     </Button>
-                    <Separator orientation="vertical" className="h-6" />
-                    <Button variant="ghost" size="sm" disabled>
-                        <Save className="h-4 w-4 mr-2" />
-                        Save
+                    <Separator orientation="vertical" className="h-4 mx-1" />
+                    <Button variant="ghost" size="icon" className="h-7 w-7" disabled title="Save Query">
+                        <Save className="h-3.5 w-3.5" />
                     </Button>
-                    <Button variant="ghost" size="sm" disabled>
-                        <History className="h-4 w-4 mr-2" />
-                        History
-                    </Button>
-                     <div className="flex-grow" />
-                    <Button variant="ghost" size="sm" onClick={handleExport} disabled={!results || results.rows.length === 0}>
-                        <Download className="h-4 w-4 mr-2" />
-                        Export
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={handleExport}
+                        disabled={!results || !results.rows || results.rows.length === 0}
+                        title="Export CSV"
+                    >
+                        <Download className="h-3.5 w-3.5" />
                     </Button>
                 </div>
             </CardHeader>
-            <CardContent className="p-0 flex-grow">
+            <CardContent className="p-0 flex-grow relative bg-[#0d0d0d]">
+                {/* Line numbers container */}
+                <div className="absolute left-0 top-0 bottom-0 w-10 border-r border-white/5 bg-[#0d0d0d] flex flex-col items-end pr-2 py-4 text-xs font-mono text-muted-foreground/30 select-none pointer-events-none z-10">
+                    {Array.from({ length: 50 }).map((_, i) => <div key={i} className="leading-6">{i + 1}</div>)}
+                </div>
+
                 <Textarea
-                    placeholder="-- Write a SQL query..."
-                    className="h-full w-full border-none resize-none focus-visible:ring-0 focus-visible:ring-offset-0 font-mono text-base"
+                    placeholder="-- Enter your SQL query here..."
+                    className="h-full w-full border-none resize-none focus-visible:ring-0 focus-visible:ring-offset-0 font-mono text-sm leading-6 pl-12 pt-4 bg-transparent text-gray-300 placeholder:text-gray-700"
                     value={query}
+                    spellCheck={false}
                     onChange={(e) => setQuery(e.target.value)}
                 />
             </CardContent>

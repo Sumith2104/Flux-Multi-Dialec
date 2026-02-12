@@ -38,30 +38,48 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
     if (results && results.rows) {
         if (results.rows.length === 0) {
             return (
-                <div className="p-4 text-center h-full flex items-center justify-center">
-                    <p className="text-sm text-muted-foreground">Query executed successfully, but returned no rows.</p>
+                <div className="p-12 text-center h-full flex flex-col items-center justify-center text-muted-foreground bg-muted/5">
+                    <div className="rounded-full bg-background p-4 mb-4 border shadow-sm">
+                        <AlertCircle className="h-6 w-6 text-green-500" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-foreground">Success</h3>
+                    <p className="text-sm">Query executed successfully. No rows returned.</p>
+                    <p className="text-xs mt-2 font-mono bg-muted px-2 py-1 rounded">0 rows affected</p>
                 </div>
             );
         }
 
         return (
-            <div className="overflow-auto h-full">
-                <Table>
-                    <TableHeader className="sticky top-0 bg-secondary z-10 hidden sm:table-header-group">
-                        {/* Hidden on mobile if needed, but usually we want headers. 
-                             Added bg-secondary to distinguish header. 
-                             Sticky is important.
-                          */}
-                        <TableRow>
-                            {results.columns.map(col => <TableHead key={col} className="h-8 whitespace-nowrap">{col}</TableHead>)}
+            <div className="overflow-auto h-full bg-background relative">
+                <Table className="border-collapse border-spacing-0 w-full relative">
+                    <TableHeader className="sticky top-0 z-20 shadow-sm">
+                        <TableRow className="hover:bg-muted/50 border-b border-border">
+                            {results.columns.map((col, idx) => (
+                                <TableHead
+                                    key={col}
+                                    className="h-9 px-4 py-2 whitespace-nowrap bg-muted/80 backdrop-blur-sm text-xs font-semibold uppercase tracking-wider text-foreground border-r last:border-r-0 border-border select-none"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        {/* Simple icon based on type estimate could go here */}
+                                        {col}
+                                    </div>
+                                </TableHead>
+                            ))}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {results.rows.map((row, rowIndex) => (
-                            <TableRow key={rowIndex}>
-                                {results.columns.map(col => (
-                                    <TableCell key={`${rowIndex}-${col}`} className="whitespace-nowrap font-mono text-xs">
-                                        {row[col] === null ? <span className="text-muted-foreground italic">NULL</span> : String(row[col])}
+                            <TableRow key={rowIndex} className="border-b border-border/50 hover:bg-muted/30 transition-colors group">
+                                {results.columns.map((col, colIndex) => (
+                                    <TableCell
+                                        key={`${rowIndex}-${col}`}
+                                        className="px-4 py-1.5 whitespace-nowrap font-mono text-xs border-r border-border/50 last:border-r-0 group-hover:border-border/80"
+                                    >
+                                        {row[col] === null ? (
+                                            <span className="text-muted-foreground/50 italic text-[10px]">NULL</span>
+                                        ) : (
+                                            <span className="text-foreground/90">{String(row[col])}</span>
+                                        )}
                                     </TableCell>
                                 ))}
                             </TableRow>
@@ -73,16 +91,12 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
     }
 
     return (
-        <div className="overflow-auto h-full flex flex-col items-center justify-center text-muted-foreground p-8">
-            <div className="grid grid-cols-3 gap-4 opacity-20 mb-4 w-full max-w-sm">
-                <div className="h-4 bg-current rounded col-span-1"></div>
-                <div className="h-4 bg-current rounded col-span-1"></div>
-                <div className="h-4 bg-current rounded col-span-1"></div>
-                <div className="h-4 bg-current rounded col-span-3"></div>
-                <div className="h-4 bg-current rounded col-span-2"></div>
-                <div className="h-4 bg-current rounded col-span-1"></div>
+        <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8 bg-muted/5/50">
+            <div className="w-16 h-16 mb-4 rounded-xl bg-muted/50 flex items-center justify-center border border-dashed border-muted-foreground/30">
+                <TableHead className="h-8 w-8 text-muted-foreground/50" />
             </div>
-            <p>Run a query to see results.</p>
+            <p className="font-medium text-foreground">No Results Detected</p>
+            <p className="text-sm mt-1">Execute a query using the editor to view data.</p>
         </div>
     );
 }

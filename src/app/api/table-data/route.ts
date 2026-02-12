@@ -1,6 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getTableData } from '@/lib/data';
+import { trackApiRequest } from '@/lib/analytics';
 import { getCurrentUserId } from '@/lib/auth';
 
 export const maxDuration = 60; // 1 minute
@@ -23,10 +24,14 @@ export async function GET(request: Request) {
     }
 
     if (isNaN(page) || page < 1 || isNaN(pageSize) || pageSize < 1) {
-        return NextResponse.json({ error: 'Invalid pagination parameters.' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid pagination parameters.' }, { status: 400 });
     }
 
     const data = await getTableData(projectId, tableName, page, pageSize);
+
+    // Track Analytics (Mainly for read operations)
+    await trackApiRequest(projectId, 'storage_read');
+    await trackApiRequest(projectId, 'api_call');
 
     return NextResponse.json(data);
 
@@ -36,4 +41,3 @@ export async function GET(request: Request) {
   }
 }
 
-    

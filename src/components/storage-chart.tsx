@@ -6,24 +6,26 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { NameType, ValueType } from 'recharts/types/component/DefaultTooltipContent';
 
 interface StorageChartProps {
-    data: {
-        name: string;
-        size: number;
-    }[];
+  data: {
+    name: string;
+    size: number;
+  }[];
 }
 
-const formatSize = (kb: number) => {
-    if (kb > 1023) {
-        return `${(kb / 1024).toFixed(2)} MB`;
-    }
-    return `${kb.toFixed(2)} KB`;
+const formatSize = (bytes: number) => {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-const formatAxisLabel = (value: number) => {
-    if (value > 1023) {
-        return `${(value / 1024).toFixed(0)} MB`;
-    }
-    return `${value} KB`;
+const formatAxisLabel = (bytes: number) => {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(0)) + ' ' + sizes[i];
 };
 
 
@@ -54,36 +56,36 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<ValueType, NameT
 };
 
 export function StorageChart({ data }: StorageChartProps) {
-    return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Table Storage Usage</CardTitle>
-                <CardDescription>Size of each table's CSV file.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <div style={{ width: '100%', height: 300 }}>
-                    <ResponsiveContainer>
-                        <BarChart
-                            data={data}
-                            margin={{
-                                top: 5,
-                                right: 20,
-                                left: -10,
-                                bottom: 5,
-                            }}
-                        >
-                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                            <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                            <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={formatAxisLabel} />
-                            <Tooltip
-                                cursor={{ fill: 'hsl(var(--accent))' }}
-                                content={<CustomTooltip />}
-                            />
-                            <Bar dataKey="size" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                    </ResponsiveContainer>
-                </div>
-            </CardContent>
-        </Card>
-    );
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Table Storage Usage</CardTitle>
+        <CardDescription>Size of each table's CSV file.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div style={{ width: '100%', height: 300 }}>
+          <ResponsiveContainer>
+            <BarChart
+              data={data}
+              margin={{
+                top: 5,
+                right: 20,
+                left: -10,
+                bottom: 5,
+              }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+              <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={formatAxisLabel} />
+              <Tooltip
+                cursor={{ fill: 'hsl(var(--accent))' }}
+                content={<CustomTooltip />}
+              />
+              <Bar dataKey="size" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }

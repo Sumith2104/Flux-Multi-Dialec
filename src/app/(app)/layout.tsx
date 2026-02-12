@@ -191,8 +191,8 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                 })}>
                     {children}
                     {shouldShowDock && (
-                        <div className="fixed bottom-4 left-0 right-0 flex justify-center z-50">
-                            <Dock items={dockItems} />
+                        <div className="fixed bottom-4 left-0 right-0 flex justify-center z-50 pointer-events-none">
+                            <Dock items={dockItems} className="pointer-events-auto" />
                         </div>
                     )}
                 </main>

@@ -92,7 +92,7 @@ export function DataTable({
       <DataGrid
         rows={rows}
         columns={columns}
-        getRowId={(row) => row.id}
+        getRowId={(row) => row._id || row.id}
         pagination
         paginationMode="server"
         rowCount={rowCount}
