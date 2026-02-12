@@ -109,12 +109,45 @@ export class SqlEngine {
 
     private async handleSelect(ast: any): Promise<SqlResult> {
         // Similar to existing logic, but using class methods
+
         const from = ast.from;
         if (!from || from.length === 0) throw new Error("FROM clause is required.");
 
         const mainTableDef = from[0];
-        let processedRows = await this.getAllRows(mainTableDef.table);
-        let explanation = [`Fetched ${processedRows.length} rows from '${mainTableDef.table}'`];
+        let processedRows: any[] = [];
+        let explanation: string[] = [];
+
+        // Catch GENERATE_SERIES
+        let funcName = '';
+        if (mainTableDef.expr && mainTableDef.expr.type === 'function') {
+            if (typeof mainTableDef.expr.name === 'string') {
+                funcName = mainTableDef.expr.name;
+            } else if (mainTableDef.expr.name && mainTableDef.expr.name.name && Array.isArray(mainTableDef.expr.name.name)) {
+                funcName = mainTableDef.expr.name.name[0]?.value;
+            }
+        }
+
+        if (!mainTableDef.table && funcName && funcName.toUpperCase() === 'GENERATE_SERIES') {
+            const args = mainTableDef.expr.args.value;
+            // Expecting 2 args: start, end. (Optional step).
+            const start = parseInt(args[0].value);
+            const end = parseInt(args[1].value);
+            const step = args[2] ? parseInt(args[2].value) : 1;
+
+            const alias = mainTableDef.as || 'generate_series';
+
+            processedRows = [];
+            for (let i = start; i <= end; i += step) {
+                processedRows.push({ [alias]: i });
+            }
+            explanation.push(`Generated ${processedRows.length} rows sequence.`);
+
+        } else if (!mainTableDef.table) {
+            throw new Error("Detailed error: " + JSON.stringify(mainTableDef));
+        } else {
+            processedRows = await this.getAllRows(mainTableDef.table);
+            explanation.push(`Fetched ${processedRows.length} rows from '${mainTableDef.table}'`);
+        }
 
         if (from.length > 1) {
             for (let i = 1; i < from.length; i++) {
@@ -136,20 +169,20 @@ export class SqlEngine {
             explanation.push("Sorted rows");
         }
 
-        const limit = (ast.limit && ast.limit.value && ast.limit.value.length > 0) ? ast.limit.value[0].value : 100;
-        let finalRows = processedRows.slice(0, limit);
+        const limit = (ast.limit && ast.limit.value && ast.limit.value.length > 0) ? ast.limit.value[0].value : undefined;
+        let finalRows = limit !== undefined ? processedRows.slice(0, limit) : processedRows;
 
         let resultColumns: string[];
         if (ast.columns.length === 1 && ast.columns[0].expr && ast.columns[0].expr.column === '*') {
             resultColumns = finalRows.length > 0 ? Object.keys(finalRows[0]).filter(k => k !== '_csv_index') : [];
         } else {
-            resultColumns = ast.columns.map((c: any) => c.as || c.expr?.column || 'unknown');
+            resultColumns = ast.columns.map((c: any, i: number) => c.as || c.expr?.column || `col_${i}`);
             finalRows = finalRows.map(row => {
                 const projected: any = {};
-                ast.columns.forEach((c: any) => {
+                ast.columns.forEach((c: any, i: number) => {
                     const colName = c.expr?.column;
-                    const alias = c.as || colName || 'unknown';
-                    projected[alias] = colName ? row[colName] : null;
+                    const alias = c.as || colName || `col_${i}`;
+                    projected[alias] = this.evaluateExpression(c.expr, row);
                 });
                 return projected;
             });
@@ -730,7 +763,47 @@ export class SqlEngine {
         }
     }
 
-    private evaluateFunction(funcNode: any): any {
+    private evaluateExpression(expr: any, row: any): any {
+        if (!expr) return null;
+
+        if (expr.type === 'column_ref') {
+            const col = expr.column;
+            return row[col] !== undefined ? row[col] : null; // Warning: null if not found
+        }
+
+        if (expr.type === 'string' || expr.type === 'single_quote_string') return expr.value;
+        if (expr.type === 'number') return parseFloat(expr.value);
+        if (expr.type === 'bool') return expr.value === 'TRUE';
+        if (expr.type === 'null') return null;
+
+        if (expr.type === 'binary_expr') {
+            const left = this.evaluateExpression(expr.left, row);
+            const right = this.evaluateExpression(expr.right, row);
+
+            if (expr.operator === '||') return String(left ?? '') + String(right ?? '');
+            if (expr.operator === '+') return Number(left) + Number(right);
+            if (expr.operator === '-') return Number(left) - Number(right);
+            if (expr.operator === '*') return Number(left) * Number(right);
+            if (expr.operator === '/') return Number(left) / Number(right);
+        }
+
+        if (expr.type === 'function') {
+            return this.evaluateFunction(expr, row);
+        }
+
+        if (expr.type === 'cast') {
+            // Basic CAST support: CAST(expr AS types)
+            const val = this.evaluateExpression(expr.expr, row);
+            const targetType = expr.target?.dataType;
+            if (targetType === 'VARCHAR' || targetType === 'TEXT') return String(val);
+            if (targetType === 'INT' || targetType === 'NUMBER') return Number(val);
+            return String(val); // Fallback
+        }
+
+        return null;
+    }
+
+    private evaluateFunction(funcNode: any, row?: any): any {
         // Extract function name from nested structure
         let funcName: string | undefined;
         if (funcNode.name) {
@@ -757,12 +830,20 @@ export class SqlEngine {
                 // Extract arguments and concatenate
                 if (funcNode.args && Array.isArray(funcNode.args.value)) {
                     return funcNode.args.value.map((arg: any) => {
-                        if (arg.value !== undefined) return String(arg.value);
-                        if (arg.type === 'function') return this.evaluateFunction(arg);
-                        return String(arg);
+                        return this.evaluateExpression(arg, row);
                     }).join('');
                 }
                 return '';
+
+            case 'CAST':
+                // CAST as function call?
+                if (funcNode.args && Array.isArray(funcNode.args.value)) {
+                    // args[0] is expr, args[1] is type? NO, cast usually strictly parsed.
+                    // But if parser returns it as function...
+                    // Assume args[0] is value
+                    return this.evaluateExpression(funcNode.args.value[0], row);
+                }
+                return null;
 
             case 'DATE_SUB':
             case 'DATE_ADD':
