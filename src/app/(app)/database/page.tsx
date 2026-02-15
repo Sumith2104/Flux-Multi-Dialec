@@ -15,6 +15,8 @@ async function Database({ projectId }: { projectId: string }) {
     const allColumns = await Promise.all(
         allTables.map(table => getColumnsForTable(projectId, table.table_id))
     ).then(cols => cols.flat());
+    console.log('[DEBUG] Database Page - Tables:', allTables.map(t => t.table_name));
+    console.log('[DEBUG] Database Page - Columns:', allColumns);
     const allConstraints = await getConstraintsForProject(projectId);
 
     return (

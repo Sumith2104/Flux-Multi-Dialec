@@ -19,13 +19,16 @@ export class SqlEngine {
     private userId: string | null = null;
     private parser: Parser;
 
-    constructor(projectId: string) {
+    constructor(projectId: string, userId?: string) {
         this.projectId = projectId;
+        this.userId = userId || null;
         this.parser = new Parser();
     }
 
     private async init() {
-        this.userId = await getCurrentUserId();
+        if (!this.userId) {
+            this.userId = await getCurrentUserId();
+        }
         if (!this.userId) throw new Error("Unauthorized");
     }
 
@@ -40,36 +43,55 @@ export class SqlEngine {
         if (!this.userId) throw new Error("Unauthorized");
 
         const queryCleaned = query.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+        // Split by semicolon, handling simple cases
+        // Bypass parser for custom GENERATE_DATA command
+        const generateMatch = queryCleaned.match(/^CALL\s+GENERATE_DATA\s*\(\s*'([^']+)'\s*,\s*(\d+)\s*\)/i);
+        if (generateMatch) {
+            const tableName = generateMatch[1];
+            const count = parseInt(generateMatch[2], 10);
+            return this.handleGenerateData(tableName, count);
+        }
 
-        let astArray: AST[] | AST;
-        try {
-            // Try PostgreSQL first as it has better INSERT support in node-sql-parser
+        const statements = queryCleaned.split(';').map(s => s.trim()).filter(s => s.length > 0);
+
+        let lastResult: SqlResult = { rows: [], columns: [], explanation: [] };
+
+        for (const statement of statements) {
+            let astArray: AST[] | AST;
             try {
-                astArray = this.parser.astify(queryCleaned, { database: 'PostgreSQL' });
-            } catch {
-                // Fallback to MySQL
-                astArray = this.parser.astify(queryCleaned, { database: 'MySQL' });
+                try {
+                    astArray = this.parser.astify(statement, { database: 'PostgreSQL' });
+                } catch {
+                    astArray = this.parser.astify(statement, { database: 'MySQL' });
+                }
+            } catch (e: any) {
+                throw new Error(`SQL Syntax Error in statement "${statement.substring(0, 50)}...": ${e.message}`);
             }
-        } catch (e: any) {
-            throw new Error(`SQL Syntax Error: ${e.message}`);
+
+            const asts = Array.isArray(astArray) ? astArray : [astArray];
+
+            for (const ast of asts) {
+                const type = (ast as any).type?.toUpperCase();
+
+                await trackApiRequest(this.projectId, 'sql_execution');
+                await trackApiRequest(this.projectId, 'api_call');
+
+                let result: SqlResult;
+                switch (type) {
+                    case 'SELECT': result = await this.handleSelect(ast); break;
+                    case 'INSERT': result = await this.handleInsert(ast); break;
+                    case 'UPDATE': result = await this.handleUpdate(ast); break;
+                    case 'DELETE': result = await this.handleDelete(ast); break;
+                    case 'CREATE': result = await this.handleCreate(ast as Create); break;
+                    case 'DROP': result = await this.handleDrop(ast); break;
+                    case 'ALTER': result = await this.handleAlter(ast); break;
+                    default: throw new Error(`Unsupported SQL command: ${type}`);
+                }
+                lastResult = result;
+            }
         }
 
-        const ast = Array.isArray(astArray) ? astArray[0] : astArray;
-        const type = (ast as any).type?.toUpperCase();
-
-        await trackApiRequest(this.projectId, 'sql_execution');
-        await trackApiRequest(this.projectId, 'api_call');
-
-        switch (type) {
-            case 'SELECT': return this.handleSelect(ast);
-            case 'INSERT': return this.handleInsert(ast);
-            case 'UPDATE': return this.handleUpdate(ast);
-            case 'DELETE': return this.handleDelete(ast);
-            case 'CREATE': return this.handleCreate(ast as Create);
-            case 'DROP': return this.handleDrop(ast);
-            case 'ALTER': return this.handleAlter(ast);
-            default: throw new Error(`Unsupported SQL command: ${type}`);
-        }
+        return lastResult;
     }
 
     // --- Data Access Helpers (Hybrid CSV/Firestore) ---
@@ -173,15 +195,28 @@ export class SqlEngine {
         let finalRows = limit !== undefined ? processedRows.slice(0, limit) : processedRows;
 
         let resultColumns: string[];
+        const extractColName = (col: any): string => {
+            if (!col) return '';
+            if (typeof col === 'string') return col;
+            if (col.expr && col.expr.type === 'default' && col.expr.value) return col.expr.value;
+            if (col.expr && col.expr.value) return col.expr.value;
+            return col.column || col.value || col.name || JSON.stringify(col);
+        };
+
         if (ast.columns.length === 1 && ast.columns[0].expr && ast.columns[0].expr.column === '*') {
             resultColumns = finalRows.length > 0 ? Object.keys(finalRows[0]).filter(k => k !== '_csv_index') : [];
         } else {
-            resultColumns = ast.columns.map((c: any, i: number) => c.as || c.expr?.column || `col_${i}`);
+            resultColumns = ast.columns.map((c: any, i: number) => c.as || extractColName(c.expr?.column) || `col_${i}`);
             finalRows = finalRows.map(row => {
                 const projected: any = {};
                 ast.columns.forEach((c: any, i: number) => {
-                    const colName = c.expr?.column;
-                    const alias = c.as || colName || `col_${i}`;
+                    let colName = extractColName(c.expr?.column);
+
+                    if (c.expr?.type === 'function') {
+                        colName = c.as || c.expr.name?.name?.[0]?.value || c.expr.name;
+                    }
+
+                    const alias = c.as || (typeof colName === 'string' ? colName : `col_${i}`);
                     projected[alias] = this.evaluateExpression(c.expr, row);
                 });
                 return projected;
@@ -218,10 +253,10 @@ export class SqlEngine {
         const tableName = ast.table?.[0].table;
         if (!tableName) throw new Error("Table name required");
 
-        const tables = await getTablesForProject(this.projectId);
+        const tables = await getTablesForProject(this.projectId, this.userId!);
         const table = tables.find(t => t.table_name === tableName);
         if (!table) throw new Error(`Table '${tableName}' not found.`);
-        const columns = await getColumnsForTable(this.projectId, table.table_id);
+        const columns = await getColumnsForTable(this.projectId, table.table_id, this.userId!);
 
         // Extract column names - ast.columns may be objects like { type: 'default', value: 'colname' }
         let targetCols: string[];
@@ -347,7 +382,16 @@ export class SqlEngine {
 
 
             const row: any = {};
-            targetCols.forEach((col: string, i: number) => row[col] = values[i]);
+            targetCols.forEach((col: string, i: number) => {
+                // Find matching column in schema (case-insensitive)
+                const matchingCol = columns.find(c => c.column_name.toLowerCase() === col.toLowerCase());
+                if (matchingCol) {
+                    row[matchingCol.column_name] = values[i];
+                } else {
+                    // Fallback to provided name if not found (though validation might catch this)
+                    row[col] = values[i];
+                }
+            });
 
 
 
@@ -379,7 +423,7 @@ export class SqlEngine {
 
     private async handleUpdate(ast: any): Promise<SqlResult> {
         const tableName = ast.table?.[0].table;
-        const tables = await getTablesForProject(this.projectId);
+        const tables = await getTablesForProject(this.projectId, this.userId!);
         const table = tables.find(t => t.table_name === tableName);
         if (!table) throw new Error(`Table '${tableName}' not found.`);
 
@@ -451,7 +495,7 @@ export class SqlEngine {
 
     private async handleDelete(ast: any): Promise<SqlResult> {
         const tableName = ast.table?.[0].table;
-        const tables = await getTablesForProject(this.projectId);
+        const tables = await getTablesForProject(this.projectId, this.userId!);
         const table = tables.find(t => t.table_name === tableName);
         if (!table) throw new Error(`Table '${tableName}' not found.`);
 
@@ -514,7 +558,7 @@ export class SqlEngine {
             });
         } catch {
             // Firestore Mode
-            const tables = await getTablesForProject(this.projectId);
+            const tables = await getTablesForProject(this.projectId, this.userId!);
             const table = tables.find(t => t.table_name === tableName);
             if (!table) throw new Error(`Table '${tableName}' not found.`);
 
@@ -540,12 +584,30 @@ export class SqlEngine {
         const tableName = (Array.isArray(ast.table) ? ast.table[0] : ast.table as any)?.table;
         if (!tableName) throw new Error("Table name is required.");
 
+        // Check for duplicate table
+        const existingTables = await getTablesForProject(this.projectId, this.userId!);
+        if (existingTables.some(t => t.table_name === tableName)) {
+            throw new Error(`Table '${tableName}' already exists.`);
+        }
+
         const columns: Column[] = [];
 
         if (ast.create_definitions) {
+            console.log('[DEBUG] handleCreate Definitions:', JSON.stringify(ast.create_definitions, null, 2));
             for (const def of ast.create_definitions) {
                 if (def.resource === 'column') {
-                    const colName = (def.column as any)?.column;
+                    let colNameRaw = (def.column as any)?.column;
+                    // Sanitize colName if it's an object (e.g. AST expr)
+                    if (colNameRaw && typeof colNameRaw === 'object') {
+                        // Recursively extract value from AST object
+                        const extractVal = (obj: any): any => {
+                            if (!obj || typeof obj !== 'object') return obj;
+                            return obj.value || obj.name || obj.column || (obj.expr ? extractVal(obj.expr) : null) || JSON.stringify(obj);
+                        };
+                        colNameRaw = extractVal(colNameRaw);
+                    }
+                    const colName = String(colNameRaw);
+
                     const dataType = def.definition?.dataType;
 
                     if (!colName || !dataType) continue;
@@ -600,8 +662,11 @@ export class SqlEngine {
         // Inline PK check (some parsers might put it on column definition)
         // Adjust if needed based on `node-sql-parser` specific behavior for inline PKs
 
+        console.log('[DEBUG] handleCreate Columns Count:', columns.length);
+        console.log('[DEBUG] handleCreate Columns:', JSON.stringify(columns, null, 2));
+
         try {
-            await createTable(this.projectId, tableName, '', columns);
+            await createTable(this.projectId, tableName, '', columns, this.userId!);
         } catch (e: any) {
             throw new Error(`Failed to create table: ${e.message}`);
         }
@@ -611,12 +676,12 @@ export class SqlEngine {
 
     private async handleDrop(ast: any): Promise<SqlResult> {
         const tableName = ast.table?.[0].table;
-        const tables = await getTablesForProject(this.projectId);
+        const tables = await getTablesForProject(this.projectId, this.userId!);
         const table = tables.find(t => t.table_name === tableName);
         if (!table) throw new Error(`Table '${tableName}' not found.`);
 
         // Delete Firestore Metadata
-        await deleteTable(this.projectId, table.table_id);
+        await deleteTable(this.projectId, table.table_id, this.userId!);
 
         // Delete CSV if exists
         const projectPath = path.join(process.cwd(), 'src', 'database', this.userId!, this.projectId);
@@ -628,7 +693,7 @@ export class SqlEngine {
 
     private async handleAlter(ast: any): Promise<SqlResult> {
         const tableName = ast.table?.[0].table;
-        const tables = await getTablesForProject(this.projectId);
+        const tables = await getTablesForProject(this.projectId, this.userId!);
         const table = tables.find(t => t.table_name === tableName);
         if (!table) throw new Error(`Table '${tableName}' not found.`);
 
@@ -647,7 +712,7 @@ export class SqlEngine {
                     data_type: dataType.toUpperCase() as any,
                     is_primary_key: false,
                     is_nullable: true
-                });
+                }, this.userId!);
 
                 // Update CSV header if exists??
                 // Yes, append comma
@@ -689,16 +754,41 @@ export class SqlEngine {
                     if (operator.toUpperCase() === 'OR') return leftValue || rightValue;
                 }
 
-                const colName = left.column;
+                let colName = left.column;
+
+                // Helper to extract column string from AST object
+                const extractColName = (col: any): string => {
+                    if (!col) return '';
+                    if (typeof col === 'string') return col;
+                    if (col.expr && col.expr.type === 'default' && col.expr.value) return col.expr.value;
+                    if (col.expr && col.expr.value) return col.expr.value;
+                    return col.column || col.value || col.name || JSON.stringify(col);
+                };
+
+                colName = extractColName(colName);
+                colName = String(colName);
+
                 // Handle table.column format
                 const actualCol = colName.includes('.') ? colName.split('.')[1] : colName;
 
-                if (row[actualCol] === undefined && row[colName] === undefined) return false;
+                if (row[actualCol] === undefined && row[colName] === undefined) {
+                    // Try case-insensitive lookup
+                    const lowerCol = actualCol.toLowerCase();
+                    const foundKey = Object.keys(row).find(k => k.toLowerCase() === lowerCol);
+                    if (foundKey) {
+                        colName = foundKey; // Use the actual key from the row
+                    } else {
+                        console.warn(`[DEBUG] Column '${actualCol}' (raw: ${left.column}) not found in row. Available keys:`, Object.keys(row));
+                        return false;
+                    }
+                }
                 const val = row[actualCol] !== undefined ? row[actualCol] : row[colName];
 
                 let rVal;
                 if (right.type === 'column_ref') {
-                    const rightCol = right.column.includes('.') ? right.column.split('.')[1] : right.column;
+                    let rightColName = extractColName(right.column);
+                    rightColName = String(rightColName);
+                    const rightCol = rightColName.includes('.') ? rightColName.split('.')[1] : rightColName;
                     rVal = row[rightCol];
                 } else if (right.type === 'value_list') {
                     rVal = right.value.map((v: any) => v.value);
@@ -711,8 +801,19 @@ export class SqlEngine {
             }
 
             if (type === 'column_ref') {
-                const colName = left.column.includes('.') ? left.column.split('.')[1] : left.column;
-                return !!row[colName];
+                const extractColName = (col: any): string => {
+                    if (!col) return '';
+                    if (typeof col === 'string') return col;
+                    if (col.expr && col.expr.type === 'default' && col.expr.value) return col.expr.value;
+                    if (col.expr && col.expr.value) return col.expr.value;
+                    return col.column || col.value || col.name || JSON.stringify(col);
+                };
+
+                let colName = extractColName(left.column);
+                colName = String(colName);
+
+                const actualCol = colName.includes('.') ? colName.split('.')[1] : colName;
+                return !!row[actualCol];
             }
 
             // Simple fallback
@@ -731,12 +832,12 @@ export class SqlEngine {
         if ((right === null || right === undefined) && (left !== null && left !== undefined)) return false;
 
 
-        const leftNum = parseFloat(left);
-        const rightNum = parseFloat(right);
 
-        if (!isNaN(leftNum) && !isNaN(rightNum)) {
-            left = leftNum;
-            right = rightNum;
+        const isNumber = (n: any) => !isNaN(parseFloat(n)) && isFinite(n) && Number(n) == n;
+
+        if (isNumber(left) && isNumber(right)) {
+            left = Number(left);
+            right = Number(right);
         } else {
             left = String(left).toLowerCase();
             right = Array.isArray(right) ? right.map(r => String(r).toLowerCase()) : String(right).toLowerCase();
@@ -767,8 +868,25 @@ export class SqlEngine {
         if (!expr) return null;
 
         if (expr.type === 'column_ref') {
-            const col = expr.column;
-            return row[col] !== undefined ? row[col] : null; // Warning: null if not found
+            const extractColName = (col: any): string => {
+                if (!col) return '';
+                if (typeof col === 'string') return col;
+                if (col.expr && col.expr.type === 'default' && col.expr.value) return col.expr.value;
+                if (col.expr && col.expr.value) return col.expr.value;
+                return col.column || col.value || col.name || JSON.stringify(col);
+            };
+
+            let col = extractColName(expr.column);
+            col = String(col);
+            // Handle table.column
+            if (col.includes('.')) col = col.split('.')[1];
+
+            if (row[col] !== undefined) return row[col];
+
+            // Case-insensitive fallback
+            const lowerCol = col.toLowerCase();
+            const foundKey = Object.keys(row).find(k => k.toLowerCase() === lowerCol);
+            return foundKey ? row[foundKey] : null;
         }
 
         if (expr.type === 'string' || expr.type === 'single_quote_string') return expr.value;
@@ -849,7 +967,22 @@ export class SqlEngine {
             case 'DATE_ADD':
                 // Simplified: just return current date for now
                 // Full implementation would parse interval and do date math
-                return new Date().toISOString();
+                return new Date().toISOString().split('T')[0];
+
+            case 'ADD_DAYS':
+                if (funcNode.args && Array.isArray(funcNode.args.value) && funcNode.args.value.length === 2) {
+                    const dateArg = this.evaluateExpression(funcNode.args.value[0], row);
+                    const daysArg = this.evaluateExpression(funcNode.args.value[1], row);
+
+                    const date = new Date(dateArg);
+                    const days = parseInt(daysArg, 10);
+
+                    if (!isNaN(date.getTime()) && !isNaN(days)) {
+                        date.setDate(date.getDate() + days);
+                        return date.toISOString().split('T')[0];
+                    }
+                }
+                return new Date().toISOString().split('T')[0];
 
             case 'UUID':
                 // Generate a simple UUID
@@ -903,12 +1036,72 @@ export class SqlEngine {
                 });
             } else if (joinType.toUpperCase().includes('LEFT')) {
                 joinedRows.push({ ...leftRow });
-                // Add nulls for right columns? (Implicitly undefined is null-ish in UI)
             }
         });
-
         return joinedRows;
     }
+    private async handleGenerateData(tableName: string, count: number): Promise<SqlResult> {
+        const tables = await getTablesForProject(this.projectId, this.userId!);
+        const table = tables.find(t => t.table_name === tableName);
+        if (!table) throw new Error(`Table '${tableName}' not found.`);
 
+        const columns = await getColumnsForTable(this.projectId, table.table_id, this.userId!);
+        const rows: any[] = [];
 
+        for (let i = 0; i < count; i++) {
+            const row: any = {};
+            columns.forEach(col => {
+                const type = col.data_type.toUpperCase();
+                const colName = col.column_name;
+
+                if (['INT', 'INTEGER', 'SERIAL', 'BIGINT', 'SMALLINT'].includes(type)) {
+                    row[colName] = i + 1;
+                } else if (['FLOAT', 'DOUBLE', 'DECIMAL', 'NUMERIC'].includes(type)) {
+                    row[colName] = parseFloat((Math.random() * 1000).toFixed(2));
+                } else if (['VARCHAR', 'TEXT', 'CHAR'].includes(type)) {
+                    if (colName.toLowerCase().includes('name')) {
+                        row[colName] = `Name_${i + 1}`;
+                    } else if (colName.toLowerCase().includes('email')) {
+                        row[colName] = `user${i + 1}@example.com`;
+                    } else {
+                        row[colName] = `${colName}_${i + 1}`;
+                    }
+                } else if (['DATE'].includes(type)) {
+                    const date = new Date();
+                    date.setDate(date.getDate() - (i % 365));
+                    row[colName] = date.toISOString().split('T')[0];
+                } else if (['DATETIME', 'TIMESTAMP'].includes(type)) {
+                    const date = new Date();
+                    date.setDate(date.getDate() - (i % 365));
+                    row[colName] = date.toISOString();
+                } else if (['BOOLEAN', 'BOOL'].includes(type)) {
+                    row[colName] = i % 2 === 0;
+                } else {
+                    row[colName] = null;
+                }
+            });
+            rows.push(row);
+        }
+
+        // Batch Insert Logic (Chunked)
+        const chunkSize = 400;
+        let inserted = 0;
+        for (let i = 0; i < rows.length; i += chunkSize) {
+            const chunk = rows.slice(i, i + chunkSize);
+            const batch = adminDb.batch();
+            chunk.forEach(row => {
+                const ref = adminDb
+                    .collection('users').doc(this.userId!)
+                    .collection('projects').doc(this.projectId)
+                    .collection('tables').doc(table.table_id)
+                    .collection('rows').doc();
+                batch.set(ref, row);
+            });
+            await batch.commit();
+            inserted += chunk.length;
+        }
+
+        return { rows: [], columns: [], message: `Generated and inserted ${inserted} rows into '${tableName}'.` };
+    }
 }
+

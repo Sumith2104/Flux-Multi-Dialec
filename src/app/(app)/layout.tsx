@@ -108,7 +108,12 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         let finalHref = item.href;
 
         if (isProjectSpecific && selectedProject?.project_id) {
-            finalHref = `${item.href}?projectId=${selectedProject.project_id}`;
+            // Special case for Settings: Go to Project Settings instead of Global Settings
+            if (item.href === "/settings") {
+                finalHref = "/dashboard/project-settings";
+            } else {
+                finalHref = `${item.href}?projectId=${selectedProject.project_id}`;
+            }
         }
 
         return {

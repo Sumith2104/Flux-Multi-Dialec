@@ -3,15 +3,29 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
     try {
-        const { idToken, displayName, type = 'login' } = await request.json();
+        const body = await request.json();
+        const { idToken, displayName, type = 'login' } = body;
+
+        console.log('[DEBUG] Login Route Hit');
+        console.log('[DEBUG] Request Type:', type);
+        console.log('[DEBUG] ID Token Present:', !!idToken);
+        if (idToken) console.log('[DEBUG] ID Token Preview:', idToken.substring(0, 20) + '...');
 
         if (!idToken) {
+            console.error('[DEBUG] Missing ID Token');
             return NextResponse.json({ error: 'Missing ID Token' }, { status: 400 });
         }
 
         // Verify token to get user details
         const { adminAuth } = await import('@/lib/firebase-admin');
-        const decodedToken = await adminAuth.verifyIdToken(idToken);
+        let decodedToken;
+        try {
+            decodedToken = await adminAuth.verifyIdToken(idToken);
+            console.log('[DEBUG] Token Verified. UID:', decodedToken.uid, 'Email:', decodedToken.email);
+        } catch (authError: any) {
+            console.error('[DEBUG] Token Verification Failed:', authError);
+            return NextResponse.json({ error: 'Invalid credentials (Token Verify Failed)', details: authError.message }, { status: 401 });
+        }
         const { uid, email, name, picture } = decodedToken;
 
         if (!email) {

@@ -57,3 +57,39 @@ export async function createSessionCookie(idToken: string) {
 export async function logout() {
     (await cookies()).delete('session');
 }
+
+/**
+ * Retrieves the user ID from the request, checking both session cookies and API keys.
+ * enhancing security for API routes.
+ */
+import { validateApiKey } from '@/lib/api-keys';
+
+export async function getUserIdFromRequest(request: Request): Promise<string | null> {
+    const context = await getAuthContextFromRequest(request);
+    return context?.userId || null;
+}
+
+export interface AuthContext {
+    userId: string;
+    allowedProjectId?: string; // If present, the user is restricted to this project
+}
+
+export async function getAuthContextFromRequest(request: Request): Promise<AuthContext | null> {
+    // 1. Check Session Cookie (Browser Access)
+    const userId = await getCurrentUserId();
+    if (userId) return { userId };
+
+    // 2. Check Authorization Header (API Access)
+    const authHeader = request.headers.get('Authorization');
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        const apiKey = authHeader.split('Bearer ')[1].trim();
+        if (apiKey) {
+            const result = await validateApiKey(apiKey);
+            if (result) {
+                return { userId: result.userId, allowedProjectId: result.projectId };
+            }
+        }
+    }
+
+    return null;
+}

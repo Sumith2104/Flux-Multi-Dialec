@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import {
     Database,
     Zap,
@@ -18,10 +19,17 @@ import { motion } from 'framer-motion';
 
 import Aurora from '@/components/Aurora';
 import Navbar from '@/components/layout/navbar';
-import { LoginDialog } from '@/components/auth/login-dialog';
-import { SignupDialog } from '@/components/auth/signup-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+
+const LoginDialog = dynamic(() => import('@/components/auth/login-dialog').then(mod => mod.LoginDialog), {
+    ssr: false,
+    loading: () => <Button variant="ghost">Login</Button>
+});
+const SignupDialog = dynamic(() => import('@/components/auth/signup-dialog').then(mod => mod.SignupDialog), {
+    ssr: false,
+    loading: () => <Button>Sign Up</Button>
+});
 
 export default function Home() {
     const [colors, setColors] = useState(['#111111', '#FF4B29', '#111111']);

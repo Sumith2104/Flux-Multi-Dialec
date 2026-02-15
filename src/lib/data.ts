@@ -73,8 +73,8 @@ export async function getProjectsForCurrentUser(): Promise<Project[]> {
     }
 }
 
-export async function getProjectById(projectId: string): Promise<Project | null> {
-    const userId = await getCurrentUserId();
+export async function getProjectById(projectId: string, explicitUserId?: string): Promise<Project | null> {
+    const userId = explicitUserId || await getCurrentUserId();
     if (!userId) return null;
 
     try {
@@ -189,8 +189,8 @@ export async function resetProjectData(projectId: string) {
 
 // --- Tables ---
 
-export async function getTablesForProject(projectId: string): Promise<Table[]> {
-    const userId = await getCurrentUserId();
+export async function getTablesForProject(projectId: string, explicitUserId?: string): Promise<Table[]> {
+    const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
     const snapshot = await adminDb
@@ -205,8 +205,8 @@ export async function getTablesForProject(projectId: string): Promise<Table[]> {
     } as Table));
 }
 
-export async function createTable(projectId: string, tableName: string, description: string, columns: Column[]): Promise<Table> {
-    const userId = await getCurrentUserId();
+export async function createTable(projectId: string, tableName: string, description: string, columns: Column[], explicitUserId?: string): Promise<Table> {
+    const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
     const projectRef = adminDb.collection('users').doc(userId).collection('projects').doc(projectId);
@@ -228,6 +228,7 @@ export async function createTable(projectId: string, tableName: string, descript
 
     // 2. Create Column Docs (Strict Schema)
     const columnsRef = tableRef.collection('columns');
+    console.log('[DEBUG] createTable Columns Path:', columnsRef.path);
     for (const col of columns) {
         const colDoc = columnsRef.doc(); // Auto ID
         const colData: any = {
@@ -246,8 +247,8 @@ export async function createTable(projectId: string, tableName: string, descript
     return table;
 }
 
-export async function deleteTable(projectId: string, tableId: string) {
-    const userId = await getCurrentUserId();
+export async function deleteTable(projectId: string, tableId: string, explicitUserId?: string) {
+    const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
     // Note: Firestore requires deleting subcollections recursively.
@@ -266,16 +267,25 @@ export async function deleteTable(projectId: string, tableId: string) {
 
 // --- Columns ---
 
-export async function getColumnsForTable(projectId: string, tableId: string): Promise<Column[]> {
-    const userId = await getCurrentUserId();
+export async function getColumnsForTable(projectId: string, tableId: string, explicitUserId?: string): Promise<Column[]> {
+    const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    const snapshot = await adminDb
+    const query = adminDb
         .collection('users').doc(userId)
         .collection('projects').doc(projectId)
         .collection('tables').doc(tableId)
-        .collection('columns')
-        .get();
+        .collection('columns');
+
+    console.log('[DEBUG] getColumnsForTable Path:', query.path);
+
+    const snapshot = await query.get();
+    console.log('[DEBUG] getColumnsForTable Snapshot Size:', snapshot.size);
+    if (snapshot.size > 0) {
+        console.log('[DEBUG] First Doc Data:', JSON.stringify(snapshot.docs[0].data(), null, 2));
+    } else {
+        console.log('[DEBUG] Snapshot is EMPTY');
+    }
 
     return snapshot.docs.map(doc => ({
         column_id: doc.id,
@@ -295,8 +305,8 @@ export async function getColumnsForTable(projectId: string, tableId: string): Pr
     });
 }
 
-export async function addColumn(projectId: string, tableId: string, column: Omit<Column, 'column_id' | 'table_id'>) {
-    const userId = await getCurrentUserId();
+export async function addColumn(projectId: string, tableId: string, column: Omit<Column, 'column_id' | 'table_id'>, explicitUserId?: string) {
+    const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
     const columnsRef = adminDb
@@ -403,8 +413,8 @@ export async function deleteConstraint(projectId: string, constraintId: string) 
 import fs from 'fs/promises';
 import path from 'path';
 
-export async function getTableData(projectId: string, tableName: string, page: number = 1, pageSize: number = 100) {
-    const userId = await getCurrentUserId();
+export async function getTableData(projectId: string, tableName: string, page: number = 1, pageSize: number = 100, explicitUserId?: string) {
+    const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
     const ignoreFileCheck = false; // Flag to skip file check if needed
@@ -450,7 +460,7 @@ export async function getTableData(projectId: string, tableName: string, page: n
         // check if error is ENOENT
     }
 
-    const tables = await getTablesForProject(projectId);
+    const tables = await getTablesForProject(projectId, userId);
     const table = tables.find(t => t.table_name === tableName);
     if (!table) throw new Error(`Table ${tableName} not found`);
 
@@ -471,6 +481,11 @@ export async function getTableData(projectId: string, tableName: string, page: n
         };
     });
     const totalRows = rows.length; // Approximate for now, real total count requires aggregation query
+
+    if (rows.length > 0) {
+        console.log('[DEBUG] getTableData First Row Keys:', Object.keys(rows[0]));
+        console.log('[DEBUG] getTableData First Row:', JSON.stringify(rows[0]));
+    }
 
     return { rows, totalRows };
 }

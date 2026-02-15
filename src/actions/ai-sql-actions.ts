@@ -7,6 +7,7 @@ export async function generateSQLAction(projectId: string, userInput: string) {
     try {
         // 1. Fetch tables
         const tables = await getTablesForProject(projectId);
+        console.log('[DEBUG] generateSQLAction tables:', tables.length);
 
         // 2. Fetch columns for all tables and build schema string
         let schemaDescription = '';
@@ -22,7 +23,7 @@ export async function generateSQLAction(projectId: string, userInput: string) {
         }
 
         if (!schemaDescription) {
-            return { success: false, error: 'No tables found in this project. Please create a table first.' };
+            schemaDescription = "No tables exist in the project yet. The user may want to create a new table. Please generate a CREATE TABLE statement if requested.";
         }
 
         // 3. Call Genkit Flow
