@@ -7,15 +7,17 @@ export async function GET() {
     const targetUserId = '8Zx6fKHOWBcyCxVMESw3qq7hLbD2';
 
     try {
-        const projectId = 'tygeNt1kN5juQ6jGyjTP';
-        // Generate a test key
-        const { generateApiKey } = await import('@/lib/api-keys');
-        const newKey = await generateApiKey(targetUserId, 'Test Scoped Key ' + Date.now(), projectId, 'Test Project');
-
+        const keys = await listApiKeys(targetUserId);
         return NextResponse.json({
-            message: 'Generated new scoped key',
-            newKey: newKey.key,
-            scope: projectId
+            userId: targetUserId,
+            keyCount: keys.length,
+            keys: keys.map(k => ({
+                id: k.id,
+                name: k.name,
+                projectId: k.projectId,
+                preview: k.preview,
+                createdAt: k.createdAt
+            }))
         });
 
     } catch (error: any) {
