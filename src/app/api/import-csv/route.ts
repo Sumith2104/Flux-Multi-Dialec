@@ -1,11 +1,10 @@
 
 import { NextResponse } from 'next/server';
-import fs from 'fs/promises';
-import path from 'path';
 import { getCurrentUserId } from '@/lib/auth';
 import { getColumnsForTable } from '@/lib/data';
 import { revalidatePath } from 'next/cache';
 import { v4 as uuidv4 } from 'uuid';
+import { adminDb } from '@/lib/firebase-admin';
 
 export const maxDuration = 300; // 5 minutes
 
@@ -61,15 +60,12 @@ export async function POST(request: Request) {
 
     if (idColumnExistsInSchema && !idColumnExistsInCsv) {
       // If schema expects 'id' but CSV doesn't have it, that's OK.
-      // We will add `id` to the csvHeader for processing, but compare the rest.
       const expectedWithoutId = expectedHeader.filter(h => h !== 'id');
       if (JSON.stringify(csvHeader) !== JSON.stringify(expectedWithoutId)) {
         headersMatch = false;
       }
-      // For processing, we assume the 'id' is the first column
       finalCsvHeader.unshift('id');
     } else {
-      // Standard comparison if 'id' logic doesn't apply
       if (JSON.stringify(csvHeader) !== JSON.stringify(expectedHeader)) {
         headersMatch = false;
       }
@@ -82,53 +78,57 @@ export async function POST(request: Request) {
 
     // Get the data rows (all lines except the header)
     const dataLines = cleanedLines.slice(1);
-    let importedCount = 0;
 
-    const projectPath = path.join(process.cwd(), 'src', 'database', userId, projectId);
-    const dataFilePath = path.join(projectPath, `${tableName}.csv`);
+    // Chunking for Firestore batch limit (500)
+    const BATCH_SIZE = 450;
+    const chunks = [];
 
-    // Ensure directory exists
-    try {
-      await fs.access(projectPath);
-    } catch {
-      await fs.mkdir(projectPath, { recursive: true });
-    }
-
-    const contentToAppend = dataLines.map((line) => {
-      // ... (data processing logic is fine, but need to be careful with map index if we were using it)
+    // Prepare rows
+    const rowsToInsert = dataLines.map((line) => {
       const values = line.split(',').map(v => v.trim());
-
-      let processedValues = [...values];
+      const row: any = {};
 
       if (idColumnExistsInSchema && !idColumnExistsInCsv) {
-        processedValues.unshift(uuidv4());
+        row['id'] = uuidv4();
+        csvHeader.forEach((colName, idx) => {
+          row[colName] = values[idx];
+        });
+      } else {
+        expectedHeader.forEach((colName, idx) => {
+          row[colName] = values[idx];
+        });
       }
 
-      // Simplified check for now (length check constraint)
-      // Note: in a real app, use a proper CSV parser library
-      importedCount++;
-      return processedValues.join(',');
-    }).join('\n');
+      // Clean undefined
+      Object.keys(row).forEach(key => row[key] === undefined && delete row[key]);
 
-    if (contentToAppend) {
-      // Check if file exists to determine if we need a newline or header
-      try {
-        await fs.access(dataFilePath);
-        // File exists, append with newline
-        await fs.appendFile(dataFilePath, '\n' + contentToAppend, 'utf8');
-      } catch {
-        // File doesn't exist, create it with header (and then content)
-        // Wait, if we are in this block, the table was *just* created in Firestore.
-        // But we are using CSV as the storage engine? 
+      return row;
+    });
 
-        // Correction: The Architecture seems to be hybrid or in transition. 
-        // The error log shows `src/database/...` path which implies file-based storage.
-        // If the file doesn't exist, we should write Header + Content.
+    for (let i = 0; i < rowsToInsert.length; i += BATCH_SIZE) {
+      chunks.push(rowsToInsert.slice(i, i + BATCH_SIZE));
+    }
 
-        // Re-constructing the header for the new file
-        const fullHeader = expectedHeader.join(',');
-        await fs.writeFile(dataFilePath, fullHeader + '\n' + contentToAppend, 'utf8');
-      }
+    console.log(`[CSV Import] Importing ${rowsToInsert.length} rows in ${chunks.length} batches.`);
+
+    let importedCount = 0;
+    for (const chunk of chunks) {
+      const batch = adminDb.batch();
+      chunk.forEach(row => {
+        const ref = adminDb
+          .collection('users').doc(userId)
+          .collection('projects').doc(projectId)
+          .collection('tables').doc(tableId)
+          .collection('rows').doc();
+
+        if (row.id) {
+          batch.set(ref, { ...row, _id: ref.id });
+        } else {
+          batch.set(ref, row);
+        }
+      });
+      await batch.commit();
+      importedCount += chunk.length;
     }
 
     revalidatePath(`/editor?projectId=${projectId}&tableId=${tableId}&tableName=${tableName}`);
