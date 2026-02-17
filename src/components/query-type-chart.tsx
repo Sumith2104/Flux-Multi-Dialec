@@ -61,10 +61,9 @@ export function QueryTypeChart() {
     }, [])
 
     return (
-        <Card className="flex flex-col aspect-square justify-between">
+        <Card className="flex flex-col aspect-square">
             <CardHeader className="items-center pb-0">
-                <CardTitle>Query Type Distribution</CardTitle>
-                <CardDescription>Breakdown of executed SQL queries</CardDescription>
+                <CardTitle className="text-sm font-medium text-muted-foreground">Total Queries</CardTitle>
             </CardHeader>
             <CardContent className="flex-1 pb-0">
                 <ChartContainer
@@ -105,7 +104,7 @@ export function QueryTypeChart() {
                                                     y={(viewBox.cy || 0) + 24}
                                                     className="fill-muted-foreground text-xs"
                                                 >
-                                                    Total Queries
+                                                    Queries
                                                 </tspan>
                                             </text>
                                         )
@@ -116,14 +115,6 @@ export function QueryTypeChart() {
                     </PieChart>
                 </ChartContainer>
             </CardContent>
-            <CardFooter className="flex-col gap-2 text-sm">
-                <div className="flex items-center gap-2 font-medium leading-none">
-                    Trending up by 5.2% this month <TrendingUp className="h-4 w-4" />
-                </div>
-                <div className="leading-none text-muted-foreground">
-                    Showing total queries for the last 30 days
-                </div>
-            </CardFooter>
         </Card>
     )
 }

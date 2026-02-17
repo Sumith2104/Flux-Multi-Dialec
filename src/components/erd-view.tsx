@@ -20,7 +20,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { type Table, type Column, type Constraint } from '@/lib/data';
-import { KeyRound, Link2 } from 'lucide-react';
+import { KeyRound, Link2, Database } from 'lucide-react';
 import dagre from 'dagre';
 
 interface ErdViewProps {
@@ -32,8 +32,8 @@ interface ErdViewProps {
 const nodeWidth = 250;
 const nodeHeaderHeight = 40;
 const rowHeight = 28;
-const POSITIONS_KEY = 'fluxbase-erd-positions';
-const VIEWPORT_KEY = 'fluxbase-erd-viewport';
+const POSITIONS_KEY = 'fluxbase-erd-positions-v2';
+const VIEWPORT_KEY = 'fluxbase-erd-viewport-v2';
 
 
 const CustomNode = ({ data }: { data: { name: string; columns: Column[], pks: Set<string>, fks: Set<string> } }) => {
@@ -45,22 +45,26 @@ const CustomNode = ({ data }: { data: { name: string; columns: Column[], pks: Se
   };
 
   return (
-    <div className="rounded-md border-2 border-primary/50 bg-card shadow-md font-sans w-full">
-      <div className="bg-primary/20 p-2 rounded-t-md">
-        <p className="text-sm font-bold text-foreground">{data.name}</p>
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 shadow-2xl font-sans w-full backdrop-blur-xl overflow-hidden ring-1 ring-white/5">
+      <div className="bg-white/5 p-3 border-b border-white/5 flex items-center justify-between">
+        <p className="text-sm font-bold text-zinc-100 flex items-center gap-2">
+          <Database className="h-4 w-4 text-purple-400" />
+          {data.name}
+        </p>
+        <span className="text-[10px] text-zinc-500 font-mono tracking-wider">{data.columns.length} COLS</span>
       </div>
-      <div className="p-2 space-y-1">
+      <div className="p-3 space-y-2">
         {data.columns.map((col) => {
           const label = getLabel(col.column_name);
           const typeLabel = getLabel(col.data_type);
           return (
-            <div key={col.column_id} className="relative flex items-center justify-between text-xs text-muted-foreground">
+            <div key={col.column_id} className="relative flex items-center justify-between text-xs group">
               {data.fks.has(label) && (
                 <Handle
                   type="source"
                   position={Position.Right}
                   id={`${col.table_id}-${label}`}
-                  style={{ background: '#3b82f6', top: '50%' }}
+                  style={{ background: '#3b82f6', top: '50%', right: -14, width: 8, height: 8 }}
                 />
               )}
               {data.pks.has(label) && (
@@ -68,18 +72,18 @@ const CustomNode = ({ data }: { data: { name: string; columns: Column[], pks: Se
                   type="target"
                   position={Position.Left}
                   id={`${col.table_id}-${label}`}
-                  style={{ background: '#ca8a04', top: '50%' }}
+                  style={{ background: '#eab308', top: '50%', left: -14, width: 8, height: 8 }}
                 />
               )}
               <div className='flex items-center gap-2'>
                 {data.pks.has(label) && <KeyRound className="h-3 w-3 text-yellow-500" />}
                 {data.fks.has(label) && <Link2 className="h-3 w-3 text-blue-500" />}
 
-                <span className={data.pks.has(label) ? 'font-semibold text-foreground' : ''}>
+                <span className={`${data.pks.has(label) ? 'font-bold text-yellow-500' : data.fks.has(label) ? 'font-medium text-blue-400' : 'text-zinc-300'}`}>
                   {label}
                 </span>
               </div>
-              <span className="font-mono text-gray-500">{typeLabel}</span>
+              <span className="font-mono text-[10px] text-zinc-600 group-hover:text-zinc-400 transition-colors">{typeLabel}</span>
             </div>
           );
         })}
@@ -95,10 +99,15 @@ const nodeTypes = {
 const getLayoutedElements = (nodes: Node[], edges: Edge[], savedPositions: Record<string, { x: number; y: number }>) => {
   const dagreGraph = new dagre.graphlib.Graph();
   dagreGraph.setDefaultEdgeLabel(() => ({}));
-  dagreGraph.setGraph({ rankdir: 'LR' }); // Left to Right layout
+  dagreGraph.setGraph({
+    rankdir: 'LR',
+    nodesep: 80, // Increased horiz separation
+    ranksep: 100  // Increased vertical separation (for ranks) 
+  });
 
   nodes.forEach((node) => {
-    dagreGraph.setNode(node.id, { width: node.style?.width || nodeWidth, height: node.style?.height || 200 });
+    // Add extra buffer to node size for breathing room
+    dagreGraph.setNode(node.id, { width: (node.style?.width as number || nodeWidth) + 20, height: (node.style?.height as number || 200) + 20 });
   });
 
   edges.forEach((edge) => {
@@ -133,7 +142,7 @@ function getSavedPositions(): Record<string, { x: number; y: number }> {
 function getSavedViewport(): Viewport | undefined {
   if (typeof window === 'undefined') return undefined;
   const saved = window.localStorage.getItem(VIEWPORT_KEY);
-  return saved ? JSON.parse(saved) : { x: 0, y: 0, zoom: 0.5 };
+  return saved ? JSON.parse(saved) : { x: 0, y: 0, zoom: 0.8 };
 }
 
 const Flow = ({ tables, columns, constraints }: ErdViewProps) => {
@@ -228,12 +237,19 @@ const Flow = ({ tables, columns, constraints }: ErdViewProps) => {
       onMoveEnd={onMoveEnd}
       nodeTypes={nodeTypes}
       fitView
-      className="bg-background"
+      className="bg-zinc-950"
       defaultViewport={defaultViewport}
     >
-      <Controls />
-      <MiniMap nodeStrokeWidth={3} zoomable pannable nodeColor={nodeColor} />
-      <Background gap={16} color="hsl(var(--border))" />
+      <Controls className="bg-zinc-900 border-zinc-800 fill-zinc-400" />
+      <MiniMap
+        nodeStrokeWidth={3}
+        zoomable
+        pannable
+        nodeColor={nodeColor}
+        className="!bg-zinc-900 !border-zinc-800"
+        maskColor="rgba(0, 0, 0, 0.6)"
+      />
+      <Background gap={24} size={2} color="#27272a" />
     </ReactFlow>
   );
 }

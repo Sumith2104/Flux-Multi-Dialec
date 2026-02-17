@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 
 export interface AnalyticsStats {
     total_requests: number;
@@ -17,23 +17,39 @@ export function useRealtimeAnalytics(projectId: string | undefined): AnalyticsSt
     useEffect(() => {
         if (!projectId) return;
 
-        const statsRef = doc(db, 'projects', projectId, 'stats', 'general');
+        const fetchStats = async () => {
+            try {
+                const statsRef = doc(db, 'projects', projectId, 'stats', 'general');
+                const snapshot = await getDoc(statsRef);
 
-        const unsubscribe = onSnapshot(statsRef, (doc) => {
-            if (doc.exists()) {
-                setStats(doc.data() as AnalyticsStats);
-            } else {
-                setStats({
-                    total_requests: 0,
-                    type_api_call: 0,
-                    type_sql_execution: 0,
-                    type_storage_read: 0,
-                    type_storage_write: 0
-                });
+                if (snapshot.exists()) {
+                    setStats(snapshot.data() as AnalyticsStats);
+                } else {
+                    setStats({
+                        total_requests: 0,
+                        type_api_call: 0,
+                        type_sql_execution: 0,
+                        type_storage_read: 0,
+                        type_storage_write: 0,
+                        type_sql_select: 0,
+                        type_sql_insert: 0,
+                        type_sql_update: 0,
+                        type_sql_delete: 0,
+                        type_sql_alter: 0
+                    });
+                }
+            } catch (error) {
+                console.error("Failed to fetch analytics:", error);
             }
-        });
+        };
 
-        return () => unsubscribe();
+        // Initial fetch
+        fetchStats();
+
+        // Poll every 1 minute
+        const interval = setInterval(fetchStats, 60000);
+
+        return () => clearInterval(interval);
     }, [projectId]);
 
     return stats;
