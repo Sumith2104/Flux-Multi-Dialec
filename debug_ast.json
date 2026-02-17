@@ -1,0 +1,58 @@
+{
+  "type": "create",
+  "keyword": "table",
+  "temporary": null,
+  "unlogged": null,
+  "if_not_exists": null,
+  "table": [
+    {
+      "db": null,
+      "table": "Departments",
+      "as": null
+    }
+  ],
+  "ignore_replace": null,
+  "as": null,
+  "query_expr": null,
+  "create_definitions": [
+    {
+      "column": {
+        "type": "column_ref",
+        "table": null,
+        "column": {
+          "expr": {
+            "type": "default",
+            "value": "department_id"
+          }
+        },
+        "collate": null
+      },
+      "definition": {
+        "dataType": "INT",
+        "suffix": []
+      },
+      "resource": "column",
+      "primary_key": "primary key"
+    },
+    {
+      "column": {
+        "type": "column_ref",
+        "table": null,
+        "column": {
+          "expr": {
+            "type": "default",
+            "value": "department_name"
+          }
+        },
+        "collate": null
+      },
+      "definition": {
+        "dataType": "VARCHAR",
+        "length": 255,
+        "parentheses": true
+      },
+      "resource": "column"
+    }
+  ],
+  "table_options": null
+}

@@ -1,5 +1,6 @@
-
 'use client';
+
+import { useGlobalAlert } from '@/components/global-alert-provider';
 
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
@@ -322,11 +323,22 @@ export function EditorClient({
 
 
 
+
+    const { showConfirm } = useGlobalAlert();
+
+    // ...
+
     const handleResetDatabase = async () => {
         if (!projectId) return;
-        if (!confirm('Are you certain you want to reset the database? This will delete ALL tables and data. This action cannot be undone.')) {
-            return;
-        }
+        const confirmed = await showConfirm(
+            'Are you certain you want to reset the database? This will delete ALL tables and data. This action cannot be undone.',
+            {
+                variant: 'destructive',
+                confirmText: 'Reset Database',
+                title: 'Reset Database?'
+            }
+        );
+        if (!confirmed) return;
 
         try {
             const res = await fetch('/api/reset-project', {

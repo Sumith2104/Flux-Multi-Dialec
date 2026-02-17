@@ -45,10 +45,10 @@ const CustomNode = ({ data }: { data: { name: string; columns: Column[], pks: Se
   };
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 shadow-2xl font-sans w-full backdrop-blur-xl overflow-hidden ring-1 ring-white/5">
-      <div className="bg-white/5 p-3 border-b border-white/5 flex items-center justify-between">
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 shadow-2xl font-sans w-full backdrop-blur-xl overflow-hidden ring-1 ring-white/5 hover:ring-orange-500/50 transition-all duration-300">
+      <div className="bg-zinc-900/50 p-3 border-b border-white/5 flex items-center justify-between">
         <p className="text-sm font-bold text-zinc-100 flex items-center gap-2">
-          <Database className="h-4 w-4 text-purple-400" />
+          <Database className="h-4 w-4 text-orange-500" />
           {data.name}
         </p>
         <span className="text-[10px] text-zinc-500 font-mono tracking-wider">{data.columns.length} COLS</span>
@@ -171,6 +171,8 @@ const Flow = ({ tables, columns, constraints }: ErdViewProps) => {
     const pkConstraints = new Map<string, Set<string>>();
     const fkConstraints = new Map<string, Set<string>>();
 
+    console.log('[DEBUG] ErdView Constraints:', constraints);
+
     constraints.forEach(c => {
       const keyMap = c.type === 'PRIMARY KEY' ? pkConstraints : fkConstraints;
       if (!keyMap.has(c.table_id)) {
@@ -216,13 +218,15 @@ const Flow = ({ tables, columns, constraints }: ErdViewProps) => {
         });
       });
 
+    console.log('[DEBUG] ErdView Edges:', tableEdges);
+
     const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(tableNodes, tableEdges, savedPositions);
     setNodes(layoutedNodes);
     setEdges(layoutedEdges);
   }, [tables, columns, constraints, setNodes, setEdges]);
 
   const nodeColor = (node: Node) => {
-    return 'hsl(var(--primary) / 0.5)';
+    return '#f97316'; // Orange-500
   };
 
   const defaultViewport = getSavedViewport();
@@ -237,19 +241,19 @@ const Flow = ({ tables, columns, constraints }: ErdViewProps) => {
       onMoveEnd={onMoveEnd}
       nodeTypes={nodeTypes}
       fitView
-      className="bg-zinc-950"
+      className="bg-black"
       defaultViewport={defaultViewport}
     >
-      <Controls className="bg-zinc-900 border-zinc-800 fill-zinc-400" />
+      <Controls className="bg-zinc-950 border-zinc-900 fill-zinc-400" />
       <MiniMap
         nodeStrokeWidth={3}
         zoomable
         pannable
         nodeColor={nodeColor}
-        className="!bg-zinc-900 !border-zinc-800"
-        maskColor="rgba(0, 0, 0, 0.6)"
+        className="!bg-zinc-950 !border-zinc-900"
+        maskColor="rgba(0, 0, 0, 0.8)"
       />
-      <Background gap={24} size={2} color="#27272a" />
+      <Background gap={24} size={2} color="#18181b" />
     </ReactFlow>
   );
 }

@@ -1,5 +1,6 @@
-
 'use client';
+
+import { useGlobalAlert } from '@/components/global-alert-provider';
 
 import { useState, useContext, useEffect, useCallback } from 'react';
 import { Play, Trash2, History as HistoryIcon, Sparkles, Layout, ChevronRight, ChevronLeft, Table2, ListRestart, Info, Database, AlertCircle, CheckCircle2, TerminalSquare, Bot } from 'lucide-react';
@@ -55,8 +56,19 @@ export default function QueryPage() {
     });
   };
 
-  const clearHistory = () => {
-    if (confirm('Clear all history?')) {
+
+  const { showConfirm } = useGlobalAlert();
+
+  // ...
+
+  const clearHistory = async () => {
+    const confirmed = await showConfirm('Are you sure you want to clear all query history?', {
+      title: 'Clear History',
+      variant: 'destructive',
+      confirmText: 'Clear History'
+    });
+
+    if (confirmed) {
       setHistory([]);
       localStorage.removeItem('queryHistory');
     }

@@ -386,7 +386,11 @@ export async function addConstraint(projectId: string, constraint: Omit<Constrai
         .collection('constraints');
 
     const doc = constraintsRef.doc();
-    const newConstraint = { ...constraint, constraint_id: doc.id };
+    const newConstraint: any = { ...constraint, constraint_id: doc.id };
+
+    // Sanitize undefined values (Firestore rejects undefined)
+    Object.keys(newConstraint).forEach(key => newConstraint[key] === undefined && delete newConstraint[key]);
+
     await doc.set(newConstraint);
     return newConstraint;
 }

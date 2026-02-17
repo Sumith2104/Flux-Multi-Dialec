@@ -18,7 +18,6 @@ import {
 import { StorageChart } from "@/components/storage-chart";
 import { RealtimeLineChart } from "@/components/realtime-line-chart";
 import { QueryTypeChart } from "@/components/query-type-chart";
-import { QueryExecutionChart } from "@/components/query-execution-chart";
 import { ProjectContext } from '@/contexts/project-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRealtimeAnalytics } from '@/hooks/use-realtime-analytics';
@@ -121,7 +120,21 @@ export default function DashboardPage() {
 
                 {/* Real-time Metrics Grid */}
                 <div className="grid gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-4">
-                    <QueryTypeChart />
+
+                    <Card className="aspect-square flex flex-col justify-between">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">
+                                Total Requests
+                            </CardTitle>
+                            <div className="h-4 w-4 animate-pulse rounded-full bg-green-500 shadow-[0_0_12px_#22c55e]" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-4xl font-bold">{realtimeStats?.total_requests ?? 0}</div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Real-time Interactions
+                            </p>
+                        </CardContent>
+                    </Card>
 
                     <Card className="aspect-square flex flex-col justify-between">
                         <CardHeader className="pb-2">
@@ -137,19 +150,7 @@ export default function DashboardPage() {
                         </CardContent>
                     </Card>
 
-                    <Card className="aspect-square flex flex-col justify-between">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">
-                                SQL Executions
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-4xl font-bold text-purple-500">{realtimeStats?.type_sql_execution ?? 0}</div>
-                            <p className="text-xs text-muted-foreground mt-1">
-                                Queries Run
-                            </p>
-                        </CardContent>
-                    </Card>
+                    <QueryTypeChart />
 
                     <Card className="aspect-square flex flex-col justify-between">
                         <CardHeader className="pb-2">
@@ -183,11 +184,6 @@ export default function DashboardPage() {
                             </Card>
                         )}
                     </div>
-                </div>
-
-                {/* Third Row: Execution Time */}
-                <div className="grid gap-4 md:grid-cols-1">
-                    <QueryExecutionChart />
                 </div>
 
 
