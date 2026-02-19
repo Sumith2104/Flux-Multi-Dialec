@@ -47,7 +47,7 @@ export async function revokeApiKeyAction(keyId: string) {
 
     try {
         await revokeApiKey(userId, keyId);
-        revalidatePath('/settings');
+        // revalidatePath('/settings');
         return { success: true };
     } catch (error: any) {
         return { success: false, error: error.message };

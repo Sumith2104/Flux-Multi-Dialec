@@ -20,14 +20,7 @@ import {
     ChartTooltip,
     ChartTooltipContent,
 } from "@/components/ui/chart"
-
-const chartData = [
-    { browser: "select", visitors: 120, fill: "#22c55e" },
-    { browser: "insert", visitors: 35, fill: "#3b82f6" },
-    { browser: "update", visitors: 18, fill: "#a855f7" },
-    { browser: "delete", visitors: 6, fill: "#ef4444" },
-    { browser: "alter", visitors: 3, fill: "#f59e0b" },
-]
+import { AnalyticsStats } from "@/hooks/use-realtime-analytics";
 
 const chartConfig = {
     visitors: {
@@ -55,10 +48,29 @@ const chartConfig = {
     },
 } satisfies ChartConfig
 
-export function QueryTypeChart() {
+export function QueryTypeChart({ stats }: { stats: AnalyticsStats | null }) {
+
+    const chartData = React.useMemo(() => {
+        if (!stats) return [
+            { browser: "select", visitors: 0, fill: "#22c55e" },
+            { browser: "insert", visitors: 0, fill: "#3b82f6" },
+            { browser: "update", visitors: 0, fill: "#a855f7" },
+            { browser: "delete", visitors: 0, fill: "#ef4444" },
+            { browser: "alter", visitors: 0, fill: "#f59e0b" },
+        ];
+
+        return [
+            { browser: "select", visitors: stats.type_sql_select || 0, fill: "#22c55e" },
+            { browser: "insert", visitors: stats.type_sql_insert || 0, fill: "#3b82f6" },
+            { browser: "update", visitors: stats.type_sql_update || 0, fill: "#a855f7" },
+            { browser: "delete", visitors: stats.type_sql_delete || 0, fill: "#ef4444" },
+            { browser: "alter", visitors: stats.type_sql_alter || 0, fill: "#f59e0b" },
+        ]
+    }, [stats]);
+
     const totalVisitors = React.useMemo(() => {
         return chartData.reduce((acc, curr) => acc + curr.visitors, 0)
-    }, [])
+    }, [chartData])
 
     return (
         <Card className="flex flex-col aspect-square justify-between">

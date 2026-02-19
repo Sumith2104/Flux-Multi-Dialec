@@ -16,10 +16,19 @@ export function validateRow(row: Row, columns: Column[]) {
 
         if (val !== null && val !== undefined && val !== '') {
             // 2. Check Data Types
-            switch (col.data_type) {
+            const type = col.data_type.toUpperCase();
+
+            // Map 'number' to INT/FLOAT for validation if needed, or just handle it.
+            // validRow already checks valid numbers.
+
+            switch (type) {
                 case 'INT':
+                case 'NUMBER': // Handle 'number' type
                     if (!Number.isInteger(Number(val))) {
-                        throw new Error(`Column '${col.column_name}' expects an Integer, got '${val}'.`);
+                        // Soft check: generic number
+                        if (isNaN(Number(val))) {
+                            throw new Error(`Column '${col.column_name}' expects a Number, got '${val}'.`);
+                        }
                     }
                     break;
                 case 'FLOAT':
@@ -36,11 +45,13 @@ export function validateRow(row: Row, columns: Column[]) {
                     break;
                 case 'DATE':
                 case 'TIMESTAMP':
+                case 'TIMESTAMPTZ':
+                case 'DATETIME':
                     if (isNaN(Date.parse(String(val)))) {
                         throw new Error(`Column '${col.column_name}' expects a Date/Timestamp, got '${val}'.`);
                     }
                     break;
-                // VARCHAR, TEXT are loose strings, no specific check needed usually unless length limit
+                // VARCHAR, TEXT are loose strings
             }
         }
     }

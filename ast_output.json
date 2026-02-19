@@ -1,0 +1,59 @@
+{
+  "with": null,
+  "type": "select",
+  "options": null,
+  "distinct": null,
+  "columns": [
+    {
+      "expr": {
+        "type": "aggr_func",
+        "name": "COUNT",
+        "args": {
+          "expr": {
+            "type": "star",
+            "value": "*"
+          }
+        },
+        "over": null
+      },
+      "as": "total"
+    },
+    {
+      "expr": {
+        "type": "aggr_func",
+        "name": "COUNT",
+        "args": {
+          "distinct": "DISTINCT",
+          "expr": {
+            "type": "column_ref",
+            "table": null,
+            "column": "id",
+            "collate": null
+          },
+          "orderby": null,
+          "separator": null
+        },
+        "over": null
+      },
+      "as": "dist"
+    }
+  ],
+  "into": {
+    "position": null
+  },
+  "from": [
+    {
+      "db": null,
+      "table": "t",
+      "as": null
+    }
+  ],
+  "where": null,
+  "groupby": null,
+  "having": null,
+  "orderby": null,
+  "limit": null,
+  "locking_read": null,
+  "window": null,
+  "collate": null
+}

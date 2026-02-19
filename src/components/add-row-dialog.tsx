@@ -91,12 +91,19 @@ export function AddRowDialog({
         />
       )
     }
+    const inputType =
+      col.data_type === 'number' ? 'number' :
+        col.data_type === 'date' ? 'date' :
+          ['timestamp', 'timestamptz', 'datetime'].includes(col.data_type) ? 'datetime-local' :
+            'text';
+
     return (
       <Input
         id={col.column_name}
         name={col.column_name}
         className="col-span-3"
-        type={col.data_type === 'number' ? 'number' : col.data_type === 'date' ? 'date' : 'text'}
+        type={inputType}
+        defaultValue={(col.data_type === 'timestamp' || col.data_type === 'timestamptz') && col.default_value === 'now()' ? '' : undefined}
       />
     )
   }

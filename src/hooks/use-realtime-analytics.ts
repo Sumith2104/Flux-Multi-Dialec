@@ -9,6 +9,11 @@ export interface AnalyticsStats {
     type_sql_execution: number;
     type_storage_read: number;
     type_storage_write: number;
+    type_sql_select?: number; // Optional as they might not await exist in old records
+    type_sql_insert?: number;
+    type_sql_update?: number;
+    type_sql_delete?: number;
+    type_sql_alter?: number;
 }
 
 export function useRealtimeAnalytics(projectId: string | undefined): AnalyticsStats | null {

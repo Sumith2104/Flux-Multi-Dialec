@@ -1,10 +1,7 @@
-
 import { Parser, AST, Create } from 'node-sql-parser';
 import { getTableData, getTablesForProject, getColumnsForTable, createTable, deleteTable, addColumn, updateColumn, deleteColumn, addConstraint, Table, Column, Row } from '@/lib/data';
 import { getCurrentUserId } from '@/lib/auth';
 import { trackApiRequest } from '@/lib/analytics';
-import fs from 'fs/promises';
-import path from 'path';
 import { adminDb } from '@/lib/firebase-admin';
 
 export interface SqlResult {
@@ -99,33 +96,6 @@ export class SqlEngine {
 
 
 
-    private async saveAllRows(tableName: string, rows: Row[], columns: Column[]) {
-        const projectPath = path.join(process.cwd(), 'src', 'database', this.userId!, this.projectId);
-        const dataFilePath = path.join(projectPath, `${tableName}.csv`);
-
-        try {
-            await fs.access(dataFilePath);
-            // CSV Mode: Rewrite file
-            const header = columns.map(c => c.column_name).join(',');
-            const lines = rows.map(row => {
-                return columns.map(c => {
-                    const val = row[c.column_name];
-                    return val === null || val === undefined ? '' : String(val);
-                }).join(',');
-            });
-            await fs.writeFile(dataFilePath, [header, ...lines].join('\n'));
-        } catch {
-            // Firestore Mode:
-            // This is expensive for full rewrites. 
-            // Better to only perform on specific IDs.
-            // But for generic "Engine" abstraction simplify to:
-            // If we are here, we probably did an UPDATE/DELETE.
-            // We should use individual updates if possible.
-            // Refactoring to support bulk updates later.
-            // For now, assume this is only called for CSV updates in this simplified engine,
-            // OR we handle Firestore updates individually in the handlers.
-        }
-    }
 
     // --- Command Handlers ---
 
@@ -186,6 +156,140 @@ export class SqlEngine {
             explanation.push(`Filtered rows (Where clause). ${originalCount} -> ${processedRows.length}`);
         }
 
+        // --- Aggregation Logic ---
+        const hasAggregates = ast.columns.some((c: any) => c.expr && c.expr.type === 'aggr_func');
+        let groupBy = ast.groupby;
+
+        // Normalization: Handle node-sql-parser 'groupby' structure which might be { columns: [...] }
+        if (groupBy && groupBy.columns && Array.isArray(groupBy.columns)) {
+            groupBy = groupBy.columns;
+        }
+
+        // Normalize groupBy to array (parser returns object for single column if not in columns array)
+        if (groupBy && !Array.isArray(groupBy)) {
+            groupBy = [groupBy];
+        }
+
+        if (hasAggregates || groupBy) {
+            const groups = new Map<string, any[]>();
+
+            if (groupBy) {
+                // Group rows
+                processedRows.forEach(row => {
+                    const key = groupBy.map((g: any) => {
+                        // Evaluate group by expression
+                        // Simplified: assuming column ref
+                        if (g.type === 'column_ref') {
+                            const colName = this.sanitizeIdentifier(g.column);
+                            // Handle table.column
+                            const actualCol = colName.includes('.') ? colName.split('.')[1] : colName;
+
+                            let val = row[actualCol];
+                            // Case-insensitive fallback
+                            if (val === undefined) {
+                                const foundKey = Object.keys(row).find(k => k.toLowerCase() === actualCol.toLowerCase());
+                                if (foundKey) val = row[foundKey];
+                            }
+
+                            if (val === undefined) val = null;
+
+                            return String(val);
+                        }
+                        return '';
+                    }).join('::');
+                    if (!groups.has(key)) groups.set(key, []);
+                    groups.get(key)!.push(row);
+                });
+            } else {
+                // Single group (implicit)
+                groups.set('ALL', processedRows);
+            }
+
+            // Compute aggregates for each group
+            const aggregatedRows: any[] = [];
+
+            groups.forEach((groupRows, key) => {
+                const resultRow: any = {};
+
+                ast.columns.forEach((c: any, i: number) => {
+                    let alias = c.as;
+                    if (!alias) {
+                        if (c.expr?.type === 'aggr_func') {
+                            const func = c.expr.name?.toLowerCase();
+                            const arg = this.sanitizeIdentifier(c.expr.args?.expr?.column || c.expr.args?.expr);
+                            alias = arg ? `${func}_${arg}` : `${func}`;
+                        } else {
+                            const colName = this.sanitizeIdentifier(c.expr?.column);
+                            alias = (typeof colName === 'string' && colName) ? colName : `col_${i}`;
+                        }
+                    }
+
+                    if (c.expr?.type === 'aggr_func') {
+                        const funcName = c.expr.name.toUpperCase();
+                        const args = c.expr.args; // args.expr is the argument
+
+                        let val: any = null;
+
+                        if (funcName === 'COUNT') {
+                            if (args && args.expr && args.expr.type === 'star') {
+                                val = groupRows.length;
+                            } else if (args && args.expr) {
+                                // Struct: { distinct: 'DISTINCT', expr: { type: 'column_ref', ... } }
+                                // Count(col) - non-null values
+                                const expr = args.expr;
+
+                                if (args.distinct) { // Check for DISTINCT
+                                    const distinctVals = new Set(
+                                        groupRows
+                                            .map(r => this.evaluateExpression(expr, r))
+                                            .filter((v: any) => v !== null && v !== undefined)
+                                    );
+                                    val = distinctVals.size;
+                                } else {
+                                    val = groupRows.filter(r => {
+                                        const v = this.evaluateExpression(expr, r);
+                                        return v !== null && v !== undefined;
+                                    }).length;
+                                }
+                            } else {
+                                val = groupRows.length;
+                            }
+                        } else if (funcName === 'SUM' || funcName === 'AVG' || funcName === 'MIN' || funcName === 'MAX') {
+                            const expr = args?.expr || args; // Fallback if args is directly the expr
+
+                            const values = groupRows.map(r => Number(this.evaluateExpression(expr, r))).filter((n: any) => !isNaN(n));
+
+                            if (values.length === 0) {
+                                val = null;
+                            } else {
+                                if (funcName === 'SUM') val = values.reduce((a: number, b: number) => a + b, 0);
+                                else if (funcName === 'AVG') val = values.reduce((a: number, b: number) => a + b, 0) / values.length;
+                                else if (funcName === 'MIN') val = Math.min(...values);
+                                else if (funcName === 'MAX') val = Math.max(...values);
+                            }
+                        }
+
+                        resultRow[alias] = val;
+
+                    } else {
+                        // Non-aggregate column in aggregate query
+                        // Validation: Should ideally be in GROUP BY.
+                        // Loosely: return value from first row.
+
+                        if (groupRows.length > 0) {
+                            resultRow[alias] = this.evaluateExpression(c.expr, groupRows[0]);
+                        } else {
+                            resultRow[alias] = null;
+                        }
+                    }
+                });
+                aggregatedRows.push(resultRow);
+            });
+
+            processedRows = aggregatedRows;
+            explanation.push(`Aggregated results into ${processedRows.length} rows.`);
+        }
+
         if (ast.orderby) {
             processedRows = this.applyOrderBy(processedRows, ast.orderby);
             explanation.push("Sorted rows");
@@ -205,6 +309,18 @@ export class SqlEngine {
 
         if (ast.columns.length === 1 && ast.columns[0].expr && ast.columns[0].expr.column === '*') {
             resultColumns = finalRows.length > 0 ? Object.keys(finalRows[0]).filter(k => k !== '_csv_index') : [];
+        } else if (hasAggregates || groupBy) {
+            // If we already aggregated, the rows are already in the final format.
+            // Just extract column names.
+            resultColumns = ast.columns.map((c: any, i: number) => {
+                let alias = c.as;
+                if (!alias) {
+                    const colName = this.sanitizeIdentifier(c.expr?.column);
+                    alias = (typeof colName === 'string' && colName) ? colName : `col_${i}`;
+                }
+                return alias;
+            });
+            // finalRows are already set to aggregatedRows
         } else {
             resultColumns = ast.columns.map((c: any, i: number) => c.as || extractColName(c.expr?.column) || `col_${i}`);
             finalRows = finalRows.map(row => {
@@ -233,17 +349,25 @@ export class SqlEngine {
         return [...rows].sort((a, b) => {
             for (const order of orderBy) {
                 const { expr, type } = order;
-                const col = expr?.column; // Safely access column
-                if (!col) continue; // Skip complex expressions we can't evaluate yet
-
                 const dir = type === 'DESC' ? -1 : 1;
 
-                const valA = a[col];
-                const valB = b[col];
+                // Use evaluateExpression to handle aliases, columns, and expressions
+                const valA = this.evaluateExpression(expr, a);
+                const valB = this.evaluateExpression(expr, b);
 
-                // Generic Compare
-                if (valA < valB) return -1 * dir;
-                if (valA > valB) return 1 * dir;
+                if (valA === valB) continue;
+                if (valA === null || valA === undefined) return -1 * dir;
+                if (valB === null || valB === undefined) return 1 * dir;
+
+                if (typeof valA === 'number' && typeof valB === 'number') {
+                    if (valA < valB) return -1 * dir;
+                    if (valA > valB) return 1 * dir;
+                } else {
+                    const strA = String(valA).toLowerCase();
+                    const strB = String(valB).toLowerCase();
+                    if (strA < strB) return -1 * dir;
+                    if (strA > strB) return 1 * dir;
+                }
             }
             return 0;
         });
@@ -307,40 +431,20 @@ export class SqlEngine {
             }
         }
 
-        // Check for CSV
-        const projectPath = path.join(process.cwd(), 'src', 'database', this.userId!, this.projectId);
-        const dataFilePath = path.join(projectPath, `${tableName}.csv`);
-        let isCsv = false;
-        try { await fs.access(dataFilePath); isCsv = true; } catch { }
-
-        console.log('INSERT Debug:', {
-            rowsToInsert: rowsToInsert.length,
-            valuesList: valuesList.length,
-            isCsv
-        });
+        // Check for CSV - REMOVED
+        // const projectPath = path.join(process.cwd(), 'src', 'database', this.userId!, this.projectId);
+        // ...
 
         let insertedCount = 0;
 
         // Process INSERT ... SELECT rows
         for (const row of rowsToInsert) {
-            if (isCsv) {
-                // Append to CSV
-                // Just constructing the line matches the columns order?
-                // NO, CSV has a fixed schema order. We must align with it.
-                // Read header to know order
-                const content = await fs.readFile(dataFilePath, 'utf8');
-                const fileHeader = content.split('\n')[0].split(',').map(h => h.trim());
-
-                const line = fileHeader.map(h => row[h] || '').join(',');
-                await fs.appendFile(dataFilePath, '\n' + line);
-            } else {
-                // Firestore Insert
-                await adminDb
-                    .collection('users').doc(this.userId!)
-                    .collection('projects').doc(this.projectId)
-                    .collection('tables').doc(table.table_id)
-                    .collection('rows').add(row);
-            }
+            // Firestore Insert
+            await adminDb
+                .collection('users').doc(this.userId!)
+                .collection('projects').doc(this.projectId)
+                .collection('tables').doc(table.table_id)
+                .collection('rows').add(row);
             insertedCount++;
         }
 
@@ -393,27 +497,13 @@ export class SqlEngine {
                 }
             });
 
-
-
-            if (isCsv) {
-                // Append to CSV
-                // Just constructing the line matches the columns order?
-                // NO, CSV has a fixed schema order. We must align with it.
-                // Read header to know order
-                const content = await fs.readFile(dataFilePath, 'utf8');
-                const fileHeader = content.split('\n')[0].split(',').map(h => h.trim());
-
-                const line = fileHeader.map(h => row[h] || '').join(',');
-                await fs.appendFile(dataFilePath, '\n' + line);
-            } else {
-                // Firestore Insert
-                console.log(`Inserting row ${insertedCount + 1}:`, row);
-                await adminDb
-                    .collection('users').doc(this.userId!)
-                    .collection('projects').doc(this.projectId)
-                    .collection('tables').doc(table.table_id)
-                    .collection('rows').add(row);
-            }
+            // Firestore Insert
+            console.log(`Inserting row ${insertedCount + 1}:`, row);
+            await adminDb
+                .collection('users').doc(this.userId!)
+                .collection('projects').doc(this.projectId)
+                .collection('tables').doc(table.table_id)
+                .collection('rows').add(row);
             insertedCount++;
         }
 
@@ -449,48 +539,19 @@ export class SqlEngine {
         });
 
         // Apply Updates
-        const projectPath = path.join(process.cwd(), 'src', 'database', this.userId!, this.projectId);
-        const dataFilePath = path.join(projectPath, `${tableName}.csv`);
-        let isCsv = false;
-        try { await fs.access(dataFilePath); isCsv = true; } catch { }
+        // Firestore Batch Update
+        const batch = adminDb.batch();
+        toUpdateIds.forEach(id => {
+            const ref = adminDb
+                .collection('users').doc(this.userId!)
+                .collection('projects').doc(this.projectId)
+                .collection('tables').doc(table.table_id)
+                .collection('rows').doc(id);
+            batch.update(ref, updates);
+        });
+        await batch.commit();
 
-        if (isCsv) {
-            // Read, Modify, Rewriter (Inefficient but correct for this architecture)
-            // Re-read strictly to preserve lines
-            const content = await fs.readFile(dataFilePath, 'utf8');
-            let lines = content.split(/\r\n|\n|\r/);
-            const header = lines[0].split(',');
-
-            toUpdateIndices.forEach(idx => {
-                const lineIdx = idx + 1; // +1 for header
-                if (lines[lineIdx]) {
-                    const currentVals = lines[lineIdx].split(',');
-                    const row: any = {};
-                    header.forEach((h, i) => row[h.trim()] = currentVals[i]);
-
-                    // Apply updates
-                    Object.keys(updates).forEach(k => row[k] = updates[k]);
-
-                    // Reconstruct line
-                    lines[lineIdx] = header.map(h => row[h.trim()] ?? '').join(',');
-                }
-            });
-            await fs.writeFile(dataFilePath, lines.join('\n'));
-        } else {
-            // Firestore Batch Update
-            const batch = adminDb.batch();
-            toUpdateIds.forEach(id => {
-                const ref = adminDb
-                    .collection('users').doc(this.userId!)
-                    .collection('projects').doc(this.projectId)
-                    .collection('tables').doc(table.table_id)
-                    .collection('rows').doc(id);
-                batch.update(ref, updates);
-            });
-            await batch.commit();
-        }
-
-        return { rows: [], columns: [], message: `Updated ${isCsv ? toUpdateIndices.length : toUpdateIds.length} rows.` };
+        return { rows: [], columns: [], message: `Updated ${toUpdateIds.length} rows.` };
     }
 
     private async handleDelete(ast: any): Promise<SqlResult> {
@@ -500,84 +561,51 @@ export class SqlEngine {
         if (!table) throw new Error(`Table '${tableName}' not found.`);
 
         const rows = await this.getAllRows(tableName);
-        const toDeleteIndices = new Set<number>();
         const toDeleteIds: string[] = [];
 
         rows.forEach((row) => {
             if (this.evaluateWhereClause(ast.where, row)) {
-                if (row._csv_index !== undefined) toDeleteIndices.add(row._csv_index);
                 // Use _id (Firestore ID) if available, otherwise fallback to id (CSV or legacy)
                 const idToDelete = row._id || row.id;
                 if (idToDelete) toDeleteIds.push(idToDelete);
             }
         });
 
-        const projectPath = path.join(process.cwd(), 'src', 'database', this.userId!, this.projectId);
-        const dataFilePath = path.join(projectPath, `${tableName}.csv`);
-        let isCsv = false;
-        try { await fs.access(dataFilePath); isCsv = true; } catch { }
-
-        if (isCsv) {
-            const content = await fs.readFile(dataFilePath, 'utf8');
-            let lines = content.split(/\r\n|\n|\r/);
-            const newLines = lines.filter((_, idx) => idx === 0 || !toDeleteIndices.has(idx - 1));
-            await fs.writeFile(dataFilePath, newLines.join('\n'));
-        } else {
-            const batch = adminDb.batch();
-            toDeleteIds.forEach(id => {
-                const ref = adminDb
-                    .collection('users').doc(this.userId!)
-                    .collection('projects').doc(this.projectId)
-                    .collection('tables').doc(table.table_id)
-                    .collection('rows').doc(id);
-                batch.delete(ref);
-            });
-            await batch.commit();
-        }
-
-        return { rows: [], columns: [], message: `Deleted ${isCsv ? toDeleteIndices.size : toDeleteIds.length} rows.` };
-    }
-
-    private async getAllRows(tableName: string): Promise<Row[]> {
-        const projectPath = path.join(process.cwd(), 'src', 'database', this.userId!, this.projectId);
-        const dataFilePath = path.join(projectPath, `${tableName}.csv`);
-
-        try {
-            await fs.access(dataFilePath);
-            // CSV Mode
-            const fileContent = await fs.readFile(dataFilePath, 'utf8');
-            const lines = fileContent.split(/\r\n|\n|\r/).filter(line => line.trim() !== '');
-            if (lines.length === 0) return [];
-
-            const header = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-            return lines.slice(1).map((line, idx) => {
-                const values = line.split(',');
-                const row: any = { _csv_index: idx }; // Keep track of index for updates
-                header.forEach((col, i) => row[col] = values[i] ? values[i].trim() : null);
-                return row;
-            });
-        } catch {
-            // Firestore Mode
-            const tables = await getTablesForProject(this.projectId, this.userId!);
-            const table = tables.find(t => t.table_name === tableName);
-            if (!table) throw new Error(`Table '${tableName}' not found.`);
-
-            const snapshot = await adminDb
+        const batch = adminDb.batch();
+        toDeleteIds.forEach(id => {
+            const ref = adminDb
                 .collection('users').doc(this.userId!)
                 .collection('projects').doc(this.projectId)
                 .collection('tables').doc(table.table_id)
-                .collection('rows')
-                .get();
+                .collection('rows').doc(id);
+            batch.delete(ref);
+        });
+        await batch.commit();
 
-            return snapshot.docs.map(doc => {
-                const data = doc.data();
-                return {
-                    ...data,
-                    id: data.id,
-                    _id: doc.id
-                } as any;
-            });
-        }
+        return { rows: [], columns: [], message: `Deleted ${toDeleteIds.length} rows.` };
+    }
+
+    private async getAllRows(tableName: string): Promise<Row[]> {
+        // Firestore Mode
+        const tables = await getTablesForProject(this.projectId, this.userId!);
+        const table = tables.find(t => t.table_name === tableName);
+        if (!table) throw new Error(`Table '${tableName}' not found.`);
+
+        const snapshot = await adminDb
+            .collection('users').doc(this.userId!)
+            .collection('projects').doc(this.projectId)
+            .collection('tables').doc(table.table_id)
+            .collection('rows')
+            .get();
+
+        return snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                ...data,
+                id: data.id,
+                _id: doc.id
+            } as any;
+        });
     }
 
     private async handleCreate(ast: Create): Promise<SqlResult> {
@@ -599,14 +627,7 @@ export class SqlEngine {
                 if (def.resource === 'column') {
                     let colNameRaw = (def.column as any)?.column;
                     // Sanitize colName
-                    if (colNameRaw && typeof colNameRaw === 'object') {
-                        const extractVal = (obj: any): any => {
-                            if (!obj || typeof obj !== 'object') return obj;
-                            return obj.value || obj.name || obj.column || (obj.expr ? extractVal(obj.expr) : null) || JSON.stringify(obj);
-                        };
-                        colNameRaw = extractVal(colNameRaw);
-                    }
-                    const colName = String(colNameRaw);
+                    const colName = this.sanitizeIdentifier(colNameRaw);
                     const dataType = def.definition?.dataType;
 
                     if (!colName || !dataType) continue;
@@ -638,7 +659,8 @@ export class SqlEngine {
                     const refDef = (def as any).reference_definition;
                     if (refDef) {
                         const refTable = refDef.table?.[0]?.table;
-                        const refCols = refDef.definition?.map((c: any) => c.column);
+                        const refCols = refDef.definition?.map((c: any) => this.sanitizeIdentifier(c.column));
+
                         if (refTable && refCols) {
                             constraintsToAdd.push({
                                 type: 'FOREIGN KEY',
@@ -661,7 +683,7 @@ export class SqlEngine {
                 } else if (def.resource === 'constraint') {
                     const type = def.constraint_type?.toUpperCase();
                     if (type === 'PRIMARY KEY') {
-                        const pkCols = def.definition.map((c: any) => c.column);
+                        const pkCols = def.definition.map((c: any) => this.sanitizeIdentifier(c.column));
                         // Update columns
                         columns.forEach(c => {
                             if (pkCols.includes(c.column_name)) c.is_primary_key = true;
@@ -670,9 +692,9 @@ export class SqlEngine {
                         constraintsToAdd.push({ type: 'PRIMARY KEY', columns: pkCols });
 
                     } else if (type === 'FOREIGN KEY') {
-                        const fkCols = def.definition.map((c: any) => c.column);
-                        const refTable = def.reference_definition?.table?.[0]?.table;
-                        const refCols = def.reference_definition?.definition?.map((c: any) => c.column);
+                        const fkCols = def.definition.map((c: any) => this.sanitizeIdentifier(c.column));
+                        const refTable = (def as any).reference_definition?.table?.[0]?.table;
+                        const refCols = (def as any).reference_definition?.definition?.map((c: any) => this.sanitizeIdentifier(c.column));
 
                         if (refTable && refCols) {
                             constraintsToAdd.push({
@@ -701,14 +723,29 @@ export class SqlEngine {
             for (const c of constraintsToAdd) {
                 let refTableId = undefined;
                 if (c.type === 'FOREIGN KEY' && c.refTable) {
+                    // Normalize refTable name (remove quotes if any)
+                    const normalizedRefTable = c.refTable.replace(/["`]/g, '');
+
+                    console.log(`[DEBUG] Looking for FK Ref Table: '${normalizedRefTable}' (Original: '${c.refTable}')`);
+                    console.log(`[DEBUG] Available Tables:`, allTables.map(t => t.table_name).join(', '));
+
                     // Case-insensitive lookup for referenced table
-                    const refTableObj = allTables.find(t => t.table_name.toLowerCase() === c.refTable?.toLowerCase());
+                    const refTableObj = allTables.find(t => t.table_name.replace(/["`]/g, '').toLowerCase() === normalizedRefTable.toLowerCase());
+
                     if (refTableObj) {
                         refTableId = refTableObj.table_id;
+                        console.log(`[DEBUG] Found Ref Table ID: ${refTableId}`);
                     } else {
-                        console.warn(`[WARNING] Referenced table '${c.refTable}' not found. Skipping FK constraint.`);
+                        console.warn(`[WARNING] Referenced table '${normalizedRefTable}' not found in project. Skipping FK constraint.`);
+                        console.log(`[DEBUG] Tables dump:`, JSON.stringify(allTables.map(t => ({ id: t.table_id, name: t.table_name })), null, 2));
                         continue; // Skip if referenced table doesn't exist to avoid bad metadata
                     }
+                }
+
+                if (c.type === 'FOREIGN KEY' && !refTableId) {
+                    console.error(`[ERROR] Skipping Foreign Key creation: Referenced table '${c.refTable}' could not be resolved.`);
+                    // We must NOT add a FK without a ref table.
+                    continue;
                 }
 
                 const newConstraint: any = {
@@ -741,11 +778,6 @@ export class SqlEngine {
         // Delete Firestore Metadata
         await deleteTable(this.projectId, table.table_id, this.userId!);
 
-        // Delete CSV if exists
-        const projectPath = path.join(process.cwd(), 'src', 'database', this.userId!, this.projectId);
-        const dataFilePath = path.join(projectPath, `${tableName}.csv`);
-        try { await fs.unlink(dataFilePath); } catch { }
-
         return { rows: [], columns: [], message: `Table '${tableName}' dropped.` };
     }
 
@@ -771,21 +803,6 @@ export class SqlEngine {
                     is_primary_key: false,
                     is_nullable: true
                 }, this.userId!);
-
-                // Update CSV header if exists??
-                // Yes, append comma
-                const projectPath = path.join(process.cwd(), 'src', 'database', this.userId!, this.projectId);
-                const dataFilePath = path.join(projectPath, `${tableName}.csv`);
-                try {
-                    const content = await fs.readFile(dataFilePath, 'utf8');
-                    const lines = content.split(/\r\n|\n|\r/);
-                    lines[0] = lines[0] + `,${colName}`;
-                    // Add empty commas to all data lines
-                    for (let i = 1; i < lines.length; i++) {
-                        if (lines[i]) lines[i] += ',';
-                    }
-                    await fs.writeFile(dataFilePath, lines.join('\n'));
-                } catch { /* No CSV, ignore */ }
             }
         }
 
@@ -1058,8 +1075,8 @@ export class SqlEngine {
         if (!joinCondition) return leftTable; // Cartesian product not supported, return left
 
         const { left, right, operator } = joinCondition;
-        const leftCol = left.column; // potentially alias.col
-        const rightCol = right.column;
+        const leftCol = this.sanitizeIdentifier(left.column); // potentially alias.col
+        const rightCol = this.sanitizeIdentifier(right.column);
 
         // Naive Nested Loop Join (O(N*M)) - Optimization: Hash Join
         // Building Hash Map for Right Table
@@ -1160,6 +1177,23 @@ export class SqlEngine {
         }
 
         return { rows: [], columns: [], message: `Generated and inserted ${inserted} rows into '${tableName}'.` };
+    }
+
+    private sanitizeIdentifier(raw: any): string {
+        if (!raw) return '';
+        if (typeof raw !== 'object') return String(raw);
+
+        // Recursive extraction for nested AST objects
+        // Some nodes have 'value', others 'name', others 'column'
+        const val = raw.value || raw.name || raw.column || (raw.expr ? this.sanitizeIdentifier(raw.expr) : null);
+
+        if (val) {
+            if (typeof val === 'object') return this.sanitizeIdentifier(val); // Recurse
+            return String(val);
+        }
+
+        // Last resort stringify, but hopefully we don't get here for identifiers
+        return String(raw);
     }
 }
 

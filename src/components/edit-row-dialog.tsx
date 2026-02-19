@@ -72,45 +72,62 @@ export function EditRowDialog({
     const fkConstraint = fkConstraints.find(c => c.column_names === col.column_name);
 
     if (fkConstraint && foreignKeyData[col.column_name]) {
-        const refTable = allTables.find(t => t.table_id === fkConstraint.referenced_table_id);
-        const refColumn = fkConstraint.referenced_column_names || 'id';
+      const refTable = allTables.find(t => t.table_id === fkConstraint.referenced_table_id);
+      const refColumn = fkConstraint.referenced_column_names || 'id';
 
-        let displayColumn = 'name'; // default
-        const firstRow = foreignKeyData[col.column_name][0];
-        if (firstRow) {
-            if ('name' in firstRow) displayColumn = 'name';
-            else if ('title' in firstRow) displayColumn = 'title';
-            else if ('label' in firstRow) displayColumn = 'label';
-            else if ('email' in firstRow) displayColumn = 'email';
-        }
+      let displayColumn = 'name'; // default
+      const firstRow = foreignKeyData[col.column_name][0];
+      if (firstRow) {
+        if ('name' in firstRow) displayColumn = 'name';
+        else if ('title' in firstRow) displayColumn = 'title';
+        else if ('label' in firstRow) displayColumn = 'label';
+        else if ('email' in firstRow) displayColumn = 'email';
+      }
 
-        return (
-             <ForeignKeySelect
-                name={col.column_name}
-                data={foreignKeyData[col.column_name]}
-                refTable={refTable}
-                valueColumn={refColumn}
-                displayColumn={displayColumn}
-                defaultValue={rowData[col.column_name]}
-            />
-        )
+      return (
+        <ForeignKeySelect
+          name={col.column_name}
+          data={foreignKeyData[col.column_name]}
+          refTable={refTable}
+          valueColumn={refColumn}
+          displayColumn={displayColumn}
+          defaultValue={rowData[col.column_name]}
+        />
+      )
     }
 
-     return (
-        <Input
-            id={col.column_name}
-            name={col.column_name}
-            className="col-span-3"
-            type={
-            col.data_type === 'number'
-                ? 'number'
-                : col.data_type === 'date'
-                ? 'date'
-                : 'text'
-            }
-            defaultValue={rowData[col.column_name] || ''}
-        />
-     )
+    const inputType =
+      col.data_type === 'number' ? 'number' :
+        col.data_type === 'date' ? 'date' :
+          ['timestamp', 'timestamptz', 'datetime'].includes(col.data_type) ? 'datetime-local' :
+            'text';
+
+    let defaultValue = rowData[col.column_name] || '';
+    if (inputType === 'datetime-local' && defaultValue && typeof defaultValue === 'string') {
+      // datetime-local expects YYYY-MM-DDThh:mm
+      // If we have ISO string 2023-01-01T12:00:00.000Z, we need to slice it or format it.
+      // Simple slice for now, keeping it basic. Ideally should handle timezone.
+      if (defaultValue.endsWith('Z')) {
+        defaultValue = defaultValue.slice(0, 16);
+      } else {
+        // Try to format if it's a valid date string
+        try {
+          defaultValue = new Date(defaultValue).toISOString().slice(0, 16);
+        } catch (e) {
+          // Keep as is if invalid
+        }
+      }
+    }
+
+    return (
+      <Input
+        id={col.column_name}
+        name={col.column_name}
+        className="col-span-3"
+        type={inputType}
+        defaultValue={defaultValue}
+      />
+    )
   }
 
   const visibleColumns = columns.filter(

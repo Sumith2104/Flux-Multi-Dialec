@@ -150,7 +150,7 @@ export default function DashboardPage() {
                         </CardContent>
                     </Card>
 
-                    <QueryTypeChart />
+                    <QueryTypeChart stats={realtimeStats} />
 
                     <Card className="aspect-square flex flex-col justify-between">
                         <CardHeader className="pb-2">

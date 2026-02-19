@@ -22,3 +22,24 @@ export async function findUserById(userId: string): Promise<User | null> {
         return null;
     }
 }
+
+export async function deleteUserAccount(userId: string) {
+    // 1. Get all user projects
+    const projectsSnapshot = await adminDb
+        .collection('users').doc(userId)
+        .collection('projects')
+        .get();
+
+    // 2. Delete each project recursively
+    const deletePromises = projectsSnapshot.docs.map(doc =>
+        adminDb.recursiveDelete(doc.ref)
+    );
+    await Promise.all(deletePromises);
+
+    // 3. Delete user profile
+    await adminDb.collection('users').doc(userId).delete();
+
+    // (Optional) We could also delete the Auth user via adminAuth.deleteUser(uid)
+    // but that requires the 'auth' instance to be exported and used here.
+    // For now, deleting data is primary.
+}

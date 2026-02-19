@@ -29,7 +29,9 @@ export interface Column {
     column_id: string;
     table_id: string;
     column_name: string;
-    data_type: 'INT' | 'VARCHAR' | 'BOOLEAN' | 'DATE' | 'TIMESTAMP' | 'FLOAT' | 'TEXT'; // Added TEXT for compatibility
+    data_type: 'INT' | 'VARCHAR' | 'BOOLEAN' | 'DATE' | 'TIMESTAMP' | 'FLOAT' | 'TEXT' |  // Uppercase (Legacy/Strict)
+    'int' | 'varchar' | 'boolean' | 'date' | 'timestamp' | 'float' | 'text' | 'number' | // Lowercase (Runtime)
+    'gen_random_uuid()' | 'now_date()' | 'now_time()'; // Special defaults/types
     is_primary_key: boolean;
     is_nullable: boolean;
     default_value?: string; // e.g. 'now()', 'uuid()'
@@ -185,6 +187,24 @@ export async function resetProjectData(projectId: string) {
     await adminDb.recursiveDelete(constraintsRef);
 
     // Note: This does NOT delete the project document itself, just the collections.
+}
+
+export async function deleteProject(projectId: string) {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error("Unauthorized");
+
+    const projectRef = adminDb
+        .collection('users').doc(userId)
+        .collection('projects').doc(projectId);
+
+    // Verify ownership
+    const doc = await projectRef.get();
+    if (!doc.exists) {
+        throw new Error("Project not found or access denied.");
+    }
+
+    // Recursive delete handles all subcollections (tables, rows, constraints, columns)
+    await adminDb.recursiveDelete(projectRef);
 }
 
 // --- Tables ---
@@ -550,9 +570,13 @@ export async function updateRow(projectId: string, tableId: string, rowId: strin
             }
             // Type checks ... (reuse logic or refactor validateRow to accept partial)
             if (val !== null && val !== undefined && val !== '') {
-                switch (col.data_type) {
+                const type = col.data_type.toUpperCase();
+                switch (type) {
                     case 'INT':
-                        if (!Number.isInteger(Number(val))) throw new Error(`Column '${col.column_name}' expects Integer.`);
+                    case 'NUMBER':
+                        if (!Number.isInteger(Number(val))) {
+                            if (isNaN(Number(val))) throw new Error(`Column '${col.column_name}' expects Integer/Number.`);
+                        }
                         break;
                     case 'FLOAT': if (isNaN(Number(val))) throw new Error(`Column '${col.column_name}' expects Float.`); break;
                     case 'BOOLEAN':
@@ -560,7 +584,9 @@ export async function updateRow(projectId: string, tableId: string, rowId: strin
                         break;
                     case 'DATE':
                     case 'TIMESTAMP':
-                        if (isNaN(Date.parse(String(val)))) throw new Error(`Column '${col.column_name}' expects Date.`);
+                    case 'TIMESTAMPTZ':
+                    case 'DATETIME':
+                        if (isNaN(Date.parse(String(val)))) throw new Error(`Column '${col.column_name}' expects Date/Timestamp.`);
                         break;
                 }
             }

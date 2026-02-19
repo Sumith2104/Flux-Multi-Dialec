@@ -33,9 +33,8 @@ const navItems = [
     { href: "/editor", label: "Table Editor", icon: <Table /> },
     { href: "/database", label: "Database", icon: <Database /> },
     { href: "/query", label: "SQL Editor", icon: <BrainCircuit /> },
-    { href: "/api", label: "API Generation", icon: <Code /> },
+    { href: "/api", label: "API & Settings", icon: <Code /> },
     { href: "/storage", label: "Storage", icon: <Folder /> },
-    { href: "/settings", label: "Settings", icon: <SettingsIcon /> },
 ];
 
 function AppLayoutContent({ children }: { children: React.ReactNode }) {
@@ -103,17 +102,13 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     const isLoading = userLoading || projectContextLoading;
 
     const dockItems = navItems.map(item => {
-        const isProjectSpecific = ["/editor", "/api", "/storage", "/settings", "/query", "/database"].includes(item.href);
+        // Reduced list of project-specific pages - settings is now API
+        const isProjectSpecific = ["/editor", "/api", "/storage", "/query", "/database"].includes(item.href);
         const isDisabled = isProjectSpecific && !selectedProject?.project_id;
         let finalHref = item.href;
 
         if (isProjectSpecific && selectedProject?.project_id) {
-            // Special case for Settings: Go to Project Settings instead of Global Settings
-            if (item.href === "/settings") {
-                finalHref = "/dashboard/project-settings";
-            } else {
-                finalHref = `${item.href}?projectId=${selectedProject.project_id}`;
-            }
+            finalHref = `${item.href}?projectId=${selectedProject.project_id}`;
         }
 
         return {

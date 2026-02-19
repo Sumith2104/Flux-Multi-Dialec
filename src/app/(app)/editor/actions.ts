@@ -127,6 +127,15 @@ export async function addRowAction(formData: FormData) {
                 value = uuidv4();
             }
 
+            if (value && ['timestamp', 'timestamptz', 'datetime'].includes(col.data_type)) {
+                try {
+                    value = new Date(value).toISOString();
+                } catch (e) {
+                    console.error("Invalid date value", value);
+                    // Keep original value if conversion fails
+                }
+            }
+
             newRowObject[col.column_name] = value || ''; // Firestore allows empty strings
         }
 
@@ -167,7 +176,16 @@ export async function editRowAction(formData: FormData) {
         const newRowObject: Record<string, any> = { id: rowId };
         columns.forEach(col => {
             if (col.column_name !== 'id') {
-                const value = formData.get(col.column_name) as string | null;
+                let value = formData.get(col.column_name) as string | null;
+
+                if (value && ['timestamp', 'timestamptz', 'datetime'].includes(col.data_type)) {
+                    try {
+                        value = new Date(value).toISOString();
+                    } catch (e) {
+                        // Keep original
+                    }
+                }
+
                 newRowObject[col.column_name] = value || '';
             }
         });
@@ -201,7 +219,7 @@ export async function deleteRowAction(projectId: string, tableId: string, tableN
             await deleteRow(projectId, tableId, id);
         }
 
-        revalidatePath(`/editor?projectId=${projectId}&tableId=${tableId}&tableName=${tableName}`);
+        // revalidatePath(`/editor?projectId=${projectId}&tableId=${tableId}&tableName=${tableName}`);
         return { success: true, deletedCount: rowIds.length };
 
     } catch (error) {
@@ -313,7 +331,7 @@ export async function addConstraintAction(formData: FormData) {
         }
 
         await addConstraint(projectId, constraint);
-        revalidatePath(`/editor?projectId=${projectId}&tableId=${tableId}&tableName=${formData.get('tableName')}`);
+        // revalidatePath(`/editor?projectId=${projectId}&tableId=${tableId}&tableName=${formData.get('tableName')}`);
         return { success: true };
 
     } catch (error) {
@@ -330,7 +348,7 @@ export async function deleteConstraintAction(formData: FormData) {
 
     try {
         await deleteConstraint(projectId, constraintId);
-        revalidatePath(`/editor?projectId=${projectId}&tableId=${tableId}&tableName=${tableName}`);
+        // revalidatePath(`/editor?projectId=${projectId}&tableId=${tableId}&tableName=${tableName}`);
         return { success: true };
     } catch (error) {
         return { error: `An unexpected error occurred: ${(error as Error).message}` };
