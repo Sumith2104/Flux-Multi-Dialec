@@ -22,20 +22,14 @@ export function LogoutButton({ className, variant = 'outline', size = 'sm', chil
     const router = useRouter();
 
     const handleLogout = async () => {
-        try {
-            // 1. Client-side sign out (Crucial for "Switch Account")
-            await signOut(auth);
+        // 1. Client-side sign out (Crucial for "Switch Account")
+        await signOut(auth);
 
-            // 2. Server-side cookie clear
-            await logoutAction();
-
-            // 3. Force redirect
-            router.push('/');
-        } catch (error) {
-            console.error("Logout failed:", error);
-            // Fallback: try server logout anyway
-            await logoutAction();
-        }
+        // 2. Server-side cookie clear & redirect
+        // Next.js redirect() throws a NEXT_REDIRECT error under the hood.
+        // We MUST NOT wrap this in a generic try/catch block, or else 
+        // the client absorbs the redirect signal and crashes the app instead.
+        await logoutAction();
     };
 
     return (

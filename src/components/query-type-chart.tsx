@@ -73,15 +73,16 @@ export function QueryTypeChart({ stats }: { stats: AnalyticsStats | null }) {
     }, [chartData])
 
     return (
-        <Card className="flex flex-col aspect-square justify-between">
-            <CardHeader className="items-center pb-0">
-                <CardTitle>Query Type Distribution</CardTitle>
-                <CardDescription>Breakdown of executed SQL queries</CardDescription>
+        <Card className="flex flex-col aspect-square justify-between border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md shadow-lg overflow-hidden transition-colors hover:bg-zinc-900/60">
+            <CardHeader className="items-center pb-4 border-b border-white/5 bg-zinc-900/20">
+                <CardTitle className="text-xl font-bold text-zinc-100 flex items-center gap-2">
+                    Query Type
+                </CardTitle>
             </CardHeader>
-            <CardContent className="flex-1 pb-0">
+            <CardContent className="flex-1 pt-6 pb-6 flex items-center justify-center">
                 <ChartContainer
                     config={chartConfig}
-                    className="mx-auto aspect-square max-h-[250px]"
+                    className="mx-auto aspect-square w-full max-h-[250px] drop-shadow-[0_0_15px_rgba(0,0,0,0.5)]"
                 >
                     <PieChart>
                         <ChartTooltip
@@ -92,47 +93,13 @@ export function QueryTypeChart({ stats }: { stats: AnalyticsStats | null }) {
                             data={chartData}
                             dataKey="visitors"
                             nameKey="browser"
-                            innerRadius={60}
-                            strokeWidth={5}
-                        >
-                            <Label
-                                content={({ viewBox }) => {
-                                    if (viewBox && "cx" in viewBox && "cy" in viewBox) {
-                                        return (
-                                            <text
-                                                x={viewBox.cx}
-                                                y={viewBox.cy}
-                                                textAnchor="middle"
-                                                dominantBaseline="middle"
-                                            >
-                                                <tspan
-                                                    x={viewBox.cx}
-                                                    y={viewBox.cy}
-                                                    className="fill-foreground text-3xl font-bold"
-                                                >
-                                                    {totalVisitors.toLocaleString()}
-                                                </tspan>
-                                                <tspan
-                                                    x={viewBox.cx}
-                                                    y={(viewBox.cy || 0) + 24}
-                                                    className="fill-muted-foreground text-xs"
-                                                >
-                                                    Total Queries
-                                                </tspan>
-                                            </text>
-                                        )
-                                    }
-                                }}
-                            />
-                        </Pie>
+                            stroke="rgba(24,24,27,0.8)" /* zinc-900 border separating slices */
+                            strokeWidth={2}
+                            isAnimationActive={true}
+                        />
                     </PieChart>
                 </ChartContainer>
             </CardContent>
-            <CardFooter className="flex-col gap-2 text-sm">
-                <div className="leading-none text-muted-foreground">
-                    Showing total queries for the last 30 days
-                </div>
-            </CardFooter>
         </Card>
     )
 }

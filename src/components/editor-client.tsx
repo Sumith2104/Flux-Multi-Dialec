@@ -26,7 +26,7 @@ import { AddRowDialog } from '@/components/add-row-dialog';
 import { AddColumnDialog } from '@/components/add-column-dialog';
 import { EditRowDialog } from '@/components/edit-row-dialog';
 import { EditColumnDialog } from '@/components/edit-column-dialog';
-import { ImportCsvDialog } from '@/components/import-csv-dialog';
+
 import { AddConstraintDialog } from '@/components/add-constraint-dialog';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -446,13 +446,7 @@ export function EditorClient({
                                                 allTables={allTables}
                                                 constraints={constraints}
                                             />
-                                            <ImportCsvDialog
-                                                projectId={projectId}
-                                                tableId={tableId}
-                                                tableName={tableName}
-                                                columns={initialColumns}
-                                                onImportSuccess={refreshData}
-                                            />
+
                                         </>
                                     )}
                                     <Button variant="outline" size="sm" disabled={selectionModel.length !== 1} onClick={() => setIsEditRowOpen(true)}>

@@ -5,13 +5,14 @@ import { createProject } from '@/lib/data';
 export async function createProjectAction(formData: FormData) {
   const projectName = formData.get('projectName') as string;
   const dialect = formData.get('dialect') as string;
+  const timezone = formData.get('timezone') as string;
 
   if (!projectName) {
     return { error: 'Project name is required.' };
   }
 
   try {
-    const project = await createProject(projectName, dialect || 'postgresql');
+    const project = await createProject(projectName, dialect || 'postgresql', timezone);
     return { success: true, projectId: project.project_id };
   } catch (error) {
     console.error('Project creation failed:', error);

@@ -20,9 +20,18 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { getApiKeysAction, createApiKeyAction, revokeApiKeyAction } from "@/app/(app)/settings/api-key-actions";
 import { type ApiKey } from "@/lib/api-keys";
 import { useRouter } from "next/navigation";
+
+const timezones = Intl.supportedValuesOf('timeZone');
 
 function CopyableField({ label, value }: { label: string, value: string }) {
     const { toast } = useToast();
@@ -151,6 +160,17 @@ export default function ApiPage() {
                         </CardHeader>
                         <CardContent>
                             <CopyableField label="Project ID" value={selectedProject.project_id} />
+                        </CardContent>
+                    </Card>
+
+                    {/* Project Settings */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Project Settings</CardTitle>
+                            <CardDescription>Configure project-wide settings like default timezone.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <ProjectSettingsForm project={selectedProject} />
                         </CardContent>
                     </Card>
 
@@ -424,5 +444,54 @@ function DeleteOrgDialog() {
                 </div>
             </DialogContent>
         </Dialog>
+    );
+}
+
+function ProjectSettingsForm({ project }: { project: any }) {
+    const [timezone, setTimezone] = useState(project.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const [loading, setLoading] = useState(false);
+    const { toast } = useToast();
+
+    // Sync state if project changes
+    useEffect(() => {
+        if (project?.timezone) {
+            setTimezone(project.timezone);
+        }
+    }, [project.timezone]);
+
+    const handleSave = async () => {
+        setLoading(true);
+        const { updateProjectSettingsAction } = await import("@/app/(app)/settings/actions");
+        const res = await updateProjectSettingsAction(project.project_id, timezone);
+        setLoading(false);
+
+        if (res.success) {
+            toast({ title: "Settings Saved", description: "Project timezone updated successfully." });
+        } else {
+            toast({ variant: "destructive", title: "Error", description: res.error });
+        }
+    };
+
+    return (
+        <div className="space-y-4 max-w-sm">
+            <div className="grid gap-2">
+                <Label htmlFor="timezone">Database Timezone</Label>
+                <Select value={timezone} onValueChange={setTimezone}>
+                    <SelectTrigger>
+                        <SelectValue placeholder="Select a timezone" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {timezones.map(tz => (
+                            <SelectItem key={tz} value={tz}>{tz}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Default timezone for generated timestamps (e.g., NOW()).</p>
+            </div>
+            <Button onClick={handleSave} disabled={loading || timezone === project.timezone} className="w-full sm:w-auto">
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save Settings
+            </Button>
+        </div>
     );
 }

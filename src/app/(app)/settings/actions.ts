@@ -6,6 +6,26 @@ import { deleteUserAccount } from '@/lib/auth-actions';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
+export async function updateProjectSettingsAction(projectId: string, timezone: string) {
+    const userId = await getCurrentUserId();
+    if (!projectId || !userId || !timezone) {
+        return { error: 'Missing required fields for project update.' };
+    }
+
+    try {
+        const { adminDb } = await import('@/lib/firebase-admin');
+        await adminDb.collection('users').doc(userId).collection('projects').doc(projectId).update({
+            timezone
+        });
+
+        revalidatePath('/api');
+        return { success: true };
+    } catch (error) {
+        console.error('Failed to update project settings:', error);
+        return { error: `An unexpected error occurred: ${(error as Error).message}` };
+    }
+}
+
 export async function deleteProjectAction(projectId: string) {
     const userId = await getCurrentUserId();
     if (!projectId || !userId) {

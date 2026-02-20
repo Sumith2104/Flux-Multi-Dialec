@@ -1,5 +1,6 @@
 import { Parser, AST, Create } from 'node-sql-parser';
-import { getTableData, getTablesForProject, getColumnsForTable, createTable, deleteTable, addColumn, updateColumn, deleteColumn, addConstraint, Table, Column, Row } from '@/lib/data';
+import { getTableData, getTablesForProject, getColumnsForTable, createTable, deleteTable, addColumn, updateColumn, deleteColumn, addConstraint, Table, Column, Row, getProjectById } from '@/lib/data';
+import { getLocalTimestamp } from '@/lib/utils';
 import { getCurrentUserId } from '@/lib/auth';
 import { trackApiRequest } from '@/lib/analytics';
 import { adminDb } from '@/lib/firebase-admin';
@@ -14,6 +15,7 @@ export interface SqlResult {
 export class SqlEngine {
     private projectId: string;
     private userId: string | null = null;
+    private projectTimezone?: string;
     private parser: Parser;
 
     constructor(projectId: string, userId?: string) {
@@ -27,6 +29,13 @@ export class SqlEngine {
             this.userId = await getCurrentUserId();
         }
         if (!this.userId) throw new Error("Unauthorized");
+
+        if (!this.projectTimezone) {
+            const project = await getProjectById(this.projectId, this.userId);
+            if (project?.timezone) {
+                this.projectTimezone = project.timezone;
+            }
+        }
     }
 
     private getDbOption(dialect?: string): string {
@@ -507,6 +516,9 @@ export class SqlEngine {
             insertedCount++;
         }
 
+        const { invalidateTableCache } = await import('@/lib/cache');
+        invalidateTableCache(this.projectId, table.table_id);
+
         console.log(`Total rows inserted: ${insertedCount}`);
         return { rows: [], columns: [], message: `${insertedCount} rows inserted.` };
     }
@@ -525,7 +537,8 @@ export class SqlEngine {
         rows.forEach((row, idx) => {
             if (this.evaluateWhereClause(ast.where, row)) {
                 if (row._csv_index !== undefined) toUpdateIndices.push(row._csv_index);
-                if (row.id) toUpdateIds.push(row.id);
+                const docId = row._id || row.id;
+                if (docId) toUpdateIds.push(docId);
             }
         });
 
@@ -533,9 +546,17 @@ export class SqlEngine {
         // ast.set is array of { column, value }
         const updates: any = {};
         ast.set.forEach((s: any) => {
-            updates[s.column] = s.value?.value; // Simplified value extraction
-            // Ideally use `compare` or expression evaluator for `SET col = col + 1` support
-            // For now, support literal values only
+            let colName = s.column;
+
+            if (typeof colName !== 'string') {
+                if (colName.expr?.value !== undefined) colName = colName.expr.value;
+                else if (colName.column !== undefined) colName = colName.column;
+                else if (colName.value !== undefined) colName = colName.value;
+                else colName = String(colName);
+            }
+
+            const evaluatedValue = this.evaluateExpression(s.value, {});
+            updates[colName] = evaluatedValue;
         });
 
         // Apply Updates
@@ -550,6 +571,9 @@ export class SqlEngine {
             batch.update(ref, updates);
         });
         await batch.commit();
+
+        const { invalidateTableCache } = await import('@/lib/cache');
+        invalidateTableCache(this.projectId, table.table_id);
 
         return { rows: [], columns: [], message: `Updated ${toUpdateIds.length} rows.` };
     }
@@ -582,6 +606,9 @@ export class SqlEngine {
         });
         await batch.commit();
 
+        const { invalidateTableCache } = await import('@/lib/cache');
+        invalidateTableCache(this.projectId, table.table_id);
+
         return { rows: [], columns: [], message: `Deleted ${toDeleteIds.length} rows.` };
     }
 
@@ -591,6 +618,12 @@ export class SqlEngine {
         const table = tables.find(t => t.table_name === tableName);
         if (!table) throw new Error(`Table '${tableName}' not found.`);
 
+        const { getCachedTableRows, setCachedTableRows } = await import('@/lib/cache');
+        const cachedRows = getCachedTableRows(this.projectId, table.table_id);
+        if (cachedRows) {
+            return cachedRows;
+        }
+
         const snapshot = await adminDb
             .collection('users').doc(this.userId!)
             .collection('projects').doc(this.projectId)
@@ -598,7 +631,7 @@ export class SqlEngine {
             .collection('rows')
             .get();
 
-        return snapshot.docs.map(doc => {
+        const rows = snapshot.docs.map(doc => {
             const data = doc.data();
             return {
                 ...data,
@@ -606,6 +639,9 @@ export class SqlEngine {
                 _id: doc.id
             } as any;
         });
+
+        setCachedTableRows(this.projectId, table.table_id, rows);
+        return rows;
     }
 
     private async handleCreate(ast: Create): Promise<SqlResult> {
@@ -1013,7 +1049,7 @@ export class SqlEngine {
         switch (upperFuncName) {
             case 'NOW':
             case 'CURRENT_TIMESTAMP':
-                return new Date().toISOString();
+                return getLocalTimestamp(this.projectTimezone);
 
             case 'CURDATE':
             case 'CURRENT_DATE':
@@ -1105,9 +1141,8 @@ export class SqlEngine {
 
             if (matchingRightRows.length > 0) {
                 matchingRightRows.forEach(rightRow => {
-                    // MERGE rows. Conflicts? Right overwrites left if same name.
-                    // Ideally prefix.
-                    joinedRows.push({ ...leftRow, ...rightRow });
+                    // MERGE rows. Left overwrites right if same name (so primary table IDs aren't lost)
+                    joinedRows.push({ ...rightRow, ...leftRow });
                 });
             } else if (joinType.toUpperCase().includes('LEFT')) {
                 joinedRows.push({ ...leftRow });

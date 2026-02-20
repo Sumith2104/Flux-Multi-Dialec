@@ -19,6 +19,11 @@ service cloud.firestore {
       match /stats/{statId} {
         allow read: if request.auth != null; // Ideally check parent project ownership, but this is a quick fix for the dashboard
       }
+      
+      // Hourly History Buckets
+      match /stats_history/{historyId} {
+        allow read: if request.auth != null; 
+      }
     }
   }
 }

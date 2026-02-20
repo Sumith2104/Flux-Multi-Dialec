@@ -20,6 +20,22 @@ export async function trackApiRequest(projectId: string, type: AnalyticsType) {
             last_updated: FieldValue.serverTimestamp()
         }, { merge: true });
 
+        // Add time-bucketed history
+        const now = new Date();
+        const dateString = now.toISOString().split('T')[0]; // YYYY-MM-DD
+        const hourString = String(now.getUTCHours()).padStart(2, '0'); // 00-23
+
+        const historyRef = adminDb
+            .collection('projects')
+            .doc(projectId)
+            .collection('stats_history')
+            .doc(dateString);
+
+        await historyRef.set({
+            [`${hourString}_total_requests`]: FieldValue.increment(1),
+            [`${hourString}_type_${type}`]: FieldValue.increment(1),
+        }, { merge: true });
+
     } catch (error) {
         console.error(`Failed to track analytics for project ${projectId}:`, error);
         // We don't want to fail the request just because analytics failed

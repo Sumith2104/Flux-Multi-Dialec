@@ -16,6 +16,7 @@ import { logoutAction } from "./actions";
 import { LogoutButton } from "@/components/logout-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProjectProvider, ProjectContext } from "@/contexts/project-context";
+import { TimezoneSelector } from "@/components/timezone-selector";
 import Dock from "@/components/dock";
 import {
     LayoutDashboard,
@@ -24,7 +25,8 @@ import {
     Folder,
     Settings as SettingsIcon,
     Table,
-    Database
+    Database,
+    Globe
 } from "lucide-react";
 
 
@@ -170,6 +172,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                         selectedProject={selectedProject}
                     />
                     {selectedProject && <Badge variant="outline">Free</Badge>}
+                    <TimezoneSelector />
                 </div>
                 <div className="flex-1"></div>
                 {userId ? (

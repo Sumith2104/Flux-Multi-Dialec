@@ -13,6 +13,7 @@ export interface Project {
     display_name: string;
     created_at: string;
     dialect?: 'mysql' | 'postgresql' | 'oracle';
+    timezone?: string;
 }
 
 export interface Table {
@@ -141,7 +142,8 @@ export async function ensureUserProfile(userId: string, email: string, displayNa
     }
 }
 
-export async function createProject(name: string, description: string, dialect: string = 'mysql'): Promise<Project> {
+
+export async function createProject(name: string, description: string, dialect: string = 'mysql', timezone?: string): Promise<Project> {
     const userId = await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
@@ -158,7 +160,8 @@ export async function createProject(name: string, description: string, dialect: 
         user_id: userId,
         display_name: name,
         created_at: new Date().toISOString(),
-        dialect: dialect as any
+        dialect: dialect as any,
+        timezone: timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
     };
 
     await newProjectRef.set(project);
@@ -187,6 +190,21 @@ export async function resetProjectData(projectId: string) {
     await adminDb.recursiveDelete(constraintsRef);
 
     // Note: This does NOT delete the project document itself, just the collections.
+}
+
+export async function updateProjectTimezone(projectId: string, timezone: string): Promise<boolean> {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error("Unauthorized");
+
+    const projectRef = adminDb.collection('users').doc(userId).collection('projects').doc(projectId);
+    const doc = await projectRef.get();
+
+    if (!doc.exists) {
+        throw new Error("Project not found");
+    }
+
+    await projectRef.update({ timezone, updated_at: new Date().toISOString() });
+    return true;
 }
 
 export async function deleteProject(projectId: string) {
@@ -282,6 +300,9 @@ export async function deleteTable(projectId: string, tableId: string, explicitUs
         .collection('tables').doc(tableId);
 
     await adminDb.recursiveDelete(tableRef);
+
+    const { invalidateTableCache } = await import('@/lib/cache');
+    invalidateTableCache(projectId, tableId);
 }
 
 
@@ -345,6 +366,9 @@ export async function addColumn(projectId: string, tableId: string, column: Omit
     Object.keys(colData).forEach(key => colData[key] === undefined && delete colData[key]);
 
     await colDoc.set(colData);
+
+    const { invalidateTableCache } = await import('@/lib/cache');
+    invalidateTableCache(projectId, tableId);
 }
 
 export async function deleteColumn(projectId: string, tableId: string, columnId: string) {
@@ -357,6 +381,9 @@ export async function deleteColumn(projectId: string, tableId: string, columnId:
         .collection('tables').doc(tableId)
         .collection('columns').doc(columnId)
         .delete();
+
+    const { invalidateTableCache } = await import('@/lib/cache');
+    invalidateTableCache(projectId, tableId);
 }
 
 export async function updateColumn(projectId: string, tableId: string, columnId: string, updates: Partial<Column>) {
@@ -369,6 +396,9 @@ export async function updateColumn(projectId: string, tableId: string, columnId:
         .collection('tables').doc(tableId)
         .collection('columns').doc(columnId)
         .update(updates);
+
+    const { invalidateTableCache } = await import('@/lib/cache');
+    invalidateTableCache(projectId, tableId);
 }
 
 
@@ -434,76 +464,55 @@ export async function deleteConstraint(projectId: string, constraintId: string) 
 
 // --- Rows (Data) ---
 
-import fs from 'fs/promises';
-import path from 'path';
+// Removed FS/Path imports for CSV
 
 export async function getTableData(projectId: string, tableName: string, page: number = 1, pageSize: number = 100, explicitUserId?: string) {
     const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    const ignoreFileCheck = false; // Flag to skip file check if needed
-
-    // Check for CSV file existence first (Hybrid Architecture)
-    const projectPath = path.join(process.cwd(), 'src', 'database', userId, projectId);
-    const dataFilePath = path.join(projectPath, `${tableName}.csv`);
-
-    try {
-        await fs.access(dataFilePath);
-        // If file exists, read from CSV
-        const fileContent = await fs.readFile(dataFilePath, 'utf8');
-        const lines = fileContent.split(/\r\n|\n|\r/).filter(line => line.trim() !== '');
-
-        if (lines.length === 0) return { rows: [], totalRows: 0 };
-
-        const header = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-        const dataLines = lines.slice(1);
-        const totalRows = dataLines.length;
-
-        // Pagination
-        const startIndex = (page - 1) * pageSize;
-        const endIndex = startIndex + pageSize;
-        const paginatedLines = dataLines.slice(startIndex, endIndex);
-
-        const rows = paginatedLines.map(line => {
-            const values = line.split(','); // Simple split, reliable for this specific import flow
-            const row: any = {};
-            header.forEach((col, index) => {
-                row[col] = values[index] ? values[index].trim() : null;
-            });
-            // Ensure ID is present
-            if (!row.id && header.includes('id')) {
-                // It should be there from import
-            }
-            return row;
-        });
-
-        return { rows, totalRows };
-
-    } catch (err) {
-        // File doesn't exist, fall back to Firestore
-        // check if error is ENOENT
-    }
 
     const tables = await getTablesForProject(projectId, userId);
     const table = tables.find(t => t.table_name === tableName);
     if (!table) throw new Error(`Table ${tableName} not found`);
 
-    const snapshot = await adminDb
-        .collection('users').doc(userId)
-        .collection('projects').doc(projectId)
-        .collection('tables').doc(table.table_id)
-        .collection('rows')
-        .limit(pageSize)
-        .get();
+    const { getCachedTableRows, setCachedTableRows } = await import('@/lib/cache');
+    const cachedRows = getCachedTableRows(projectId, table.table_id);
 
-    const rows = snapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-            ...data,
-            id: data.id, // Preserve the 'id' column from data if it exists
-            _id: doc.id  // Expose Firestore document ID as _id
-        };
-    });
+    let rows: any[] = [];
+    if (cachedRows) {
+        rows = cachedRows;
+        // Optionally apply pageSize limits if it was used for UI
+        if (pageSize > 0 && page > 0) {
+            const startIndex = (page - 1) * pageSize;
+            rows = rows.slice(startIndex, startIndex + pageSize);
+        }
+    } else {
+        const snapshot = await adminDb
+            .collection('users').doc(userId)
+            .collection('projects').doc(projectId)
+            .collection('tables').doc(table.table_id)
+            .collection('rows')
+            .limit(pageSize > 0 ? pageSize : 100)
+            .get();
+
+        const allRows = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                ...data,
+                id: data.id, // Preserve the 'id' column from data if it exists
+                _id: doc.id  // Expose Firestore document ID as _id
+            };
+        });
+
+        setCachedTableRows(projectId, table.table_id, allRows);
+
+        if (pageSize > 0 && page > 0) {
+            const startIndex = (page - 1) * pageSize;
+            rows = allRows.slice(startIndex, startIndex + pageSize);
+        } else {
+            rows = allRows;
+        }
+    }
     const totalRows = rows.length; // Approximate for now, real total count requires aggregation query
 
     if (rows.length > 0) {
@@ -551,6 +560,9 @@ export async function insertRow(projectId: string, tableId: string, rowData: Rec
     } else {
         await rowsRef.add(rowData);
     }
+
+    const { invalidateTableCache } = await import('@/lib/cache');
+    invalidateTableCache(projectId, tableId);
 }
 
 export async function updateRow(projectId: string, tableId: string, rowId: string, updates: Record<string, any>) {
@@ -600,6 +612,9 @@ export async function updateRow(projectId: string, tableId: string, rowId: strin
         .collection('rows').doc(rowId);
 
     await rowRef.update(updates);
+
+    const { invalidateTableCache } = await import('@/lib/cache');
+    invalidateTableCache(projectId, tableId);
 }
 
 export async function deleteRow(projectId: string, tableId: string, rowId: string) {
@@ -613,6 +628,9 @@ export async function deleteRow(projectId: string, tableId: string, rowId: strin
         .collection('rows').doc(rowId);
 
     await rowRef.delete();
+
+    const { invalidateTableCache } = await import('@/lib/cache');
+    invalidateTableCache(projectId, tableId);
 }
 
 
@@ -633,56 +651,29 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
     try {
         const tables = await getTablesForProject(projectId);
 
-        let totalRows = 0;
-        let totalSize = 0;
-        const tablesStats = [];
+        const tableStatsPromises = tables.map(async (table) => {
+            const rowsSnapshot = await adminDb
+                .collection('users').doc(userId)
+                .collection('projects').doc(projectId)
+                .collection('tables').doc(table.table_id)
+                .collection('rows')
+                .count()
+                .get();
 
-        for (const table of tables) {
-            let rowCount = 0;
-            let size = 0;
+            const rowCount = rowsSnapshot.data().count;
+            const size = 1024 + (rowCount * 128);
 
-            // Check CSV first
-            try {
-                const projectPath = path.join(process.cwd(), 'src', 'database', userId, projectId);
-                const dataFilePath = path.join(projectPath, `${table.table_name}.csv`);
-                await fs.access(dataFilePath);
-
-                const stats = await fs.stat(dataFilePath);
-                size = stats.size;
-
-                // Read file to count rows (optimization: could cache this or read partial)
-                // For now, fast read is okay for 10-50MB files.
-                // Or just estimate from size if too large.
-                // Let's do a quick read of lines for accuracy on < 5MB?
-                // For 10000 rows (1MB), it's fast.
-                const content = await fs.readFile(dataFilePath, 'utf8');
-                const lines = content.split(/\r\n|\n|\r/).filter(l => l.trim() !== '');
-                rowCount = Math.max(0, lines.length - 1); // Subtract header
-
-            } catch {
-                // Fallback to Firestore
-                const rowsSnapshot = await adminDb
-                    .collection('users').doc(userId)
-                    .collection('projects').doc(projectId)
-                    .collection('tables').doc(table.table_id)
-                    .collection('rows')
-                    .count()
-                    .get();
-
-                rowCount = rowsSnapshot.data().count;
-                // Estimate size: 100 bytes overhead + 100 bytes per row (very rough heuristic)
-                size = 1024 + (rowCount * 128);
-            }
-
-            totalRows += rowCount;
-            totalSize += size;
-
-            tablesStats.push({
+            return {
                 name: table.table_name,
                 rows: rowCount,
                 size: size
-            });
-        }
+            };
+        });
+
+        const tablesStats = await Promise.all(tableStatsPromises);
+
+        const totalRows = tablesStats.reduce((sum, stat) => sum + stat.rows, 0);
+        const totalSize = tablesStats.reduce((sum, stat) => sum + stat.size, 0);
 
         return {
             totalRows,

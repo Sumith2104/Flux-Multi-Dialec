@@ -11,6 +11,8 @@ import { redirect } from 'next/navigation';
 import { SubmitButton } from '@/components/submit-button';
 import { ArrowLeft } from 'lucide-react';
 
+const timezones = Intl.supportedValuesOf('timeZone');
+
 export default function CreateProjectPage() {
 
     async function handleCreateProject(formData: FormData) {
@@ -63,6 +65,20 @@ export default function CreateProjectPage() {
                                     </SelectContent>
                                 </Select>
                                 <p className="text-xs text-muted-foreground">This determines syntax validation rules.</p>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="timezone">Database Timezone</Label>
+                                <Select name="timezone" defaultValue={Intl.DateTimeFormat().resolvedOptions().timeZone} required>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select a timezone" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {timezones.map(tz => (
+                                            <SelectItem key={tz} value={tz}>{tz}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">Default timezone for automatically generated timestamps (e.g., NOW()).</p>
                             </div>
                             <SubmitButton type="submit" className="w-full">
                                 Create Project

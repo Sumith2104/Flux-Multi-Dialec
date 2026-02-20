@@ -18,8 +18,10 @@ import {
     addConstraint,
     deleteConstraint,
     deleteTable,
-    Constraint
+    Constraint,
+    getProjectById
 } from '@/lib/data';
+import { getLocalTimestamp } from '@/lib/utils';
 
 // --- Constraint Validation Helpers ---
 
@@ -106,6 +108,9 @@ export async function addRowAction(formData: FormData) {
         const columns = await getColumnsForTable(projectId, tableId);
         if (!columns.length) return { error: 'No columns found for this table.' };
 
+        // Fetch project for timezone context
+        const project = await getProjectById(projectId, userId);
+
         const newRowObject: Record<string, any> = {};
         const now = new Date();
 
@@ -117,9 +122,9 @@ export async function addRowAction(formData: FormData) {
             }
 
             // Logic to generate default values
-            if (col.default_value === 'now()') {
+            if (col.default_value === 'now()' || (!value && ['created_at', 'updated_at'].includes(col.column_name.toLowerCase()))) {
                 if (!value) {
-                    value = new Date().toISOString();
+                    value = getLocalTimestamp(project?.timezone);
                 }
             }
 
@@ -127,12 +132,12 @@ export async function addRowAction(formData: FormData) {
                 value = uuidv4();
             }
 
-            if (value && ['timestamp', 'timestamptz', 'datetime'].includes(col.data_type)) {
+            if (value && ['timestamp', 'timestamptz', 'datetime'].includes(col.data_type.toLowerCase())) {
                 try {
+                    // Try parsing it. If it fails, keep the original string.
                     value = new Date(value).toISOString();
                 } catch (e) {
                     console.error("Invalid date value", value);
-                    // Keep original value if conversion fails
                 }
             }
 
@@ -172,13 +177,19 @@ export async function editRowAction(formData: FormData) {
 
     try {
         const columns = await getColumnsForTable(projectId, tableId);
+        const project = await getProjectById(projectId, userId);
 
         const newRowObject: Record<string, any> = { id: rowId };
         columns.forEach(col => {
             if (col.column_name !== 'id') {
                 let value = formData.get(col.column_name) as string | null;
 
-                if (value && ['timestamp', 'timestamptz', 'datetime'].includes(col.data_type)) {
+                // Auto-fill updated_at on edits
+                if (!value && col.column_name.toLowerCase() === 'updated_at') {
+                    value = getLocalTimestamp(project?.timezone);
+                }
+
+                if (value && ['timestamp', 'timestamptz', 'datetime'].includes(col.data_type.toLowerCase())) {
                     try {
                         value = new Date(value).toISOString();
                     } catch (e) {

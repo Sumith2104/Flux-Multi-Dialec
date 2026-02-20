@@ -18,9 +18,11 @@ import {
 import { StorageChart } from "@/components/storage-chart";
 import { RealtimeLineChart } from "@/components/realtime-line-chart";
 import { QueryTypeChart } from "@/components/query-type-chart";
+import { SparklineCard } from "@/components/sparkline-card";
 import { ProjectContext } from '@/contexts/project-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRealtimeAnalytics } from '@/hooks/use-realtime-analytics';
+import { useProjectHistory } from '@/hooks/use-project-history';
 
 export default function DashboardPage() {
     const { project: selectedProject } = useContext(ProjectContext);
@@ -29,6 +31,7 @@ export default function DashboardPage() {
     const [loading, setLoading] = useState(true);
 
     const realtimeStats = useRealtimeAnalytics(selectedProject?.project_id);
+    const historyStats = useProjectHistory(selectedProject?.project_id);
 
     useEffect(() => {
         async function loadDashboardData() {
@@ -121,50 +124,34 @@ export default function DashboardPage() {
                 {/* Real-time Metrics Grid */}
                 <div className="grid gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-4">
 
-                    <Card className="aspect-square flex flex-col justify-between">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">
-                                Total Requests
-                            </CardTitle>
-                            <div className="h-4 w-4 animate-pulse rounded-full bg-green-500 shadow-[0_0_12px_#22c55e]" />
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-4xl font-bold">{realtimeStats?.total_requests ?? 0}</div>
-                            <p className="text-xs text-muted-foreground mt-1">
-                                Real-time Interactions
-                            </p>
-                        </CardContent>
-                    </Card>
+                    <SparklineCard
+                        title="Total Requests"
+                        value={realtimeStats?.total_requests ?? 0}
+                        subtitle="Real-time Interactions"
+                        type="line"
+                        color="#22c55e"
+                        data={historyStats.requests}
+                    />
 
-                    <Card className="aspect-square flex flex-col justify-between">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">
-                                API Calls
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-4xl font-bold text-blue-500">{realtimeStats?.type_api_call ?? 0}</div>
-                            <p className="text-xs text-muted-foreground mt-1">
-                                Data Fetches
-                            </p>
-                        </CardContent>
-                    </Card>
+                    <SparklineCard
+                        title="API Calls"
+                        value={realtimeStats?.type_api_call ?? 0}
+                        subtitle="Data Fetches"
+                        type="bar"
+                        color="#3b82f6"
+                        data={historyStats.apiCalls}
+                    />
 
                     <QueryTypeChart stats={realtimeStats} />
 
-                    <Card className="aspect-square flex flex-col justify-between">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">
-                                Storage
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold truncate">{formatSize(analytics?.totalSize ?? 0)}</div>
-                            <p className="text-xs text-muted-foreground mt-1 w-full truncate">
-                                {tables.length} Tables, {analytics?.totalRows ?? 0} Rows
-                            </p>
-                        </CardContent>
-                    </Card>
+                    <SparklineCard
+                        title="Storage"
+                        value={formatSize(analytics?.totalSize ?? 0)}
+                        subtitle={`${tables.length} Tables, ${analytics?.totalRows ?? 0} Rows`}
+                        type="area"
+                        color="#f97316"
+                        data={Array(24).fill({ val: analytics?.totalSize ?? 0 })} // Flatline for storage since it's cumulative and not tracked hourly
+                    />
                 </div>
 
                 {/* Charts Section */}
