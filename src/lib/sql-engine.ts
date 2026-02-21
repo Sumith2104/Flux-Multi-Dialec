@@ -146,8 +146,20 @@ export class SqlEngine {
         } else if (!mainTableDef.table) {
             throw new Error("Detailed error: " + JSON.stringify(mainTableDef));
         } else {
-            processedRows = await this.getAllRows(mainTableDef.table);
-            explanation.push(`Fetched ${processedRows.length} rows from '${mainTableDef.table}'`);
+            // AST Pushdown Optimization: Safely forward LIMIT to Firestore if there are no complex post-filters
+            const limitVal = (ast.limit && ast.limit.value && ast.limit.value.length > 0) ? ast.limit.value[0].value : undefined;
+            const hasAggs = ast.columns.some((c: any) => c.expr && c.expr.type === 'aggr_func');
+
+            const canPushDownLimit = limitVal !== undefined &&
+                (!ast.where) &&
+                (!ast.orderby) &&
+                (!ast.groupby && !hasAggs) &&
+                (from.length === 1);
+
+            const fetchOptions = canPushDownLimit ? { limit: limitVal } : undefined;
+
+            processedRows = await this.getAllRows(mainTableDef.table, fetchOptions);
+            explanation.push(`Fetched ${processedRows.length} rows from '${mainTableDef.table}'${canPushDownLimit ? ` (AST Pushdown Limit: ${limitVal})` : ''}`);
         }
 
         if (from.length > 1) {
@@ -612,35 +624,50 @@ export class SqlEngine {
         return { rows: [], columns: [], message: `Deleted ${toDeleteIds.length} rows.` };
     }
 
-    private async getAllRows(tableName: string): Promise<Row[]> {
+    private async getAllRows(tableName: string, options?: { limit?: number }): Promise<Row[]> {
         // Firestore Mode
         const tables = await getTablesForProject(this.projectId, this.userId!);
         const table = tables.find(t => t.table_name === tableName);
         if (!table) throw new Error(`Table '${tableName}' not found.`);
 
         const { getCachedTableRows, setCachedTableRows } = await import('@/lib/cache');
-        const cachedRows = getCachedTableRows(this.projectId, table.table_id);
-        if (cachedRows) {
-            return cachedRows;
+
+        // Only use the global table cache if we are executing a full fetch. 
+        // We do not want partial limit queries poisoning the global cache.
+        const isFullFetch = !options || Object.keys(options).length === 0;
+
+        if (isFullFetch) {
+            const cachedRows = getCachedTableRows(this.projectId, table.table_id);
+            if (cachedRows) {
+                return cachedRows;
+            }
         }
 
-        const snapshot = await adminDb
+        let query: any = adminDb
             .collection('users').doc(this.userId!)
             .collection('projects').doc(this.projectId)
             .collection('tables').doc(table.table_id)
-            .collection('rows')
-            .get();
+            .collection('rows');
 
-        const rows = snapshot.docs.map(doc => {
+        if (options?.limit !== undefined) {
+            query = query.limit(options.limit);
+        }
+
+        const snapshot = await query.get();
+
+        const rows = snapshot.docs.map((doc: any) => {
             const data = doc.data();
             return {
                 ...data,
-                id: data.id,
+                id: data.id || doc.id,
                 _id: doc.id
             } as any;
         });
 
-        setCachedTableRows(this.projectId, table.table_id, rows);
+        if (isFullFetch) {
+            setCachedTableRows(this.projectId, table.table_id, rows);
+        }
+
         return rows;
     }
 

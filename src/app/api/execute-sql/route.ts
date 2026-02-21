@@ -2,8 +2,19 @@ import { NextResponse } from 'next/server';
 import { getCurrentUserId, getAuthContextFromRequest } from '@/lib/auth';
 import { SqlEngine } from '@/lib/sql-engine';
 import { getProjectById } from '@/lib/data';
+import { createHash } from 'crypto';
 
 export const maxDuration = 60; // 1 minute
+
+// Local burst cache for frequent identical queries (e.g. from external dashboards)
+interface CacheEntry {
+    result: any;
+    explanation: any;
+    executionInfo: any;
+    expiresAt: number;
+}
+const queryCache = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = 15000; // 15 seconds to catch duplicate concurrent loads while maintaining freshness
 
 export async function POST(request: Request) {
     const startTime = Date.now();
@@ -27,6 +38,27 @@ export async function POST(request: Request) {
 
         if (!projectId || !query) {
             return NextResponse.json({ success: false, error: { message: 'Missing projectId or query', code: 'BAD_REQUEST' } }, { status: 400 });
+        }
+
+        // Burst Caching Logic
+        const isSelect = typeof query === 'string' && query.trim().toUpperCase().startsWith('SELECT');
+        let cacheKey = '';
+
+        if (isSelect) {
+            cacheKey = createHash('sha256').update(`${projectId}_${userId}_${query}`).digest('hex');
+            const cached = queryCache.get(cacheKey);
+            if (cached && cached.expiresAt > Date.now()) {
+                console.log(`[DEBUG] Serving cached result for query: ${query.substring(0, 50)}...`);
+                return NextResponse.json({
+                    success: true,
+                    result: cached.result,
+                    explanation: cached.explanation,
+                    executionInfo: {
+                        ...cached.executionInfo,
+                        time: '0ms (Cached)'
+                    }
+                });
+            }
         }
 
         console.log('[DEBUG] execute-sql Project Found Check:');
@@ -69,7 +101,7 @@ export async function POST(request: Request) {
 
         const duration = Date.now() - startTime;
 
-        return NextResponse.json({
+        const responseData = {
             success: true,
             result: {
                 rows: result.rows || [],     // Ensure array
@@ -81,7 +113,26 @@ export async function POST(request: Request) {
                 time: `${duration}ms`,
                 rowCount: result.rows?.length || 0
             }
-        });
+        };
+
+        if (isSelect && cacheKey) {
+            queryCache.set(cacheKey, {
+                result: responseData.result,
+                explanation: responseData.explanation,
+                executionInfo: responseData.executionInfo,
+                expiresAt: Date.now() + CACHE_TTL_MS
+            });
+
+            // Periodically clean up expired items to prevent memory leaks in long-running functions
+            if (queryCache.size > 100) {
+                const now = Date.now();
+                for (const [k, v] of queryCache.entries()) {
+                    if (v.expiresAt < now) queryCache.delete(k);
+                }
+            }
+        }
+
+        return NextResponse.json(responseData);
 
     } catch (error: any) {
         console.error('SQL Execution Failed:', error);
