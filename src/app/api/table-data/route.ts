@@ -17,8 +17,9 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     let projectId = searchParams.get('projectId');
     const tableName = searchParams.get('tableName');
-    const page = parseInt(searchParams.get('page') || '1', 10);
+    const page = parseInt(searchParams.get('page') || '0', 10);
     const pageSize = parseInt(searchParams.get('pageSize') || '100', 10);
+    const cursorId = searchParams.get('cursorId') || undefined;
 
     // Enforce Scope
     if (allowedProjectId) {
@@ -34,11 +35,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Missing required query parameters: projectId and tableName' }, { status: 400 });
     }
 
-    if (isNaN(page) || page < 1 || isNaN(pageSize) || pageSize < 1) {
+    if (isNaN(page) || page < 0 || isNaN(pageSize) || pageSize < 1) {
       return NextResponse.json({ error: 'Invalid pagination parameters.' }, { status: 400 });
     }
 
-    const data = await getTableData(projectId, tableName, page, pageSize, userId);
+    const data = await getTableData(projectId, tableName, page, pageSize, userId, cursorId);
     if (data.rows.length > 0) {
       console.error(`[DEBUG] /api/table-data keys for ${tableName}:`, Object.keys(data.rows[0]));
       console.error(`[DEBUG] /api/table-data sample for ${tableName}:`, JSON.stringify(data.rows[0]));
@@ -49,6 +50,7 @@ export async function GET(request: Request) {
     // Track Analytics (Mainly for read operations)
     await trackApiRequest(projectId, 'storage_read');
     await trackApiRequest(projectId, 'api_call');
+    await trackApiRequest(projectId, 'sql_select');
 
     return NextResponse.json(data);
 

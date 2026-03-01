@@ -62,3 +62,51 @@ export async function clearOrganizationAction() {
         return { error: `An unexpected error occurred: ${(error as Error).message}` };
     }
 }
+
+// --- Webhooks Actions ---
+
+import { createWebhook, deleteWebhook, getWebhooksForProject, updateWebhook, type WebhookEvent } from '@/lib/webhooks';
+
+export async function getWebhooksAction(projectId: string) {
+    try {
+        const userId = await getCurrentUserId();
+        if (!userId) throw new Error("Unauthorized");
+        const webhooks = await getWebhooksForProject(projectId, userId);
+        return { success: true, data: webhooks };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+export async function createWebhookAction(projectId: string, name: string, url: string, event: WebhookEvent, tableId: string, secret?: string) {
+    try {
+        const userId = await getCurrentUserId();
+        if (!userId) throw new Error("Unauthorized");
+        const webhook = await createWebhook(projectId, userId, { name, url, event, table_id: tableId, secret, is_active: true });
+        return { success: true, data: webhook };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+export async function toggleWebhookAction(projectId: string, webhookId: string, isActive: boolean) {
+    try {
+        const userId = await getCurrentUserId();
+        if (!userId) throw new Error("Unauthorized");
+        await updateWebhook(projectId, userId, webhookId, { is_active: isActive });
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+export async function deleteWebhookAction(projectId: string, webhookId: string) {
+    try {
+        const userId = await getCurrentUserId();
+        if (!userId) throw new Error("Unauthorized");
+        await deleteWebhook(projectId, userId, webhookId);
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}

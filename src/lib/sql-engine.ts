@@ -4,6 +4,39 @@ import { getLocalTimestamp } from '@/lib/utils';
 import { getCurrentUserId } from '@/lib/auth';
 import { trackApiRequest } from '@/lib/analytics';
 import { adminDb } from '@/lib/firebase-admin';
+import { Semaphore } from 'async-mutex';
+import { LRUCache } from 'lru-cache';
+import { performance } from 'perf_hooks';
+import * as crypto from 'crypto';
+import { redis } from '@/lib/redis';
+
+// --- 1. Environment-Aware Concurrency Tuning ---
+// Safe Defaults for 2 vCPU / 4GB RAM (e.g. standard Cloud Run)
+const GLOBAL_LIMIT = parseInt(process.env.FLUX_GLOBAL_IN_FLIGHT_LIMIT || '8000', 10);
+const TENANT_LIMIT = parseInt(process.env.FLUX_TENANT_IN_FLIGHT_LIMIT || '2000', 10);
+
+const GLOBAL_SEMAPHORE = new Semaphore(GLOBAL_LIMIT);
+
+// --- 2. Tenant Semaphore Eviction Safety ---
+const tenantSemaphores = new LRUCache<string, Semaphore>({
+    max: 5000,
+    ttl: 1000 * 60 * 60, // 1 hour TTL (Clear Memory gracefully)
+    dispose: (value: Semaphore, key: string, reason: string) => {
+        // Critical: Never evict a semaphore that still has locked waiters or active permits
+        if (value.isLocked() || value.getValue() !== TENANT_LIMIT) {
+            console.error(`[CRITICAL] Evicting active semaphore for tenant ${key} via ${reason}. This implies an LRU sizing leak.`);
+        }
+    }
+});
+
+function getTenantSemaphore(projectId: string): Semaphore {
+    let sem = tenantSemaphores.get(projectId);
+    if (!sem) {
+        sem = new Semaphore(TENANT_LIMIT);
+        tenantSemaphores.set(projectId, sem);
+    }
+    return sem;
+}
 
 export interface SqlResult {
     rows: any[];
@@ -16,6 +49,7 @@ export class SqlEngine {
     private projectId: string;
     private userId: string | null = null;
     private projectTimezone?: string;
+    private projectDialect?: string;
     private parser: Parser;
 
     constructor(projectId: string, userId?: string) {
@@ -30,11 +64,12 @@ export class SqlEngine {
         }
         if (!this.userId) throw new Error("Unauthorized");
 
-        if (!this.projectTimezone) {
+        if (!this.projectTimezone || !this.projectDialect) {
             const project = await getProjectById(this.projectId, this.userId);
             if (project?.timezone) {
                 this.projectTimezone = project.timezone;
             }
+            this.projectDialect = project?.dialect || 'postgresql';
         }
     }
 
@@ -65,11 +100,12 @@ export class SqlEngine {
         for (const statement of statements) {
             let astArray: AST[] | AST;
             try {
-                try {
-                    astArray = this.parser.astify(statement, { database: 'PostgreSQL' });
-                } catch {
-                    astArray = this.parser.astify(statement, { database: 'MySQL' });
-                }
+                let parserDatabase = 'PostgreSQL';
+                if (this.projectDialect === 'mysql') parserDatabase = 'MySQL';
+                // Note: Oracle syntax is not heavily distinct from PostgreSQL for basics in node-sql-parser, 
+                // so we safely fall back to PostgreSQL logic for Oracle.
+
+                astArray = this.parser.astify(statement, { database: parserDatabase });
             } catch (e: any) {
                 throw new Error(`SQL Syntax Error in statement "${statement.substring(0, 50)}...": ${e.message}`);
             }
@@ -82,12 +118,55 @@ export class SqlEngine {
                 await trackApiRequest(this.projectId, 'sql_execution');
                 await trackApiRequest(this.projectId, 'api_call');
 
+                if (type === 'SELECT') {
+                    await trackApiRequest(this.projectId, 'sql_select');
+                } else if (type === 'INSERT') {
+                    await trackApiRequest(this.projectId, 'sql_insert');
+                } else if (type === 'UPDATE') {
+                    await trackApiRequest(this.projectId, 'sql_update');
+                } else if (type === 'DELETE') {
+                    await trackApiRequest(this.projectId, 'sql_delete');
+                } else if (type === 'ALTER') {
+                    await trackApiRequest(this.projectId, 'sql_alter');
+                }
+
                 let result: SqlResult;
                 switch (type) {
-                    case 'SELECT': result = await this.handleSelect(ast); break;
+                    case 'SELECT': {
+                        // Generate a Redis Cache Key for SELECT statements
+                        const queryHash = crypto.createHash('md5').update(`sql_${this.projectId}_${statement}`).digest('hex');
+
+                        try {
+                            const cachedRaw = await redis.get(queryHash);
+                            if (cachedRaw) {
+                                let cachedResult: SqlResult;
+                                if (typeof cachedRaw === 'string') cachedResult = JSON.parse(cachedRaw);
+                                else cachedResult = cachedRaw as any;
+
+                                // Check if it's identical before skipping
+                                result = { ...cachedResult, explanation: [...(cachedResult.explanation || []), "(Served from Upstash Redis Cache)"] };
+                                break;
+                            }
+                        } catch (e) {
+                            console.warn("[Redis Cache Error]", e);
+                        }
+
+                        // Compute Result normally
+                        result = await this.handleSelect(ast);
+
+                        // Asynchronously Save to Cache
+                        try {
+                            await redis.setex(queryHash, 60, JSON.stringify(result));
+                        } catch (e) {
+                            console.warn("[Redis Cache Set Error]", e);
+                        }
+
+                        break;
+                    }
                     case 'INSERT': result = await this.handleInsert(ast); break;
                     case 'UPDATE': result = await this.handleUpdate(ast); break;
                     case 'DELETE': result = await this.handleDelete(ast); break;
+                    case 'TRUNCATE': result = await this.handleTruncate(ast); break;
                     case 'CREATE': result = await this.handleCreate(ast as Create); break;
                     case 'DROP': result = await this.handleDrop(ast); break;
                     case 'ALTER': result = await this.handleAlter(ast); break;
@@ -456,83 +535,135 @@ export class SqlEngine {
         // const projectPath = path.join(process.cwd(), 'src', 'database', this.userId!, this.projectId);
         // ...
 
+        // Optimize Firestore BulkWriter usage for high-throughput concurrency
+        const bulkWriter = adminDb.bulkWriter();
+        const tenantSemaphore = getTenantSemaphore(this.projectId);
+
         let insertedCount = 0;
+        let failedCount = 0;
+        let retryCount = 0;
+
+        let inFlightWrites = 0;
+        let maxInFlightObserved = 0;
+
+        // Metrics Arrays for Percentile Calculation
+        const waitTimesMs: number[] = [];
+        const importStart = performance.now();
+
+        bulkWriter.onWriteResult(() => insertedCount++);
+        bulkWriter.onWriteError((error: any) => {
+            retryCount++;
+            if (error.failedAttempts < 5) return true; // Let internal retry handle it
+            failedCount++; // Permanent algorithmic failure
+            return false;
+        });
+
+        const collectionRef = adminDb
+            .collection('users').doc(this.userId!)
+            .collection('projects').doc(this.projectId)
+            .collection('tables').doc(table.table_id)
+            .collection('rows');
+
+        /**
+         * Enqueues a write and applies backpressure if the queue grows too large.
+         * This prevents Event Loop starvation and V8 heap explosions.
+         */
+        const enqueueWrite = async (row: any) => {
+            const queueStart = performance.now();
+
+            const [, releaseTenant] = await tenantSemaphore.acquire();
+            const [, releaseGlobal] = await GLOBAL_SEMAPHORE.acquire();
+
+            // Track how long the Node event-loop forced this row to wait for an open network slot
+            waitTimesMs.push(performance.now() - queueStart);
+
+            inFlightWrites++;
+            if (inFlightWrites > maxInFlightObserved) maxInFlightObserved = inFlightWrites;
+
+            const writePromise = bulkWriter.create(collectionRef.doc(), row);
+
+            writePromise.finally(() => {
+                inFlightWrites--;
+                releaseGlobal();
+                releaseTenant();
+            });
+        };
 
         // Process INSERT ... SELECT rows
-        for (const row of rowsToInsert) {
-            // Firestore Insert
-            await adminDb
-                .collection('users').doc(this.userId!)
-                .collection('projects').doc(this.projectId)
-                .collection('tables').doc(table.table_id)
-                .collection('rows').add(row);
-            insertedCount++;
+        if (rowsToInsert.length > 0) {
+            for (const row of rowsToInsert) {
+                await enqueueWrite(row);
+            }
         }
 
         // Process INSERT ... VALUES rows
-        for (const valuesNode of valuesList) {
-            // Handle different AST structures from different parsers
-            let values: any[];
+        if (valuesList.length > 0) {
+            for (const valuesNode of valuesList) {
+                let values: any[];
 
-            if (valuesNode.value && Array.isArray(valuesNode.value)) {
-                // MySQL/PostgreSQL structure: { type: 'expr_list', value: [...] }
-                values = valuesNode.value.map((v: any) => {
-                    // Handle nested value objects
-                    if (v && typeof v === 'object') {
-                        // Check if it's a function call (e.g., NOW(), CONCAT())
-                        if (v.type === 'function') {
-                            return this.evaluateFunction(v);
-                        } else if ('value' in v) {
-                            return v.value;
+                if (valuesNode.value && Array.isArray(valuesNode.value)) {
+                    values = valuesNode.value.map((v: any) => {
+                        if (v && typeof v === 'object') {
+                            if (v.type === 'function') return this.evaluateFunction(v);
+                            if ('value' in v) return v.value;
                         }
-                    }
-                    return v;
-                });
-            } else if (Array.isArray(valuesNode)) {
-                // Direct array structure
-                values = valuesNode.map((v: any) => {
-                    if (v && typeof v === 'object' && v.type === 'function') {
-                        return this.evaluateFunction(v);
-                    }
-                    return v?.value ?? v;
-                });
-            } else if (valuesNode.type === 'expr_list' && !valuesNode.value) {
-                // Empty expr_list - skip
-                continue;
-            } else {
-                // Log the unexpected structure for debugging
-                console.error('Unexpected INSERT values structure:', valuesNode);
-                throw new Error(`Unexpected INSERT values structure: ${JSON.stringify(valuesNode)}`);
-            }
-
-
-            const row: any = {};
-            targetCols.forEach((col: string, i: number) => {
-                // Find matching column in schema (case-insensitive)
-                const matchingCol = columns.find(c => c.column_name.toLowerCase() === col.toLowerCase());
-                if (matchingCol) {
-                    row[matchingCol.column_name] = values[i];
+                        return v;
+                    });
+                } else if (Array.isArray(valuesNode)) {
+                    values = valuesNode.map((v: any) => {
+                        if (v && typeof v === 'object' && v.type === 'function') return this.evaluateFunction(v);
+                        return v?.value ?? v;
+                    });
+                } else if (valuesNode.type === 'expr_list' && !valuesNode.value) {
+                    continue;
                 } else {
-                    // Fallback to provided name if not found (though validation might catch this)
-                    row[col] = values[i];
+                    console.error('Unexpected INSERT values structure:', valuesNode);
+                    throw new Error(`Unexpected INSERT values structure: ${JSON.stringify(valuesNode)}`);
                 }
-            });
 
-            // Firestore Insert
-            console.log(`Inserting row ${insertedCount + 1}:`, row);
-            await adminDb
-                .collection('users').doc(this.userId!)
-                .collection('projects').doc(this.projectId)
-                .collection('tables').doc(table.table_id)
-                .collection('rows').add(row);
-            insertedCount++;
+                const row: any = {};
+                targetCols.forEach((col: string, i: number) => {
+                    const matchingCol = columns.find(c => c.column_name.toLowerCase() === col.toLowerCase());
+                    if (matchingCol) {
+                        row[matchingCol.column_name] = values[i]; // Store matching data type
+                    } else {
+                        row[col] = values[i]; // Fallback insert
+                    }
+                });
+
+                await enqueueWrite(row);
+            }
         }
+
+        // Final commit to ensure all queued writes process before returning to client
+        await bulkWriter.close();
 
         const { invalidateTableCache } = await import('@/lib/cache');
         invalidateTableCache(this.projectId, table.table_id);
 
-        console.log(`Total rows inserted: ${insertedCount}`);
-        return { rows: [], columns: [], message: `${insertedCount} rows inserted.` };
+        // --- 3. Advanced Observability & P95 Calculation ---
+        const totalDurationMs = performance.now() - importStart;
+        const totalAttempted = insertedCount + failedCount;
+        const throughputOpsSec = totalDurationMs > 0 ? (insertedCount / (totalDurationMs / 1000)) : 0;
+
+        waitTimesMs.sort((a, b) => a - b);
+        const p50Wait = waitTimesMs.length > 0 ? waitTimesMs[Math.floor(waitTimesMs.length * 0.5)] : 0;
+        const p95Wait = waitTimesMs.length > 0 ? waitTimesMs[Math.floor(waitTimesMs.length * 0.95)] : 0;
+
+        const metrics = {
+            executionTimeMs: Math.round(totalDurationMs),
+            throughputOpsSec: Math.round(throughputOpsSec),
+            queueWaitMs: { p50: Math.round(p50Wait), p95: Math.round(p95Wait) },
+            maxInFlightObserved,
+            retryRatePct: totalAttempted > 0 ? ((retryCount / totalAttempted) * 100).toFixed(2) : "0.00"
+        };
+
+        console.log(JSON.stringify({ event: 'BulkInsert_Completed', projectId: this.projectId, metrics }));
+
+        let message = `Successfully inserted ${insertedCount} rows.`;
+        if (failedCount > 0) message = `WARNING: ${failedCount} rows permanently failed to write.`;
+
+        return { rows: [], columns: [], message, explanation: [JSON.stringify(metrics)] };
     }
 
     private async handleUpdate(ast: any): Promise<SqlResult> {
@@ -607,21 +738,80 @@ export class SqlEngine {
             }
         });
 
-        const batch = adminDb.batch();
+        const batches: any[] = [];
+        let currentBatch = adminDb.batch();
+        let count = 0;
+
         toDeleteIds.forEach(id => {
             const ref = adminDb
                 .collection('users').doc(this.userId!)
                 .collection('projects').doc(this.projectId)
                 .collection('tables').doc(table.table_id)
                 .collection('rows').doc(id);
-            batch.delete(ref);
+            currentBatch.delete(ref);
+            count++;
+
+            if (count === 500) {
+                batches.push(currentBatch.commit());
+                currentBatch = adminDb.batch();
+                count = 0;
+            }
         });
-        await batch.commit();
+
+        if (count > 0) {
+            batches.push(currentBatch.commit());
+        }
+
+        await Promise.all(batches);
 
         const { invalidateTableCache } = await import('@/lib/cache');
         invalidateTableCache(this.projectId, table.table_id);
 
         return { rows: [], columns: [], message: `Deleted ${toDeleteIds.length} rows.` };
+    }
+
+    private async handleTruncate(ast: any): Promise<SqlResult> {
+        const tableName = ast.name?.[0]?.table || ast.table?.[0]?.table || ast.table; // node-sql-parser puts TRUNCATE targets in .name array
+        if (!tableName) throw new Error("Could not parse table name from TRUNCATE statement.");
+        const resolvedName = typeof tableName === 'string' ? tableName : tableName[0]?.table || tableName;
+
+        const tables = await getTablesForProject(this.projectId, this.userId!);
+        const table = tables.find(t => t.table_name === resolvedName);
+        if (!table) throw new Error(`Table '${resolvedName}' not found.`);
+
+        const rows = await this.getAllRows(resolvedName);
+        const toDeleteIds: string[] = rows.map(r => r._id || r.id).filter(id => id);
+
+        const batches: any[] = [];
+        let currentBatch = adminDb.batch();
+        let count = 0;
+
+        toDeleteIds.forEach(id => {
+            const ref = adminDb
+                .collection('users').doc(this.userId!)
+                .collection('projects').doc(this.projectId)
+                .collection('tables').doc(table.table_id)
+                .collection('rows').doc(id);
+            currentBatch.delete(ref);
+            count++;
+
+            if (count === 500) {
+                batches.push(currentBatch.commit());
+                currentBatch = adminDb.batch();
+                count = 0;
+            }
+        });
+
+        if (count > 0) {
+            batches.push(currentBatch.commit());
+        }
+
+        await Promise.all(batches);
+
+        const { invalidateTableCache } = await import('@/lib/cache');
+        invalidateTableCache(this.projectId, table.table_id);
+
+        return { rows: [], columns: [], message: `Truncated table '${resolvedName}'. Deleted ${toDeleteIds.length} rows.` };
     }
 
     private async getAllRows(tableName: string, options?: { limit?: number }): Promise<Row[]> {

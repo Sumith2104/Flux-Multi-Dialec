@@ -129,7 +129,8 @@ export async function addRowAction(formData: FormData) {
             }
 
             if (col.column_name === 'id' && !value) {
-                value = uuidv4();
+                const isNumeric = ['INT', 'INTEGER', 'NUMBER', 'FLOAT'].includes(col.data_type.toUpperCase());
+                value = isNumeric ? Date.now().toString() : uuidv4();
             }
 
             if (value && ['timestamp', 'timestamptz', 'datetime'].includes(col.data_type.toLowerCase())) {

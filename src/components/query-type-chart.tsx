@@ -87,7 +87,21 @@ export function QueryTypeChart({ stats }: { stats: AnalyticsStats | null }) {
                     <PieChart>
                         <ChartTooltip
                             cursor={false}
-                            content={<ChartTooltipContent hideLabel />}
+                            content={({ active, payload }) => {
+                                if (active && payload && payload.length) {
+                                    const data = payload[0].payload;
+                                    return (
+                                        <div className="rounded-xl border border-zinc-800 bg-zinc-950/90 backdrop-blur-xl p-3 shadow-2xl min-w-[140px]">
+                                            <div className="flex items-center gap-2.5">
+                                                <div className="h-2.5 w-2.5 rounded-full ring-1 ring-white/20" style={{ backgroundColor: data.fill }} />
+                                                <span className="text-xs font-semibold text-zinc-300 uppercase tracking-widest">{data.browser}</span>
+                                                <span className="ml-auto font-mono text-sm font-bold text-zinc-100">{data.visitors}</span>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+                                return null;
+                            }}
                         />
                         <Pie
                             data={chartData}

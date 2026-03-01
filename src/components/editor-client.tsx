@@ -1,5 +1,7 @@
 'use client';
 
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+
 import { useGlobalAlert } from '@/components/global-alert-provider';
 
 import Link from 'next/link';
@@ -21,7 +23,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { GridColDef, GridRowSelectionModel, GridPaginationModel } from '@mui/x-data-grid';
+import { ColumnDef } from '@/components/data-table';
 import { AddRowDialog } from '@/components/add-row-dialog';
 import { AddColumnDialog } from '@/components/add-column-dialog';
 import { EditRowDialog } from '@/components/edit-row-dialog';
@@ -41,7 +43,7 @@ import {
 } from "@/components/ui/table"
 import { Skeleton } from '@/components/ui/skeleton';
 import { deleteRowAction, deleteTableAction, deleteColumnAction, deleteConstraintAction } from '@/app/(app)/editor/actions';
-import { getTableData } from '@/lib/data';
+// Removed getTableData import to prevent client boundary violations
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import {
@@ -64,6 +66,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { DeleteProgress } from './delete-progress';
 import { Badge } from './ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const DataTable = dynamic(() => import('@/components/data-table').then(mod => mod.DataTable), {
     ssr: false,
@@ -96,7 +100,8 @@ export function EditorClient({
 }: EditorClientProps) {
     const { toast } = useToast();
     const router = useRouter();
-    const [selectionModel, setSelectionModel] = useState<GridRowSelectionModel>([]);
+    const queryClient = useQueryClient();
+    const [selectionModel, setSelectionModel] = useState<string[]>([]);
     const [isEditRowOpen, setIsEditRowOpen] = useState(false);
     const [isEditColumnOpen, setIsEditColumnOpen] = useState(false);
     const [isDeleteTableAlertOpen, setIsDeleteTableAlertOpen] = useState(false);
@@ -107,63 +112,81 @@ export function EditorClient({
     const [isDeleting, setIsDeleting] = useState(false);
     const [activeTab, setActiveTab] = useState('data');
 
-    const [rows, setRows] = useState<any[]>([]);
-    const [rowCount, setRowCount] = useState(0);
-    const [isTableLoading, setIsTableLoading] = useState(false);
-    const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 100 });
     const [foreignKeyData, setForeignKeyData] = useState<Record<string, any[]>>({});
     const [constraints, setConstraints] = useState<DbConstraint[]>(initialConstraints);
+
+    const [sortConfig, setSortConfig] = useState<{ field: string; direction: 'asc' | 'desc' } | null>(null);
+    const [filterConfig, setFilterConfig] = useState<{ field: string; operator: string; value: string } | null>(null);
 
     useEffect(() => {
         setConstraints(initialConstraints);
     }, [initialConstraints]);
 
+    const {
+        data: infiniteData,
+        fetchNextPage,
+        hasNextPage,
+        isFetchingNextPage,
+        isLoading: isTableLoading,
+        refetch
+    } = useInfiniteQuery({
+        queryKey: ['table-data', projectId, tableId],
+        initialPageParam: null as string | null,
+        queryFn: async ({ pageParam }) => {
+            if (!tableId || !tableName) return { rows: [], nextCursorId: null, hasMore: false };
+            let url = `/api/table-data?projectId=${projectId}&tableName=${tableName}&pageSize=50`;
+            if (pageParam) url += `&cursorId=${pageParam}`;
 
-    const abortControllerRef = React.useRef<AbortController | null>(null);
-
-    const fetchTableData = useCallback(async (model: { page: number, pageSize: number }) => {
-        if (!tableId || !tableName) return;
-
-        // Cancel previous request
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-        }
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-
-        setIsTableLoading(true);
-        try {
-            const response = await fetch(`/api/table-data?projectId=${projectId}&tableName=${tableName}&page=${model.page + 1}&pageSize=${model.pageSize}`, {
-                signal: controller.signal
-            });
+            const response = await fetch(url);
             if (!response.ok) throw new Error('Failed to fetch table data');
-            const data = await response.json();
-            setRows(data.rows);
-            setRowCount(data.totalRows);
-        } catch (error: any) {
-            if (error.name === 'AbortError') {
-                return;
-            }
-            console.error(error);
-            toast({ variant: 'destructive', title: 'Error', description: 'Could not load table data.' });
-        } finally {
-            // Only turn off loading if this is the active request?
-            // Actually, if aborted, we don't care.
-            // But if we have a race condition where a new request starts before this finally block?
-            // The new request sets loading=true.
-            // This finally sets loading=false.
-            // We should check if the signal is aborted?
-            if (!controller.signal.aborted) {
-                setIsTableLoading(false);
-            }
-        }
-    }, [projectId, tableId, tableName, toast]);
+            return response.json();
+        },
+        getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.nextCursorId : null,
+        enabled: !!tableId && !!tableName,
+        staleTime: 1000 * 60 * 5, // 5 minutes
+        refetchOnWindowFocus: false,
+    });
 
-    useEffect(() => {
-        if (tableId && tableName) {
-            fetchTableData(paginationModel);
+    const rows = useMemo(() => {
+        if (!infiniteData) return [];
+        return infiniteData.pages.flatMap((page) => page.rows);
+    }, [infiniteData]);
+
+    const filteredAndSortedRows = useMemo(() => {
+        let result = [...rows];
+
+        if (filterConfig && filterConfig.value !== '') {
+            result = result.filter(row => {
+                const val = String(row[filterConfig.field] || '').toLowerCase();
+                const search = filterConfig.value.toLowerCase();
+                if (filterConfig.operator === 'contains') return val.includes(search);
+                if (filterConfig.operator === 'equals') return val === search;
+                if (filterConfig.operator === 'starts_with') return val.startsWith(search);
+                if (filterConfig.operator === 'ends_with') return val.endsWith(search);
+                return true;
+            });
         }
-    }, [tableId, tableName, fetchTableData, paginationModel]);
+
+        if (sortConfig) {
+            result.sort((a, b) => {
+                const aVal = a[sortConfig.field];
+                const bVal = b[sortConfig.field];
+                if (aVal === bVal) return 0;
+                if (aVal === null || aVal === undefined) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (bVal === null || bVal === undefined) return sortConfig.direction === 'asc' ? 1 : -1;
+
+                const comparison = String(aVal).localeCompare(String(bVal), undefined, { numeric: true });
+                return sortConfig.direction === 'asc' ? comparison : -comparison;
+            });
+        }
+
+        return result;
+    }, [rows, sortConfig, filterConfig]);
+
+    const rowCount = infiniteData?.pages?.[0]?.totalRows || 0;
+
+
+    // Removed legacy fetchTableData and AbortControllers, useInfiniteQuery handles it
 
     useEffect(() => {
         async function fetchFkData() {
@@ -178,8 +201,11 @@ export function EditorClient({
                     const refTable = allTables.find(t => t.table_id === constraint.referenced_table_id);
                     if (refTable) {
                         try {
-                            const { rows } = await getTableData(projectId, refTable.table_name, 1, 1000); // Fetch up to 1000 rows for dropdown
-                            fkData[col.column_name] = rows;
+                            const res = await fetch(`/api/table-data?projectId=${projectId}&tableName=${refTable.table_name}&pageSize=1000`);
+                            if (res.ok) {
+                                const data = await res.json();
+                                fkData[col.column_name] = data.rows;
+                            }
                         } catch (error) {
                             console.error(`Failed to fetch data for FK column ${col.column_name}`, error);
                         }
@@ -191,13 +217,10 @@ export function EditorClient({
         fetchFkData();
     }, [initialColumns, constraints, allTables, projectId]);
 
-    const handlePaginationModelChange = (model: GridPaginationModel) => {
-        setPaginationModel(model);
-    };
-
     const refreshData = useCallback(() => {
-        fetchTableData(paginationModel);
-    }, [fetchTableData, paginationModel]);
+        // Force the infinite table cache to drop entirely and request page 1 again so new rows appear immediately
+        queryClient.invalidateQueries({ queryKey: ['table-data', projectId, tableId] });
+    }, [queryClient, projectId, tableId]);
 
     const handleDeleteSelectedRows = async () => {
         if (!projectId || !tableId || !tableName || selectionModel.length === 0) return;
@@ -215,13 +238,10 @@ export function EditorClient({
         setIsDeleting(false);
     };
 
-    const columns: GridColDef[] = useMemo(() => {
+    const columns: ColumnDef[] = useMemo(() => {
         return initialColumns.map(col => ({
             field: col.column_name,
             headerName: col.column_name,
-            minWidth: 150,
-            flex: 1,
-            sortable: false,
         }));
     }, [initialColumns]);
 
@@ -502,8 +522,70 @@ export function EditorClient({
                                     </AlertDialog>
                                 </div>
                                 <div className="flex items-center gap-2 ml-auto">
-                                    <Button variant="outline" size="sm"><Filter className="mr-2 h-4 w-4" /> Filter</Button>
-                                    <Button variant="outline" size="sm"><ArrowDownUp className="mr-2 h-4 w-4" /> Sort</Button>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button variant="outline" size="sm" className={filterConfig ? 'bg-primary/10 border-primary/20 text-primary' : ''}>
+                                                <Filter className="mr-2 h-4 w-4" /> Filter
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-80">
+                                            <div className="space-y-4">
+                                                <h4 className="font-medium leading-none">Filter Data</h4>
+                                                <div className="grid gap-2">
+                                                    <Select onValueChange={(v) => setFilterConfig(prev => ({ field: v, operator: prev?.operator || 'contains', value: prev?.value || '' }))} value={filterConfig?.field || ''}>
+                                                        <SelectTrigger><SelectValue placeholder="Select column" /></SelectTrigger>
+                                                        <SelectContent>
+                                                            {columns.map(c => <SelectItem key={c.field} value={c.field}>{c.headerName}</SelectItem>)}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <Select onValueChange={(v) => setFilterConfig(prev => ({ field: prev?.field || columns[0]?.field, operator: v, value: prev?.value || '' }))} value={filterConfig?.operator || 'contains'}>
+                                                        <SelectTrigger><SelectValue placeholder="Operator" /></SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="contains">Contains</SelectItem>
+                                                            <SelectItem value="equals">Equals</SelectItem>
+                                                            <SelectItem value="starts_with">Starts with</SelectItem>
+                                                            <SelectItem value="ends_with">Ends with</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <Input
+                                                        placeholder="Filter value..."
+                                                        value={filterConfig?.value || ''}
+                                                        onChange={(e) => setFilterConfig(prev => ({ field: prev?.field || columns[0]?.field, operator: prev?.operator || 'contains', value: e.target.value }))}
+                                                    />
+                                                    <Button variant="outline" size="sm" onClick={() => setFilterConfig(null)} className="w-full">Clear Filter</Button>
+                                                </div>
+                                            </div>
+                                        </PopoverContent>
+                                    </Popover>
+
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button variant="outline" size="sm" className={sortConfig ? 'bg-primary/10 border-primary/20 text-primary' : ''}>
+                                                <ArrowDownUp className="mr-2 h-4 w-4" /> Sort
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-80">
+                                            <div className="space-y-4">
+                                                <h4 className="font-medium leading-none">Sort Data</h4>
+                                                <div className="grid gap-2">
+                                                    <Select onValueChange={(v) => setSortConfig(prev => ({ field: v, direction: prev?.direction || 'asc' }))} value={sortConfig?.field || ''}>
+                                                        <SelectTrigger><SelectValue placeholder="Select column" /></SelectTrigger>
+                                                        <SelectContent>
+                                                            {columns.map(c => <SelectItem key={c.field} value={c.field}>{c.headerName}</SelectItem>)}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <Select onValueChange={(v: 'asc' | 'desc') => setSortConfig(prev => ({ field: prev?.field || columns[0]?.field, direction: v }))} value={sortConfig?.direction || 'asc'}>
+                                                        <SelectTrigger><SelectValue placeholder="Direction" /></SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="asc">Ascending (A-Z)</SelectItem>
+                                                            <SelectItem value="desc">Descending (Z-A)</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <Button variant="outline" size="sm" onClick={() => setSortConfig(null)} className="w-full">Clear Sort</Button>
+                                                </div>
+                                            </div>
+                                        </PopoverContent>
+                                    </Popover>
                                 </div>
                             </header>
 
@@ -513,14 +595,14 @@ export function EditorClient({
                                         <TabsTrigger value="data">Data</TabsTrigger>
                                         <TabsTrigger value="structure">Structure</TabsTrigger>
                                     </TabsList>
-                                    <TabsContent value="data" className="mt-4">
+                                    <TabsContent value="data" className="mt-6 flex-1 h-full min-h-0 relative">
                                         <DataTable
                                             columns={columns}
-                                            rows={rows}
-                                            rowCount={rowCount}
+                                            rows={filteredAndSortedRows}
                                             loading={isTableLoading}
-                                            paginationModel={paginationModel}
-                                            onPaginationModelChange={handlePaginationModelChange}
+                                            fetchNextPage={fetchNextPage}
+                                            isFetchingNextPage={isFetchingNextPage}
+                                            hasNextPage={hasNextPage}
                                             selectionModel={selectionModel}
                                             onRowSelectionModelChange={(newSelectionModel) => {
                                                 setSelectionModel(newSelectionModel);

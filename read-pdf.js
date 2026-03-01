@@ -1,0 +1,1 @@
+const fs = require('fs'); const pdf = require('pdf-parse'); const buffer = fs.readFileSync('C:/Users/sumit/Downloads/Flux-ServerBased-main/Flux-ServerBased-main/Flux-ServerBased-main/Fluxbase_Write_Speed_and_Table_Editor_Fix_Prompts.pdf'); pdf(buffer).then(data => console.log(data.text)).catch(console.error);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Area, AreaChart, Bar, BarChart, Line, LineChart, ResponsiveContainer } from "recharts";
+import { Area, AreaChart, Bar, BarChart, Line, LineChart, ResponsiveContainer, Tooltip } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface SparklineCardProps {
@@ -17,10 +17,16 @@ export function SparklineCard({ title, value, subtitle, type, color, data }: Spa
     return (
         <Card className="aspect-square flex flex-col justify-between relative overflow-hidden group border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md shadow-lg transition-colors hover:bg-zinc-900/60">
             {/* Background Sparkline layer */}
-            <div className="absolute inset-0 z-0 opacity-20 group-hover:opacity-40 transition-opacity duration-700 pointer-events-none pb-4">
+            <div className="absolute inset-0 z-0 opacity-40 hover:opacity-100 transition-opacity duration-700 pb-4">
                 <ResponsiveContainer width="100%" height="100%">
                     {type === "line" ? (
                         <LineChart data={data}>
+                            <Tooltip
+                                cursor={{ stroke: "rgba(255,255,255,0.1)", strokeWidth: 1, strokeDasharray: "4 4" }}
+                                contentStyle={{ backgroundColor: "#18181b", borderColor: "#27272a", borderRadius: "8px", color: "#fff" }}
+                                itemStyle={{ color: color }}
+                                labelStyle={{ display: "none" }}
+                            />
                             <Line
                                 type="monotone"
                                 dataKey="val"
@@ -32,6 +38,12 @@ export function SparklineCard({ title, value, subtitle, type, color, data }: Spa
                         </LineChart>
                     ) : type === "bar" ? (
                         <BarChart data={data} margin={{ top: 20, right: 0, left: 0, bottom: -10 }}>
+                            <Tooltip
+                                cursor={{ fill: "rgba(255,255,255,0.1)" }}
+                                contentStyle={{ backgroundColor: "#18181b", borderColor: "#27272a", borderRadius: "8px", color: "#fff" }}
+                                itemStyle={{ color: color }}
+                                labelStyle={{ display: "none" }}
+                            />
                             <Bar
                                 dataKey="val"
                                 fill={color}
@@ -41,6 +53,12 @@ export function SparklineCard({ title, value, subtitle, type, color, data }: Spa
                         </BarChart>
                     ) : (
                         <AreaChart data={data}>
+                            <Tooltip
+                                cursor={{ stroke: "rgba(255,255,255,0.1)", strokeWidth: 1, strokeDasharray: "4 4" }}
+                                contentStyle={{ backgroundColor: "#18181b", borderColor: "#27272a", borderRadius: "8px", color: "#fff" }}
+                                itemStyle={{ color: color }}
+                                labelStyle={{ display: "none" }}
+                            />
                             <defs>
                                 <linearGradient id={`color-${title.replace(/\s+/g, '')}`} x1="0" y1="0" x2="0" y2="1">
                                     <stop offset="5%" stopColor={color} stopOpacity={0.8} />
@@ -62,7 +80,7 @@ export function SparklineCard({ title, value, subtitle, type, color, data }: Spa
             </div>
 
             {/* Foreground Content */}
-            <div className="relative z-10 flex flex-col justify-between h-full p-6">
+            <div className="relative z-10 flex flex-col justify-between h-full p-6 pointer-events-none">
                 <CardHeader className="p-0 pb-2">
                     <CardTitle className="text-sm font-bold tracking-wider uppercase text-zinc-500 flex items-center gap-2">
                         {title}

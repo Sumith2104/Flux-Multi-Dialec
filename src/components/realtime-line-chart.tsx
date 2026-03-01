@@ -4,10 +4,11 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AnalyticsStats } from '@/hooks/use-realtime-analytics';
+import { useRealtimeHistory } from '@/hooks/use-realtime-history';
 import { Activity } from 'lucide-react';
 
 interface RealtimeLineChartProps {
-    currentStats: AnalyticsStats | null;
+    projectId: string;
 }
 
 interface DataPoint {
@@ -40,7 +41,9 @@ const renderCustomDot = (props: any) => {
     return <g key={`dot-${index}`} />;
 };
 
-export function RealtimeLineChart({ currentStats }: RealtimeLineChartProps) {
+export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
+    const historicalData = useRealtimeHistory(projectId);
+
     const [data, setData] = useState<DataPoint[]>(() => {
         const initialData: DataPoint[] = [];
         const now = Date.now();
@@ -62,78 +65,13 @@ export function RealtimeLineChart({ currentStats }: RealtimeLineChartProps) {
     });
     const [peakRPS, setPeakRPS] = useState(0);
 
-    const prevStatsRef = useRef<AnalyticsStats | null>(null);
-    const lastPushRef = useRef<number>(0);
-    const latestStatsRef = useRef(currentStats);
-
-    // Traffic momentum state for realistic mock generation
-    const trafficStateRef = useRef({ base: 30, trend: 0 });
-
+    // Sync chart instantly with the live WebSockets stream
     useEffect(() => {
-        latestStatsRef.current = currentStats;
-    }, [currentStats]);
-
-    useEffect(() => {
-        // Run once per minute
-        const interval = setInterval(() => {
-            const now = Date.now();
-
-            // Prevent duplicate executions
-            if (now - lastPushRef.current < 59000) return;
-            lastPushRef.current = now;
-
-            const date = new Date(now);
-            const timeLabel = date.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' });
-
-            const stats = latestStatsRef.current;
-            const prevStats = prevStatsRef.current;
-
-            let realRequests = 0;
-            let realApi = 0;
-            let realSql = 0;
-
-            if (stats && prevStats) {
-                realRequests = Math.max(0, stats.total_requests - prevStats.total_requests);
-                realApi = Math.max(0, stats.type_api_call - prevStats.type_api_call);
-                realSql = Math.max(0, stats.type_sql_execution - prevStats.type_sql_execution);
-            }
-
-            if (stats) {
-                prevStatsRef.current = { ...stats };
-            }
-
-            // Use strictly real data from Firestore DB
-            let displayRequests = Math.round(realRequests);
-            let displayApi = Math.round(realApi);
-            let displaySql = Math.round(realSql);
-
-            setPeakRPS(prev => Math.max(prev, displayRequests));
-
-            setData(prev => {
-                const prevPoint = prev.length > 0 ? prev[prev.length - 1] : null;
-                const newPoint: DataPoint = {
-                    timestamp: now,
-                    timeLabel,
-                    requests: displayRequests,
-                    api: displayApi,
-                    sql: displaySql,
-                    deltaRequests: prevPoint ? displayRequests - prevPoint.requests : 0,
-                    deltaApi: prevPoint ? displayApi - prevPoint.api : 0,
-                    deltaSql: prevPoint ? displaySql - prevPoint.sql : 0,
-                };
-
-                const newData = [...prev, newPoint];
-                // Keep exactly last 60 points
-                if (newData.length > 60) {
-                    return newData.slice(newData.length - 60);
-                }
-                return newData;
-            });
-
-        }, 60000); // 1 minute interval
-
-        return () => clearInterval(interval);
-    }, []);
+        if (historicalData.length > 0) {
+            setData(historicalData);
+            setPeakRPS(prev => Math.max(prev, ...historicalData.map(d => d.requests)));
+        }
+    }, [historicalData]);
 
     const averages = useMemo(() => {
         if (data.length === 0) return { requests: 0, api: 0, sql: 0 };

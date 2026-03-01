@@ -109,6 +109,9 @@ export async function POST(request: Request) {
                 // BUT user asked for "checks". Let's inform them.
                 return NextResponse.json({ error: 'Account already exists. Please Log In.' }, { status: 409 });
             }
+            if (dbError.message.includes('RESOURCE_EXHAUSTED')) {
+                return NextResponse.json({ error: 'Firebase Quota Exceeded. Please upgrade to the Blaze plan.' }, { status: 429 });
+            }
 
             // Fallback for other DB errors
             throw dbError;

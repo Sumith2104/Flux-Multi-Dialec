@@ -83,9 +83,9 @@ export function SqlEditor({ query, setQuery, onRun, isGenerating, results }: Sql
                     </Button>
                 </div>
             </CardHeader>
-            <CardContent className="p-0 flex-grow relative bg-[#0d0d0d]">
+            <CardContent className="p-0 flex-grow relative bg-background">
                 {/* Line numbers container */}
-                <div className="absolute left-0 top-0 bottom-0 w-10 border-r border-white/5 bg-[#0d0d0d] flex flex-col items-end pr-2 py-4 text-xs font-mono text-muted-foreground/30 select-none pointer-events-none z-10">
+                <div className="absolute left-0 top-0 bottom-0 w-10 border-r border-border bg-background flex flex-col items-end pr-2 py-4 text-xs font-mono text-muted-foreground/30 select-none pointer-events-none z-10">
                     {Array.from({ length: 50 }).map((_, i) => <div key={i} className="leading-6">{i + 1}</div>)}
                 </div>
 

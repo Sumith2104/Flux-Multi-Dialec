@@ -24,6 +24,11 @@ service cloud.firestore {
       match /stats_history/{historyId} {
         allow read: if request.auth != null; 
       }
+      
+      // Minute Real-time Buckets
+      match /stats_realtime/{realtimeId} {
+        allow read: if request.auth != null;
+      }
     }
   }
 }

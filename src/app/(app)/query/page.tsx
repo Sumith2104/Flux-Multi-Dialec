@@ -35,13 +35,20 @@ export default function QueryPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    const saved = localStorage.getItem('queryHistory');
+    if (!project?.project_id) {
+      setHistory([]);
+      return;
+    }
+    const saved = localStorage.getItem(`queryHistory_${project.project_id}`);
     if (saved) {
       try { setHistory(JSON.parse(saved)); } catch { }
+    } else {
+      setHistory([]);
     }
-  }, []);
+  }, [project?.project_id]);
 
   const addToHistory = (queryStr: string, success: boolean) => {
+    if (!project?.project_id) return;
     const newItem: HistoryItem = {
       id: crypto.randomUUID(),
       query: queryStr,
@@ -51,7 +58,7 @@ export default function QueryPage() {
 
     setHistory(prev => {
       const newHistory = [newItem, ...prev].slice(0, 50);
-      localStorage.setItem('queryHistory', JSON.stringify(newHistory));
+      localStorage.setItem(`queryHistory_${project.project_id}`, JSON.stringify(newHistory));
       return newHistory;
     });
   };
@@ -62,6 +69,7 @@ export default function QueryPage() {
   // ...
 
   const clearHistory = async () => {
+    if (!project?.project_id) return;
     const confirmed = await showConfirm('Are you sure you want to clear all query history?', {
       title: 'Clear History',
       variant: 'destructive',
@@ -70,7 +78,7 @@ export default function QueryPage() {
 
     if (confirmed) {
       setHistory([]);
-      localStorage.removeItem('queryHistory');
+      localStorage.removeItem(`queryHistory_${project.project_id}`);
     }
   };
 
@@ -182,7 +190,7 @@ export default function QueryPage() {
           <ResizablePanelGroup direction="horizontal" className="h-full w-full">
 
             {/* LEFT: SQL Editor */}
-            <ResizablePanel defaultSize={70} minSize={40} className="flex flex-col border-r bg-[#1e1e2e]/40">
+            <ResizablePanel defaultSize={70} minSize={40} className="flex flex-col border-r bg-muted/5">
               <div className="h-10 flex items-center justify-between px-3 border-b bg-muted/20 shrink-0">
                 <div className="flex items-center gap-2">
                   <Database className="h-3.5 w-3.5 text-muted-foreground" />
@@ -206,86 +214,95 @@ export default function QueryPage() {
             <ResizableHandle withHandle />
 
             {/* RIGHT: History & AI */}
-            <ResizablePanel defaultSize={30} minSize={20} className="flex flex-col bg-muted/5 min-w-[250px]">
-              <Tabs defaultValue="history" className="h-full flex flex-col">
-                <div className="h-10 border-b flex items-center px-2 bg-transparent shrink-0">
+            <ResizablePanel
+              defaultSize={30}
+              minSize={20}
+              className="flex flex-col min-h-0 bg-muted/5 min-w-[250px]"
+            >
+              <Tabs
+                defaultValue="history"
+                className="flex flex-col h-full min-h-0"
+              >
+                {/* Tabs Header */}
+                <div className="h-10 border-b flex items-center px-2 shrink-0">
                   <TabsList className="bg-transparent p-0 h-full gap-2">
-                    <TabsTrigger value="history" className="h-8 text-xs px-3 data-[state=active]:bg-muted data-[state=active]:shadow-none rounded-md border border-transparent data-[state=active]:border-border/50">
-                      <HistoryIcon className="h-3.5 w-3.5 mr-1.5" /> History
+                    <TabsTrigger value="history" className="h-8 text-xs px-3">
+                      <HistoryIcon className="h-3.5 w-3.5 mr-1.5" />
+                      History
                     </TabsTrigger>
-                    <TabsTrigger value="ai" className="h-8 text-xs px-3 data-[state=active]:bg-muted data-[state=active]:shadow-none rounded-md border border-transparent data-[state=active]:border-border/50">
-                      <Sparkles className="h-3.5 w-3.5 mr-1.5" /> AI Assistant
+
+                    <TabsTrigger value="ai" className="h-8 text-xs px-3">
+                      <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                      AI Assistant
                     </TabsTrigger>
                   </TabsList>
                 </div>
 
-                <TabsContent value="history" className="flex-grow overflow-hidden m-0 p-0 relative">
-                  <div className="absolute inset-0 overflow-hidden flex flex-col">
-                    <div className="p-2 border-b flex justify-between items-center bg-muted/10 shrink-0">
-                      <span className="text-[10px] uppercase font-semibold text-muted-foreground">Recent Queries</span>
-                      <Button variant="ghost" size="icon" className="h-5 w-5 hover:text-destructive" onClick={clearHistory} title="Clear">
-                        <Trash2 className="h-3 w-3" />
+                {/* HISTORY CONTENT */}
+                <TabsContent
+                  value="history"
+                  className="flex-1 min-h-0 m-0 p-0 data-[state=active]:flex data-[state=active]:flex-col"
+                >
+                  <div className="flex items-center justify-between p-2 border-b shrink-0">
+                    <h3 className="text-xs font-medium px-2 py-1 text-muted-foreground">Recent Queries</h3>
+                    {history.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-[10px] text-destructive hover:bg-destructive/10 hover:text-destructive px-2"
+                        onClick={clearHistory}
+                      >
+                        <Trash2 className="h-3 w-3 mr-1" /> Clear
                       </Button>
-                    </div>
-                    <div className="flex-grow overflow-auto">
-                      <QueryHistory
-                        history={history}
-                        onSelectQuery={setQuery}
-                        onClearHistory={clearHistory}
-                      />
-                      {history.length === 0 && (
-                        <div className="p-8 text-center text-muted-foreground text-xs opacity-60">
-                          No history yet.
-                        </div>
-                      )}
-                    </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-h-0 p-2">
+                    <QueryHistory
+                      history={history}
+                      onSelectQuery={setQuery}
+                      onClearHistory={clearHistory}
+                    />
                   </div>
                 </TabsContent>
 
-                <TabsContent value="ai" className="flex-grow overflow-hidden m-0 p-4 relative flex flex-col gap-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <Bot className="h-4 w-4 text-primary" />
-                      AI Query Assistant
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Describe what data you want to retrieve. The AI will generate the SQL query for you.
-                    </p>
-                  </div>
-
-                  <div className="flex-grow bg-card border rounded-md p-2 shadow-sm focus-within:ring-1 focus-within:ring-ring">
+                {/* AI CONTENT */}
+                <TabsContent
+                  value="ai"
+                  className="flex-1 min-h-0 p-4"
+                >
+                  <div className="h-full flex flex-col gap-4">
                     <Textarea
-                      placeholder="e.g. Show me all users who signed up last week..."
-                      className="h-full min-h-[100px] border-0 focus-visible:ring-0 resize-none bg-transparent p-1 text-sm"
+                      placeholder="Describe your query..."
+                      className="flex-1 resize-none"
                       value={aiInput}
                       onChange={(e) => setAiInput(e.target.value)}
                     />
-                  </div>
 
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex-1"
-                      onClick={handleGenerateSQL}
-                      disabled={isGeneratingAI || !aiInput.trim()}
-                    >
-                      {isGeneratingAI ? <Sparkles className="h-3.5 w-3.5 mr-2 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 mr-2" />}
-                      Generate
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="flex-1"
-                      onClick={handleDirectExecute}
-                      disabled={isGeneratingAI || !aiInput.trim()}
-                    >
-                      {isGeneratingAI ? <Sparkles className="h-3.5 w-3.5 mr-2 animate-spin" /> : <Play className="h-3.5 w-3.5 mr-2" />}
-                      Execute
-                    </Button>
-                  </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={handleGenerateSQL}
+                        disabled={isGeneratingAI || !aiInput.trim()}
+                      >
+                        {isGeneratingAI ? <Sparkles className="h-3.5 w-3.5 mr-2 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 mr-2" />}
+                        Generate
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="flex-1"
+                        onClick={handleDirectExecute}
+                        disabled={isGeneratingAI || !aiInput.trim()}
+                      >
+                        {isGeneratingAI ? <Sparkles className="h-3.5 w-3.5 mr-2 animate-spin" /> : <Play className="h-3.5 w-3.5 mr-2" />}
+                        Execute
+                      </Button>
+                    </div>
 
-                  <div className="text-[10px] text-muted-foreground text-center opacity-70">
-                    AI can make mistakes. Review the generated query before running.
+                    <div className="text-[10px] text-muted-foreground text-center opacity-70">
+                      AI can make mistakes. Review the generated query before running.
+                    </div>
                   </div>
                 </TabsContent>
               </Tabs>

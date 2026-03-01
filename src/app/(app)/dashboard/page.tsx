@@ -149,7 +149,7 @@ export default function DashboardPage() {
                         value={formatSize(analytics?.totalSize ?? 0)}
                         subtitle={`${tables.length} Tables, ${analytics?.totalRows ?? 0} Rows`}
                         type="area"
-                        color="#f97316"
+                        color="hsl(var(--primary))"
                         data={Array(24).fill({ val: analytics?.totalSize ?? 0 })} // Flatline for storage since it's cumulative and not tracked hourly
                     />
                 </div>
@@ -158,7 +158,7 @@ export default function DashboardPage() {
                 <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-7">
                     {/* Line Chart takes up more space */}
                     <div className="col-span-4">
-                        <RealtimeLineChart currentStats={realtimeStats} />
+                        <RealtimeLineChart projectId={selectedProject.project_id} />
                     </div>
 
                     {/* Storage Chart takes up less */}

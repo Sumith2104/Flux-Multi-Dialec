@@ -4,6 +4,8 @@ import { adminDb } from '@/lib/firebase-admin';
 import { getCurrentUserId } from '@/lib/auth';
 import { FieldValue } from 'firebase-admin/firestore';
 import { validateRow } from '@/lib/validation';
+import { fireWebhooks } from '@/lib/webhooks';
+import { unstable_cache, revalidateTag } from 'next/cache';
 
 // --- Types ---
 
@@ -312,38 +314,37 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
     const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    const query = adminDb
-        .collection('users').doc(userId)
-        .collection('projects').doc(projectId)
-        .collection('tables').doc(tableId)
-        .collection('columns');
+    const getCached = unstable_cache(
+        async () => {
+            const query = adminDb
+                .collection('users').doc(userId)
+                .collection('projects').doc(projectId)
+                .collection('tables').doc(tableId)
+                .collection('columns');
 
-    console.log('[DEBUG] getColumnsForTable Path:', query.path);
+            const snapshot = await query.get();
+            return snapshot.docs.map(doc => ({
+                column_id: doc.id,
+                ...doc.data()
+            } as Column)).sort((a, b) => {
+                // Both have created_at: sort by time
+                if (a.created_at && b.created_at) {
+                    return a.created_at.localeCompare(b.created_at);
+                }
+                // Only a has created_at: a is newer, so b (older) comes first
+                if (a.created_at && !b.created_at) return 1;
+                // Only b has created_at: b is newer, so a (older) comes first
+                if (!a.created_at && b.created_at) return -1;
 
-    const snapshot = await query.get();
-    console.log('[DEBUG] getColumnsForTable Snapshot Size:', snapshot.size);
-    if (snapshot.size > 0) {
-        console.log('[DEBUG] First Doc Data:', JSON.stringify(snapshot.docs[0].data(), null, 2));
-    } else {
-        console.log('[DEBUG] Snapshot is EMPTY');
-    }
+                // Neither has created_at: sort by name for consistency
+                return a.column_name.localeCompare(b.column_name);
+            });
+        },
+        [`columns-${projectId}-${tableId}`],
+        { tags: [`columns-${projectId}-${tableId}`], revalidate: 3600 }
+    );
 
-    return snapshot.docs.map(doc => ({
-        column_id: doc.id,
-        ...doc.data()
-    } as Column)).sort((a, b) => {
-        // Both have created_at: sort by time
-        if (a.created_at && b.created_at) {
-            return a.created_at.localeCompare(b.created_at);
-        }
-        // Only a has created_at: a is newer, so b (older) comes first
-        if (a.created_at && !b.created_at) return 1;
-        // Only b has created_at: b is newer, so a (older) comes first
-        if (!a.created_at && b.created_at) return -1;
-
-        // Neither has created_at: sort by name for consistency
-        return a.column_name.localeCompare(b.column_name);
-    });
+    return getCached();
 }
 
 export async function addColumn(projectId: string, tableId: string, column: Omit<Column, 'column_id' | 'table_id'>, explicitUserId?: string) {
@@ -369,6 +370,7 @@ export async function addColumn(projectId: string, tableId: string, column: Omit
 
     const { invalidateTableCache } = await import('@/lib/cache');
     invalidateTableCache(projectId, tableId);
+    revalidateTag(`columns-${projectId}-${tableId}`);
 }
 
 export async function deleteColumn(projectId: string, tableId: string, columnId: string) {
@@ -384,6 +386,7 @@ export async function deleteColumn(projectId: string, tableId: string, columnId:
 
     const { invalidateTableCache } = await import('@/lib/cache');
     invalidateTableCache(projectId, tableId);
+    revalidateTag(`columns-${projectId}-${tableId}`);
 }
 
 export async function updateColumn(projectId: string, tableId: string, columnId: string, updates: Partial<Column>) {
@@ -399,6 +402,7 @@ export async function updateColumn(projectId: string, tableId: string, columnId:
 
     const { invalidateTableCache } = await import('@/lib/cache');
     invalidateTableCache(projectId, tableId);
+    revalidateTag(`columns-${projectId}-${tableId}`);
 }
 
 
@@ -466,61 +470,77 @@ export async function deleteConstraint(projectId: string, constraintId: string) 
 
 // Removed FS/Path imports for CSV
 
-export async function getTableData(projectId: string, tableName: string, page: number = 1, pageSize: number = 100, explicitUserId?: string) {
+export async function getTableData(
+    projectId: string,
+    tableName: string,
+    page: number = 0,
+    pageSize: number = 50,
+    explicitUserId?: string,
+    cursorId?: string // Support for genuine NoSQL Infinite Scroll
+) {
     const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
-
 
     const tables = await getTablesForProject(projectId, userId);
     const table = tables.find(t => t.table_name === tableName);
     if (!table) throw new Error(`Table ${tableName} not found`);
 
-    const { getCachedTableRows, setCachedTableRows } = await import('@/lib/cache');
-    const cachedRows = getCachedTableRows(projectId, table.table_id);
+    // 1. Hard Pagination Guard (Firestore Cost Protection)
+    const MAX_PAGE_SIZE = 100;
+    const safeLimit = Math.min(Math.max(1, pageSize), MAX_PAGE_SIZE);
 
-    let rows: any[] = [];
-    if (cachedRows) {
-        rows = cachedRows;
-        // Optionally apply pageSize limits if it was used for UI
-        if (pageSize > 0 && page > 0) {
-            const startIndex = (page - 1) * pageSize;
-            rows = rows.slice(startIndex, startIndex + pageSize);
-        }
-    } else {
-        const snapshot = await adminDb
+    let query: any = adminDb
+        .collection('users').doc(userId)
+        .collection('projects').doc(projectId)
+        .collection('tables').doc(table.table_id)
+        .collection('rows')
+        .orderBy('__name__', 'asc') // Deterministic indexing
+        .limit(safeLimit);
+
+    // 2. Cursor Pagination Logic vs Offset
+    if (cursorId) {
+        // True NoSQL pagination
+        const cursorDoc = await adminDb
             .collection('users').doc(userId)
             .collection('projects').doc(projectId)
             .collection('tables').doc(table.table_id)
-            .collection('rows')
-            .limit(pageSize > 0 ? pageSize : 100)
-            .get();
+            .collection('rows').doc(cursorId).get();
 
-        const allRows = snapshot.docs.map(doc => {
-            const data = doc.data();
-            return {
-                ...data,
-                id: data.id, // Preserve the 'id' column from data if it exists
-                _id: doc.id  // Expose Firestore document ID as _id
-            };
-        });
-
-        setCachedTableRows(projectId, table.table_id, allRows);
-
-        if (pageSize > 0 && page > 0) {
-            const startIndex = (page - 1) * pageSize;
-            rows = allRows.slice(startIndex, startIndex + pageSize);
-        } else {
-            rows = allRows;
+        if (cursorDoc.exists) {
+            query = query.startAfter(cursorDoc);
         }
-    }
-    const totalRows = rows.length; // Approximate for now, real total count requires aggregation query
-
-    if (rows.length > 0) {
-        console.log('[DEBUG] getTableData First Row Keys:', Object.keys(rows[0]));
-        console.log('[DEBUG] getTableData First Row:', JSON.stringify(rows[0]));
+    } else {
+        // Fallback offset logic for old UI elements
+        const offset = page * safeLimit;
+        query = query.offset(offset);
     }
 
-    return { rows, totalRows };
+    const snapshot = await query.get();
+
+    const rows = snapshot.docs.map((doc: any) => {
+        const data = doc.data();
+        return {
+            ...data,
+            id: data.id || doc.id,
+            _id: doc.id
+        };
+    });
+
+    // Extract next cursor for infinite scroll
+    const lastVisible = snapshot.docs[snapshot.docs.length - 1];
+    const nextCursorId = lastVisible ? lastVisible.id : null;
+    const hasMore = rows.length === safeLimit;
+
+    // Fast count for backwards compatibility
+    const offsetEstimate = page * safeLimit;
+    const approximateTotalRows = hasMore ? offsetEstimate + safeLimit + 1 : offsetEstimate + rows.length;
+
+    return {
+        rows,
+        totalRows: approximateTotalRows,
+        nextCursorId,
+        hasMore
+    };
 }
 
 export async function insertRow(projectId: string, tableId: string, rowData: Record<string, any>) {
@@ -554,12 +574,18 @@ export async function insertRow(projectId: string, tableId: string, rowData: Rec
     }
 
 
-    // Use specific ID if provided, otherwise auto-ID
     if (rowData.id) {
-        await rowsRef.doc(rowData.id).set(rowData);
+        await rowsRef.doc(String(rowData.id)).set(rowData);
     } else {
-        await rowsRef.add(rowData);
+        const newDocRef = await rowsRef.add(rowData);
+        rowData = { ...rowData, id: newDocRef.id };
     }
+
+    // --- Webhook Dispatch ---
+    // Fire & Forget so UI isn't blocked by slow responding webhooks
+    fireWebhooks(projectId, userId, tableId, 'row.inserted', rowData).catch(err => {
+        console.error(`[Webhook Fire Error] ${tableId} insert:`, err);
+    });
 
     const { invalidateTableCache } = await import('@/lib/cache');
     invalidateTableCache(projectId, tableId);
@@ -605,13 +631,30 @@ export async function updateRow(projectId: string, tableId: string, rowId: strin
         }
     }
 
-    const rowRef = adminDb
+    const rowsRef = adminDb
         .collection('users').doc(userId)
         .collection('projects').doc(projectId)
         .collection('tables').doc(tableId)
-        .collection('rows').doc(rowId);
+        .collection('rows');
 
-    await rowRef.update(updates);
+    // Fetch old data for webhook payload comparison
+    const oldDataSnap = await rowsRef.doc(String(rowId)).get();
+    if (!oldDataSnap.exists) {
+        throw new Error(`Row with id '${rowId}' not found.`);
+    }
+    const oldData = oldDataSnap.data();
+
+    // Remove undefined values from updates to prevent Firestore errors
+    const cleanedUpdates = Object.fromEntries(
+        Object.entries(updates).filter(([_, v]) => v !== undefined)
+    );
+
+    await rowsRef.doc(String(rowId)).update(cleanedUpdates);
+
+    // --- Webhook Dispatch ---
+    fireWebhooks(projectId, userId, tableId, 'row.updated', updates, oldData).catch(err => {
+        console.error(`[Webhook Fire Error] ${tableId} update:`, err);
+    });
 
     const { invalidateTableCache } = await import('@/lib/cache');
     invalidateTableCache(projectId, tableId);
@@ -621,13 +664,22 @@ export async function deleteRow(projectId: string, tableId: string, rowId: strin
     const userId = await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    const rowRef = adminDb
+    const rowsRef = adminDb
         .collection('users').doc(userId)
         .collection('projects').doc(projectId)
         .collection('tables').doc(tableId)
-        .collection('rows').doc(rowId);
+        .collection('rows');
 
-    await rowRef.delete();
+    // Fetch old data for webhook BEFORE deleting
+    const oldDataSnap = await rowsRef.doc(String(rowId)).get();
+    const oldData = oldDataSnap.exists ? oldDataSnap.data() : undefined;
+
+    await rowsRef.doc(String(rowId)).delete();
+
+    // --- Webhook Dispatch ---
+    fireWebhooks(projectId, userId, tableId, 'row.deleted', undefined, oldData).catch(err => {
+        console.error(`[Webhook Fire Error] ${tableId} delete:`, err);
+    });
 
     const { invalidateTableCache } = await import('@/lib/cache');
     invalidateTableCache(projectId, tableId);
