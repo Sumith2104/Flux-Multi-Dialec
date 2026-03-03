@@ -1,12 +1,77 @@
 "use server";
 
-import { adminAuth } from "@/lib/firebase-admin";
+import { getPgPool } from "@/lib/pg";
+import { createSessionCookie } from "@/lib/auth";
 import { sendEmail } from "@/lib/email";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 
-// In-memory store for demo purposes (replace with Redis/DB in production)
-const otpStore = new Map<string, string>();
+import { OAuth2Client } from 'google-auth-library';
+
+const googleClient = new OAuth2Client(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID);
+
+export async function googleAuthAction(accessToken: string) {
+  if (!accessToken) return { error: "No token provided" };
+
+  try {
+    // We use the access_token securely fetched by the frontend to get user info from Google APIs
+    const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!userInfoResponse.ok) {
+      return { error: "Failed to fetch user profile from Google" };
+    }
+
+    const payload = await userInfoResponse.json();
+    if (!payload || !payload.email) {
+      return { error: "Invalid Google payload" };
+    }
+
+    const email = payload.email;
+    const name = payload.name || "Google User";
+    const photoUrl = payload.picture || null;
+
+    const pool = getPgPool();
+
+    // 1. Check if user exists
+    const existing = await pool.query('SELECT id FROM fluxbase_global.users WHERE email = $1', [email]);
+    let userId = '';
+
+    if (existing.rows.length > 0) {
+      // User exists, just log them in
+      userId = existing.rows[0].id;
+    } else {
+      // 2. New User - Auto Signup
+      userId = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO fluxbase_global.users (id, email, display_name, photo_url) 
+                 VALUES ($1, $2, $3, $4)`,
+        [userId, email, name, photoUrl]
+      );
+
+      // Send Welcome Email (async, non-blocking)
+      sendEmail(
+        email,
+        "Welcome to Fluxbase via Google! 🚀",
+        `<div style="font-family: sans-serif; color: #333;">
+                    <h1>Welcome to Fluxbase, ${name}!</h1>
+                    <p>We're thrilled to have you on board via Google SSO.</p>
+                </div>`
+      ).catch(console.error);
+    }
+
+    // 3. Create active session cookie securely
+    await createSessionCookie(userId);
+    return { success: true };
+
+  } catch (error: any) {
+    console.error("Google Auth Error:", error);
+    return { error: "Authentication failed." };
+  }
+}
 
 export async function signupAction(formData: FormData) {
   const email = formData.get("email") as string;
@@ -18,63 +83,83 @@ export async function signupAction(formData: FormData) {
   }
 
   try {
-    // Create user in Firebase
-    const user = await adminAuth.createUser({
+    // Create user natively in AWS Postgres
+    const userId = crypto.randomUUID();
+    const pool = getPgPool();
+
+    // Check if email exists
+    const existing = await pool.query('SELECT id FROM fluxbase_global.users WHERE email = $1', [email]);
+    if (existing.rows.length > 0) {
+      return { error: "Email already exists" };
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(password, salt);
+
+    await pool.query(
+      'INSERT INTO fluxbase_global.users (id, email, display_name, password_hash) VALUES ($1, $2, $3, $4)',
+      [userId, email, name, passwordHash]
+    );
+
+    await createSessionCookie(userId);
+
+    // Send Welcome Email (async, non-blocking)
+    sendEmail(
       email,
-      password,
-      displayName: name,
-    });
+      "Welcome to Fluxbase! 🚀",
+      `<div style="font-family: sans-serif; color: #333;">
+          <h1>Welcome to Fluxbase, ${name || 'Explorer'}!</h1>
+          <p>We're thrilled to have you on board.</p>
+      </div>`
+    ).catch(console.error);
 
-    // Generate OTP
-    const otp = Math.floor(1000 + Math.random() * 9000).toString();
-    otpStore.set(user.uid, otp);
-
-    // Send OTP email
-    await sendEmail({
-      to: email,
-      subject: "Verify your email",
-      html: `<p>Your verification code is: <strong>${otp}</strong></p>`,
-    });
-
-    return { success: true, userId: user.uid, otp }; // Returning OTP for demo
+    return { success: true };
   } catch (error: any) {
     return { error: error.message };
   }
 }
 
-export async function verifyOtpAction(formData: FormData) {
-  const userId = formData.get("userId") as string;
-  const otp = formData.get("otp") as string;
+export async function loginAction(formData: FormData) {
+  const email = formData.get("email") as string;
+  const password = formData.get("password") as string;
 
-  if (!userId || !otp) {
+  if (!email || !password) {
     return { error: "Missing fields" };
   }
 
-  const storedOtp = otpStore.get(userId);
-
-  if (storedOtp !== otp) {
-    return { error: "Invalid OTP" };
-  }
-
   try {
-    // Create session cookie
-    const customToken = await adminAuth.createCustomToken(userId);
+    const pool = getPgPool();
+    const result = await pool.query('SELECT id, password_hash FROM fluxbase_global.users WHERE email = $1', [email]);
 
-    // Note: In a real app we'd exchange customToken for session cookie via client SDK
-    // or here if we use a different flow. For this demo, we'll set a simple cookie
-    // or assume the client will handle the token.
-    // However, the client code expects this action to handle "login".
+    if (result.rows.length === 0) {
+      return { error: "No account found with this email." };
+    }
 
-    // Let's create a session cookie if using session management
-    // For simplicity in this "actions" flow, let's just return success
-    // and let the client redirect.
+    const user = result.rows[0];
 
-    // Mocking session set for now since we are server-side
-    (await cookies()).set("session", "demo_session_" + userId, { httpOnly: true });
+    if (!user.password_hash) {
+      return { error: "Invalid account configuration (No password)." };
+    }
 
-    otpStore.delete(userId);
+    const isMatch = await bcrypt.compare(password, user.password_hash);
+
+    if (!isMatch) {
+      return { error: "Invalid password." };
+    }
+
+    await createSessionCookie(user.id);
     return { success: true };
   } catch (error: any) {
-    return { error: error.message };
+    console.error("Native Login Error:", error);
+    return { error: "Authentication failed. Please try again." };
+  }
+}
+
+export async function selectProjectAction(formData: FormData) {
+  const project = formData.get("project") as string;
+  if (project) {
+    (await cookies()).set("selectedProject", project, { path: "/", httpOnly: false });
+  } else {
+    (await cookies()).set("selectedProject", "", { path: "/", maxAge: 0 });
   }
 }

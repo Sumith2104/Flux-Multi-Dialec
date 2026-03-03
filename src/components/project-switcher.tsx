@@ -37,8 +37,20 @@ export function ProjectSwitcher({
 
   const handleSelect = (project: Project | null) => {
     setProject(project);
-    // The main app layout will handle the redirect automatically
-    // based on the context change, so we remove the router.push calls.
+
+    // Explicitly navigate so Server Components see the new ?projectId
+    if (project) {
+      // If we want to stay on the same page but swap projects:
+      const currentPath = window.location.pathname;
+      if (currentPath.startsWith('/editor') || currentPath.startsWith('/database') || currentPath.startsWith('/api') || currentPath.startsWith('/query')) {
+        router.push(`${currentPath}?projectId=${project.project_id}`);
+      } else {
+        // Fallback to routing to their dashboard overview
+        router.push('/dashboard');
+      }
+    } else {
+      router.push('/dashboard/projects');
+    }
   };
 
   return (
@@ -69,9 +81,12 @@ export function ProjectSwitcher({
               onSelect={() => handleSelect(project)}
             >
               <div className="flex items-center w-full">
-                <span className="flex-1 truncate">{project.display_name}</span>
+                <span className="flex-1 truncate pr-2">{project.display_name}</span>
+                <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${project.dialect === 'mysql' ? 'bg-blue-500/10 text-blue-500' : 'bg-primary/10 text-primary'}`}>
+                  {project.dialect === 'mysql' ? 'MySQL' : 'PG'}
+                </span>
                 {selectedProject?.project_id === project.project_id && (
-                  <Check className="ml-2 h-4 w-4" />
+                  <Check className="ml-2 h-4 w-4 shrink-0" />
                 )}
               </div>
             </DropdownMenuItem>

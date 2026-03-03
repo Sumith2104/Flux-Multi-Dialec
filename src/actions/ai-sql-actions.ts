@@ -26,11 +26,36 @@ export async function generateSQLAction(projectId: string, userInput: string) {
             schemaDescription = "No tables exist in the project yet. The user may want to create a new table. Please generate a CREATE TABLE statement if requested.";
         }
 
-        // 3. Call Genkit Flow
+        // 3. Get the project dialect, default to PostgreSQL
+        const { getProjectById } = await import('@/lib/data');
+        const { getCurrentUserId } = await import('@/lib/auth');
+        const userId = await getCurrentUserId();
+
+        let dialect = 'PostgreSQL';
+        if (userId) {
+            const project = await getProjectById(projectId, userId);
+            if (project && project.dialect) {
+                const fetchedDialect = project.dialect.toLowerCase();
+                if (fetchedDialect === 'postgresql') dialect = 'PostgreSQL';
+                else if (fetchedDialect === 'mysql') dialect = 'MySQL';
+                else dialect = project.dialect;
+            }
+        }
+
+        // 4. Call Genkit Flow
         const result = await generateSQL({
             userInput,
-            tableSchema: schemaDescription
+            tableSchema: schemaDescription,
+            dialect
         });
+
+        // Ensure no markdown blocks snuck in
+        let finalQuery = result.sqlQuery || '';
+        if (finalQuery.startsWith('\`\`\`sql')) {
+            finalQuery = finalQuery.replace(/^\`\`\`sql\n?/, '').replace(/\n?\`\`\`$/, '');
+        } else if (finalQuery.startsWith('\`\`\`')) {
+            finalQuery = finalQuery.replace(/^\`\`\`\n?/, '').replace(/\n?\`\`\`$/, '');
+        }
 
         return { success: true, query: result.sqlQuery };
 

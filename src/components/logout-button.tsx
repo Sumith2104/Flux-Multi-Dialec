@@ -1,8 +1,6 @@
 'use client';
 
 import { Button } from "@/components/ui/button";
-import { auth } from "@/lib/firebase";
-import { signOut } from "firebase/auth";
 import { logoutAction } from "@/app/(app)/actions";
 import { useRouter } from "next/navigation";
 import { HTMLAttributes } from "react";
@@ -22,14 +20,11 @@ export function LogoutButton({ className, variant = 'outline', size = 'sm', chil
     const router = useRouter();
 
     const handleLogout = async () => {
-        // 1. Client-side sign out (Crucial for "Switch Account")
-        await signOut(auth);
-
-        // 2. Server-side cookie clear & redirect
-        // Next.js redirect() throws a NEXT_REDIRECT error under the hood.
-        // We MUST NOT wrap this in a generic try/catch block, or else 
-        // the client absorbs the redirect signal and crashes the app instead.
+        // We only need to clear the Server-side cookie.
+        // Google OAuth and Native JWT do not maintain complex client-side states.
         await logoutAction();
+        router.push('/');
+        router.refresh();
     };
 
     return (

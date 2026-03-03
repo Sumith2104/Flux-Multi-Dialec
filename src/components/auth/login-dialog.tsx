@@ -9,9 +9,9 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { auth } from "@/lib/firebase";
-import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword } from "firebase/auth";
 import { Github } from "lucide-react";
+import { loginAction, googleAuthAction } from "@/app/actions";
+import { useGoogleLogin } from '@react-oauth/google';
 
 interface LoginDialogProps {
     open: boolean;
@@ -26,39 +26,37 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
     const [isLoading, setIsLoading] = useState(false);
     const [showForgotPass, setShowForgotPass] = useState(false);
 
-    async function handleGoogleLogin() {
-        setIsLoading(true);
-        try {
-            const provider = new GoogleAuthProvider();
-            provider.setCustomParameters({ prompt: 'select_account' });
-            const result = await signInWithPopup(auth, provider);
-            const idToken = await result.user.getIdToken();
+    const googleLoginFlow = useGoogleLogin({
+        onSuccess: async (tokenResponse) => {
+            try {
+                setIsLoading(true);
+                const result = await googleAuthAction(tokenResponse.access_token);
 
-            const response = await fetch('/api/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ idToken, type: 'login' }),
-            });
-
-            const data = await response.json();
-
-            if (response.ok) {
-                onOpenChange(false);
-                router.push('/dashboard/projects');
-                router.refresh();
-            } else {
-                throw new Error(data.error || 'Failed to create session');
+                if (result.success) {
+                    onOpenChange(false);
+                    router.push('/dashboard/projects');
+                    router.refresh();
+                } else {
+                    throw new Error(result.error || 'Failed to authenticate with Google');
+                }
+            } catch (error: any) {
+                toast({
+                    variant: 'destructive',
+                    title: 'Google Login Failed',
+                    description: error.message,
+                });
+            } finally {
+                setIsLoading(false);
             }
-        } catch (error: any) {
+        },
+        onError: (errorResponse) => {
             toast({
                 variant: 'destructive',
-                title: 'Authentication Failed',
-                description: error.message,
+                title: 'Google Login Cancelled',
+                description: 'The popup was closed or authentication failed.',
             });
-        } finally {
-            setIsLoading(false);
         }
-    }
+    });
 
     async function handleEmailLogin(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
@@ -68,33 +66,20 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
         const password = formData.get('password') as string;
 
         try {
-            const result = await signInWithEmailAndPassword(auth, email, password);
-            const idToken = await result.user.getIdToken();
+            const result = await loginAction(formData);
 
-            const response = await fetch('/api/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ idToken, type: 'login' }),
-            });
-
-            const data = await response.json();
-
-            if (response.ok) {
+            if (result.success) {
                 onOpenChange(false);
                 router.push('/dashboard/projects');
                 router.refresh();
             } else {
-                throw new Error(data.error || 'Failed to create session');
+                throw new Error(result.error || 'Failed to create session');
             }
         } catch (error: any) {
-            let message = error.message;
-            if (error.code === 'auth/user-not-found') message = 'No account found with this email.';
-            if (error.code === 'auth/wrong-password') message = 'Invalid password.';
-
             toast({
                 variant: 'destructive',
                 title: 'Login Failed',
-                description: message,
+                description: error.message,
             });
         } finally {
             setIsLoading(false);
@@ -168,7 +153,7 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
                 ) : (
                     <div className="space-y-4 pt-4">
                         <div className="grid grid-cols-2 gap-4">
-                            <Button variant="outline" onClick={handleGoogleLogin} disabled={isLoading} className="border-white/10 hover:bg-white/5 hover:text-white transition-colors">
+                            <Button variant="outline" type="button" onClick={() => googleLoginFlow()} disabled={isLoading} className="border-white/10 hover:bg-white/5 hover:text-white transition-colors">
                                 <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
                                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
                                     <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
@@ -177,7 +162,7 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
                                 </svg>
                                 Google
                             </Button>
-                            <Button variant="outline" disabled={isLoading} className="border-white/10 hover:bg-white/5 hover:text-white transition-colors">
+                            <Button variant="outline" type="button" disabled={isLoading} className="border-white/10 hover:bg-white/5 hover:text-white transition-colors">
                                 <Github className="mr-2 h-4 w-4" />
                                 GitHub
                             </Button>

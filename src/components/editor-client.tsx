@@ -135,7 +135,7 @@ export function EditorClient({
         queryFn: async ({ pageParam }) => {
             if (!tableId || !tableName) return { rows: [], nextCursorId: null, hasMore: false };
             let url = `/api/table-data?projectId=${projectId}&tableName=${tableName}&pageSize=50`;
-            if (pageParam) url += `&cursorId=${pageParam}`;
+            if (pageParam) url += `&page=${pageParam}`;
 
             const response = await fetch(url);
             if (!response.ok) throw new Error('Failed to fetch table data');
@@ -387,9 +387,8 @@ export function EditorClient({
                         <h2 className="text-lg font-semibold">Table Editor</h2>
                     </div>
                     <div className="p-2">
-                        <Button variant="outline" className="w-full justify-start text-muted-foreground">
-                            <span className="truncate">schema <strong>public</strong></span>
-                            <ChevronDown className="ml-auto h-4 w-4" />
+                        <Button variant="outline" className="w-full justify-start text-muted-foreground pointer-events-none">
+                            <span className="truncate">Database <strong>{dialect.toUpperCase()}</strong></span>
                         </Button>
                     </div>
                     <div className="p-2 relative">

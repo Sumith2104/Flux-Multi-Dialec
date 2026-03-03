@@ -1,6 +1,6 @@
-
 'use client';
 
+import React, { useRef } from 'react';
 import { Play, Save, Download, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
@@ -10,12 +10,35 @@ import { Card, CardContent, CardHeader } from './ui/card';
 interface SqlEditorProps {
     query: string;
     setQuery: (query: string) => void;
-    onRun: () => void;
+    onRun: (queryOverride?: string) => void;
     isGenerating: boolean;
     results: any | null;
 }
 
 export function SqlEditor({ query, setQuery, onRun, isGenerating, results }: SqlEditorProps) {
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    const handleRunClick = () => {
+        if (textareaRef.current) {
+            const start = textareaRef.current.selectionStart;
+            const end = textareaRef.current.selectionEnd;
+            if (start !== end) {
+                const selectedText = query.substring(start, end).trim();
+                if (selectedText) {
+                    onRun(selectedText);
+                    return;
+                }
+            }
+        }
+        onRun();
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            e.preventDefault();
+            handleRunClick();
+        }
+    };
 
     const handleExport = () => {
         if (!results || !results.rows || results.rows.length === 0) {
@@ -53,10 +76,13 @@ export function SqlEditor({ query, setQuery, onRun, isGenerating, results }: Sql
                     {/* Placeholder for future toolbar items or empty */}
                 </div>
                 <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-muted-foreground mr-2 hidden sm:inline-block">
+                        Cmd/Ctrl + Enter to run
+                    </span>
                     <Button
                         size="sm"
                         variant="default"
-                        onClick={onRun}
+                        onClick={handleRunClick}
                         disabled={isGenerating}
                         className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white border-green-700 font-medium px-3"
                     >
@@ -90,11 +116,13 @@ export function SqlEditor({ query, setQuery, onRun, isGenerating, results }: Sql
                 </div>
 
                 <Textarea
+                    ref={textareaRef}
                     placeholder="-- Enter your SQL query here..."
                     className="h-full w-full border-none resize-none focus-visible:ring-0 focus-visible:ring-offset-0 font-mono text-sm leading-6 pl-12 pt-4 bg-transparent text-gray-300 placeholder:text-gray-700"
                     value={query}
                     spellCheck={false}
                     onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={handleKeyDown}
                 />
             </CardContent>
         </Card>

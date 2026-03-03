@@ -1,8 +1,8 @@
 'use server';
 
-import { adminDb } from '@/lib/firebase-admin';
+import { getPgPool } from '@/lib/pg';
 import { getCurrentUserId } from '@/lib/auth';
-import { FieldValue } from 'firebase-admin/firestore';
+import crypto from 'crypto';
 import { validateRow } from '@/lib/validation';
 import { fireWebhooks } from '@/lib/webhooks';
 import { unstable_cache, revalidateTag } from 'next/cache';
@@ -67,11 +67,19 @@ export async function getProjectsForCurrentUser(): Promise<Project[]> {
     if (!userId) return [];
 
     try {
-        const snapshot = await adminDb.collection('users').doc(userId).collection('projects').get();
-        return snapshot.docs.map(doc => ({
-            project_id: doc.id,
-            ...doc.data()
-        } as Project));
+        const pool = getPgPool();
+        const result = await pool.query(
+            'SELECT project_id, display_name, created_at, dialect, timezone FROM fluxbase_global.projects WHERE user_id = $1 ORDER BY created_at DESC',
+            [userId]
+        );
+        return result.rows.map(row => ({
+            project_id: row.project_id,
+            user_id: userId,
+            display_name: row.display_name,
+            created_at: row.created_at.toISOString(),
+            dialect: row.dialect,
+            timezone: row.timezone
+        }));
     } catch (error) {
         console.error("Error fetching projects:", error);
         return [];
@@ -83,9 +91,22 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
     if (!userId) return null;
 
     try {
-        const doc = await adminDb.collection('users').doc(userId).collection('projects').doc(projectId).get();
-        if (!doc.exists) return null;
-        return { project_id: doc.id, ...doc.data() } as Project;
+        const pool = getPgPool();
+        const result = await pool.query(
+            'SELECT project_id, display_name, created_at, dialect, timezone FROM fluxbase_global.projects WHERE project_id = $1 AND user_id = $2',
+            [projectId, userId]
+        );
+        if (result.rows.length === 0) return null;
+
+        const row = result.rows[0];
+        return {
+            project_id: row.project_id,
+            user_id: userId,
+            display_name: row.display_name,
+            created_at: row.created_at.toISOString(),
+            dialect: row.dialect,
+            timezone: row.timezone
+        };
     } catch (error) {
         console.error("Error fetching project:", error);
         return null;
@@ -96,48 +117,55 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
 // --- User Profile ---
 
 export async function getUserProfile(userId: string) {
-    const userDoc = await adminDb.collection('users').doc(userId).get();
-    return userDoc.exists ? userDoc.data() : null;
+    try {
+        const pool = getPgPool();
+        const result = await pool.query('SELECT id, email, display_name, photo_url, created_at FROM fluxbase_global.users WHERE id = $1', [userId]);
+        return result.rows.length > 0 ? result.rows[0] : null;
+    } catch (error) {
+        console.error("Error fetching user profile:", error);
+        return null;
+    }
 }
 
 export async function createUserProfile(userId: string, email: string, displayName?: string, photoURL?: string) {
-    const userRef = adminDb.collection('users').doc(userId);
-    const userDoc = await userRef.get();
-
-    if (userDoc.exists) {
-        throw new Error("User profile already exists.");
+    // Mostly handled by native signupAction now, but here for compatibility
+    const pool = getPgPool();
+    try {
+        await pool.query(
+            'INSERT INTO fluxbase_global.users (id, email, display_name, photo_url) VALUES ($1, $2, $3, $4) ON CONFLICT (email) DO NOTHING',
+            [userId, email, displayName || email.split('@')[0], photoURL || null]
+        );
+    } catch (error) {
+        console.error("createUserProfile error:", error);
+        throw error;
     }
-
-    await userRef.set({
-        email,
-        display_name: displayName || email.split('@')[0],
-        photo_url: photoURL || null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-    });
 }
 
 export async function updateUserProfile(userId: string, displayName?: string, photoURL?: string) {
-    const userRef = adminDb.collection('users').doc(userId);
-    const userDoc = await userRef.get();
+    const pool = getPgPool();
+    let updates = [];
+    let values = [userId];
+    let idx = 2;
 
-    if (!userDoc.exists) {
-        throw new Error("User profile not found. Please sign up first.");
+    if (displayName) {
+        updates.push(`display_name = $${idx++}`);
+        values.push(displayName);
+    }
+    if (photoURL) {
+        updates.push(`photo_url = $${idx++}`);
+        values.push(photoURL);
     }
 
-    const updates: any = { updated_at: new Date().toISOString() };
-    if (displayName) updates.display_name = displayName;
-    if (photoURL) updates.photo_url = photoURL;
-
-    await userRef.update(updates);
+    if (updates.length > 0) {
+        updates.push(`updated_at = CURRENT_TIMESTAMP`);
+        const query = `UPDATE fluxbase_global.users SET ${updates.join(', ')} WHERE id = $1`;
+        await pool.query(query, values);
+    }
 }
 
-// Deprecated: kept for backward compatibility if needed, but prefers explicit flow
 export async function ensureUserProfile(userId: string, email: string, displayName?: string, photoURL?: string) {
-    const userRef = adminDb.collection('users').doc(userId);
-    const userDoc = await userRef.get();
-
-    if (!userDoc.exists) {
+    const profile = await getUserProfile(userId);
+    if (!profile) {
         await createUserProfile(userId, email, displayName, photoURL);
     } else {
         await updateUserProfile(userId, displayName, photoURL);
@@ -149,24 +177,48 @@ export async function createProject(name: string, description: string, dialect: 
     const userId = await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    const newProjectRef = adminDb.collection('users').doc(userId).collection('projects').doc();
+    const pool = getPgPool();
 
-    // Check limit...
-    const projectsSnapshot = await adminDb.collection('users').doc(userId).collection('projects').get();
-    if (projectsSnapshot.size >= 5) {
+    // Check limit
+    const projectsSnapshot = await pool.query('SELECT COUNT(*) as count FROM fluxbase_global.projects WHERE user_id = $1', [userId]);
+    const count = parseInt(projectsSnapshot.rows[0].count);
+    if (count >= 5) {
         throw new Error("Project limit reached (Max 5). Delete a project to create a new one.");
     }
 
+    const projectId = crypto.randomUUID().replace(/-/g, '').substring(0, 16);
+    const finalTimezone = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    await pool.query(
+        'INSERT INTO fluxbase_global.projects (project_id, user_id, display_name, dialect, timezone) VALUES ($1, $2, $3, $4, $5)',
+        [projectId, userId, name, dialect, finalTimezone]
+    );
+
     const project: Project = {
-        project_id: newProjectRef.id,
+        project_id: projectId,
         user_id: userId,
         display_name: name,
         created_at: new Date().toISOString(),
         dialect: dialect as any,
-        timezone: timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
+        timezone: finalTimezone
     };
 
-    await newProjectRef.set(project);
+    // [AWS NATIVE MIGRATION] Automatically provision a dedicated Schema/DB for this tenant.
+    try {
+        if (dialect.toLowerCase() === 'mysql') {
+            const { getMysqlPool } = await import('@/lib/mysql');
+            const mysqlPool = getMysqlPool();
+            await mysqlPool.query(`CREATE DATABASE \`project_${projectId}\``);
+            console.log(`[Fluxbase Native] Successfully provisioned MySQL DB: project_${projectId}`);
+        } else {
+            // Default PostgreSQL Schema approach
+            await pool.query(`CREATE SCHEMA IF NOT EXISTS "project_${projectId}"`);
+            console.log(`[Fluxbase Native] Successfully provisioned PG Schema: project_${projectId}`);
+        }
+    } catch (dbError) {
+        console.error(`[Fluxbase Native] Failed to provision native environment for project_${projectId}`, dbError);
+    }
+
     return project;
 }
 
@@ -174,38 +226,33 @@ export async function resetProjectData(projectId: string) {
     const userId = await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    const projectRef = adminDb.collection('users').doc(userId).collection('projects').doc(projectId);
+    const pool = getPgPool();
+    const project = await getProjectById(projectId, userId);
+    if (!project) throw new Error("Project not found");
 
-    // We need to delete all tables and their subcollections (columns, rows).
-    // recursiveDelete is the best way if available on the backend instance.
-    // Since we are using firebase-admin, we can try to use it.
-    // However, to be safe and granular (and avoid deleting the project doc itself if not careful), 
-    // we might want to iterate. But recursiveDelete on the 'tables' collection is cleanest.
-
-    const tablesRef = projectRef.collection('tables');
-    const constraintsRef = projectRef.collection('constraints');
-
-    // Delete all tables (and their subcollections like rows/columns)
-    await adminDb.recursiveDelete(tablesRef);
-
-    // Delete all constraints
-    await adminDb.recursiveDelete(constraintsRef);
-
-    // Note: This does NOT delete the project document itself, just the collections.
+    if (project.dialect?.toLowerCase() === 'mysql') {
+        const { getMysqlPool } = await import('@/lib/mysql');
+        const mysqlPool = getMysqlPool();
+        await mysqlPool.query(`DROP DATABASE IF EXISTS \`project_${projectId}\``);
+        await mysqlPool.query(`CREATE DATABASE \`project_${projectId}\``);
+    } else {
+        const schemaName = `project_${projectId}`;
+        // Drop and recreate schema to wipe all data natively
+        await pool.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+        await pool.query(`CREATE SCHEMA "${schemaName}"`);
+    }
 }
 
 export async function updateProjectTimezone(projectId: string, timezone: string): Promise<boolean> {
     const userId = await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    const projectRef = adminDb.collection('users').doc(userId).collection('projects').doc(projectId);
-    const doc = await projectRef.get();
+    const pool = getPgPool();
+    await pool.query(
+        'UPDATE fluxbase_global.projects SET timezone = $1 WHERE project_id = $2 AND user_id = $3',
+        [timezone, projectId, userId]
+    );
 
-    if (!doc.exists) {
-        throw new Error("Project not found");
-    }
-
-    await projectRef.update({ timezone, updated_at: new Date().toISOString() });
     return true;
 }
 
@@ -213,18 +260,22 @@ export async function deleteProject(projectId: string) {
     const userId = await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    const projectRef = adminDb
-        .collection('users').doc(userId)
-        .collection('projects').doc(projectId);
+    const pool = getPgPool();
+    const project = await getProjectById(projectId, userId);
+    if (!project) throw new Error("Project not found or access denied.");
 
-    // Verify ownership
-    const doc = await projectRef.get();
-    if (!doc.exists) {
-        throw new Error("Project not found or access denied.");
+    if (project.dialect?.toLowerCase() === 'mysql') {
+        const { getMysqlPool } = await import('@/lib/mysql');
+        const mysqlPool = getMysqlPool();
+        await mysqlPool.query(`DROP DATABASE IF EXISTS \`project_${projectId}\``);
+    } else {
+        // Drop the tenant's isolated schema
+        const schemaName = `project_${projectId}`;
+        await pool.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
     }
 
-    // Recursive delete handles all subcollections (tables, rows, constraints, columns)
-    await adminDb.recursiveDelete(projectRef);
+    // Remove the catalog entry
+    await pool.query('DELETE FROM fluxbase_global.projects WHERE project_id = $1 AND user_id = $2', [projectId, userId]);
 }
 
 // --- Tables ---
@@ -233,75 +284,159 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
     const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    const snapshot = await adminDb
-        .collection('users').doc(userId)
-        .collection('projects').doc(projectId)
-        .collection('tables')
-        .get();
+    const project = await getProjectById(projectId, userId);
+    if (!project) throw new Error("Project not found or access denied.");
 
-    return snapshot.docs.map(doc => ({
-        table_id: doc.id,
-        ...doc.data()
-    } as Table));
+    try {
+        if (project.dialect?.toLowerCase() === 'mysql') {
+            const { getMysqlPool } = await import('@/lib/mysql');
+            const mysqlPool = getMysqlPool();
+            const dbName = `project_${projectId}`;
+
+            const [rows]: any = await mysqlPool.query(`
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = ? AND table_type = 'BASE TABLE'
+            `, [dbName]);
+
+            return rows.map((row: any) => ({
+                table_id: row.TABLE_NAME || row.table_name,
+                project_id: projectId,
+                table_name: row.TABLE_NAME || row.table_name,
+                description: "Managed by Fluxbase Native MySQL",
+                created_at: project.created_at,
+                updated_at: new Date().toISOString()
+            }));
+
+        } else {
+            const pool = getPgPool();
+            const schemaName = `project_${projectId}`;
+
+            const result = await pool.query(`
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = $1 AND table_type = 'BASE TABLE'
+            `, [schemaName]);
+
+            return result.rows.map(row => ({
+                table_id: row.table_name,
+                project_id: projectId,
+                table_name: row.table_name,
+                description: "Managed by Fluxbase Native Postgres",
+                created_at: project.created_at,
+                updated_at: new Date().toISOString()
+            }));
+        }
+    } catch (error) {
+        console.error("Error fetching tables from AWS:", error);
+        return [];
+    }
 }
 
 export async function createTable(projectId: string, tableName: string, description: string, columns: Column[], explicitUserId?: string): Promise<Table> {
     const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    const projectRef = adminDb.collection('users').doc(userId).collection('projects').doc(projectId);
-    const tableRef = projectRef.collection('tables').doc();
+    const project = await getProjectById(projectId, userId);
+    if (!project) throw new Error("Project not found");
 
-    const table: Table = {
-        table_id: tableRef.id,
-        project_id: projectId,
-        table_name: tableName,
-        description,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-    };
+    const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
 
-    const batch = adminDb.batch();
+    if (project.dialect?.toLowerCase() === 'mysql') {
+        const { getMysqlPool } = await import('@/lib/mysql');
+        const mysqlPool = getMysqlPool();
+        const dbName = `project_${projectId}`;
 
-    // 1. Create Table Doc
-    batch.set(tableRef, table);
+        let columnDefs = [];
+        for (const col of columns) {
+            let type = col.data_type.toUpperCase();
+            if (type === 'NUMBER') type = 'DOUBLE';
+            else if (type === 'VARCHAR') type = 'VARCHAR(255)';
+            else if (type === 'BOOLEAN') type = 'TINYINT(1)';
 
-    // 2. Create Column Docs (Strict Schema)
-    const columnsRef = tableRef.collection('columns');
-    console.log('[DEBUG] createTable Columns Path:', columnsRef.path);
-    for (const col of columns) {
-        const colDoc = columnsRef.doc(); // Auto ID
-        const colData: any = {
-            ...col,
-            column_id: colDoc.id,
-            table_id: tableRef.id,
-            created_at: new Date().toISOString()
-        };
-        // Firestore doesn't like undefined
-        Object.keys(colData).forEach(key => colData[key] === undefined && delete colData[key]);
+            let def = `\`${col.column_name}\` ${type}`;
 
-        batch.set(colDoc, colData);
+            if (col.is_primary_key) {
+                if (type.includes('VARCHAR')) def = `\`${col.column_name}\` VARCHAR(255) PRIMARY KEY`;
+                else def += ' PRIMARY KEY';
+            } else if (!col.is_nullable) {
+                def += ' NOT NULL';
+            }
+
+            if (col.default_value) {
+                if (col.default_value.includes('now()')) def += ' DEFAULT CURRENT_TIMESTAMP';
+                else if (col.default_value.includes('uuid()')) def += ' DEFAULT (UUID())';
+                else def += ` DEFAULT '${col.default_value}'`;
+            }
+            columnDefs.push(def);
+        }
+
+        const ddl = `CREATE TABLE \`${dbName}\`.\`${safeTableName}\` (${columnDefs.join(', ')})`;
+        await mysqlPool.query(ddl);
+
+    } else {
+        const pool = getPgPool();
+        const schemaName = `project_${projectId}`;
+
+        let columnDefs = [];
+        for (const col of columns) {
+            let type = col.data_type.toUpperCase();
+            if (type === 'NUMBER') type = 'NUMERIC';
+            else if (type === 'VARCHAR') type = 'VARCHAR(255)';
+
+            let def = `"${col.column_name}" ${type}`;
+
+            if (col.is_primary_key) {
+                if (type === 'VARCHAR(255)') def = `"${col.column_name}" VARCHAR(128) PRIMARY KEY`;
+                else def += ' PRIMARY KEY';
+            } else if (!col.is_nullable) {
+                def += ' NOT NULL';
+            }
+
+            if (col.default_value) {
+                if (col.default_value.includes('now()')) def += ' DEFAULT CURRENT_TIMESTAMP';
+                else if (col.default_value.includes('uuid()')) def += ' DEFAULT gen_random_uuid()';
+                else def += ` DEFAULT '${col.default_value}'`;
+            }
+            columnDefs.push(def);
+        }
+
+        const ddl = `CREATE TABLE "${schemaName}"."${safeTableName}" (${columnDefs.join(', ')})`;
+        await pool.query(ddl);
     }
 
-    await batch.commit();
-    return table;
+    const { invalidateTableCache } = await import('@/lib/cache');
+    invalidateTableCache(projectId, safeTableName);
+
+    return {
+        table_id: safeTableName,
+        project_id: projectId,
+        table_name: safeTableName,
+        description,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+    };
 }
 
 export async function deleteTable(projectId: string, tableId: string, explicitUserId?: string) {
     const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    // Note: Firestore requires deleting subcollections recursively.
-    // adminDb.recursiveDelete is available in Admin SDK but here we might need to be careful.
-    // For simplicity in Phase 2, we just delete the document reference.
-    // In a real app, use recursiveDelete.
+    const project = await getProjectById(projectId, userId);
+    if (!project) throw new Error("Project not found");
 
-    const tableRef = adminDb
-        .collection('users').doc(userId)
-        .collection('projects').doc(projectId)
-        .collection('tables').doc(tableId);
+    const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
 
-    await adminDb.recursiveDelete(tableRef);
+    if (project.dialect?.toLowerCase() === 'mysql') {
+        const { getMysqlPool } = await import('@/lib/mysql');
+        const mysqlPool = getMysqlPool();
+        const dbName = `project_${projectId}`;
+        await mysqlPool.query(`DROP TABLE IF EXISTS \`${dbName}\`.\`${safeTableName}\``);
+    } else {
+        const pool = getPgPool();
+        const schemaName = `project_${projectId}`;
+        await pool.query(`DROP TABLE IF EXISTS "${schemaName}"."${safeTableName}" CASCADE`);
+    }
 
     const { invalidateTableCache } = await import('@/lib/cache');
     invalidateTableCache(projectId, tableId);
@@ -314,59 +449,130 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
     const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    const getCached = unstable_cache(
-        async () => {
-            const query = adminDb
-                .collection('users').doc(userId)
-                .collection('projects').doc(projectId)
-                .collection('tables').doc(tableId)
-                .collection('columns');
+    const project = await getProjectById(projectId, userId);
+    if (!project) throw new Error("Project not found");
 
-            const snapshot = await query.get();
-            return snapshot.docs.map(doc => ({
-                column_id: doc.id,
-                ...doc.data()
-            } as Column)).sort((a, b) => {
-                // Both have created_at: sort by time
-                if (a.created_at && b.created_at) {
-                    return a.created_at.localeCompare(b.created_at);
-                }
-                // Only a has created_at: a is newer, so b (older) comes first
-                if (a.created_at && !b.created_at) return 1;
-                // Only b has created_at: b is newer, so a (older) comes first
-                if (!a.created_at && b.created_at) return -1;
+    const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
 
-                // Neither has created_at: sort by name for consistency
-                return a.column_name.localeCompare(b.column_name);
-            });
-        },
-        [`columns-${projectId}-${tableId}`],
-        { tags: [`columns-${projectId}-${tableId}`], revalidate: 3600 }
-    );
+    try {
+        if (project.dialect?.toLowerCase() === 'mysql') {
+            const { getMysqlPool } = await import('@/lib/mysql');
+            const mysqlPool = getMysqlPool();
+            const dbName = `project_${projectId}`;
 
-    return getCached();
+            const [result]: any = await mysqlPool.query(`
+                SELECT 
+                    COLUMN_NAME as column_name, 
+                    DATA_TYPE as data_type, 
+                    IS_NULLABLE as is_nullable, 
+                    COLUMN_DEFAULT as column_default,
+                    CASE WHEN COLUMN_KEY = 'PRI' THEN true ELSE false END as is_primary_key
+                FROM information_schema.columns 
+                WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+                ORDER BY ORDINAL_POSITION
+            `, [dbName, safeTableName]);
+
+            return result.map((row: any) => ({
+                column_id: row.column_name,
+                table_id: safeTableName,
+                column_name: row.column_name,
+                data_type: row.data_type,
+                is_nullable: row.is_nullable === 'YES',
+                is_primary_key: row.is_primary_key === 1 || row.is_primary_key === true,
+                default_value: row.column_default,
+                created_at: new Date().toISOString()
+            }));
+
+        } else {
+            const pool = getPgPool();
+            const schemaName = `project_${projectId}`;
+
+            // Fetch columns and identify primary keys
+            const result = await pool.query(`
+                SELECT 
+                    c.column_name, 
+                    c.data_type, 
+                    c.is_nullable, 
+                    c.column_default,
+                    (
+                        SELECT count(*) > 0
+                        FROM information_schema.key_column_usage kcu
+                        JOIN information_schema.table_constraints tc 
+                            ON kcu.constraint_name = tc.constraint_name
+                        WHERE tc.constraint_type = 'PRIMARY KEY' 
+                            AND kcu.table_schema = c.table_schema 
+                            AND kcu.table_name = c.table_name 
+                            AND kcu.column_name = c.column_name
+                    ) as is_primary_key
+                FROM information_schema.columns c
+                WHERE c.table_schema = $1 AND c.table_name = $2
+                ORDER BY c.ordinal_position
+            `, [schemaName, safeTableName]);
+
+            return result.rows.map(row => ({
+                column_id: row.column_name, // natively, name is ID
+                table_id: safeTableName,
+                column_name: row.column_name,
+                data_type: row.data_type as any,
+                is_nullable: row.is_nullable === 'YES',
+                is_primary_key: row.is_primary_key,
+                default_value: row.column_default,
+                created_at: new Date().toISOString()
+            }));
+        }
+    } catch (error) {
+        console.error("Native Get Columns Error:", error);
+        return [];
+    }
 }
 
 export async function addColumn(projectId: string, tableId: string, column: Omit<Column, 'column_id' | 'table_id'>, explicitUserId?: string) {
     const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    const columnsRef = adminDb
-        .collection('users').doc(userId)
-        .collection('projects').doc(projectId)
-        .collection('tables').doc(tableId)
-        .collection('columns');
+    const project = await getProjectById(projectId, userId);
+    if (!project) throw new Error("Project not found");
 
-    const colDoc = columnsRef.doc();
-    const colData: any = {
-        ...column,
-        column_id: colDoc.id,
-        table_id: tableId,
-        created_at: new Date().toISOString()
-    };
-    Object.keys(colData).forEach(key => colData[key] === undefined && delete colData[key]);
+    const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
 
-    await colDoc.set(colData);
+    if (project.dialect?.toLowerCase() === 'mysql') {
+        const { getMysqlPool } = await import('@/lib/mysql');
+        const mysqlPool = getMysqlPool();
+        const dbName = `project_${projectId}`;
+
+        let type = column.data_type.toUpperCase();
+        if (type === 'NUMBER') type = 'DOUBLE';
+        else if (type === 'VARCHAR') type = 'VARCHAR(255)';
+        else if (type === 'BOOLEAN') type = 'TINYINT(1)';
+
+        let def = `ADD COLUMN \`${column.column_name}\` ${type}`;
+        if (!column.is_nullable && !column.is_primary_key) def += ' NOT NULL';
+        if (column.default_value) {
+            if (column.default_value.includes('now()')) def += ' DEFAULT CURRENT_TIMESTAMP';
+            else if (column.default_value.includes('uuid()')) def += ' DEFAULT (UUID())';
+            else def += ` DEFAULT '${column.default_value}'`;
+        }
+
+        await mysqlPool.query(`ALTER TABLE \`${dbName}\`.\`${safeTableName}\` ${def}`);
+
+    } else {
+        const pool = getPgPool();
+        const schemaName = `project_${projectId}`;
+
+        let type = column.data_type.toUpperCase();
+        if (type === 'NUMBER') type = 'NUMERIC';
+        else if (type === 'VARCHAR') type = 'VARCHAR(255)';
+
+        let def = `ADD COLUMN "${column.column_name}" ${type}`;
+        if (!column.is_nullable && !column.is_primary_key) def += ' NOT NULL';
+        if (column.default_value) {
+            if (column.default_value.includes('now()')) def += ' DEFAULT CURRENT_TIMESTAMP';
+            else if (column.default_value.includes('uuid()')) def += ' DEFAULT gen_random_uuid()';
+            else def += ` DEFAULT '${column.default_value}'`;
+        }
+
+        await pool.query(`ALTER TABLE "${schemaName}"."${safeTableName}" ${def}`);
+    }
 
     const { invalidateTableCache } = await import('@/lib/cache');
     invalidateTableCache(projectId, tableId);
@@ -377,12 +583,22 @@ export async function deleteColumn(projectId: string, tableId: string, columnId:
     const userId = await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    await adminDb
-        .collection('users').doc(userId)
-        .collection('projects').doc(projectId)
-        .collection('tables').doc(tableId)
-        .collection('columns').doc(columnId)
-        .delete();
+    const project = await getProjectById(projectId, userId);
+    if (!project) throw new Error("Project not found");
+
+    const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
+    const safeColName = columnId.replace(/[^a-zA-Z0-9_]/g, '');
+
+    if (project.dialect?.toLowerCase() === 'mysql') {
+        const { getMysqlPool } = await import('@/lib/mysql');
+        const mysqlPool = getMysqlPool();
+        const dbName = `project_${projectId}`;
+        await mysqlPool.query(`ALTER TABLE \`${dbName}\`.\`${safeTableName}\` DROP COLUMN \`${safeColName}\``);
+    } else {
+        const pool = getPgPool();
+        const schemaName = `project_${projectId}`;
+        await pool.query(`ALTER TABLE "${schemaName}"."${safeTableName}" DROP COLUMN "${safeColName}" CASCADE`);
+    }
 
     const { invalidateTableCache } = await import('@/lib/cache');
     invalidateTableCache(projectId, tableId);
@@ -393,12 +609,52 @@ export async function updateColumn(projectId: string, tableId: string, columnId:
     const userId = await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    await adminDb
-        .collection('users').doc(userId)
-        .collection('projects').doc(projectId)
-        .collection('tables').doc(tableId)
-        .collection('columns').doc(columnId)
-        .update(updates);
+    const project = await getProjectById(projectId, userId);
+    if (!project) throw new Error("Project not found");
+    const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
+    const safeColName = columnId.replace(/[^a-zA-Z0-9_]/g, '');
+
+    if (project.dialect?.toLowerCase() === 'mysql') {
+        const { getMysqlPool } = await import('@/lib/mysql');
+        const mysqlPool = getMysqlPool();
+        const dbName = `project_${projectId}`;
+
+        if (updates.column_name && updates.column_name !== columnId) {
+            const newName = updates.column_name.replace(/[^a-zA-Z0-9_]/g, '');
+            // MySQL requires specifying the type again when renaming, but for simplicity we'll just rename
+            await mysqlPool.query(`ALTER TABLE \`${dbName}\`.\`${safeTableName}\` RENAME COLUMN \`${safeColName}\` TO \`${newName}\``);
+        }
+
+        if (updates.data_type) {
+            let type = updates.data_type.toUpperCase();
+            if (type === 'NUMBER') type = 'DOUBLE';
+            else if (type === 'VARCHAR') type = 'VARCHAR(255)';
+            else if (type === 'BOOLEAN') type = 'TINYINT(1)';
+
+            // Note: IF renamed above, safeColName variable might not perfectly align in one transaction, but assuming sequential for now or only one update at a time from frontend.
+            const targetCol = (updates.column_name && updates.column_name !== columnId) ? updates.column_name.replace(/[^a-zA-Z0-9_]/g, '') : safeColName;
+            await mysqlPool.query(`ALTER TABLE \`${dbName}\`.\`${safeTableName}\` MODIFY COLUMN \`${targetCol}\` ${type}`);
+        }
+
+    } else {
+        const pool = getPgPool();
+        const schemaName = `project_${projectId}`;
+
+        // Changing column types/names natively with ALTER TABLE
+        if (updates.column_name && updates.column_name !== columnId) {
+            const newName = updates.column_name.replace(/[^a-zA-Z0-9_]/g, '');
+            await pool.query(`ALTER TABLE "${schemaName}"."${safeTableName}" RENAME COLUMN "${safeColName}" TO "${newName}"`);
+        }
+
+        if (updates.data_type) {
+            let type = updates.data_type.toUpperCase();
+            if (type === 'NUMBER') type = 'NUMERIC';
+            else if (type === 'VARCHAR') type = 'VARCHAR(255)';
+
+            const targetCol = (updates.column_name && updates.column_name !== columnId) ? updates.column_name.replace(/[^a-zA-Z0-9_]/g, '') : safeColName;
+            await pool.query(`ALTER TABLE "${schemaName}"."${safeTableName}" ALTER COLUMN "${targetCol}" TYPE ${type} USING "${targetCol}"::${type}`);
+        }
+    }
 
     const { invalidateTableCache } = await import('@/lib/cache');
     invalidateTableCache(projectId, tableId);
@@ -412,52 +668,220 @@ export async function getConstraintsForProject(projectId: string): Promise<Const
     const userId = await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    // Constraints are stored under project/constraints subcollection
-    const snapshot = await adminDb
-        .collection('users').doc(userId)
-        .collection('projects').doc(projectId)
-        .collection('constraints')
-        .get();
+    const project = await getProjectById(projectId, userId);
+    if (!project) throw new Error("Project not found");
 
-    return snapshot.docs.map(doc => ({
-        constraint_id: doc.id,
-        ...doc.data()
-    } as Constraint));
+    try {
+        if (project.dialect?.toLowerCase() === 'mysql') {
+            const { getMysqlPool } = await import('@/lib/mysql');
+            const mysqlPool = getMysqlPool();
+            const dbName = `project_${projectId}`;
+
+            const [result]: any = await mysqlPool.query(`
+                SELECT 
+                    tc.TABLE_NAME as table_id,
+                    tc.CONSTRAINT_NAME as constraint_id,
+                    tc.CONSTRAINT_TYPE as type,
+                    kcu.COLUMN_NAME as column_names,
+                    kcu.REFERENCED_TABLE_NAME as referenced_table_id,
+                    kcu.REFERENCED_COLUMN_NAME as referenced_column_names,
+                    rc.DELETE_RULE as on_delete,
+                    rc.UPDATE_RULE as on_update
+                FROM information_schema.TABLE_CONSTRAINTS tc
+                JOIN information_schema.KEY_COLUMN_USAGE kcu
+                  ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA AND tc.TABLE_NAME = kcu.TABLE_NAME
+                LEFT JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
+                  ON tc.CONSTRAINT_NAME = rc.CONSTRAINT_NAME AND tc.CONSTRAINT_SCHEMA = rc.CONSTRAINT_SCHEMA
+                WHERE tc.TABLE_SCHEMA = ?
+            `, [dbName]);
+
+            return result;
+        } else {
+            const pool = getPgPool();
+            const schemaName = `project_${projectId}`;
+
+            const result = await pool.query(`
+                SELECT 
+                    tc.table_name as table_id,
+                    tc.constraint_name as constraint_id, 
+                    tc.constraint_type as type,
+                    kcu.column_name as column_names, 
+                    ccu.table_name AS referenced_table_id,
+                    ccu.column_name AS referenced_column_names
+                FROM information_schema.table_constraints AS tc 
+                JOIN information_schema.key_column_usage AS kcu
+                  ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+                LEFT JOIN information_schema.constraint_column_usage AS ccu
+                  ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
+                WHERE tc.table_schema = $1 AND tc.constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY')
+            `, [schemaName]);
+
+            return result.rows;
+        }
+    } catch (error) {
+        console.error("Native Get Project Constraints Error:", error);
+        return [];
+    }
 }
 
 export async function getConstraintsForTable(projectId: string, tableId: string): Promise<Constraint[]> {
-    const allConstraints = await getConstraintsForProject(projectId);
-    return allConstraints.filter(c => c.table_id === tableId);
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error("Unauthorized");
+
+    const project = await getProjectById(projectId, userId);
+    if (!project) throw new Error("Project not found");
+
+    const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
+
+    try {
+        if (project.dialect?.toLowerCase() === 'mysql') {
+            const { getMysqlPool } = await import('@/lib/mysql');
+            const mysqlPool = getMysqlPool();
+            const dbName = `project_${projectId}`;
+
+            const [result]: any = await mysqlPool.query(`
+                SELECT 
+                    tc.CONSTRAINT_NAME as constraint_id,
+                    tc.CONSTRAINT_TYPE as type,
+                    kcu.COLUMN_NAME as column_names,
+                    kcu.REFERENCED_TABLE_NAME as referenced_table_id,
+                    kcu.REFERENCED_COLUMN_NAME as referenced_column_names,
+                    rc.DELETE_RULE as on_delete,
+                    rc.UPDATE_RULE as on_update
+                FROM information_schema.TABLE_CONSTRAINTS tc
+                JOIN information_schema.KEY_COLUMN_USAGE kcu
+                  ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA AND tc.TABLE_NAME = kcu.TABLE_NAME
+                LEFT JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
+                  ON tc.CONSTRAINT_NAME = rc.CONSTRAINT_NAME AND tc.CONSTRAINT_SCHEMA = rc.CONSTRAINT_SCHEMA
+                WHERE tc.TABLE_SCHEMA = ? AND tc.TABLE_NAME = ?
+                  AND tc.CONSTRAINT_TYPE IN ('PRIMARY KEY', 'FOREIGN KEY')
+            `, [dbName, safeTableName]);
+
+            return result.map((row: any) => ({
+                constraint_id: row.constraint_id,
+                table_id: safeTableName,
+                type: row.type as ConstraintType,
+                column_names: row.column_names,
+                referenced_table_id: row.referenced_table_id,
+                referenced_column_names: row.referenced_column_names,
+                on_delete: row.on_delete as any,
+                on_update: row.on_update as any
+            }));
+        } else {
+            const pool = getPgPool();
+            const schemaName = `project_${projectId}`;
+            const result = await pool.query(`
+                SELECT 
+                    tc.constraint_name as constraint_id,
+                    tc.constraint_type as type,
+                    kcu.column_name as column_names,
+                    ccu.table_name as referenced_table_id,
+                    ccu.column_name as referenced_column_names,
+                    rc.delete_rule as on_delete,
+                    rc.update_rule as on_update
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                  ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema AND tc.table_name = kcu.table_name
+                LEFT JOIN information_schema.referential_constraints rc
+                  ON tc.constraint_name = rc.constraint_name AND tc.table_schema = rc.constraint_schema
+                LEFT JOIN information_schema.constraint_column_usage ccu
+                  ON rc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema
+                WHERE tc.table_schema = $1 AND tc.table_name = $2
+                  AND tc.constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY')
+            `, [schemaName, safeTableName]);
+
+            return result.rows.map(row => ({
+                constraint_id: row.constraint_id,
+                table_id: safeTableName,
+                type: row.type as ConstraintType,
+                column_names: row.column_names,
+                referenced_table_id: row.referenced_table_id,
+                referenced_column_names: row.referenced_column_names,
+                on_delete: row.on_delete as any,
+                on_update: row.on_update as any
+            }));
+        }
+    } catch (error) {
+        console.error("Native Get Constraints Error:", error);
+        return [];
+    }
 }
 
 export async function addConstraint(projectId: string, constraint: Omit<Constraint, 'constraint_id'>) {
     const userId = await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    const constraintsRef = adminDb
-        .collection('users').doc(userId)
-        .collection('projects').doc(projectId)
-        .collection('constraints');
+    const project = await getProjectById(projectId, userId);
+    if (!project) throw new Error("Project not found");
 
-    const doc = constraintsRef.doc();
-    const newConstraint: any = { ...constraint, constraint_id: doc.id };
+    const safeTableName = constraint.table_id.replace(/[^a-zA-Z0-9_]/g, '');
+    const colName = constraint.column_names.replace(/[^a-zA-Z0-9_]/g, '');
 
-    // Sanitize undefined values (Firestore rejects undefined)
-    Object.keys(newConstraint).forEach(key => newConstraint[key] === undefined && delete newConstraint[key]);
+    if (project.dialect?.toLowerCase() === 'mysql') {
+        const { getMysqlPool } = await import('@/lib/mysql');
+        const mysqlPool = getMysqlPool();
+        const dbName = `project_${projectId}`;
 
-    await doc.set(newConstraint);
-    return newConstraint;
+        let ddl = `ALTER TABLE \`${dbName}\`.\`${safeTableName}\` ADD CONSTRAINT \`${safeTableName}_${colName}_${Date.now()}\` `;
+
+        if (constraint.type === 'PRIMARY KEY') {
+            ddl += `PRIMARY KEY (\`${colName}\`)`;
+        } else if (constraint.type === 'FOREIGN KEY' && constraint.referenced_table_id && constraint.referenced_column_names) {
+            const refTable = constraint.referenced_table_id.replace(/[^a-zA-Z0-9_]/g, '');
+            const refCol = constraint.referenced_column_names.replace(/[^a-zA-Z0-9_]/g, '');
+            ddl += `FOREIGN KEY (\`${colName}\`) REFERENCES \`${dbName}\`.\`${refTable}\` (\`${refCol}\`)`;
+
+            if (constraint.on_delete) ddl += ` ON DELETE ${constraint.on_delete}`;
+            if (constraint.on_update) ddl += ` ON UPDATE ${constraint.on_update}`;
+        }
+
+        await mysqlPool.query(ddl);
+    } else {
+        const pool = getPgPool();
+        const schemaName = `project_${projectId}`;
+
+        let ddl = `ALTER TABLE "${schemaName}"."${safeTableName}" ADD CONSTRAINT "${safeTableName}_${colName}_${Date.now()}" `;
+
+        if (constraint.type === 'PRIMARY KEY') {
+            ddl += `PRIMARY KEY ("${colName}")`;
+        } else if (constraint.type === 'FOREIGN KEY' && constraint.referenced_table_id && constraint.referenced_column_names) {
+            const refTable = constraint.referenced_table_id.replace(/[^a-zA-Z0-9_]/g, '');
+            const refCol = constraint.referenced_column_names.replace(/[^a-zA-Z0-9_]/g, '');
+            ddl += `FOREIGN KEY ("${colName}") REFERENCES "${schemaName}"."${refTable}" ("${refCol}")`;
+
+            if (constraint.on_delete) ddl += ` ON DELETE ${constraint.on_delete}`;
+            if (constraint.on_update) ddl += ` ON UPDATE ${constraint.on_update}`;
+        }
+
+        await pool.query(ddl);
+    }
 }
 
-export async function deleteConstraint(projectId: string, constraintId: string) {
+export async function deleteConstraint(projectId: string, constraintId: string, tableId?: string) {
     const userId = await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    await adminDb
-        .collection('users').doc(userId)
-        .collection('projects').doc(projectId)
-        .collection('constraints').doc(constraintId)
-        .delete();
+    if (!tableId) throw new Error("Table ID required for native constraint deletion");
+
+    const project = await getProjectById(projectId, userId);
+    if (!project) throw new Error("Project not found");
+
+    const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
+    const safeConstraint = constraintId.replace(/[^a-zA-Z0-9_]/g, '');
+
+    if (project.dialect?.toLowerCase() === 'mysql') {
+        const { getMysqlPool } = await import('@/lib/mysql');
+        const mysqlPool = getMysqlPool();
+        const dbName = `project_${projectId}`;
+
+        // Use DROP FOREIGN KEY / DROP INDEX depending on constraint type if possible, or try standard DROP CONSTRAINT (MySQL 8.0.19+)
+        await mysqlPool.query(`ALTER TABLE \`${dbName}\`.\`${safeTableName}\` DROP CONSTRAINT \`${safeConstraint}\``);
+    } else {
+        const pool = getPgPool();
+        const schemaName = `project_${projectId}`;
+
+        await pool.query(`ALTER TABLE "${schemaName}"."${safeTableName}" DROP CONSTRAINT "${safeConstraint}"`);
+    }
 }
 
 
@@ -468,221 +892,307 @@ export async function deleteConstraint(projectId: string, constraintId: string) 
 
 // --- Rows (Data) ---
 
-// Removed FS/Path imports for CSV
-
 export async function getTableData(
     projectId: string,
     tableName: string,
     page: number = 0,
     pageSize: number = 50,
     explicitUserId?: string,
-    cursorId?: string // Support for genuine NoSQL Infinite Scroll
+    cursorId?: string
 ) {
     const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    const tables = await getTablesForProject(projectId, userId);
-    const table = tables.find(t => t.table_name === tableName);
-    if (!table) throw new Error(`Table ${tableName} not found`);
+    const project = await getProjectById(projectId, userId);
+    if (!project) throw new Error("Project not found");
 
-    // 1. Hard Pagination Guard (Firestore Cost Protection)
-    const MAX_PAGE_SIZE = 100;
-    const safeLimit = Math.min(Math.max(1, pageSize), MAX_PAGE_SIZE);
+    const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+    const limit = Math.min(Math.max(1, pageSize), 100);
+    const offset = page * limit;
 
-    let query: any = adminDb
-        .collection('users').doc(userId)
-        .collection('projects').doc(projectId)
-        .collection('tables').doc(table.table_id)
-        .collection('rows')
-        .orderBy('__name__', 'asc') // Deterministic indexing
-        .limit(safeLimit);
+    try {
+        let rows = [];
+        let totalRows = 0;
 
-    // 2. Cursor Pagination Logic vs Offset
-    if (cursorId) {
-        // True NoSQL pagination
-        const cursorDoc = await adminDb
-            .collection('users').doc(userId)
-            .collection('projects').doc(projectId)
-            .collection('tables').doc(table.table_id)
-            .collection('rows').doc(cursorId).get();
+        if (project.dialect?.toLowerCase() === 'mysql') {
+            const { getMysqlPool } = await import('@/lib/mysql');
+            const mysqlPool = getMysqlPool();
+            const dbName = `project_${projectId}`;
 
-        if (cursorDoc.exists) {
-            query = query.startAfter(cursorDoc);
+            const [dataResult]: any = await mysqlPool.query(`SELECT * FROM \`${dbName}\`.\`${safeTableName}\` LIMIT ${limit} OFFSET ${offset}`);
+            const [countResult]: any = await mysqlPool.query(`SELECT COUNT(*) as count FROM \`${dbName}\`.\`${safeTableName}\``);
+
+            totalRows = parseInt(countResult[0].count);
+
+            const [pkColResult]: any = await mysqlPool.query(`
+                SELECT COLUMN_NAME as column_name
+                FROM information_schema.COLUMNS 
+                WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_KEY = 'PRI' LIMIT 1
+            `, [dbName, safeTableName]);
+
+            const pkName = pkColResult.length > 0 ? pkColResult[0].column_name : null;
+
+            rows = dataResult.map((row: any, index: number) => {
+                let idField = null;
+                if (pkName && row[pkName]) idField = row[pkName];
+                else idField = row.id || row.uuid || `row_${offset + index}`;
+
+                return {
+                    ...row,
+                    id: idField,
+                    _id: idField
+                };
+            });
+
+        } else {
+            const pool = getPgPool();
+            const schemaName = `project_${projectId}`;
+
+            const dataResult = await pool.query(`SELECT * FROM "${schemaName}"."${safeTableName}" LIMIT $1 OFFSET $2`, [limit, offset]);
+            const countResult = await pool.query(`SELECT COUNT(*) FROM "${schemaName}"."${safeTableName}"`);
+
+            totalRows = parseInt(countResult.rows[0].count);
+            const pkColResult = await pool.query(`
+                SELECT kcu.column_name 
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
+                WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = $1 AND tc.table_name = $2 LIMIT 1
+            `, [schemaName, safeTableName]);
+
+            const pkName = pkColResult.rows.length > 0 ? pkColResult.rows[0].column_name : null;
+
+            rows = dataResult.rows.map((row, index) => {
+                let idField = null;
+                if (pkName && row[pkName]) idField = row[pkName];
+                else idField = row.id || row.uuid || `row_${offset + index}`;
+
+                return {
+                    ...row,
+                    id: idField,
+                    _id: idField
+                };
+            });
         }
-    } else {
-        // Fallback offset logic for old UI elements
-        const offset = page * safeLimit;
-        query = query.offset(offset);
-    }
 
-    const snapshot = await query.get();
-
-    const rows = snapshot.docs.map((doc: any) => {
-        const data = doc.data();
         return {
-            ...data,
-            id: data.id || doc.id,
-            _id: doc.id
+            rows,
+            totalRows,
+            nextCursorId: (offset + limit) < totalRows ? String(page + 1) : null,
+            hasMore: (offset + limit) < totalRows
         };
-    });
-
-    // Extract next cursor for infinite scroll
-    const lastVisible = snapshot.docs[snapshot.docs.length - 1];
-    const nextCursorId = lastVisible ? lastVisible.id : null;
-    const hasMore = rows.length === safeLimit;
-
-    // Fast count for backwards compatibility
-    const offsetEstimate = page * safeLimit;
-    const approximateTotalRows = hasMore ? offsetEstimate + safeLimit + 1 : offsetEstimate + rows.length;
-
-    return {
-        rows,
-        totalRows: approximateTotalRows,
-        nextCursorId,
-        hasMore
-    };
+    } catch (error) {
+        console.error("Native getTableData error:", error);
+        return { rows: [], totalRows: 0, nextCursorId: null, hasMore: false };
+    }
 }
 
 export async function insertRow(projectId: string, tableId: string, rowData: Record<string, any>) {
     const userId = await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    // Fetch columns for validation
-    const columns = await getColumnsForTable(projectId, tableId);
+    const project = await getProjectById(projectId, userId);
+    if (!project) throw new Error("Project not found");
 
-    // Validate
-    // Note: cast rowData to Row for validation context
+    const columns = await getColumnsForTable(projectId, tableId);
     validateRow(rowData as Row, columns);
 
-    const rowsRef = adminDb
-        .collection('users').doc(userId)
-        .collection('projects').doc(projectId)
-        .collection('tables').doc(tableId)
-        .collection('rows');
+    const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
 
-    // Check Primary Key uniqueness if PK exists
-    const pkCol = columns.find(c => c.is_primary_key);
-    if (pkCol && rowData[pkCol.column_name]) {
-        const pkVal = rowData[pkCol.column_name];
-        // Simple check: query for existing row with this PK value
-        // This assumes the PK is mapped to a field in the document, OR the document ID itself.
-        // Typically user-defined PKs are just fields.
-        const existing = await rowsRef.where(pkCol.column_name, '==', pkVal).get();
-        if (!existing.empty) {
-            throw new Error(`Duplicate entry '${pkVal}' for primary key column '${pkCol.column_name}'.`);
+    const cols = [];
+    const vals = [];
+    const params = [];
+    let i = 1;
+
+    for (const [key, value] of Object.entries(rowData)) {
+        if (key === 'id' || key === '_id') continue;
+        if (columns.some(c => c.column_name === key)) {
+            // MySQL uses ``, Postgres uses ""
+            cols.push(project.dialect?.toLowerCase() === 'mysql' ? `\`${key.replace(/[^a-zA-Z0-9_]/g, '')}\`` : `"${key.replace(/[^a-zA-Z0-9_]/g, '')}"`);
+
+            if (project.dialect?.toLowerCase() === 'mysql') {
+                vals.push(`?`);
+            } else {
+                vals.push(`$${i++}`);
+            }
+            params.push(value);
         }
     }
 
+    if (cols.length === 0) throw new Error("No valid columns provided for insertion.");
 
-    if (rowData.id) {
-        await rowsRef.doc(String(rowData.id)).set(rowData);
-    } else {
-        const newDocRef = await rowsRef.add(rowData);
-        rowData = { ...rowData, id: newDocRef.id };
+    try {
+        let insertedRow;
+
+        if (project.dialect?.toLowerCase() === 'mysql') {
+            const { getMysqlPool } = await import('@/lib/mysql');
+            const mysqlPool = getMysqlPool();
+            const dbName = `project_${projectId}`;
+
+            // MySQL does not naturally support RETURNING *. We do an INSERT then a SELECT of the last insert if needed, 
+            // but for simple webhook fire, we'll try to reconstruct the object locally since this is a basic interface.
+            const ddl = `INSERT INTO \`${dbName}\`.\`${safeTableName}\` (${cols.join(', ')}) VALUES (${vals.join(', ')})`;
+
+            try {
+                const [result]: any = await mysqlPool.query(ddl, params);
+                insertedRow = { ...rowData, _internal_last_id: result.insertId }; // Approximation
+            } catch (mysqlError: any) {
+                if (mysqlError.code === 'ER_DUP_ENTRY') throw new Error(`Duplicate entry for unique/primary key constraint.`);
+                throw mysqlError;
+            }
+
+        } else {
+            const pool = getPgPool();
+            const schemaName = `project_${projectId}`;
+            const ddl = `INSERT INTO "${schemaName}"."${safeTableName}" (${cols.join(', ')}) VALUES (${vals.join(', ')}) RETURNING *`;
+
+            try {
+                const result = await pool.query(ddl, params);
+                insertedRow = result.rows[0];
+            } catch (pgError: any) {
+                if (pgError.code === '23505') throw new Error(`Duplicate entry for unique/primary key constraint.`);
+                throw pgError;
+            }
+        }
+
+        fireWebhooks(projectId, userId, tableId, 'row.inserted', insertedRow).catch(err => {
+            console.error(`[Webhook Fire Error] ${tableId} insert:`, err);
+        });
+
+        const { invalidateTableCache } = await import('@/lib/cache');
+        invalidateTableCache(projectId, tableId);
+    } catch (error: any) {
+        throw new Error(`Insertion failed: ${error.message}`);
     }
-
-    // --- Webhook Dispatch ---
-    // Fire & Forget so UI isn't blocked by slow responding webhooks
-    fireWebhooks(projectId, userId, tableId, 'row.inserted', rowData).catch(err => {
-        console.error(`[Webhook Fire Error] ${tableId} insert:`, err);
-    });
-
-    const { invalidateTableCache } = await import('@/lib/cache');
-    invalidateTableCache(projectId, tableId);
 }
 
 export async function updateRow(projectId: string, tableId: string, rowId: string, updates: Record<string, any>) {
     const userId = await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    const columns = await getColumnsForTable(projectId, tableId);
+    const project = await getProjectById(projectId, userId);
+    if (!project) throw new Error("Project not found");
 
-    // For update, we might not have the full row, so validation is trickier.
-    // We should validate the *updates* against the schema.
-    // For NOT NULL, we only check if the update is setting it to null.
-    for (const col of columns) {
-        if (updates.hasOwnProperty(col.column_name)) {
-            const val = updates[col.column_name];
-            if (!col.is_nullable && (val === null || val === undefined || val === '') && !col.default_value) {
-                throw new Error(`Column '${col.column_name}' cannot be set to null.`);
-            }
-            // Type checks ... (reuse logic or refactor validateRow to accept partial)
-            if (val !== null && val !== undefined && val !== '') {
-                const type = col.data_type.toUpperCase();
-                switch (type) {
-                    case 'INT':
-                    case 'NUMBER':
-                        if (!Number.isInteger(Number(val))) {
-                            if (isNaN(Number(val))) throw new Error(`Column '${col.column_name}' expects Integer/Number.`);
-                        }
-                        break;
-                    case 'FLOAT': if (isNaN(Number(val))) throw new Error(`Column '${col.column_name}' expects Float.`); break;
-                    case 'BOOLEAN':
-                        if (!['true', 'false', '0', '1'].includes(String(val).toLowerCase())) throw new Error(`Column '${col.column_name}' expects Boolean.`);
-                        break;
-                    case 'DATE':
-                    case 'TIMESTAMP':
-                    case 'TIMESTAMPTZ':
-                    case 'DATETIME':
-                        if (isNaN(Date.parse(String(val)))) throw new Error(`Column '${col.column_name}' expects Date/Timestamp.`);
-                        break;
-                }
-            }
+    const columns = await getColumnsForTable(projectId, tableId);
+    const pkCol = columns.find(c => c.is_primary_key);
+
+    if (!pkCol) {
+        throw new Error("Table must have a Primary Key to update specific rows natively.");
+    }
+
+    const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
+    const setClauses = [];
+    const params = [];
+    let i = 1;
+
+    for (const [key, value] of Object.entries(updates)) {
+        if (key === 'id' || key === '_id' || key === pkCol.column_name) continue;
+        if (columns.some(c => c.column_name === key) && value !== undefined) {
+            setClauses.push(project.dialect?.toLowerCase() === 'mysql' ? `\`${key.replace(/[^a-zA-Z0-9_]/g, '')}\` = ?` : `"${key.replace(/[^a-zA-Z0-9_]/g, '')}" = $${i++}`);
+            params.push(value);
         }
     }
 
-    const rowsRef = adminDb
-        .collection('users').doc(userId)
-        .collection('projects').doc(projectId)
-        .collection('tables').doc(tableId)
-        .collection('rows');
+    if (setClauses.length === 0) return;
 
-    // Fetch old data for webhook payload comparison
-    const oldDataSnap = await rowsRef.doc(String(rowId)).get();
-    if (!oldDataSnap.exists) {
-        throw new Error(`Row with id '${rowId}' not found.`);
+    params.push(rowId);
+
+    try {
+        let updatedRow;
+        let oldData;
+
+        if (project.dialect?.toLowerCase() === 'mysql') {
+            const { getMysqlPool } = await import('@/lib/mysql');
+            const mysqlPool = getMysqlPool();
+            const dbName = `project_${projectId}`;
+
+            const [oldDataResult]: any = await mysqlPool.query(`SELECT * FROM \`${dbName}\`.\`${safeTableName}\` WHERE \`${pkCol.column_name}\` = ?`, [rowId]);
+            if (oldDataResult.length === 0) throw new Error(`Row with PK '${rowId}' not found.`);
+            oldData = oldDataResult[0];
+
+            const ddl = `UPDATE \`${dbName}\`.\`${safeTableName}\` SET ${setClauses.join(', ')} WHERE \`${pkCol.column_name}\` = ?`;
+            await mysqlPool.query(ddl, params);
+
+            // MySQL lacks RETURNING *, grab it again or approximate
+            updatedRow = { ...oldData, ...updates };
+
+        } else {
+            const pool = getPgPool();
+            const schemaName = `project_${projectId}`;
+
+            const oldDataResult = await pool.query(`SELECT * FROM "${schemaName}"."${safeTableName}" WHERE "${pkCol.column_name}" = $1`, [rowId]);
+            if (oldDataResult.rows.length === 0) throw new Error(`Row with PK '${rowId}' not found.`);
+            oldData = oldDataResult.rows[0];
+
+            const ddl = `UPDATE "${schemaName}"."${safeTableName}" SET ${setClauses.join(', ')} WHERE "${pkCol.column_name}" = $${i} RETURNING *`;
+            const result = await pool.query(ddl, params);
+            updatedRow = result.rows[0];
+        }
+
+        fireWebhooks(projectId, userId, tableId, 'row.updated', updatedRow, oldData).catch(err => {
+            console.error(`[Webhook Fire Error] ${tableId} update:`, err);
+        });
+
+        const { invalidateTableCache } = await import('@/lib/cache');
+        invalidateTableCache(projectId, tableId);
+    } catch (error: any) {
+        throw new Error(`Update failed: ${error.message}`);
     }
-    const oldData = oldDataSnap.data();
-
-    // Remove undefined values from updates to prevent Firestore errors
-    const cleanedUpdates = Object.fromEntries(
-        Object.entries(updates).filter(([_, v]) => v !== undefined)
-    );
-
-    await rowsRef.doc(String(rowId)).update(cleanedUpdates);
-
-    // --- Webhook Dispatch ---
-    fireWebhooks(projectId, userId, tableId, 'row.updated', updates, oldData).catch(err => {
-        console.error(`[Webhook Fire Error] ${tableId} update:`, err);
-    });
-
-    const { invalidateTableCache } = await import('@/lib/cache');
-    invalidateTableCache(projectId, tableId);
 }
 
 export async function deleteRow(projectId: string, tableId: string, rowId: string) {
     const userId = await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    const rowsRef = adminDb
-        .collection('users').doc(userId)
-        .collection('projects').doc(projectId)
-        .collection('tables').doc(tableId)
-        .collection('rows');
+    const project = await getProjectById(projectId, userId);
+    if (!project) throw new Error("Project not found");
 
-    // Fetch old data for webhook BEFORE deleting
-    const oldDataSnap = await rowsRef.doc(String(rowId)).get();
-    const oldData = oldDataSnap.exists ? oldDataSnap.data() : undefined;
+    const columns = await getColumnsForTable(projectId, tableId);
+    const pkCol = columns.find(c => c.is_primary_key);
 
-    await rowsRef.doc(String(rowId)).delete();
+    if (!pkCol) {
+        throw new Error("Table must have a Primary Key to delete specific rows natively.");
+    }
 
-    // --- Webhook Dispatch ---
-    fireWebhooks(projectId, userId, tableId, 'row.deleted', undefined, oldData).catch(err => {
-        console.error(`[Webhook Fire Error] ${tableId} delete:`, err);
-    });
+    const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
 
-    const { invalidateTableCache } = await import('@/lib/cache');
-    invalidateTableCache(projectId, tableId);
+    try {
+        let oldData = null;
+
+        if (project.dialect?.toLowerCase() === 'mysql') {
+            const { getMysqlPool } = await import('@/lib/mysql');
+            const mysqlPool = getMysqlPool();
+            const dbName = `project_${projectId}`;
+
+            const [oldDataResult]: any = await mysqlPool.query(`SELECT * FROM \`${dbName}\`.\`${safeTableName}\` WHERE \`${pkCol.column_name}\` = ?`, [rowId]);
+            oldData = oldDataResult.length > 0 ? oldDataResult[0] : null;
+
+            if (oldData) {
+                await mysqlPool.query(`DELETE FROM \`${dbName}\`.\`${safeTableName}\` WHERE \`${pkCol.column_name}\` = ?`, [rowId]);
+            }
+        } else {
+            const pool = getPgPool();
+            const schemaName = `project_${projectId}`;
+
+            // Fetch old data for webhook
+            const oldDataResult = await pool.query(`SELECT * FROM "${schemaName}"."${safeTableName}" WHERE "${pkCol.column_name}" = $1`, [rowId]);
+            oldData = oldDataResult.rows.length > 0 ? oldDataResult.rows[0] : null;
+
+            if (oldData) {
+                await pool.query(`DELETE FROM "${schemaName}"."${safeTableName}" WHERE "${pkCol.column_name}" = $1`, [rowId]);
+            }
+        }
+
+        if (oldData) {
+            fireWebhooks(projectId, userId, tableId, 'row.deleted', undefined, oldData).catch(err => {
+                console.error(`[Webhook Fire Error] ${tableId} delete:`, err);
+            });
+
+            const { invalidateTableCache } = await import('@/lib/cache');
+            invalidateTableCache(projectId, tableId);
+        }
+    } catch (error: any) {
+        throw new Error(`Deletion failed: ${error.message}`);
+    }
 }
 
 
@@ -701,18 +1211,27 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
     }
 
     try {
-        const tables = await getTablesForProject(projectId);
+        const project = await getProjectById(projectId, userId);
+        const tables = await getTablesForProject(projectId, userId);
 
         const tableStatsPromises = tables.map(async (table) => {
-            const rowsSnapshot = await adminDb
-                .collection('users').doc(userId)
-                .collection('projects').doc(projectId)
-                .collection('tables').doc(table.table_id)
-                .collection('rows')
-                .count()
-                .get();
+            const safeTableName = table.table_name.replace(/[^a-zA-Z0-9_]/g, '');
+            let rowCount = 0;
 
-            const rowCount = rowsSnapshot.data().count;
+            if (project?.dialect?.toLowerCase() === 'mysql') {
+                const { getMysqlPool } = await import('@/lib/mysql');
+                const mysqlPool = getMysqlPool();
+                const dbName = `project_${projectId}`;
+                const [countResult]: any = await mysqlPool.query(`SELECT COUNT(*) as count FROM \`${dbName}\`.\`${safeTableName}\``);
+                rowCount = parseInt(countResult[0].count);
+            } else {
+                const pool = getPgPool();
+                const schemaName = `project_${projectId}`;
+                const countResult = await pool.query(`SELECT COUNT(*) FROM "${schemaName}"."${safeTableName}"`);
+                rowCount = parseInt(countResult.rows[0].count);
+            }
+
+            // Rough size estimation for UI purposes since precise sizes require deep catalog introspection
             const size = 1024 + (rowCount * 128);
 
             return {
@@ -734,7 +1253,7 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
         };
 
     } catch (error) {
-        console.error("Error calculating analytics:", error);
+        console.error("Native Analytics error:", error);
         return { totalSize: 0, totalRows: 0, tables: [] };
     }
 }

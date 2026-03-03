@@ -1,7 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import { db } from '@/lib/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { getAnalyticsStatsAction } from '@/app/(app)/dashboard/analytics-actions';
 
 export interface AnalyticsStats {
     total_requests: number;
@@ -22,30 +21,21 @@ export function useRealtimeAnalytics(projectId: string | undefined): AnalyticsSt
     useEffect(() => {
         if (!projectId) return;
 
-        const statsRef = doc(db, 'projects', projectId, 'stats', 'general');
-
-        const unsubscribe = onSnapshot(statsRef, (snapshot) => {
-            if (snapshot.exists()) {
-                setStats(snapshot.data() as AnalyticsStats);
-            } else {
-                setStats({
-                    total_requests: 0,
-                    type_api_call: 0,
-                    type_sql_execution: 0,
-                    type_storage_read: 0,
-                    type_storage_write: 0,
-                    type_sql_select: 0,
-                    type_sql_insert: 0,
-                    type_sql_update: 0,
-                    type_sql_delete: 0,
-                    type_sql_alter: 0
-                });
+        let isMounted = true;
+        const fetchStats = async () => {
+            const data = await getAnalyticsStatsAction(projectId);
+            if (isMounted && data) {
+                setStats(data);
             }
-        }, (error) => {
-            console.error("Failed to listen to analytics:", error);
-        });
+        };
 
-        return () => unsubscribe();
+        fetchStats();
+        const timer = setInterval(fetchStats, 5000); // poll every 5s
+
+        return () => {
+            isMounted = false;
+            clearInterval(timer);
+        };
     }, [projectId]);
 
     return stats;

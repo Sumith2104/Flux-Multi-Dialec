@@ -45,7 +45,7 @@ async function getProjectFiles(projectId: string): Promise<FileInfo[]> {
             dirents.map(async (dirent) => {
                 const fullPath = path.join(projectPath, dirent.name);
                 const stats = await fs.stat(fullPath);
-                
+
                 // Exclude system files
                 if (dirent.name === 'tables.csv' || dirent.name === 'columns.csv' || dirent.name.endsWith('.csv')) {
                     return null;
@@ -68,7 +68,7 @@ async function getProjectFiles(projectId: string): Promise<FileInfo[]> {
 
 
 export default async function StoragePage() {
-    const selectedProjectCookie = cookies().get('selectedProject');
+    const selectedProjectCookie = (await cookies()).get('selectedProject');
     const projectId = selectedProjectCookie ? JSON.parse(selectedProjectCookie.value).project_id : null;
     const files = projectId ? await getProjectFiles(projectId) : [];
 
@@ -84,7 +84,7 @@ export default async function StoragePage() {
                         </p>
                     </div>
                 </div>
-                 <Button disabled={!projectId}>
+                <Button disabled={!projectId}>
                     <Upload className="mr-2 h-4 w-4" />
                     Upload File
                 </Button>
@@ -105,9 +105,9 @@ export default async function StoragePage() {
                             </TableHeader>
                             <TableBody>
                                 {!projectId ? (
-                                     <TableRow>
+                                    <TableRow>
                                         <TableCell colSpan={3} className="h-48 text-center text-muted-foreground">
-                                             <div className="flex flex-col items-center justify-center">
+                                            <div className="flex flex-col items-center justify-center">
                                                 <Folder className="h-12 w-12 mb-4" />
                                                 <p className="text-lg font-medium">No Project Selected</p>
                                                 <p>Please select a project from the dashboard to see its files.</p>
@@ -128,7 +128,7 @@ export default async function StoragePage() {
                                 ) : (
                                     <TableRow>
                                         <TableCell colSpan={3} className="h-48 text-center text-muted-foreground">
-                                             <div className="flex flex-col items-center justify-center">
+                                            <div className="flex flex-col items-center justify-center">
                                                 <Folder className="h-12 w-12 mb-4" />
                                                 <p className="text-lg font-medium">No files yet</p>
                                                 <p>Upload a file to get started.</p>

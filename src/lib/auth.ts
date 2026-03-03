@@ -1,16 +1,19 @@
 'use server';
 import { cookies } from 'next/headers';
-import { adminAuth } from '@/lib/firebase-admin';
+import jwt from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'fluxbase_dev_secret_key_123';
 
 export interface User {
     id: string;
     email: string;
+    display_name?: string;
     password?: string;
     created_at: string;
 }
 
 /**
- * Retrieves the current user's ID from the Firebase session cookie.
+ * Retrieves the current user's ID from the JWT session cookie.
  */
 export async function getCurrentUserId(): Promise<string | null> {
     const sessionCookie = (await cookies()).get('session')?.value;
@@ -19,8 +22,8 @@ export async function getCurrentUserId(): Promise<string | null> {
     }
 
     try {
-        const decodedClaims = await adminAuth.verifySessionCookie(sessionCookie, true);
-        return decodedClaims.uid;
+        const decoded = jwt.verify(sessionCookie, JWT_SECRET) as { uid: string };
+        return decoded.uid;
     } catch (error) {
         console.error("Failed to verify session cookie:", error);
         return null;
@@ -28,18 +31,16 @@ export async function getCurrentUserId(): Promise<string | null> {
 }
 
 /**
- * Creates a session cookie from an ID token.
- * This should be called by an API route after client-side login.
+ * Creates a JWT session cookie from a raw user ID.
  */
-export async function createSessionCookie(idToken: string) {
-    const expiresIn = 60 * 60 * 24 * 5 * 1000; // 5 days
-
+export async function createSessionCookie(uid: string) {
+    const expiresIn = 60 * 60 * 24 * 5; // 5 days in seconds
     try {
-        const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn });
+        const sessionCookie = jwt.sign({ uid }, JWT_SECRET, { expiresIn });
         const isSecure = process.env.NEXT_PUBLIC_SECURE_COOKIES === 'true';
 
         (await cookies()).set('session', sessionCookie, {
-            maxAge: expiresIn,
+            maxAge: expiresIn * 1000,
             httpOnly: true,
             secure: isSecure,
             path: '/',

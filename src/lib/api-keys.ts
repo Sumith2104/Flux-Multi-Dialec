@@ -1,33 +1,33 @@
-
-import { adminDb } from '@/lib/firebase-admin';
+import { getPgPool } from '@/lib/pg';
 import { randomBytes, createHash } from 'crypto';
-
-const API_KEYS_COLLECTION = 'api_keys';
 
 export interface ApiKey {
     id: string; // The document ID (which is the hash of the key)
-    userId: string;
+    userId: string; // Stored as user_id
     name: string;
-    projectId?: string; // Optional: Scope to a specific project
-    projectName?: string; // Optional: Display name of the project
-    preview: string; // The first few and last few characters for display
-    createdAt: string;
-    lastUsedAt?: string;
+    projectId?: string; // Stored as project_id
+    projectName?: string; // Stored as project_name
+    preview: string;
+    createdAt: string; // Stored as created_at
+    lastUsedAt?: string; // Stored as last_used_at
 }
 
 export interface CreateApiKeyResult {
-    key: string; // The raw key, shown ONLY once
+    key: string;
     apiKeyData: ApiKey;
 }
 
-/**
- * Generates a new API key for the given user.
- * The key is returned only once. A hash is stored in the database.
- */
 export async function generateApiKey(userId: string, name: string, projectId?: string, projectName?: string): Promise<CreateApiKeyResult> {
-    const rawKey = 'fl_' + randomBytes(24).toString('hex'); // e.g. fl_3a...
+    const rawKey = 'fl_' + randomBytes(24).toString('hex');
     const hash = createHash('sha256').update(rawKey).digest('hex');
     const preview = `${rawKey.substring(0, 7)}...${rawKey.substring(rawKey.length - 4)}`;
+
+    const pool = getPgPool();
+    await pool.query(
+        `INSERT INTO fluxbase_global.api_keys (id, user_id, name, project_id, project_name, preview) 
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [hash, userId, name, projectId || null, projectName || null, preview]
+    );
 
     const apiKeyData: ApiKey = {
         id: hash,
@@ -35,68 +35,53 @@ export async function generateApiKey(userId: string, name: string, projectId?: s
         name,
         preview,
         createdAt: new Date().toISOString(),
+        projectId,
+        projectName
     };
-
-    if (projectId) apiKeyData.projectId = projectId;
-    if (projectName) apiKeyData.projectName = projectName;
-
-    // Store in root collection for O(1) lookup by hash
-    // Firestore doesn't like undefined values, so we construct the object carefully or sanitize it
-    // The above approach ensures undefined keys are simply not added.
-    await adminDb.collection(API_KEYS_COLLECTION).doc(hash).set(apiKeyData as any);
 
     return { key: rawKey, apiKeyData };
 }
 
-/**
- * Validates an API key and returns the associated User ID and Scope.
- * Updates the lastUsedAt timestamp.
- */
 export async function validateApiKey(rawKey: string): Promise<{ userId: string, projectId?: string } | null> {
     const hash = createHash('sha256').update(rawKey).digest('hex');
-    const docRef = adminDb.collection(API_KEYS_COLLECTION).doc(hash);
-    const doc = await docRef.get();
 
-    if (!doc.exists) {
-        return null;
-    }
+    const pool = getPgPool();
+    const result = await pool.query('SELECT user_id, project_id FROM fluxbase_global.api_keys WHERE id = $1', [hash]);
 
-    const data = doc.data() as ApiKey;
+    if (result.rows.length === 0) return null;
 
-    // Async update last used (fire and forget to not block response)
-    docRef.update({ lastUsedAt: new Date().toISOString() }).catch(err =>
+    // Async update last used
+    pool.query('UPDATE fluxbase_global.api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE id = $1', [hash]).catch(err =>
         console.error('Failed to update API key stats:', err)
     );
 
-    return { userId: data.userId, projectId: data.projectId };
+    return {
+        userId: result.rows[0].user_id,
+        projectId: result.rows[0].project_id
+    };
 }
 
-/**
- * Lists all API keys for a specific user.
- */
 export async function listApiKeys(userId: string): Promise<ApiKey[]> {
-    const snapshot = await adminDb.collection(API_KEYS_COLLECTION)
-        .where('userId', '==', userId)
-        .get();
+    const pool = getPgPool();
+    const result = await pool.query('SELECT * FROM fluxbase_global.api_keys WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
 
-    const keys = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-    } as ApiKey));
-
-    return keys.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return result.rows.map(row => ({
+        id: row.id,
+        userId: row.user_id,
+        name: row.name,
+        projectId: row.project_id,
+        projectName: row.project_name,
+        preview: row.preview,
+        createdAt: row.created_at.toISOString(),
+        lastUsedAt: row.last_used_at ? row.last_used_at.toISOString() : undefined
+    }));
 }
 
-/**
- * Revokes (deletes) an API key.
- */
 export async function revokeApiKey(userId: string, keyId: string): Promise<void> {
-    const docRef = adminDb.collection(API_KEYS_COLLECTION).doc(keyId);
-    const doc = await docRef.get();
+    const pool = getPgPool();
+    const result = await pool.query('DELETE FROM fluxbase_global.api_keys WHERE id = $1 AND user_id = $2 RETURNING id', [keyId, userId]);
 
-    if (doc.exists && doc.data()?.userId === userId) {
-        await docRef.delete();
-    } else {
+    if (result.rowCount === 0) {
         throw new Error("Key not found or unauthorized");
     }
 }

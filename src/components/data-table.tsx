@@ -86,8 +86,9 @@ export function DataTable({
     const [lastItem] = [...virtualItems].reverse();
     if (!lastItem) return;
 
-    // Background Prefetch trigger: If we scrolled to the skeleton loader and we aren't already fetching...
-    if (lastItem.index >= rows.length - 1 && hasNextPage && !isFetchingNextPage && fetchNextPage) {
+    // Background Prefetch trigger: Load more exactly 15 rows before hitting the bottom
+    // This allows the next 50 rows to fetch so smoothly that the user never sees the spinner.
+    if (lastItem.index >= rows.length - 15 && hasNextPage && !isFetchingNextPage && fetchNextPage) {
       fetchNextPage();
     }
   }, [hasNextPage, fetchNextPage, rows.length, isFetchingNextPage, virtualItems]);
@@ -134,14 +135,17 @@ export function DataTable({
   // Define column width mathematically (tailwind grid doesn't play well with virtual absolute translation)
   // We'll use Flex flex-1 for distributing columns evenly.
   return (
-    <div className="rounded-xl border border-white/10 bg-black/40 backdrop-blur-2xl h-[70vh] flex flex-col overflow-hidden text-foreground shadow-2xl ring-1 ring-white/5">
-      {/* Table Header Wrapper */}
-      <div ref={headerRef} className="sticky top-0 z-20 bg-white shadow-[0_4px_20px_-4px_rgba(0,0,0,0.3)] border-b border-white/20 overflow-hidden">
-        <div className="min-w-full w-max inline-flex items-center text-xs font-bold tracking-widest uppercase text-zinc-800">
+    <div className="rounded-xl border border-white/10 bg-black/40 backdrop-blur-2xl h-[70vh] flex flex-col text-foreground shadow-2xl ring-1 ring-white/5 relative overflow-hidden">
+
+      {/* Unified Scrolling Container for both Header and Body (Eliminates scroll sync lag) */}
+      <div ref={parentRef} className="flex-1 overflow-auto bg-transparent relative custom-scrollbar">
+
+        {/* Sticky Header Area */}
+        <div className="sticky top-0 z-20 bg-white shadow-[0_4px_20px_-4px_rgba(0,0,0,0.3)] border-b border-white/20 w-max min-w-full inline-flex text-xs font-bold tracking-widest uppercase text-zinc-800">
           <div className="w-16 shrink-0 flex items-center justify-center border-r border-zinc-200/80 py-3.5 bg-zinc-100">
             #
           </div>
-          <div className="w-14 shrink-0 flex items-center justify-center border-r border-zinc-200/80 py-3.5">
+          <div className="w-14 shrink-0 flex items-center justify-center border-r border-zinc-200/80 py-3.5 bg-white">
             <Checkbox
               checked={selectionModel.length === rows.length && rows.length > 0}
               onCheckedChange={toggleAll}
@@ -151,7 +155,7 @@ export function DataTable({
           {columns.map((c, i) => (
             <div
               key={c.field}
-              className={`relative flex items-center shrink-0 px-4 py-3.5 ${i !== columns.length - 1 ? 'border-r border-zinc-200/80' : ''}`}
+              className={`relative flex items-center shrink-0 px-4 py-3.5 bg-white ${i !== columns.length - 1 ? 'border-r border-zinc-200/80' : ''}`}
               style={{ width: `${getColWidth(c.field)}px` }}
             >
               <span className="truncate w-full">{c.headerName}</span>
@@ -163,18 +167,6 @@ export function DataTable({
             </div>
           ))}
         </div>
-      </div>
-
-      {/* Virtualized Body Wrapper */}
-      <div
-        ref={parentRef}
-        className="flex-1 overflow-auto bg-transparent relative custom-scrollbar"
-        onScroll={(e) => {
-          if (headerRef.current) {
-            headerRef.current.scrollLeft = (e.target as HTMLDivElement).scrollLeft;
-          }
-        }}
-      >
         <div
           style={{
             height: `${rowVirtualizer.getTotalSize()}px`,

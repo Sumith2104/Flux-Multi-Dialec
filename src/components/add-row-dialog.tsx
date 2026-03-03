@@ -103,7 +103,7 @@ export function AddRowDialog({
         name={col.column_name}
         className="col-span-3"
         type={inputType}
-        defaultValue={(col.data_type === 'timestamp' || col.data_type === 'timestamptz') && col.default_value === 'now()' ? '' : undefined}
+        defaultValue={(col.data_type === 'timestamp' || (col.data_type as string) === 'timestamptz') && col.default_value === 'now()' ? '' : undefined}
       />
     )
   }

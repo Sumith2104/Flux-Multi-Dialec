@@ -12,5 +12,5 @@ export async function logoutAction() {
     await logout();
     // Also clear the selected project cookie on logout.
     (await cookies()).delete('selectedProject');
-    redirect('/');
+    return { success: true };
 }

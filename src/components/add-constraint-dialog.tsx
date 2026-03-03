@@ -97,7 +97,7 @@ export function AddConstraintDialog({
       formData.append('onDelete', values.onDelete || '');
     }
 
-    const result = await addConstraintAction(formData);
+    const result = await addConstraintAction(formData) as any;
 
     if (result.success && result.constraint) {
       toast({

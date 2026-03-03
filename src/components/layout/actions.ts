@@ -12,8 +12,8 @@ export async function createProjectAction(formData: FormData) {
   }
 
   try {
-    const project = await createProject(projectName, dialect || 'postgresql', timezone);
-    return { success: true, projectId: project.project_id };
+    const project = await createProject(projectName, "No description provided", dialect || 'postgresql', timezone);
+    return { success: true, project: project };
   } catch (error) {
     console.error('Project creation failed:', error);
     return { error: 'Failed to create project.' };

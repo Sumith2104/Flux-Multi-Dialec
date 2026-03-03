@@ -13,10 +13,9 @@ export async function updateProjectSettingsAction(projectId: string, timezone: s
     }
 
     try {
-        const { adminDb } = await import('@/lib/firebase-admin');
-        await adminDb.collection('users').doc(userId).collection('projects').doc(projectId).update({
-            timezone
-        });
+        const { getPgPool } = await import('@/lib/pg');
+        const pool = getPgPool();
+        await pool.query('UPDATE fluxbase_global.projects SET timezone = $1 WHERE project_id = $2 AND user_id = $3', [timezone, projectId, userId]);
 
         revalidatePath('/api');
         return { success: true };

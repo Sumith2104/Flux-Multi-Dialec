@@ -62,8 +62,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                     const projectsData = await getProjectsForCurrentUser();
                     setProjects(projectsData);
 
-                    // Validation: If a project is selected in context/localStorage,
-                    // but it doesn't exist in the fetched projects list, clear it.
+
                     if (selectedProject && !projectsData.some(p => p.project_id === selectedProject.project_id)) {
                         setProject(null);
                     }
