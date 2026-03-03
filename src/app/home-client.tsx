@@ -215,10 +215,10 @@ export default function Home() {
                         <span className="font-bold text-xl">Fluxbase</span>
                     </div>
                     <div className="flex gap-8 text-sm text-muted-foreground">
-                        <Link href="#" className="hover:text-primary transition-colors">Privacy</Link>
-                        <Link href="#" className="hover:text-primary transition-colors">Terms</Link>
-                        <Link href="#" className="hover:text-primary transition-colors">Documentation</Link>
-                        <Link href="#" className="hover:text-primary transition-colors">Contact</Link>
+                        <Link href="/privacy" className="hover:text-primary transition-colors">Privacy</Link>
+                        <Link href="/terms" className="hover:text-primary transition-colors">Terms</Link>
+                        <Link href="/docs" className="hover:text-primary transition-colors">Documentation</Link>
+                        <Link href="/contact" className="hover:text-primary transition-colors">Contact</Link>
                     </div>
                     <div className="flex gap-4">
                         <Button variant="ghost" size="icon" className="rounded-full">
