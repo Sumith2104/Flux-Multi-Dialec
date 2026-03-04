@@ -21,20 +21,24 @@ export function useRealtimeAnalytics(projectId: string | undefined): AnalyticsSt
     useEffect(() => {
         if (!projectId) return;
 
-        let isMounted = true;
-        const fetchStats = async () => {
-            const data = await getAnalyticsStatsAction(projectId);
-            if (isMounted && data) {
-                setStats(data);
+        const eventSource = new EventSource(`/api/projects/${projectId}/analytics/stream`);
+
+        eventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.stats) setStats(data.stats);
+            } catch (err) {
+                console.error("Error parsing SSE analytics data", err);
             }
         };
 
-        fetchStats();
-        const timer = setInterval(fetchStats, 5000); // poll every 5s
+        eventSource.onerror = (err) => {
+            console.error("SSE stream error:", err);
+            eventSource.close();
+        };
 
         return () => {
-            isMounted = false;
-            clearInterval(timer);
+            eventSource.close();
         };
     }, [projectId]);
 

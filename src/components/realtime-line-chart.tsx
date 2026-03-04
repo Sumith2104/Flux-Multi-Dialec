@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { AnalyticsStats } from '@/hooks/use-realtime-analytics';
+import { AnalyticsStats, useRealtimeAnalytics } from '@/hooks/use-realtime-analytics';
 import { useRealtimeHistory } from '@/hooks/use-realtime-history';
 import { Activity } from 'lucide-react';
 
@@ -42,17 +42,18 @@ const renderCustomDot = (props: any) => {
 };
 
 export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
-    const historicalData = useRealtimeHistory(projectId);
+    const stats = useRealtimeAnalytics(projectId);
+    const prevStatsRef = useRef<AnalyticsStats | null>(null);
 
     const [data, setData] = useState<DataPoint[]>(() => {
         const initialData: DataPoint[] = [];
         const now = Date.now();
         for (let i = 59; i >= 0; i--) {
-            const time = now - i * 60000;
+            const time = now - i * 2500;
             const date = new Date(time);
             initialData.push({
                 timestamp: time,
-                timeLabel: date.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' }),
+                timeLabel: date.toLocaleTimeString([], { hour12: false, minute: '2-digit', second: '2-digit' }),
                 requests: 0,
                 api: 0,
                 sql: 0,
@@ -65,13 +66,62 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
     });
     const [peakRPS, setPeakRPS] = useState(0);
 
-    // Sync chart instantly with the live WebSockets stream
+    // Keep track of the absolute stats independently
+    const currentStatsRef = useRef<AnalyticsStats | null>(null);
+    const prevTickStatsRef = useRef<AnalyticsStats | null>(null);
+
+    // Update our ref whenever SSE pushes new data
     useEffect(() => {
-        if (historicalData.length > 0) {
-            setData(historicalData);
-            setPeakRPS(prev => Math.max(prev, ...historicalData.map(d => d.requests)));
+        if (stats) {
+            currentStatsRef.current = stats;
         }
-    }, [historicalData]);
+    }, [stats]);
+
+    // Independent smooth visual ticking interval
+    useEffect(() => {
+        const tickInterval = setInterval(() => {
+            const current = currentStatsRef.current;
+            const prev = prevTickStatsRef.current;
+
+            // If we have an older baseline, calculate the delta
+            let deltaReq = 0, deltaA = 0, deltaS = 0;
+
+            if (current && prev) {
+                deltaReq = Math.max(0, current.total_requests - prev.total_requests);
+                deltaA = Math.max(0, current.type_api_call - prev.type_api_call);
+                deltaS = Math.max(0, current.type_sql_execution - prev.type_sql_execution);
+            }
+
+            // Always tick the previous ref up so we don't double-count on the next interval
+            if (current) {
+                prevTickStatsRef.current = current;
+            }
+
+            const now = Date.now();
+            const date = new Date(now);
+
+            setData(currentData => {
+                const newData = [...currentData];
+                // Smoothly shift left
+                newData.shift();
+                newData.push({
+                    timestamp: now,
+                    timeLabel: date.toLocaleTimeString([], { hour12: false, minute: '2-digit', second: '2-digit' }),
+                    requests: deltaReq,
+                    api: deltaA,
+                    sql: deltaS,
+                    deltaRequests: deltaReq,
+                    deltaApi: deltaA,
+                    deltaSql: deltaS
+                });
+                return newData;
+            });
+
+            setPeakRPS(prevPeak => Math.max(prevPeak, deltaReq));
+        }, 2000); // 2-second reliable local tick
+
+        return () => clearInterval(tickInterval);
+    }, []);
 
     const averages = useMemo(() => {
         if (data.length === 0) return { requests: 0, api: 0, sql: 0 };

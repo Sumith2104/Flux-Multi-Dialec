@@ -1,0 +1,26 @@
+[
+  {
+    "column_name": "id",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "email",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "display_name",
+    "data_type": "character varying"
+  },
+  {
+    "column_name": "photo_url",
+    "data_type": "text"
+  },
+  {
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone"
+  },
+  {
+    "column_name": "updated_at",
+    "data_type": "timestamp with time zone"
+  }
+]

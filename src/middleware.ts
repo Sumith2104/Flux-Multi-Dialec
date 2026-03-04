@@ -6,21 +6,20 @@ export function middleware(request: NextRequest) {
   const userId = !!sessionCookie; // Simple presence check for Edge compatibility
   const { pathname } = request.nextUrl;
 
-  const isAuthPage = ['/login', '/signup'].includes(pathname);
+  const isAuthPage = ['/login', '/signup', '/reset-password'].includes(pathname);
 
   // If user is logged in...
   if (userId) {
-    // and tries to access an auth page (login/signup), redirect to dashboard.
+    // and tries to access an auth page (login/signup/reset), redirect to dashboard.
     if (isAuthPage) {
       return NextResponse.redirect(new URL('/dashboard/projects', request.url));
     }
   }
   // If user is not logged in...
   else {
-    // and tries to access a protected page, redirect to login.
-    // The root page `/` should be accessible to all.
+    // and tries to access a protected page, redirect to root (which houses the login popup).
     if (!isAuthPage && pathname !== '/') {
-      return NextResponse.redirect(new URL('/login', request.url));
+      return NextResponse.redirect(new URL('/', request.url));
     }
   }
 

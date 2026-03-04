@@ -2,7 +2,7 @@
 
 import { getPgPool } from "@/lib/pg";
 import { createSessionCookie } from "@/lib/auth";
-import { sendEmail } from "@/lib/email";
+import { sendOtpEmail, sendWelcomeEmail } from "@/lib/email";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import crypto from 'crypto';
@@ -52,15 +52,8 @@ export async function googleAuthAction(accessToken: string) {
         [userId, email, name, photoUrl]
       );
 
-      // Send Welcome Email (async, non-blocking)
-      sendEmail(
-        email,
-        "Welcome to Fluxbase via Google! 🚀",
-        `<div style="font-family: sans-serif; color: #333;">
-                    <h1>Welcome to Fluxbase, ${name}!</h1>
-                    <p>We're thrilled to have you on board via Google SSO.</p>
-                </div>`
-      ).catch(console.error);
+      // Send beautiful consistent Welcome Email
+      sendWelcomeEmail(email, name).catch(console.error);
     }
 
     // 3. Create active session cookie securely
@@ -83,11 +76,9 @@ export async function signupAction(formData: FormData) {
   }
 
   try {
-    // Create user natively in AWS Postgres
-    const userId = crypto.randomUUID();
     const pool = getPgPool();
 
-    // Check if email exists
+    // Check if email already exists in main users table
     const existing = await pool.query('SELECT id FROM fluxbase_global.users WHERE email = $1', [email]);
     if (existing.rows.length > 0) {
       return { error: "Email already exists" };
@@ -96,25 +87,80 @@ export async function signupAction(formData: FormData) {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    await pool.query(
-      'INSERT INTO fluxbase_global.users (id, email, display_name, password_hash) VALUES ($1, $2, $3, $4)',
-      [userId, email, name, passwordHash]
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60000); // 15 minutes
+
+    // Upsert into isolated otp_verifications table
+    await pool.query(`
+      INSERT INTO fluxbase_global.otp_verifications (email, name, password_hash, otp_code, expires_at)
+      VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (email) DO UPDATE SET
+        name = EXCLUDED.name,
+        password_hash = EXCLUDED.password_hash,
+        otp_code = EXCLUDED.otp_code,
+        expires_at = EXCLUDED.expires_at
+    `, [email, name, passwordHash, otp, expiresAt]);
+
+    // Send OTP email asynchronously
+    sendOtpEmail(email, name, otp).catch(console.error);
+
+    return { success: true, requireOtp: true, email };
+  } catch (error: any) {
+    return { error: error.message };
+  }
+}
+
+export async function verifyOtpAction(formData: FormData) {
+  const email = formData.get("email") as string;
+  const otp = formData.get("otp") as string;
+
+  if (!email || !otp) {
+    return { error: "Missing email or OTP" };
+  }
+
+  try {
+    const pool = getPgPool();
+    const pendingResult = await pool.query(
+      'SELECT name, password_hash, otp_code, expires_at FROM fluxbase_global.otp_verifications WHERE email = $1',
+      [email]
     );
 
+    if (pendingResult.rows.length === 0) {
+      return { error: "No pending verification found for this email. Please sign up again." };
+    }
+
+    const pendingUser = pendingResult.rows[0];
+
+    if (pendingUser.otp_code !== otp) {
+      return { error: "Invalid verification code." };
+    }
+
+    if (new Date() > new Date(pendingUser.expires_at)) {
+      // Expired, clear it out.
+      await pool.query('DELETE FROM fluxbase_global.otp_verifications WHERE email = $1', [email]);
+      return { error: "Verification code has expired. Please sign up again." };
+    }
+
+    // OTP Valid! Create the real user from the pending hash
+    const userId = crypto.randomUUID();
+    await pool.query(
+      'INSERT INTO fluxbase_global.users (id, email, display_name, password_hash) VALUES ($1, $2, $3, $4)',
+      [userId, email, pendingUser.name, pendingUser.password_hash]
+    );
+
+    // Cleanup pending verification
+    await pool.query('DELETE FROM fluxbase_global.otp_verifications WHERE email = $1', [email]);
+
+    // Securely log them in
     await createSessionCookie(userId);
 
-    // Send Welcome Email (async, non-blocking)
-    sendEmail(
-      email,
-      "Welcome to Fluxbase! 🚀",
-      `<div style="font-family: sans-serif; color: #333;">
-          <h1>Welcome to Fluxbase, ${name || 'Explorer'}!</h1>
-          <p>We're thrilled to have you on board.</p>
-      </div>`
-    ).catch(console.error);
+    // Send uniform Welcome Email for native registration
+    sendWelcomeEmail(email, pendingUser.name).catch(console.error);
 
     return { success: true };
   } catch (error: any) {
+    console.error("OTP Verification Error:", error);
     return { error: error.message };
   }
 }
@@ -161,5 +207,57 @@ export async function selectProjectAction(formData: FormData) {
     (await cookies()).set("selectedProject", project, { path: "/", httpOnly: false });
   } else {
     (await cookies()).set("selectedProject", "", { path: "/", maxAge: 0 });
+  }
+}
+
+export async function resetPasswordAction(formData: FormData) {
+  const email = formData.get("email") as string;
+  const token = formData.get("token") as string;
+  const password = formData.get("password") as string;
+
+  if (!email || !token || !password) {
+    return { error: "Missing required fields." };
+  }
+
+  try {
+    const pool = getPgPool();
+    const tokenResult = await pool.query(
+      'SELECT expires_at FROM fluxbase_global.password_resets WHERE email = $1 AND token = $2',
+      [email, token]
+    );
+
+    if (tokenResult.rows.length === 0) {
+      return { error: "Invalid or consumed password reset link. Please generate a new one." };
+    }
+
+    const expiresAt = new Date(tokenResult.rows[0].expires_at);
+    if (new Date() > expiresAt) {
+      await pool.query('DELETE FROM fluxbase_global.password_resets WHERE email = $1', [email]);
+      return { error: "Password reset link has expired. Please request a new one." };
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(password, salt);
+
+    const userResult = await pool.query(
+      'UPDATE fluxbase_global.users SET password_hash = $1 WHERE email = $2 RETURNING id',
+      [passwordHash, email]
+    );
+
+    if (userResult.rows.length === 0) {
+      return { error: "User not found. Identity verification failed." };
+    }
+
+    // Successfully updated to new password! Clear out the single-use token.
+    await pool.query('DELETE FROM fluxbase_global.password_resets WHERE email = $1', [email]);
+
+    // Auto-login flawlessly after the password reset
+    const userId = userResult.rows[0].id;
+    await createSessionCookie(userId);
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Password Reset Confirmation Error:", error);
+    return { error: "Failed to reset password. Please try again later." };
   }
 }

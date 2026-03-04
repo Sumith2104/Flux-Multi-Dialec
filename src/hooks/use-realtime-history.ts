@@ -18,20 +18,19 @@ export function useRealtimeHistory(projectId: string | undefined): RealtimeDataP
     useEffect(() => {
         if (!projectId) return;
 
-        let isMounted = true;
-        const fetchHistory = async () => {
-            const data = await getRealtimeHistoryAction(projectId);
-            if (isMounted) {
-                setHistory(data || []);
+        const eventSource = new EventSource(`/api/projects/${projectId}/analytics/stream`);
+
+        eventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.history) setHistory(data.history);
+            } catch (err) {
+                console.error("Error parsing SSE history data", err);
             }
         };
 
-        fetchHistory();
-        const timer = setInterval(fetchHistory, 10000);
-
         return () => {
-            isMounted = false;
-            clearInterval(timer);
+            eventSource.close();
         };
     }, [projectId]);
 

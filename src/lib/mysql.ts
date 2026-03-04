@@ -1,9 +1,11 @@
 import mysql from 'mysql2/promise';
 
-let pool: mysql.Pool | null = null;
+const globalForMysql = globalThis as unknown as {
+    mysqlPool: mysql.Pool | undefined;
+};
 
 export function getMysqlPool(): mysql.Pool {
-    if (!pool) {
+    if (!globalForMysql.mysqlPool) {
         if (!process.env.AWS_RDS_MYSQL_URL) {
             throw new Error("Missing AWS_RDS_MYSQL_URL environment variable");
         }
@@ -14,7 +16,7 @@ export function getMysqlPool(): mysql.Pool {
         parsedUrl.pathname = '';
 
         // connectionLimit 20 to match pg max
-        pool = mysql.createPool({
+        globalForMysql.mysqlPool = mysql.createPool({
             uri: parsedUrl.toString(),
             connectionLimit: 20,
             waitForConnections: true,
@@ -27,5 +29,5 @@ export function getMysqlPool(): mysql.Pool {
             } // Essential for AWS RDS
         });
     }
-    return pool;
+    return globalForMysql.mysqlPool;
 }
