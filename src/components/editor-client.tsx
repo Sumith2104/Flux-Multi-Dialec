@@ -6,7 +6,7 @@ import { useGlobalAlert } from '@/components/global-alert-provider';
 
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useTransition } from 'react';
 import type { Table as DbTable, Column as DbColumn, Constraint as DbConstraint } from '@/lib/data';
 import {
     Plus,
@@ -20,6 +20,7 @@ import {
     MoreHorizontal,
     KeyRound,
     Link2,
+    Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -104,6 +105,7 @@ export function EditorClient({
     const [selectionModel, setSelectionModel] = useState<string[]>([]);
     const [isEditRowOpen, setIsEditRowOpen] = useState(false);
     const [isEditColumnOpen, setIsEditColumnOpen] = useState(false);
+    const [isAddColumnOpen, setIsAddColumnOpen] = useState(false);
     const [isDeleteTableAlertOpen, setIsDeleteTableAlertOpen] = useState(false);
     const [tableToDelete, setTableToDelete] = useState<DbTable | null>(null);
     const [columnToEdit, setColumnToEdit] = useState<DbColumn | null>(null);
@@ -111,9 +113,16 @@ export function EditorClient({
     const [constraintToDelete, setConstraintToDelete] = useState<DbConstraint | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
     const [activeTab, setActiveTab] = useState('data');
+    const [isImportingCsv, setIsImportingCsv] = useState(false);
+    const csvInputRef = React.useRef<HTMLInputElement>(null);
 
     const [foreignKeyData, setForeignKeyData] = useState<Record<string, any[]>>({});
     const [constraints, setConstraints] = useState<DbConstraint[]>(initialConstraints);
+    // Local copy of columns — updated optimistically so mutations don't need router.refresh()
+    const [localColumns, setLocalColumns] = useState<DbColumn[]>(initialColumns);
+    // Local copy of tables — updated optimistically so sidebar doesn't need router.refresh() on delete
+    const [localTables, setLocalTables] = useState<DbTable[]>(allTables);
+    const [, startTransition] = useTransition();
 
     const [sortConfig, setSortConfig] = useState<{ field: string; direction: 'asc' | 'desc' } | null>(null);
     const [filterConfig, setFilterConfig] = useState<{ field: string; operator: string; value: string } | null>(null);
@@ -121,6 +130,16 @@ export function EditorClient({
     useEffect(() => {
         setConstraints(initialConstraints);
     }, [initialConstraints]);
+
+    // Sync localTables when allTables changes (e.g. after creating a new table)
+    useEffect(() => {
+        setLocalTables(allTables);
+    }, [allTables]);
+
+    // Reset local column state when switching to a different table
+    useEffect(() => {
+        setLocalColumns(initialColumns);
+    }, [tableId]); // tableId change = different table → reset to server-provided columns
 
     const {
         data: infiniteData,
@@ -137,7 +156,10 @@ export function EditorClient({
             let url = `/api/table-data?projectId=${projectId}&tableName=${tableName}&pageSize=50`;
             if (pageParam) url += `&page=${pageParam}`;
 
-            const response = await fetch(url);
+            // Append a timestamp to completely bypass Next.js and browser cache
+            url += `&_t=${Date.now()}`;
+
+            const response = await fetch(url, { headers: { 'Cache-Control': 'no-store' } });
             if (!response.ok) throw new Error('Failed to fetch table data');
             return response.json();
         },
@@ -149,7 +171,7 @@ export function EditorClient({
 
     const rows = useMemo(() => {
         if (!infiniteData) return [];
-        return infiniteData.pages.flatMap((page) => page.rows);
+        return infiniteData.pages.flatMap((page) => Array.isArray(page?.rows) ? page.rows : []);
     }, [infiniteData]);
 
     const filteredAndSortedRows = useMemo(() => {
@@ -218,9 +240,88 @@ export function EditorClient({
     }, [initialColumns, constraints, allTables, projectId]);
 
     const refreshData = useCallback(() => {
-        // Force the infinite table cache to drop entirely and request page 1 again so new rows appear immediately
-        queryClient.invalidateQueries({ queryKey: ['table-data', projectId, tableId] });
-    }, [queryClient, projectId, tableId]);
+        // Drop the entire cached pages so infinite query resets to page 1,
+        // then immediately re-fetch fresh data (invalidate alone won't re-fetch empty-state tables)
+        queryClient.removeQueries({ queryKey: ['table-data', projectId, tableId] });
+        refetch();
+    }, [queryClient, projectId, tableId, refetch]);
+
+    // Live Data Updates (WebSocket Server)
+    useEffect(() => {
+        if (!projectId || !tableId) return;
+
+        let isMounted = true;
+        const ws = new WebSocket('ws://localhost:4000'); // Connect to our dedicated WS server
+
+        ws.onopen = () => {
+            console.log(`[WS] Connected. Subscribing to live updates for table: ${tableId}`);
+            ws.send(JSON.stringify({ type: 'subscribe', projectId, tableId }));
+        };
+
+        ws.onmessage = (event) => {
+            if (!isMounted) return;
+            try {
+                const payload = JSON.parse(event.data);
+
+                if (payload.type === 'update') {
+                    console.log('[WS] Realtime Update Received:', payload.operation, payload.data);
+
+                    // Directly patch UI using React Query instead of invalidating queries
+                    queryClient.setQueryData(['table-data', projectId, tableId], (oldData: any) => {
+                        if (!oldData || !oldData.pages) return oldData;
+
+                        let handledInsert = false;
+
+                        const newPages = oldData.pages.map((page: any, pageIndex: number) => {
+                            let newRows = [...page.rows];
+                            const dataId = payload.data.id || payload.data._id || payload.data.uuid;
+
+                            if (payload.operation === 'DELETE') {
+                                const index = newRows.findIndex(r => r.id === dataId || r._id === dataId);
+                                if (index !== -1) newRows.splice(index, 1);
+                            }
+                            else if (payload.operation === 'UPDATE') {
+                                const index = newRows.findIndex(r => r.id === dataId || r._id === dataId);
+                                if (index !== -1) newRows[index] = { ...newRows[index], ...payload.data };
+                            }
+                            else if (payload.operation === 'INSERT') {
+                                // Add to the very first page top
+                                if (pageIndex === 0 && !handledInsert) {
+                                    if (!newRows.find(r => r.id === dataId || r._id === dataId)) {
+                                        newRows.unshift({ ...payload.data, _id: dataId || `temp_${Date.now()}` });
+                                        handledInsert = true;
+                                    }
+                                }
+                            }
+
+                            return { ...page, rows: newRows };
+                        });
+
+                        return { ...oldData, pages: newPages };
+                    });
+                } else if (payload.type === 'error') {
+                    console.error('[WS] Subscription Error:', payload.message);
+                }
+            } catch (err) {
+                console.error('[WS] Failed to parse payload:', err);
+            }
+        };
+
+        ws.onerror = (error) => {
+            if (!isMounted) return;
+            console.error('[WS] WebSocket failed:', error);
+            ws.close();
+        };
+
+        return () => {
+            isMounted = false;
+            console.log(`[WS] Unsubscribing from live updates for table: ${tableId}`);
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'unsubscribe', projectId, tableId }));
+            }
+            ws.close();
+        };
+    }, [projectId, tableId, queryClient]);
 
     const handleDeleteSelectedRows = async () => {
         if (!projectId || !tableId || !tableName || selectionModel.length === 0) return;
@@ -239,11 +340,11 @@ export function EditorClient({
     };
 
     const columns: ColumnDef[] = useMemo(() => {
-        return initialColumns.map(col => ({
+        return localColumns.map(col => ({
             field: col.column_name,
             headerName: col.column_name,
         }));
-    }, [initialColumns]);
+    }, [localColumns]);
 
     const selectedRowData = useMemo(() => {
         if (selectionModel.length !== 1) return null;
@@ -258,9 +359,11 @@ export function EditorClient({
         if (result.success) {
             toast({ title: 'Success', description: `Table '${tableToDelete.table_name}' deleted successfully.` });
             if (tableToDelete.table_id === tableId) {
+                // Navigate away — unavoidable since the current table is gone
                 router.push(`/editor?projectId=${projectId}`);
             } else {
-                router.refresh();
+                // Optimistically remove from sidebar — no server round-trip, no flicker
+                setLocalTables(prev => prev.filter(t => t.table_id !== tableToDelete.table_id));
             }
         } else {
             toast({ variant: 'destructive', title: 'Error', description: result.error || 'Failed to delete table.' });
@@ -297,7 +400,9 @@ export function EditorClient({
 
         if (result.success) {
             toast({ title: 'Success', description: `Column '${columnToDelete.column_name}' deleted successfully.` });
-            router.refresh();
+            // Optimistically remove from local state — no page reload needed
+            setLocalColumns(prev => prev.filter(c => c.column_id !== columnToDelete.column_id));
+            refreshData(); // also refresh row data in case the column was used in display
         } else {
             toast({ variant: 'destructive', title: 'Error', description: result.error, duration: 8000 });
         }
@@ -396,7 +501,7 @@ export function EditorClient({
                         <Input placeholder="Search tables..." className="pl-8" />
                     </div>
                     <nav className="flex-1 overflow-y-auto px-2 space-y-1 py-2">
-                        {allTables.map((table) => (
+                        {localTables.map((table) => (
                             <div
                                 key={table.table_id}
                                 className={`group flex items-center justify-between rounded-md text-sm font-medium hover:bg-accent ${table.table_id === tableId ? 'bg-accent' : ''}`}
@@ -446,7 +551,7 @@ export function EditorClient({
                 <main className="flex-1 flex flex-col overflow-hidden">
                     {currentTable && tableId && tableName ? (
                         <>
-                            <header className="flex h-14 items-center gap-4 border-b bg-background px-6 flex-shrink-0">
+                            <header className="flex min-h-14 py-2 h-auto flex-wrap sm:flex-nowrap items-center gap-4 border-b bg-background px-6 flex-shrink-0">
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                     <Table className="h-4 w-4" />
                                     <span className="font-semibold text-foreground">{currentTable.table_name}</span>
@@ -459,13 +564,81 @@ export function EditorClient({
                                                 projectId={projectId}
                                                 tableId={tableId}
                                                 tableName={tableName}
-                                                columns={initialColumns}
+                                                columns={localColumns}
                                                 onRowAdded={refreshData}
                                                 foreignKeyData={foreignKeyData}
                                                 allTables={allTables}
                                                 constraints={constraints}
                                             />
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setIsAddColumnOpen(true)}
+                                            >
+                                                <Plus className="mr-2 h-4 w-4" /> Add Column
+                                            </Button>
+                                            <AddColumnDialog
+                                                isOpen={isAddColumnOpen}
+                                                setIsOpen={setIsAddColumnOpen}
+                                                projectId={projectId}
+                                                tableId={tableId}
+                                                tableName={tableName}
+                                                onColumnAdded={refreshData}
+                                            />
+                                            {/* Import CSV — hidden file input triggered by button */}
+                                            <input
+                                                ref={csvInputRef}
+                                                type="file"
+                                                accept=".csv,text/csv"
+                                                className="hidden"
+                                                onChange={async (e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (!file || !projectId || !tableName) return;
+                                                    e.target.value = ''; // allow re-selecting same file
 
+                                                    setIsImportingCsv(true);
+                                                    const fd = new FormData();
+                                                    fd.append('projectId', projectId);
+                                                    fd.append('tableName', tableName);
+                                                    fd.append('csvFile', file);
+
+                                                    try {
+                                                        const res = await fetch('/api/import-csv', { method: 'POST', body: fd });
+                                                        const json = await res.json();
+                                                        if (!res.ok) {
+                                                            toast({
+                                                                variant: 'destructive',
+                                                                title: 'Import Failed',
+                                                                description: json.error + (json.details ? '\n' + json.details.slice(0, 3).join('\n') : ''),
+                                                                duration: 8000,
+                                                            });
+                                                        } else {
+                                                            toast({
+                                                                title: 'Import Complete',
+                                                                description: `${json.importedCount} row(s) imported from ${file.name}${json.warnings?.length ? ` (${json.warnings.length} row(s) skipped)` : ''
+                                                                    }.`,
+                                                            });
+                                                            refreshData();
+                                                        }
+                                                    } catch (err: any) {
+                                                        toast({ variant: 'destructive', title: 'Import Error', description: err.message });
+                                                    } finally {
+                                                        setIsImportingCsv(false);
+                                                    }
+                                                }}
+                                            />
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                disabled={isImportingCsv}
+                                                onClick={() => csvInputRef.current?.click()}
+                                            >
+                                                {isImportingCsv ? (
+                                                    <><span className="mr-2 h-4 w-4 animate-spin">⏳</span> Importing...</>
+                                                ) : (
+                                                    <><Upload className="mr-2 h-4 w-4" /> Import CSV</>
+                                                )}
+                                            </Button>
                                         </>
                                     )}
                                     <Button variant="outline" size="sm" disabled={selectionModel.length !== 1} onClick={() => setIsEditRowOpen(true)}>
@@ -478,7 +651,7 @@ export function EditorClient({
                                             projectId={projectId}
                                             tableId={tableId}
                                             tableName={tableName}
-                                            columns={initialColumns}
+                                            columns={localColumns}
                                             rowData={selectedRowData}
                                             onRowUpdated={refreshData}
                                             foreignKeyData={foreignKeyData}
@@ -588,27 +761,29 @@ export function EditorClient({
                                 </div>
                             </header>
 
-                            <div className="p-6 overflow-y-auto">
-                                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                            <div className="p-6 flex-grow flex flex-col overflow-hidden">
+                                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col min-h-0">
                                     <TabsList>
                                         <TabsTrigger value="data">Data</TabsTrigger>
                                         <TabsTrigger value="structure">Structure</TabsTrigger>
                                     </TabsList>
-                                    <TabsContent value="data" className="mt-6 flex-1 h-full min-h-0 relative">
-                                        <DataTable
-                                            columns={columns}
-                                            rows={filteredAndSortedRows}
-                                            loading={isTableLoading}
-                                            fetchNextPage={fetchNextPage}
-                                            isFetchingNextPage={isFetchingNextPage}
-                                            hasNextPage={hasNextPage}
-                                            selectionModel={selectionModel}
-                                            onRowSelectionModelChange={(newSelectionModel) => {
-                                                setSelectionModel(newSelectionModel);
-                                            }}
-                                        />
+                                    <TabsContent value="data" className="mt-6 flex-1 flex flex-col min-h-0 relative overflow-hidden">
+                                        <div className="flex-1 min-h-0">
+                                            <DataTable
+                                                columns={columns}
+                                                rows={filteredAndSortedRows}
+                                                loading={isTableLoading}
+                                                fetchNextPage={fetchNextPage}
+                                                isFetchingNextPage={isFetchingNextPage}
+                                                hasNextPage={hasNextPage}
+                                                selectionModel={selectionModel}
+                                                onRowSelectionModelChange={(newSelectionModel) => {
+                                                    setSelectionModel(newSelectionModel);
+                                                }}
+                                            />
+                                        </div>
                                     </TabsContent>
-                                    <TabsContent value="structure" className="mt-4 space-y-6 overflow-y-auto flex-1 min-h-0 pb-24">
+                                    <TabsContent value="structure" className="mt-4 space-y-6 overflow-y-auto flex-1 min-h-0 pb-24 pr-2">
                                         <Card>
                                             <CardHeader>
                                                 <CardTitle>Table Structure</CardTitle>
@@ -628,7 +803,7 @@ export function EditorClient({
                                                             </TableRow>
                                                         </TableHeader>
                                                         <TableBody>
-                                                            {initialColumns.map(col => (
+                                                            {localColumns.map(col => (
                                                                 <TableRow key={col.column_id}>
                                                                     <TableCell className="font-mono">{col.column_name}</TableCell>
                                                                     <TableCell className="font-mono">{col.data_type}</TableCell>
@@ -661,11 +836,13 @@ export function EditorClient({
                                                 </div>
                                             </CardContent>
                                             <CardFooter>
-                                                <AddColumnDialog
-                                                    projectId={projectId}
-                                                    tableId={tableId}
-                                                    tableName={tableName}
-                                                />
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => setIsAddColumnOpen(true)}
+                                                >
+                                                    <Plus className="mr-2 h-4 w-4" /> Add Column
+                                                </Button>
                                             </CardFooter>
                                         </Card>
                                         <Card>

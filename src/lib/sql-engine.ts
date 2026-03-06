@@ -91,6 +91,13 @@ export class SqlEngine {
         let lastResult: SqlResult = { rows: [], columns: [], explanation: [] };
         const startTime = performance.now();
 
+        // Gateway Concurrency Queuing
+        const tenantSem = getTenantSemaphore(this.projectId);
+        const [[, globalRelease], [, tenantRelease]] = await Promise.all([
+            GLOBAL_SEMAPHORE.acquire(),
+            tenantSem.acquire()
+        ]);
+
         try {
             await trackApiRequest(this.projectId, 'api_call');
             await trackApiRequest(this.projectId, 'sql_execution');
@@ -117,16 +124,8 @@ export class SqlEngine {
                     let rowCount = 0;
 
                     if (Array.isArray(queryResult)) {
-                        // When multipleStatements is true, queryResult is an array of results.
-                        // These results can be arrays (SELECT) or objects (INSERT/UPDATE/DDL).
-                        // Fields might be undefined for mutations.
-
                         if (queryResult.length === 0) {
-                            // Empty array
                         } else if (Array.isArray(queryResult[0]) || queryResult[0]?.constructor?.name === 'ResultSetHeader') {
-                            // It's a multiple statement result array
-
-                            // Find the last actual SELECT result, or default to the very last statement
                             let targetRes = queryResult[queryResult.length - 1];
                             let targetFields = fields && fields.length > 0 ? fields[fields.length - 1] : undefined;
 
@@ -148,13 +147,11 @@ export class SqlEngine {
                                 rowCount = targetRes.affectedRows || 0;
                             }
                         } else {
-                            // Standard single statement SELECT
                             formattedRows = queryResult;
                             if (fields && Array.isArray(fields)) formattedColumns = fields.map((f: any) => f.name);
                             rowCount = queryResult.length;
                         }
                     } else if (queryResult && typeof queryResult === 'object') {
-                        // Standard single statement Insert/Update/Delete object result
                         rowCount = queryResult.affectedRows || 0;
                     }
 
@@ -185,7 +182,6 @@ export class SqlEngine {
 
                     // 3. Format Native Result to Fluxbase SqlResult
                     if (Array.isArray(result)) {
-                        // If multiple statements were passed inside a single query string
                         const finalRes = result[result.length - 1];
                         lastResult = {
                             rows: finalRes.rows || [],
@@ -215,6 +211,10 @@ export class SqlEngine {
         } catch (e: any) {
             console.error("[AWS Native Proxy Error]", e);
             throw new Error(`AWS Database Error: ${e.message}`);
+        } finally {
+            // Guarantee all acquired locks are fully released back to the event-loop queue
+            tenantRelease();
+            globalRelease();
         }
 
         return lastResult;

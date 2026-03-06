@@ -5,6 +5,8 @@ import { trackApiRequest } from '@/lib/analytics';
 import { getCurrentUserId, getAuthContextFromRequest } from '@/lib/auth';
 
 export const maxDuration = 60; // 1 minute
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(request: Request) {
   try {

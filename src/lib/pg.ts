@@ -14,10 +14,17 @@ export function getPgPool(): Pool {
             ssl: {
                 rejectUnauthorized: false
             },
-            // Configure connection pool behavior suitable for serverless / small instances
-            max: 20,
-            idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 5000, // Slightly higher to prevent immediate timeouts under load
+            // Connection pool settings — tuned for long-running serverless + small RDS
+            max: 10,
+            idleTimeoutMillis: 60000,        // Close idle connections after 60s
+            connectionTimeoutMillis: 10000,  // Wait up to 10s for a free connection
+            keepAlive: true,                 // Send TCP keepalive packets to detect dead connections
+            keepAliveInitialDelayMillis: 10000, // Start keepalive after 10s idle
+        });
+
+        // Prevent unhandled pool errors from crashing the process
+        globalForPg.pgPool.on('error', (err) => {
+            console.error('[pg pool] Unexpected error on idle client:', err.message);
         });
     }
     return globalForPg.pgPool;

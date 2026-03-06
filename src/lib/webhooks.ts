@@ -90,15 +90,6 @@ export async function fireWebhooks(
     try {
         const webhooks = await getWebhooksForProject(projectId, userId);
 
-        const targetWebhooks = webhooks.filter(wh => {
-            if (!wh.is_active) return false;
-            const eventMatches = wh.event === '*' || wh.event === eventType;
-            const tableMatches = wh.table_id === '*' || wh.table_id === tableId;
-            return eventMatches && tableMatches;
-        });
-
-        if (targetWebhooks.length === 0) return;
-
         const payload: WebhookPayload = {
             event_type: eventType,
             table_id: tableId,
@@ -108,6 +99,32 @@ export async function fireWebhooks(
                 ...(oldData ? { old: oldData } : {})
             }
         };
+
+        // --- INTERNAL LIVE UPDATE NOTIFY ---
+        // Emit payload to Postgres so Serverless API routes (listen endpoints) can stream it instantly.
+        try {
+            const pool = getPgPool();
+            // Postgres NOTIFY channels must be standard identifiers. 
+            // We use a safe hash or simple clean project ID, or generic channel and parse payload.
+            // A generic channel for all projects is fine because payload contains tableId, but project filtering is better.
+            const channel = `fluxbase_live`;
+            // Add project_id to the payload explicitly so listeners can filter
+            const internalPayload = { ...payload, project_id: projectId };
+            // Postgres NOTIFY payload must be a string literal, it does not support parameterized queries ($1) directly via node-postgres
+            const payloadString = JSON.stringify(internalPayload).replace(/'/g, "''");
+            await pool.query(`NOTIFY ${channel}, '${payloadString}'`);
+        } catch (notifyErr) {
+            console.error(`[INTERNAL LIVE UPDATE ERROR] Project ${projectId}:`, notifyErr);
+        }
+
+        const targetWebhooks = webhooks.filter(wh => {
+            if (!wh.is_active) return false;
+            const eventMatches = wh.event === '*' || wh.event === eventType;
+            const tableMatches = wh.table_id === '*' || wh.table_id === tableId;
+            return eventMatches && tableMatches;
+        });
+
+        if (targetWebhooks.length === 0) return;
 
         const dispatchPromises = targetWebhooks.map(async (webhook) => {
             try {

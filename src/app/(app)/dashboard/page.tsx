@@ -109,7 +109,12 @@ export default function DashboardPage() {
                         <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
                     </span>
                 </h1>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
+                    <Button asChild variant="outline" className="border-indigo-500/50 text-indigo-400 hover:bg-indigo-950/30 hover:text-indigo-300">
+                        <Link href="/pricing">
+                            Upgrade Plan
+                        </Link>
+                    </Button>
                     <Button asChild>
                         <Link href={`/dashboard/tables/create?projectId=${selectedProject.project_id}`}>
                             <Plus className="mr-2 h-4 w-4" />

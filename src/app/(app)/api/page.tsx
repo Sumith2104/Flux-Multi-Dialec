@@ -600,9 +600,12 @@ function WebhooksSettings() {
                         <Label>Table ID</Label>
                         <Input placeholder="*" value={tableId} onChange={e => setTableId(e.target.value)} />
                     </div>
-                    <Button onClick={handleCreateWebhook} disabled={loading || !name.trim() || !url.trim()} className="w-full">
-                        {loading ? 'Adding...' : 'Add'}
-                    </Button>
+                    <div className="space-y-2">
+                        <Label className="hidden lg:block invisible">Action</Label>
+                        <Button onClick={handleCreateWebhook} disabled={loading || !name.trim() || !url.trim()} className="w-full">
+                            {loading ? 'Adding...' : 'Add'}
+                        </Button>
+                    </div>
                 </div>
 
                 <div className="border rounded-md divide-y mt-6">

@@ -142,7 +142,12 @@ export async function addRowAction(formData: FormData) {
                 }
             }
 
-            newRowObject[col.column_name] = value || ''; // Firestore allows empty strings
+            const isStringType = ['VARCHAR', 'TEXT', 'CHAR', 'STRING'].includes(col.data_type.toUpperCase());
+            if (value === null || value === '') {
+                newRowObject[col.column_name] = isStringType ? '' : null;
+            } else {
+                newRowObject[col.column_name] = value;
+            }
         }
 
         // Ensure ID exists
@@ -198,7 +203,12 @@ export async function editRowAction(formData: FormData) {
                     }
                 }
 
-                newRowObject[col.column_name] = value || '';
+                const isStringType = ['VARCHAR', 'TEXT', 'CHAR', 'STRING'].includes(col.data_type.toUpperCase());
+                if (value === null || value === '') {
+                    newRowObject[col.column_name] = isStringType ? '' : null;
+                } else {
+                    newRowObject[col.column_name] = value;
+                }
             }
         });
 
@@ -224,15 +234,46 @@ export async function deleteRowAction(projectId: string, tableId: string, tableN
     }
 
     try {
-        // Cascade delete logic would go here. 
-        // For Phase 2, we skip complex CSV cascading and assume Firestore handles it or we add it later.
+        const project = await getProjectById(projectId, userId);
+        if (!project) return { error: 'Project not found.' };
 
-        for (const id of rowIds) {
-            await deleteRow(projectId, tableId, id);
+        // Resolve the PK column once (not N times)
+        const cols = await getColumnsForTable(projectId, tableId);
+        const pkCol = cols.find(c => c.is_primary_key);
+        if (!pkCol) return { error: 'Table has no primary key — cannot delete rows.' };
+
+        const safeTable = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+        const pkName = pkCol.column_name;
+        let deletedCount = 0;
+
+        if (project.dialect?.toLowerCase() === 'mysql') {
+            const { getMysqlPool } = await import('@/lib/mysql');
+            const mysqlPool = getMysqlPool();
+            const dbName = `project_${projectId}`;
+            // Single batch DELETE
+            const placeholders = rowIds.map(() => '?').join(', ');
+            const [result]: any = await mysqlPool.query(
+                `DELETE FROM \`${dbName}\`.\`${safeTable}\` WHERE \`${pkName}\` IN (${placeholders})`,
+                rowIds
+            );
+            deletedCount = result.affectedRows ?? rowIds.length;
+        } else {
+            const { getPgPool } = await import('@/lib/pg');
+            const pool = getPgPool();
+            const schemaName = `project_${projectId}`;
+            // Cast pk to text so this works for uuid, integer, varchar, etc.
+            const result = await pool.query(
+                `DELETE FROM "${schemaName}"."${safeTable}" WHERE "${pkName}"::text = ANY($1::text[])`,
+                [rowIds]
+            );
+            deletedCount = result.rowCount ?? rowIds.length;
         }
 
-        // revalidatePath(`/editor?projectId=${projectId}&tableId=${tableId}&tableName=${tableName}`);
-        return { success: true, deletedCount: rowIds.length };
+        // Invalidate cache once for the whole batch
+        const { invalidateTableCache } = await import('@/lib/cache');
+        await invalidateTableCache(projectId, tableId);
+
+        return { success: true, deletedCount };
 
     } catch (error) {
         console.error('Failed to delete row(s):', error);
@@ -247,30 +288,32 @@ export async function addColumnAction(formData: FormData) {
     const tableId = formData.get('tableId') as string;
     const tableName = formData.get('tableName') as string;
     const columnName = formData.get('columnName') as string;
-    const columnType = formData.get('columnType') as any;
-    const userId = await getCurrentUserId();
+    const dataType = (formData.get('dataType') || formData.get('columnType')) as string;
+    const isNullable = formData.get('isNullable') !== 'false';
+    const defaultValue = formData.get('defaultValue') as string || undefined;
 
-    if (!projectId || !tableId || !tableName || !columnName || !columnType || !userId) {
+    if (!projectId || !tableId || !tableName || !columnName || !dataType) {
         return { error: 'Missing required fields.' };
+    }
+
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(columnName)) {
+        return { error: 'Column name must start with a letter or underscore and contain only letters, numbers, and underscores.' };
     }
 
     try {
         await addColumn(projectId, tableId, {
             column_name: columnName,
-            data_type: columnType,
+            data_type: dataType.toUpperCase() as any,
             is_primary_key: false,
-            is_nullable: true
+            is_nullable: isNullable,
+            default_value: defaultValue,
         });
-
-        // No need to backfill data in Firestore
-        // revalidatePath(`/editor?projectId=${projectId}&tableId=${tableId}&tableName=${tableName}`);
         return { success: true };
     } catch (error) {
         console.error('Failed to add column:', error);
         return { error: `An unexpected error occurred: ${(error as Error).message}` };
     }
 }
-
 
 export async function editColumnAction(formData: FormData) {
     const projectId = formData.get('projectId') as string;

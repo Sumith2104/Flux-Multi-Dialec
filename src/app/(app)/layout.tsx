@@ -36,6 +36,7 @@ const navItems = [
     { href: "/database", label: "Database", icon: <Database /> },
     { href: "/query", label: "SQL Editor", icon: <BrainCircuit /> },
     { href: "/api", label: "API & Settings", icon: <Code /> },
+    { href: "/scraper", label: "Scraper", icon: <Globe /> },
     { href: "/storage", label: "Storage", icon: <Folder /> },
 ];
 
@@ -104,7 +105,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
     const dockItems = navItems.map(item => {
         // Reduced list of project-specific pages - settings is now API
-        const isProjectSpecific = ["/editor", "/api", "/storage", "/query", "/database"].includes(item.href);
+        const isProjectSpecific = ["/editor", "/api", "/storage", "/query", "/database", "/scraper"].includes(item.href);
         const isDisabled = isProjectSpecific && !selectedProject?.project_id;
         let finalHref = item.href;
 

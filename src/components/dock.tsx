@@ -88,7 +88,7 @@ function DockItem({
       onFocus={() => isHovered.set(1)}
       onBlur={() => isHovered.set(0)}
       onClick={onClick}
-      className="relative flex cursor-pointer items-center justify-center rounded-full bg-background/50 text-foreground"
+      className="relative flex cursor-pointer items-center justify-center rounded-full bg-background/90 text-foreground shadow-sm ring-1 ring-border/50 hover:bg-background transition-colors"
       tabIndex={0}
       role="button"
       aria-haspopup="true"
@@ -147,7 +147,7 @@ export default function Dock({
     <motion.div
       onMouseMove={(e) => mouseX.set(e.pageX)}
       onMouseLeave={() => mouseX.set(Infinity)}
-      className={`flex h-16 items-end gap-3 rounded-2xl border border-border/20 bg-background/20 px-3 pb-3 backdrop-blur-md ${className}`}
+      className={`flex h-16 items-end gap-3 rounded-2xl border border-border/40 bg-background/70 shadow-[0_8px_32px_rgba(0,0,0,0.4)] ring-1 ring-white/5 px-3 pb-3 backdrop-blur-2xl ${className}`}
       role="toolbar"
       aria-label="Application dock"
     >

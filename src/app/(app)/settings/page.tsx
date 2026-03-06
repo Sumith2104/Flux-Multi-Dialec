@@ -321,14 +321,34 @@ function ApiKeySettings() {
                                         )}
                                     </div>
                                 </div>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                    onClick={() => handleRevokeKey(key.id)}
-                                >
-                                    Revoke
-                                </Button>
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                        >
+                                            Revoke
+                                        </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                            <AlertDialogTitle>Revoke API Key?</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                                This will immediately invalidate the key <strong className="font-mono text-foreground">{key.name}</strong>. Any applications using it will lose access. This cannot be undone.
+                                            </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction
+                                                onClick={() => handleRevokeKey(key.id)}
+                                                className="bg-destructive hover:bg-destructive/90"
+                                            >
+                                                Yes, Revoke Key
+                                            </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
                             </div>
                         ))
                     )}
@@ -473,14 +493,34 @@ function WebhooksSettings() {
                                             onCheckedChange={() => handleToggleWebhook(webhook.webhook_id, webhook.is_active)}
                                         />
                                     </div>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                        onClick={() => handleDeleteWebhook(webhook.webhook_id)}
-                                    >
-                                        Delete
-                                    </Button>
+                                    <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                            >
+                                                Delete
+                                            </Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                            <AlertDialogHeader>
+                                                <AlertDialogTitle>Delete Webhook?</AlertDialogTitle>
+                                                <AlertDialogDescription>
+                                                    Deleting <strong className="text-foreground">{webhook.name}</strong> will stop all future HTTP events being sent to <code className="text-xs bg-muted px-1 rounded">{webhook.url}</code>. This cannot be undone.
+                                                </AlertDialogDescription>
+                                            </AlertDialogHeader>
+                                            <AlertDialogFooter>
+                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                <AlertDialogAction
+                                                    onClick={() => handleDeleteWebhook(webhook.webhook_id)}
+                                                    className="bg-destructive hover:bg-destructive/90"
+                                                >
+                                                    Yes, Delete Webhook
+                                                </AlertDialogAction>
+                                            </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                    </AlertDialog>
                                 </div>
                             </div>
                         ))

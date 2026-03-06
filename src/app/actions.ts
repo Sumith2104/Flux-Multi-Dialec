@@ -39,12 +39,14 @@ export async function googleAuthAction(accessToken: string) {
     // 1. Check if user exists
     const existing = await pool.query('SELECT id FROM fluxbase_global.users WHERE email = $1', [email]);
     let userId = '';
+    let isNewUser = false;
 
     if (existing.rows.length > 0) {
       // User exists, just log them in
       userId = existing.rows[0].id;
     } else {
       // 2. New User - Auto Signup
+      isNewUser = true;
       userId = crypto.randomUUID();
       await pool.query(
         `INSERT INTO fluxbase_global.users (id, email, display_name, photo_url) 
@@ -58,7 +60,7 @@ export async function googleAuthAction(accessToken: string) {
 
     // 3. Create active session cookie securely
     await createSessionCookie(userId);
-    return { success: true };
+    return { success: true, isNewUser };
 
   } catch (error: any) {
     console.error("Google Auth Error:", error);

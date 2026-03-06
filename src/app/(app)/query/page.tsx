@@ -14,7 +14,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SqlEditor } from '@/components/sql-editor';
 import { QueryResults } from '@/components/query-results';
 import { QueryHistory, HistoryItem } from '@/components/query-history';
-
+import { SchemaExplorer } from '@/components/schema-explorer';
 import { ProjectContext } from '@/contexts/project-context';
 import { useToast } from '@/hooks/use-toast';
 import { generateSQLAction } from '@/actions/ai-sql-actions';
@@ -189,8 +189,15 @@ export default function QueryPage() {
         <ResizablePanel defaultSize={60} minSize={30} className="flex flex-col">
           <ResizablePanelGroup direction="horizontal" className="h-full w-full">
 
-            {/* LEFT: SQL Editor */}
-            <ResizablePanel defaultSize={70} minSize={40} className="flex flex-col border-r bg-muted/5">
+            {/* 1. LEFT SIDEBAR: Schema Explorer */}
+            <ResizablePanel defaultSize={20} minSize={15} className="flex flex-col border-r bg-muted/5 min-w-[200px]">
+              <SchemaExplorer projectId={project?.project_id} onInsertQuery={setQuery} />
+            </ResizablePanel>
+
+            <ResizableHandle withHandle />
+
+            {/* 2. MAIN: SQL Editor */}
+            <ResizablePanel defaultSize={55} minSize={30} className="flex flex-col border-r bg-muted/5">
               <div className="h-10 flex items-center justify-between px-3 border-b bg-muted/20 shrink-0">
                 <div className="flex items-center gap-2">
                   <Database className="h-3.5 w-3.5 text-muted-foreground" />
@@ -198,10 +205,14 @@ export default function QueryPage() {
                   <ChevronRight className="h-3 w-3 text-muted-foreground/50 rotate-90" />
                   <span className="text-xs text-muted-foreground font-mono">Editor</span>
                 </div>
-                {/* Run button is inside SqlEditor usually, but we can put controls here too if needed */}
+                {/* Advanced Editor Toolbar Placeholder */}
+                <div className="flex items-center gap-2">
+                  {/* Toolbars will be mounted here in the next step */}
+                </div>
               </div>
               <div className="flex-grow overflow-hidden relative">
                 <SqlEditor
+                  projectId={project?.project_id}
                   query={query}
                   setQuery={setQuery}
                   onRun={handleRunQuery}
@@ -213,7 +224,7 @@ export default function QueryPage() {
 
             <ResizableHandle withHandle />
 
-            {/* RIGHT: History & AI */}
+            {/* 3. RIGHT: History & AI */}
             <ResizablePanel
               defaultSize={30}
               minSize={20}

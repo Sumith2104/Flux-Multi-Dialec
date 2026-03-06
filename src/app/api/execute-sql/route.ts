@@ -1,20 +1,21 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUserId, getAuthContextFromRequest } from '@/lib/auth';
 import { SqlEngine } from '@/lib/sql-engine';
-import { getProjectById } from '@/lib/data';
+import { getProjectById, logAuditAction } from '@/lib/data';
 import { createHash } from 'crypto';
+import { redis } from '@/lib/redis';
+import { Ratelimit } from '@upstash/ratelimit';
 
 export const maxDuration = 60; // 1 minute
 
-// Local burst cache for frequent identical queries (e.g. from external dashboards)
+// Upstash Burst cache for frequent identical queries (e.g. from external dashboards)
 interface CacheEntry {
     result: any;
     explanation: any;
     executionInfo: any;
     expiresAt: number;
 }
-const queryCache = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 15000; // 15 seconds to catch duplicate concurrent loads while maintaining freshness
+const CACHE_TTL_SECONDS = 15; // 15 seconds to catch duplicate concurrent loads while maintaining freshness
 
 export async function POST(request: Request) {
     const startTime = Date.now();
@@ -40,24 +41,44 @@ export async function POST(request: Request) {
             return NextResponse.json({ success: false, error: { message: 'Missing projectId or query', code: 'BAD_REQUEST' } }, { status: 400 });
         }
 
+        // Global API Rate Limiting Setup
+        const ratelimit = new Ratelimit({
+            redis: redis,
+            limiter: Ratelimit.slidingWindow(30, '10 s'), // 30 requests per 10 seconds per user-project pairing
+            analytics: true,
+        });
+
+        const { success: rlSuccess } = await ratelimit.limit(`ratelimit_flux_query_${projectId}_${userId}`);
+        if (!rlSuccess) {
+            return NextResponse.json({
+                success: false,
+                error: { message: 'Too many simultaneous queries executing. Rate limit exceeded.', code: 'RATE_LIMIT_EXCEEDED' }
+            }, { status: 429 });
+        }
+
         // Burst Caching Logic
         const isSelect = typeof query === 'string' && query.trim().toUpperCase().startsWith('SELECT');
         let cacheKey = '';
 
         if (isSelect) {
-            cacheKey = createHash('sha256').update(`${projectId}_${userId}_${query}`).digest('hex');
-            const cached = queryCache.get(cacheKey);
-            if (cached && cached.expiresAt > Date.now()) {
-                console.log(`[DEBUG] Serving cached result for query: ${query.substring(0, 50)}...`);
-                return NextResponse.json({
-                    success: true,
-                    result: cached.result,
-                    explanation: cached.explanation,
-                    executionInfo: {
-                        ...cached.executionInfo,
-                        time: '0ms (Cached)'
-                    }
-                });
+            cacheKey = createHash('sha256').update(`fluxQuery_${projectId}_${userId}_${query}`).digest('hex');
+
+            try {
+                const cached = await redis.get<CacheEntry>(cacheKey);
+                if (cached && cached.expiresAt > Date.now()) {
+                    console.log(`[DEBUG] Serving Upstash Redis cached result for query: ${query.substring(0, 50)}...`);
+                    return NextResponse.json({
+                        success: true,
+                        result: cached.result,
+                        explanation: cached.explanation,
+                        executionInfo: {
+                            ...cached.executionInfo,
+                            time: '0ms (Global Cache)'
+                        }
+                    });
+                }
+            } catch (redisErr) {
+                console.warn('[Redis Error] Cache read failed, falling back to DB:', redisErr);
             }
         }
 
@@ -101,6 +122,15 @@ export async function POST(request: Request) {
 
         const duration = Date.now() - startTime;
 
+        if (!isSelect) {
+            // Asynchronously log any mutation or DDL directly into the global immutable log table
+            logAuditAction(projectId, userId, 'SQL_EXECUTION', query, {
+                duration_ms: duration,
+                rows_affected: result.rows?.length || 0,
+                status: 'success'
+            }).catch(e => console.error(e));
+        }
+
         const responseData = {
             success: true,
             result: {
@@ -116,19 +146,15 @@ export async function POST(request: Request) {
         };
 
         if (isSelect && cacheKey) {
-            queryCache.set(cacheKey, {
-                result: responseData.result,
-                explanation: responseData.explanation,
-                executionInfo: responseData.executionInfo,
-                expiresAt: Date.now() + CACHE_TTL_MS
-            });
-
-            // Periodically clean up expired items to prevent memory leaks in long-running functions
-            if (queryCache.size > 100) {
-                const now = Date.now();
-                for (const [k, v] of queryCache.entries()) {
-                    if (v.expiresAt < now) queryCache.delete(k);
-                }
+            try {
+                await redis.set(cacheKey, {
+                    result: responseData.result,
+                    explanation: responseData.explanation,
+                    executionInfo: responseData.executionInfo,
+                    expiresAt: Date.now() + (CACHE_TTL_SECONDS * 1000)
+                }, { ex: CACHE_TTL_SECONDS });
+            } catch (redisErr) {
+                console.warn('[Redis Error] Failed to write to global cache:', redisErr);
             }
         }
 

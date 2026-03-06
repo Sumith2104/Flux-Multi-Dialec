@@ -16,6 +16,7 @@ export interface Project {
     created_at: string;
     dialect?: 'mysql' | 'postgresql' | 'oracle';
     timezone?: string;
+    role?: string;
 }
 
 export interface Table {
@@ -68,17 +69,23 @@ export async function getProjectsForCurrentUser(): Promise<Project[]> {
 
     try {
         const pool = getPgPool();
-        const result = await pool.query(
-            'SELECT project_id, display_name, created_at, dialect, timezone FROM fluxbase_global.projects WHERE user_id = $1 ORDER BY created_at DESC',
-            [userId]
-        );
+        const result = await pool.query(`
+            SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone,
+                   COALESCE(pm.role, CASE WHEN p.user_id = $1 THEN 'admin' ELSE 'developer' END) as role
+            FROM fluxbase_global.projects p
+            LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $1
+            WHERE p.user_id = $1 OR pm.user_id = $1
+            ORDER BY p.created_at DESC
+        `, [userId]);
+
         return result.rows.map(row => ({
             project_id: row.project_id,
             user_id: userId,
             display_name: row.display_name,
             created_at: row.created_at.toISOString(),
             dialect: row.dialect,
-            timezone: row.timezone
+            timezone: row.timezone,
+            role: row.role
         }));
     } catch (error) {
         console.error("Error fetching projects:", error);
@@ -92,20 +99,24 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
 
     try {
         const pool = getPgPool();
-        const result = await pool.query(
-            'SELECT project_id, display_name, created_at, dialect, timezone FROM fluxbase_global.projects WHERE project_id = $1 AND user_id = $2',
-            [projectId, userId]
-        );
+        const result = await pool.query(`
+            SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.user_id as owner_id,
+                   COALESCE(pm.role, CASE WHEN p.user_id = $2 THEN 'admin' ELSE NULL END) as role
+            FROM fluxbase_global.projects p
+            LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $2
+            WHERE p.project_id = $1 AND (p.user_id = $2 OR pm.user_id = $2)
+        `, [projectId, userId]);
         if (result.rows.length === 0) return null;
 
         const row = result.rows[0];
         return {
             project_id: row.project_id,
-            user_id: userId,
+            user_id: row.owner_id, // preserve original owner identification
             display_name: row.display_name,
             created_at: row.created_at.toISOString(),
             dialect: row.dialect,
-            timezone: row.timezone
+            timezone: row.timezone,
+            role: row.role
         };
     } catch (error) {
         console.error("Error fetching project:", error);
@@ -179,11 +190,19 @@ export async function createProject(name: string, description: string, dialect: 
 
     const pool = getPgPool();
 
+    // Fetch Subscription Plan from DB
+    const userSnapshot = await pool.query('SELECT plan_type FROM fluxbase_global.users WHERE id = $1', [userId]);
+    const planType = userSnapshot.rows[0]?.plan_type || 'free';
+
+    let maxProjects = 1;
+    if (planType === 'pro') maxProjects = 3;
+    if (planType === 'max') maxProjects = 999999;
+
     // Check limit
     const projectsSnapshot = await pool.query('SELECT COUNT(*) as count FROM fluxbase_global.projects WHERE user_id = $1', [userId]);
     const count = parseInt(projectsSnapshot.rows[0].count);
-    if (count >= 5) {
-        throw new Error("Project limit reached (Max 5). Delete a project to create a new one.");
+    if (count >= maxProjects) {
+        throw new Error(`Project limit reached. Your ${planType.toUpperCase()} plan only allows ${maxProjects} project(s). Please upgrade your subscription to create more.`);
     }
 
     const projectId = crypto.randomUUID().replace(/-/g, '').substring(0, 16);
@@ -403,6 +422,43 @@ export async function createTable(projectId: string, tableName: string, descript
 
         const ddl = `CREATE TABLE "${schemaName}"."${safeTableName}" (${columnDefs.join(', ')})`;
         await pool.query(ddl);
+
+        // --- Phase 2: PostgreSQL Realtime Event Trigger ---
+        const triggerFunctionSql = `
+            CREATE OR REPLACE FUNCTION "${schemaName}".notify_table_change()
+            RETURNS trigger AS $$
+            DECLARE
+              payload JSON;
+              row_data RECORD;
+            BEGIN
+              IF TG_OP = 'DELETE' THEN
+                row_data := OLD;
+              ELSE
+                row_data := NEW;
+              END IF;
+
+              payload := json_build_object(
+                'table', TG_TABLE_NAME,
+                'project_id', '${projectId}',
+                'operation', TG_OP,
+                'data', row_to_json(row_data)
+              );
+
+              PERFORM pg_notify('fluxbase_changes', payload::text);
+              RETURN row_data;
+            END;
+            $$ LANGUAGE plpgsql;
+        `;
+        await pool.query(triggerFunctionSql);
+
+        const attachTriggerSql = `
+            CREATE TRIGGER "${safeTableName}_ws_trigger"
+            AFTER INSERT OR UPDATE OR DELETE
+            ON "${schemaName}"."${safeTableName}"
+            FOR EACH ROW
+            EXECUTE FUNCTION "${schemaName}".notify_table_change();
+        `;
+        await pool.query(attachTriggerSql);
     }
 
     const { invalidateTableCache } = await import('@/lib/cache');
@@ -911,6 +967,15 @@ export async function getTableData(
     const offset = page * limit;
 
     try {
+        const { getCachedTableRows, setCachedTableRows } = await import('@/lib/cache');
+
+        // Check Redis Cache First
+        const cachedData = await getCachedTableRows(projectId, tableName, page);
+        if (cachedData) {
+            console.log(`[DEBUG] Serving Redis cached table data for ${tableName} page ${page}`);
+            return cachedData;
+        }
+
         let rows = [];
         let totalRows = 0;
 
@@ -974,12 +1039,17 @@ export async function getTableData(
             });
         }
 
-        return {
+        const payload = {
             rows,
             totalRows,
             nextCursorId: (offset + limit) < totalRows ? String(page + 1) : null,
             hasMore: (offset + limit) < totalRows
         };
+
+        // Cache the newly fetched page
+        await setCachedTableRows(projectId, tableName, page, payload);
+
+        return payload;
     } catch (error) {
         console.error("Native getTableData error:", error);
         return { rows: [], totalRows: 0, nextCursorId: null, hasMore: false };
@@ -1054,12 +1124,12 @@ export async function insertRow(projectId: string, tableId: string, rowData: Rec
             }
         }
 
+        const { invalidateTableCache } = await import('@/lib/cache');
+        await invalidateTableCache(projectId, tableId);
+
         fireWebhooks(projectId, userId, tableId, 'row.inserted', insertedRow).catch(err => {
             console.error(`[Webhook Fire Error] ${tableId} insert:`, err);
         });
-
-        const { invalidateTableCache } = await import('@/lib/cache');
-        invalidateTableCache(projectId, tableId);
     } catch (error: any) {
         throw new Error(`Insertion failed: ${error.message}`);
     }
@@ -1128,12 +1198,12 @@ export async function updateRow(projectId: string, tableId: string, rowId: strin
             updatedRow = result.rows[0];
         }
 
+        const { invalidateTableCache } = await import('@/lib/cache');
+        await invalidateTableCache(projectId, tableId);
+
         fireWebhooks(projectId, userId, tableId, 'row.updated', updatedRow, oldData).catch(err => {
             console.error(`[Webhook Fire Error] ${tableId} update:`, err);
         });
-
-        const { invalidateTableCache } = await import('@/lib/cache');
-        invalidateTableCache(projectId, tableId);
     } catch (error: any) {
         throw new Error(`Update failed: ${error.message}`);
     }
@@ -1174,21 +1244,20 @@ export async function deleteRow(projectId: string, tableId: string, rowId: strin
             const schemaName = `project_${projectId}`;
 
             // Fetch old data for webhook
-            const oldDataResult = await pool.query(`SELECT * FROM "${schemaName}"."${safeTableName}" WHERE "${pkCol.column_name}" = $1`, [rowId]);
+            const oldDataResult = await pool.query(`SELECT * FROM "${schemaName}"."${safeTableName}" WHERE "${pkCol.column_name}"::text = $1`, [rowId]);
             oldData = oldDataResult.rows.length > 0 ? oldDataResult.rows[0] : null;
 
             if (oldData) {
-                await pool.query(`DELETE FROM "${schemaName}"."${safeTableName}" WHERE "${pkCol.column_name}" = $1`, [rowId]);
+                await pool.query(`DELETE FROM "${schemaName}"."${safeTableName}" WHERE "${pkCol.column_name}"::text = $1`, [rowId]);
             }
         }
-
         if (oldData) {
+            const { invalidateTableCache } = await import('@/lib/cache');
+            await invalidateTableCache(projectId, tableId);
+
             fireWebhooks(projectId, userId, tableId, 'row.deleted', undefined, oldData).catch(err => {
                 console.error(`[Webhook Fire Error] ${tableId} delete:`, err);
             });
-
-            const { invalidateTableCache } = await import('@/lib/cache');
-            invalidateTableCache(projectId, tableId);
         }
     } catch (error: any) {
         throw new Error(`Deletion failed: ${error.message}`);
@@ -1255,5 +1324,20 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
     } catch (error) {
         console.error("Native Analytics error:", error);
         return { totalSize: 0, totalRows: 0, tables: [] };
+    }
+}
+
+// --- Audit & Security ---
+
+export async function logAuditAction(projectId: string, userId: string, action: string, statement: string, metadata: any = {}) {
+    try {
+        const pool = getPgPool();
+        await pool.query(
+            'INSERT INTO fluxbase_global.audit_logs (project_id, user_id, action, statement, metadata) VALUES ($1, $2, $3, $4, $5)',
+            [projectId, userId, action, statement, JSON.stringify(metadata)]
+        );
+    } catch (e) {
+        // Failing to log shouldn't necessarily crash the process, but needs tracking
+        console.error("[AUDIT LOG FAILURE]", e);
     }
 }

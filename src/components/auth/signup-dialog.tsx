@@ -38,7 +38,12 @@ export function SignupDialog({ open, onOpenChange, onSwitchToLogin }: SignupDial
 
                 if (result.success) {
                     onOpenChange(false);
-                    router.push('/dashboard/projects');
+                    // Redirect new signups to the Pricing page, returning users straight to dashboard
+                    if (result.isNewUser) {
+                        router.push('/pricing?onboarding=true');
+                    } else {
+                        router.push('/dashboard/projects');
+                    }
                     router.refresh();
                 } else {
                     throw new Error(result.error || 'Failed to authenticate with Google');
@@ -107,11 +112,11 @@ export function SignupDialog({ open, onOpenChange, onSwitchToLogin }: SignupDial
 
             if (result.success) {
                 onOpenChange(false);
-                router.push('/dashboard/projects');
+                router.push('/pricing?onboarding=true'); // Always new user during OTP verify
                 router.refresh();
                 toast({
                     title: 'Welcome to Fluxbase!',
-                    description: 'Your account has been verified successfully.',
+                    description: 'Your account is verified! Choose a plan or continue for free.',
                 });
             } else {
                 throw new Error(result.error || 'Invalid verification code');

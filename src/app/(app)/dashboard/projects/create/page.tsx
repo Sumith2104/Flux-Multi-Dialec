@@ -112,6 +112,44 @@ export default function CreateProjectPage() {
 
                             <hr className="border-white/10" />
 
+                            <div className="space-y-4">
+                                <div>
+                                    <Label className="text-base font-semibold">Infrastructure Profile</Label>
+                                    <p className="text-sm text-muted-foreground mb-4">Select the hardware specifications for your database deployment.</p>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="instanceSize" className="text-sm font-medium">Instance Size</Label>
+                                        <Select name="instanceSize" defaultValue="db.t3.micro" required>
+                                            <SelectTrigger className="h-12 border-white/20 hover:border-white/40">
+                                                <SelectValue placeholder="Select instance size" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="db.t3.micro">Dev (t3.micro - 2 vCPU, 1GB RAM)</SelectItem>
+                                                <SelectItem value="db.t3.medium">Pro (t3.medium - 2 vCPU, 4GB RAM)</SelectItem>
+                                                <SelectItem value="db.t3.large">Scale (t3.large - 2 vCPU, 8GB RAM)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="region" className="text-sm font-medium">Cloud Region</Label>
+                                        <Select name="region" defaultValue="ap-south-1" required>
+                                            <SelectTrigger className="h-12 border-white/20 hover:border-white/40">
+                                                <SelectValue placeholder="Select region" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="ap-south-1">Mumbai (ap-south-1)</SelectItem>
+                                                <SelectItem value="us-east-1">N. Virginia (us-east-1)</SelectItem>
+                                                <SelectItem value="eu-central-1">Frankfurt (eu-central-1)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <hr className="border-white/10" />
+
                             <div className="grid gap-2">
                                 <Label htmlFor="projectName" className="text-base font-semibold">Project Name</Label>
                                 <Input

@@ -17,8 +17,11 @@ export function middleware(request: NextRequest) {
   }
   // If user is not logged in...
   else {
-    // and tries to access a protected page, redirect to root (which houses the login popup).
-    if (!isAuthPage && pathname !== '/') {
+    // allow public access to marketing pages: '/', '/pricing', etc.
+    const isPublicStaticPage = pathname === '/' || pathname === '/pricing';
+
+    // and tries to access a protected page, redirect to root
+    if (!isAuthPage && !isPublicStaticPage) {
       return NextResponse.redirect(new URL('/', request.url));
     }
   }

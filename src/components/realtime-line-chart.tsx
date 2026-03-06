@@ -147,7 +147,7 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
     }));
 
     return (
-        <Card className="col-span-4 h-full border-zinc-800 bg-zinc-950/40 backdrop-blur-md shadow-2xl">
+        <Card className="col-span-4 flex flex-col h-full min-h-[400px] border-zinc-800 bg-zinc-950/40 backdrop-blur-md shadow-2xl">
             <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-white/5">
                 <div className="space-y-1">
                     <CardTitle className="text-xl font-bold flex items-center gap-2 text-zinc-100">
@@ -182,8 +182,8 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                     </div>
                 </div>
             </CardHeader>
-            <CardContent className="pl-0 pb-0 pt-6">
-                <div className="h-[350px] w-full">
+            <CardContent className="pl-0 pb-0 pt-6 flex-1 flex flex-col">
+                <div className="flex-1 w-full min-h-[300px]">
                     <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                             <defs>

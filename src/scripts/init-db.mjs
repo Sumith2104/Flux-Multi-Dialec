@@ -52,6 +52,16 @@ async function initDb() {
             )
         `);
 
+        // Phase 1 Migration: Add Subscription Columns
+        console.log("🔨 Migrating Table: fluxbase_global.users (Adding Subscription Columns)");
+        await client.query(`
+            ALTER TABLE fluxbase_global.users 
+            ADD COLUMN IF NOT EXISTS razorpay_customer_id VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS razorpay_subscription_id VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS plan_type VARCHAR(50) DEFAULT 'free',
+            ADD COLUMN IF NOT EXISTS billing_cycle_end TIMESTAMP WITH TIME ZONE;
+        `);
+
         console.log("🔨 Creating Table: fluxbase_global.projects");
         await client.query(`
             CREATE TABLE IF NOT EXISTS fluxbase_global.projects (

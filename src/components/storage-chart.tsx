@@ -80,15 +80,15 @@ const CustomXAxisTick = ({ x, y, payload }: any) => {
 
 export function StorageChart({ data }: StorageChartProps) {
   return (
-    <Card className="border-zinc-800 bg-zinc-950/40 backdrop-blur-md shadow-2xl">
+    <Card className="border-zinc-800 flex flex-col h-full min-h-[400px] bg-zinc-950/40 backdrop-blur-md shadow-2xl">
       <CardHeader className="border-b border-white/5 pb-4">
         <CardTitle className="text-xl font-bold text-zinc-100 flex items-center gap-2">
           Storage Usage
         </CardTitle>
         <CardDescription className="text-zinc-400 font-medium">Size of each table's documents</CardDescription>
       </CardHeader>
-      <CardContent className="pt-6">
-        <div style={{ width: '100%', height: 350 }}>
+      <CardContent className="pt-6 flex-1 flex flex-col">
+        <div style={{ width: '100%' }} className="flex-1 min-h-[300px]">
           <ResponsiveContainer>
             <BarChart
               data={data}

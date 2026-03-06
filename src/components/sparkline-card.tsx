@@ -15,7 +15,7 @@ interface SparklineCardProps {
 
 export function SparklineCard({ title, value, subtitle, type, color, data }: SparklineCardProps) {
     return (
-        <Card className="aspect-square flex flex-col justify-between relative overflow-hidden group border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md shadow-lg transition-colors hover:bg-zinc-900/60">
+        <Card className="h-full w-full aspect-square flex flex-col justify-between relative overflow-hidden group border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md shadow-lg transition-colors hover:bg-zinc-900/60">
             {/* Background Sparkline layer */}
             <div className="absolute inset-0 z-0 opacity-40 hover:opacity-100 transition-opacity duration-700 pb-4">
                 <ResponsiveContainer width="100%" height="100%">

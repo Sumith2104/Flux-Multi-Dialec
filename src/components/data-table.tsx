@@ -38,27 +38,49 @@ export function DataTable({
   // Column Resizing State
   const [columnWidths, setColumnWidths] = React.useState<Record<string, number>>({});
   const resizingRef = React.useRef<{ field: string, startX: number, startWidth: number } | null>(null);
+  // Offscreen canvas for fast text measurement (no DOM reflow)
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
 
-  const getColWidth = (field: string) => columnWidths[field] || 150; // Default width 150px
+  const getColWidth = (field: string) => columnWidths[field] || 150;
+
+  const measureText = React.useCallback((text: string, bold = false): number => {
+    if (!canvasRef.current) canvasRef.current = document.createElement('canvas');
+    const ctx = canvasRef.current.getContext('2d')!;
+    ctx.font = bold ? 'bold 11px ui-sans-serif,system-ui,sans-serif' : '14px ui-sans-serif,system-ui,sans-serif';
+    return ctx.measureText(text).width;
+  }, []);
+
+  /** Double-click on handle → auto-fit column width to its widest value */
+  const handleResizeDoubleClick = React.useCallback((e: React.MouseEvent, field: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    // Header: uppercase bold, px-4 (32px) padding
+    let maxWidth = measureText(field.toUpperCase(), true) + 32;
+
+    // Cell values: normal weight, px-4 padding
+    rows.forEach(row => {
+      const val = row[field];
+      const w = measureText(val !== null && val !== undefined ? String(val) : '') + 32;
+      if (w > maxWidth) maxWidth = w;
+    });
+
+    setColumnWidths(prev => ({ ...prev, [field]: Math.min(500, Math.max(80, Math.ceil(maxWidth))) }));
+  }, [rows, measureText]);
 
   const handleResizeStart = (e: React.MouseEvent, field: string) => {
     e.stopPropagation();
-    resizingRef.current = {
-      field,
-      startX: e.clientX,
-      startWidth: getColWidth(field)
-    };
+    resizingRef.current = { field, startX: e.clientX, startWidth: getColWidth(field) };
     document.addEventListener('mousemove', handleResizeMove);
     document.addEventListener('mouseup', handleResizeEnd);
     document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none'; // Prevent text selection while dragging
+    document.body.style.userSelect = 'none';
   };
 
   const handleResizeMove = React.useCallback((e: MouseEvent) => {
     if (!resizingRef.current) return;
     const { field, startX, startWidth } = resizingRef.current;
-    const deltaX = e.clientX - startX;
-    const newWidth = Math.max(50, startWidth + deltaX); // Min width 50px
+    const newWidth = Math.max(50, startWidth + (e.clientX - startX));
     setColumnWidths(prev => ({ ...prev, [field]: newWidth }));
   }, []);
 
@@ -159,11 +181,15 @@ export function DataTable({
               style={{ width: `${getColWidth(c.field)}px` }}
             >
               <span className="truncate w-full">{c.headerName}</span>
-              {/* Drag Handle */}
+              {/* Resize Handle — drag to resize, double-click to auto-fit */}
               <div
-                className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-zinc-300/50 z-10 -mr-1"
+                className="absolute right-0 top-0 bottom-0 w-3 cursor-col-resize z-10 -mr-1.5 group/handle flex items-center justify-center"
                 onMouseDown={(e) => handleResizeStart(e, c.field)}
-              />
+                onDoubleClick={(e) => handleResizeDoubleClick(e, c.field)}
+                title="Drag to resize · Double-click to auto-fit"
+              >
+                <div className="w-px h-4 bg-zinc-300 group-hover/handle:bg-blue-400 group-hover/handle:w-0.5 group-hover/handle:h-full transition-all duration-100" />
+              </div>
             </div>
           ))}
         </div>

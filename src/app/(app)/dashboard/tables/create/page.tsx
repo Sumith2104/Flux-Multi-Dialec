@@ -8,23 +8,56 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { createTableAction } from './actions';
 import { SubmitButton } from '@/components/submit-button';
 import { ArrowLeft, Plus, Trash2, Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { v4 as uuidv4 } from 'uuid';
-import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { DeleteProgress } from '@/components/delete-progress';
 
-type ColumnType = 'text' | 'number' | 'date' | 'gen_random_uuid()' | 'now()';
+type ColumnType =
+    // Special / Auto-generated
+    | 'gen_random_uuid()' | 'now()'
+    // Text
+    | 'text' | 'varchar' | 'char' | 'bpchar' | 'name' | 'citext'
+    // Numeric
+    | 'integer' | 'int2' | 'int4' | 'int8' | 'bigint' | 'smallint'
+    | 'numeric' | 'decimal' | 'real' | 'float4' | 'float8' | 'double precision' | 'money'
+    // Boolean
+    | 'boolean'
+    // Date / Time
+    | 'date' | 'time' | 'timetz' | 'timestamp' | 'timestamptz' | 'interval'
+    // UUID
+    | 'uuid'
+    // JSON
+    | 'json' | 'jsonb'
+    // Binary
+    | 'bytea'
+    // Network
+    | 'inet' | 'cidr' | 'macaddr'
+    // Geometric
+    | 'point' | 'line' | 'lseg' | 'box' | 'path' | 'polygon' | 'circle'
+    // Arrays
+    | 'text[]' | 'integer[]' | 'boolean[]' | 'jsonb[]'
+    // Range
+    | 'int4range' | 'int8range' | 'numrange' | 'tsrange' | 'tstzrange' | 'daterange'
+    // Full-text Search
+    | 'tsvector' | 'tsquery'
+    // Other
+    | 'xml' | 'bit' | 'varbit' | 'oid' | 'serial' | 'bigserial' | 'smallserial';
 
 type Column = {
     id: string;
     name: string;
     type: ColumnType;
+    isPrimaryKey: boolean;
+    isNullable: boolean;
+    defaultValue: string;
 };
 
 export default function CreateTablePage() {
@@ -37,7 +70,7 @@ export default function CreateTablePage() {
     const [tableName, setTableName] = useState('');
     const [description, setDescription] = useState('');
     const [columns, setColumns] = useState<Column[]>([
-        { id: uuidv4(), name: 'id', type: 'gen_random_uuid()' },
+        { id: uuidv4(), name: 'id', type: 'gen_random_uuid()', isPrimaryKey: true, isNullable: false, defaultValue: '' },
     ]);
     const [csvFile, setCsvFile] = useState<File | null>(null);
     const [csvFileName, setCsvFileName] = useState<string | null>(null);
@@ -46,14 +79,14 @@ export default function CreateTablePage() {
 
 
     const addColumn = () => {
-        setColumns([...columns, { id: uuidv4(), name: '', type: 'text' }]);
+        setColumns([...columns, { id: uuidv4(), name: '', type: 'text', isPrimaryKey: false, isNullable: true, defaultValue: '' }]);
     };
 
     const removeColumn = (id: string) => {
         setColumns(columns.filter(col => col.id !== id));
     };
 
-    const updateColumn = (id: string, field: keyof Column, value: string) => {
+    const updateColumn = (id: string, field: keyof Column, value: string | boolean) => {
         setColumns(columns.map(col =>
             col.id === id ? { ...col, [field]: value } : col
         ));
@@ -74,11 +107,14 @@ export default function CreateTablePage() {
                     let newColumns: Column[] = header.map(name => ({
                         id: uuidv4(),
                         name: name,
-                        type: name.toLowerCase() === 'id' ? 'gen_random_uuid()' : 'text',
+                        type: name.toLowerCase() === 'id' ? 'gen_random_uuid()' : 'text' as ColumnType,
+                        isPrimaryKey: name.toLowerCase() === 'id',
+                        isNullable: name.toLowerCase() !== 'id',
+                        defaultValue: '',
                     }));
 
                     if (!header.some(h => h.toLowerCase() === 'id')) {
-                        newColumns.unshift({ id: uuidv4(), name: 'id', type: 'gen_random_uuid()' });
+                        newColumns.unshift({ id: uuidv4(), name: 'id', type: 'gen_random_uuid()', isPrimaryKey: true, isNullable: false, defaultValue: '' });
                     }
                     setColumns(newColumns);
                 }
@@ -89,7 +125,7 @@ export default function CreateTablePage() {
 
     const handleTabChange = (value: string) => {
         setActiveTab(value);
-        setColumns([{ id: uuidv4(), name: 'id', type: 'gen_random_uuid()' }]);
+        setColumns([{ id: uuidv4(), name: 'id', type: 'gen_random_uuid()', isPrimaryKey: true, isNullable: false, defaultValue: '' }]);
         setCsvFile(null);
         setCsvFileName(null);
         setTableName('');
@@ -124,7 +160,13 @@ export default function CreateTablePage() {
 
         setIsSubmitting(true);
 
-        const columnsStr = columns.map(c => `${c.name}:${c.type}`).join(',');
+        const columnsStr = columns.map(c => [
+            c.name,
+            c.type,
+            c.isPrimaryKey ? 'pk' : '',
+            c.isNullable ? 'nullable' : 'notnull',
+            c.defaultValue ? `default:${c.defaultValue}` : '',
+        ].filter(Boolean).join('|')).join(',');
         formData.set('columns', columnsStr);
         formData.append('projectId', projectId);
 
@@ -238,12 +280,13 @@ export default function CreateTablePage() {
                                         </div>
                                         <div className="grid gap-2">
                                             <Label htmlFor="description">Description (Optional)</Label>
-                                            <Textarea
+                                            <textarea
                                                 id="description"
                                                 name="description"
                                                 placeholder="e.g., A table to store customer information."
                                                 value={description}
-                                                onChange={(e) => setDescription(e.target.value)}
+                                                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
+                                                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                             />
                                         </div>
                                     </div>
@@ -258,42 +301,150 @@ export default function CreateTablePage() {
                                             </div>
                                             <div className="space-y-4">
                                                 {columns.map((col, index) => (
-                                                    <div key={col.id} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] items-center gap-2">
-                                                        <Input
-                                                            placeholder="Column name"
-                                                            value={col.name}
-                                                            onChange={(e) => updateColumn(col.id, 'name', e.target.value)}
-                                                            className="font-mono"
-                                                            required
-                                                            disabled={col.name === 'id'}
-                                                        />
-                                                        <Select
-                                                            value={col.type}
-                                                            onValueChange={(value: ColumnType) => updateColumn(col.id, 'type', value)}
-                                                            disabled={col.name === 'id'}
-                                                        >
-                                                            <SelectTrigger>
-                                                                <SelectValue placeholder="Type" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="text">Text</SelectItem>
-                                                                <SelectItem value="number">Number</SelectItem>
-                                                                <SelectItem value="date">Date</SelectItem>
-                                                                <SelectItem value="gen_random_uuid()">UUID (Auto-generated)</SelectItem>
-                                                                <SelectItem value="now()">Current Timestamp (now())</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                        <Button
-                                                            variant="destructive"
-                                                            size="icon"
-                                                            onClick={() => removeColumn(col.id)}
-                                                            type="button"
-                                                            disabled={col.name === 'id'}
-                                                            className="justify-self-end"
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                            <span className="sr-only">Remove column</span>
-                                                        </Button>
+                                                    <div key={col.id} className="rounded-lg border bg-card p-3 space-y-3">
+                                                        {/* Row 1: Name + Type + Delete */}
+                                                        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] items-center gap-2">
+                                                            <Input
+                                                                placeholder="Column name"
+                                                                value={col.name}
+                                                                onChange={(e) => updateColumn(col.id, 'name', e.target.value)}
+                                                                className="font-mono"
+                                                                required
+                                                                disabled={col.name === 'id'}
+                                                            />
+                                                            <Select
+                                                                value={col.type}
+                                                                onValueChange={(value: ColumnType) => updateColumn(col.id, 'type', value)}
+                                                                disabled={col.name === 'id'}
+                                                            >
+                                                                <SelectTrigger>
+                                                                    <SelectValue placeholder="Type" />
+                                                                </SelectTrigger>
+                                                                <SelectContent className="max-h-72">
+                                                                    <SelectGroup>
+                                                                        <SelectLabel>— Special —</SelectLabel>
+                                                                        <SelectItem value="gen_random_uuid()">UUID (Auto-generated)</SelectItem>
+                                                                        <SelectItem value="now()">Timestamp (now())</SelectItem>
+                                                                    </SelectGroup>
+                                                                    <SelectGroup>
+                                                                        <SelectLabel>— Text —</SelectLabel>
+                                                                        <SelectItem value="text">text</SelectItem>
+                                                                        <SelectItem value="varchar">varchar</SelectItem>
+                                                                        <SelectItem value="char">char</SelectItem>
+                                                                        <SelectItem value="citext">citext (case-insensitive)</SelectItem>
+                                                                        <SelectItem value="name">name</SelectItem>
+                                                                    </SelectGroup>
+                                                                    <SelectGroup>
+                                                                        <SelectLabel>— Integer —</SelectLabel>
+                                                                        <SelectItem value="integer">integer (int4)</SelectItem>
+                                                                        <SelectItem value="smallint">smallint (int2)</SelectItem>
+                                                                        <SelectItem value="bigint">bigint (int8)</SelectItem>
+                                                                        <SelectItem value="serial">serial (auto-increment)</SelectItem>
+                                                                        <SelectItem value="bigserial">bigserial</SelectItem>
+                                                                        <SelectItem value="smallserial">smallserial</SelectItem>
+                                                                    </SelectGroup>
+                                                                    <SelectGroup>
+                                                                        <SelectLabel>— Decimal / Float —</SelectLabel>
+                                                                        <SelectItem value="numeric">numeric / decimal</SelectItem>
+                                                                        <SelectItem value="real">real (float4)</SelectItem>
+                                                                        <SelectItem value="double precision">double precision (float8)</SelectItem>
+                                                                        <SelectItem value="money">money</SelectItem>
+                                                                    </SelectGroup>
+                                                                    <SelectGroup>
+                                                                        <SelectLabel>— Boolean —</SelectLabel>
+                                                                        <SelectItem value="boolean">boolean</SelectItem>
+                                                                    </SelectGroup>
+                                                                    <SelectGroup>
+                                                                        <SelectLabel>— Date / Time —</SelectLabel>
+                                                                        <SelectItem value="date">date</SelectItem>
+                                                                        <SelectItem value="time">time</SelectItem>
+                                                                        <SelectItem value="timetz">timetz (with timezone)</SelectItem>
+                                                                        <SelectItem value="timestamp">timestamp</SelectItem>
+                                                                        <SelectItem value="timestamptz">timestamptz (with timezone)</SelectItem>
+                                                                        <SelectItem value="interval">interval</SelectItem>
+                                                                    </SelectGroup>
+                                                                    <SelectGroup>
+                                                                        <SelectLabel>— UUID —</SelectLabel>
+                                                                        <SelectItem value="uuid">uuid</SelectItem>
+                                                                    </SelectGroup>
+                                                                    <SelectGroup>
+                                                                        <SelectLabel>— JSON —</SelectLabel>
+                                                                        <SelectItem value="json">json</SelectItem>
+                                                                        <SelectItem value="jsonb">jsonb (binary json)</SelectItem>
+                                                                    </SelectGroup>
+                                                                    <SelectGroup>
+                                                                        <SelectLabel>— Arrays —</SelectLabel>
+                                                                        <SelectItem value="text[]">text[]</SelectItem>
+                                                                        <SelectItem value="integer[]">integer[]</SelectItem>
+                                                                        <SelectItem value="boolean[]">boolean[]</SelectItem>
+                                                                        <SelectItem value="jsonb[]">jsonb[]</SelectItem>
+                                                                    </SelectGroup>
+                                                                    <SelectGroup>
+                                                                        <SelectLabel>— Network —</SelectLabel>
+                                                                        <SelectItem value="inet">inet (IP address)</SelectItem>
+                                                                        <SelectItem value="cidr">cidr (network)</SelectItem>
+                                                                        <SelectItem value="macaddr">macaddr</SelectItem>
+                                                                    </SelectGroup>
+                                                                    <SelectGroup>
+                                                                        <SelectLabel>— Other —</SelectLabel>
+                                                                        <SelectItem value="bytea">bytea (binary)</SelectItem>
+                                                                        <SelectItem value="xml">xml</SelectItem>
+                                                                        <SelectItem value="tsvector">tsvector (full-text)</SelectItem>
+                                                                        <SelectItem value="point">point (geometry)</SelectItem>
+                                                                    </SelectGroup>
+                                                                </SelectContent>
+                                                            </Select>
+                                                            <Button
+                                                                variant="destructive"
+                                                                size="icon"
+                                                                onClick={() => removeColumn(col.id)}
+                                                                type="button"
+                                                                disabled={col.name === 'id'}
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                                <span className="sr-only">Remove column</span>
+                                                            </Button>
+                                                        </div>
+
+                                                        {/* Row 2: PK / Nullable / Default */}
+                                                        <div className="flex flex-wrap items-center gap-4 pt-1">
+                                                            {/* Primary Key */}
+                                                            <div className="flex items-center gap-2">
+                                                                <Switch
+                                                                    id={`pk-${col.id}`}
+                                                                    checked={col.isPrimaryKey}
+                                                                    onCheckedChange={(v) => updateColumn(col.id, 'isPrimaryKey', v)}
+                                                                    disabled={col.name === 'id'}
+                                                                />
+                                                                <Label htmlFor={`pk-${col.id}`} className="text-xs flex items-center gap-1 cursor-pointer">
+                                                                    <Badge variant="outline" className="text-[10px] px-1 py-0 font-mono">PK</Badge>
+                                                                    Primary Key
+                                                                </Label>
+                                                            </div>
+
+                                                            {/* Nullable */}
+                                                            <div className="flex items-center gap-2">
+                                                                <Switch
+                                                                    id={`null-${col.id}`}
+                                                                    checked={col.isNullable}
+                                                                    onCheckedChange={(v) => updateColumn(col.id, 'isNullable', v)}
+                                                                    disabled={col.isPrimaryKey}
+                                                                />
+                                                                <Label htmlFor={`null-${col.id}`} className="text-xs cursor-pointer">Nullable</Label>
+                                                            </div>
+
+                                                            {/* Default Value */}
+                                                            <div className="flex items-center gap-2 flex-1 min-w-[180px]">
+                                                                <Label className="text-xs shrink-0 text-muted-foreground">Default:</Label>
+                                                                <Input
+                                                                    placeholder="e.g. now(), 0, 'active'"
+                                                                    value={col.defaultValue}
+                                                                    onChange={(e) => updateColumn(col.id, 'defaultValue', e.target.value)}
+                                                                    className="font-mono text-xs h-7"
+                                                                    disabled={col.name === 'id'}
+                                                                />
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>
@@ -348,11 +499,53 @@ export default function CreateTablePage() {
                                                                     <SelectTrigger>
                                                                         <SelectValue placeholder="Type" />
                                                                     </SelectTrigger>
-                                                                    <SelectContent>
-                                                                        <SelectItem value="text">Text</SelectItem>
-                                                                        <SelectItem value="number">Number</SelectItem>
-                                                                        <SelectItem value="date">Date</SelectItem>
-                                                                        <SelectItem value="gen_random_uuid()">UUID</SelectItem>
+                                                                    <SelectContent className="max-h-72">
+                                                                        <SelectGroup>
+                                                                            <SelectLabel>— Special —</SelectLabel>
+                                                                            <SelectItem value="gen_random_uuid()">UUID (Auto-generated)</SelectItem>
+                                                                            <SelectItem value="now()">Timestamp (now())</SelectItem>
+                                                                        </SelectGroup>
+                                                                        <SelectGroup>
+                                                                            <SelectLabel>— Text —</SelectLabel>
+                                                                            <SelectItem value="text">text</SelectItem>
+                                                                            <SelectItem value="varchar">varchar</SelectItem>
+                                                                            <SelectItem value="char">char</SelectItem>
+                                                                            <SelectItem value="citext">citext</SelectItem>
+                                                                        </SelectGroup>
+                                                                        <SelectGroup>
+                                                                            <SelectLabel>— Integer —</SelectLabel>
+                                                                            <SelectItem value="integer">integer</SelectItem>
+                                                                            <SelectItem value="smallint">smallint</SelectItem>
+                                                                            <SelectItem value="bigint">bigint</SelectItem>
+                                                                            <SelectItem value="serial">serial (auto-inc)</SelectItem>
+                                                                        </SelectGroup>
+                                                                        <SelectGroup>
+                                                                            <SelectLabel>— Decimal —</SelectLabel>
+                                                                            <SelectItem value="numeric">numeric</SelectItem>
+                                                                            <SelectItem value="real">real</SelectItem>
+                                                                            <SelectItem value="double precision">double precision</SelectItem>
+                                                                        </SelectGroup>
+                                                                        <SelectGroup>
+                                                                            <SelectLabel>— Boolean —</SelectLabel>
+                                                                            <SelectItem value="boolean">boolean</SelectItem>
+                                                                        </SelectGroup>
+                                                                        <SelectGroup>
+                                                                            <SelectLabel>— Date / Time —</SelectLabel>
+                                                                            <SelectItem value="date">date</SelectItem>
+                                                                            <SelectItem value="time">time</SelectItem>
+                                                                            <SelectItem value="timestamp">timestamp</SelectItem>
+                                                                            <SelectItem value="timestamptz">timestamptz</SelectItem>
+                                                                            <SelectItem value="interval">interval</SelectItem>
+                                                                        </SelectGroup>
+                                                                        <SelectGroup>
+                                                                            <SelectLabel>— JSON / Other —</SelectLabel>
+                                                                            <SelectItem value="uuid">uuid</SelectItem>
+                                                                            <SelectItem value="json">json</SelectItem>
+                                                                            <SelectItem value="jsonb">jsonb</SelectItem>
+                                                                            <SelectItem value="bytea">bytea</SelectItem>
+                                                                            <SelectItem value="xml">xml</SelectItem>
+                                                                            <SelectItem value="inet">inet</SelectItem>
+                                                                        </SelectGroup>
                                                                     </SelectContent>
                                                                 </Select>
                                                                 <div className="w-10 h-10 justify-self-end" />

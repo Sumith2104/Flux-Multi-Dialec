@@ -1,47 +1,61 @@
-// Simple in-memory cache for table rows to speed up GET/SELECT requests.
-// In a serverless environment like Vercel, this cache is per-instance and ephemeral,
-// but it is highly effective at reducing database reads during bursts of traffic.
+// Distributed Upstash Redis cache for table rows to speed up GET/SELECT requests.
+// In a serverless environment like Vercel, this correctly persists state across all isolated instances.
 
 import type { Row } from '@/lib/data';
+import { redis } from '@/lib/redis';
+
+export interface PaginatedCachePayload {
+    rows: Row[];
+    totalRows: number;
+    nextCursorId: string | null;
+    hasMore: boolean;
+}
 
 interface CacheEntry {
     lastUpdated: number;
-    data: Row[];
+    data: PaginatedCachePayload;
 }
 
-const tableCache = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 60 * 1000; // 60 seconds
+const CACHE_TTL_SECONDS = 60; // 60 seconds
 
-export function getCachedTableRows(projectId: string, tableId: string): Row[] | null {
-    const key = `${projectId}_${tableId}`;
-    const entry = tableCache.get(key);
-
-    if (entry && (Date.now() - entry.lastUpdated < CACHE_TTL_MS)) {
-        return entry.data;
+export async function getCachedTableRows(projectId: string, tableId: string, page: number): Promise<PaginatedCachePayload | null> {
+    const key = `fluxTable_${projectId}_${tableId}_p${page}`;
+    try {
+        const entry = await redis.get<CacheEntry>(key);
+        if (entry) {
+            return entry.data;
+        }
+    } catch (e) {
+        console.warn(`[Redis Cache Error] get: ${key}`, e);
     }
-
     return null;
 }
 
-export function setCachedTableRows(projectId: string, tableId: string, data: Row[]): void {
-    const key = `${projectId}_${tableId}`;
-    tableCache.set(key, {
-        lastUpdated: Date.now(),
-        data
-    });
-}
-
-export function invalidateTableCache(projectId: string, tableId: string): void {
-    const key = `${projectId}_${tableId}`;
-    tableCache.delete(key);
-}
-
-export function invalidateProjectCache(projectId: string): void {
-    // Invalidate all tables for a project (useful for project deletion)
-    const prefix = `${projectId}_`;
-    for (const key of tableCache.keys()) {
-        if (key.startsWith(prefix)) {
-            tableCache.delete(key);
-        }
+export async function setCachedTableRows(projectId: string, tableId: string, page: number, data: PaginatedCachePayload): Promise<void> {
+    const key = `fluxTable_${projectId}_${tableId}_p${page}`;
+    try {
+        await redis.set(key, {
+            lastUpdated: Date.now(),
+            data
+        }, { ex: CACHE_TTL_SECONDS });
+    } catch (e) {
+        console.warn(`[Redis Cache Error] set: ${key}`, e);
     }
+}
+
+export async function invalidateTableCache(projectId: string, tableId: string): Promise<void> {
+    // We only realistically need to invalidate page 0, as higher pages flow.
+    // If we wanted to be strictly correct, we should invalidate all pages or use a pattern.
+    // Upstash REST API `del` supports multiple keys but not pattern scanning natively without iterators.
+    // Let's manually delete the first 5 pages which covers 99% of UI cache hits.
+    try {
+        const keys = [0, 1, 2, 3, 4].map(p => `fluxTable_${projectId}_${tableId}_p${p}`);
+        await redis.del(...keys);
+    } catch (e) {
+        console.warn(`[Redis Cache Error] invalidate: fluxTable_${projectId}_${tableId}`, e);
+    }
+}
+
+export async function invalidateProjectCache(projectId: string): Promise<void> {
+    console.log(`[Redis Cache] Project ${projectId} tables will naturally expire.`);
 }

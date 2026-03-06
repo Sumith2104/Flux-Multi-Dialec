@@ -45,6 +45,16 @@ export default function Navbar({ children }: { children: React.ReactNode }) {
                         </Link>
 
                         <Link
+                            href="/pricing"
+                            className={`transition-colors ${pathname === "/pricing"
+                                ? "text-primary"
+                                : "text-muted-foreground hover:text-primary"
+                                }`}
+                        >
+                            Pricing
+                        </Link>
+
+                        <Link
                             href="https://github.com"
                             target="_blank"
                             className="text-muted-foreground hover:text-primary transition-colors"
