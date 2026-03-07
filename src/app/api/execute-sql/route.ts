@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getPgPool } from '@/lib/pg';
 import { getCurrentUserId, getAuthContextFromRequest } from '@/lib/auth';
 import { SqlEngine } from '@/lib/sql-engine';
 import { getProjectById, logAuditAction } from '@/lib/data';
@@ -147,6 +148,24 @@ export async function POST(request: Request) {
                 invalidateTableCache(projectId, mutatedTable.toLowerCase()).catch(err => {
                     console.warn(`[Upstash Invalidation Error] Failed to invalidate cache for ${mutatedTable}:`, err);
                 });
+
+                // Fire SSE Live Broadcast for Vercel
+                try {
+                    const pool = getPgPool();
+                    const payload = {
+                        event_type: 'raw_sql_mutation',
+                        table_id: mutatedTable.toLowerCase(),
+                        timestamp: new Date().toISOString(),
+                        project_id: projectId,
+                        data: {}
+                    };
+                    const payloadString = JSON.stringify(payload).replace(/'/g, "''");
+                    pool.query(`NOTIFY fluxbase_live, '${payloadString}'`).catch(err => {
+                        console.warn(`[SSE Broadcast Error] Failed to fire NOTIFY for ${mutatedTable}:`, err);
+                    });
+                } catch (e) {
+                    // Ignore broadcast errors
+                }
             }
         }
 
