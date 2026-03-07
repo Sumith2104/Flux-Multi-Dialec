@@ -41,10 +41,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Invalid pagination parameters.' }, { status: 400 });
     }
 
-    const limit = pageSize;
-    const offset = page * pageSize;
-
-    const data = await getTableData(projectId, tableName, limit, offset);
+    const data = await getTableData(projectId, tableName, page, pageSize, userId, cursorId);
     if (data.rows.length > 0) {
       console.error(`[DEBUG] /api/table-data keys for ${tableName}:`, Object.keys(data.rows[0]));
       console.error(`[DEBUG] /api/table-data sample for ${tableName}:`, JSON.stringify(data.rows[0]));
