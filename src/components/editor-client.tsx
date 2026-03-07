@@ -246,87 +246,70 @@ export function EditorClient({
         refetch();
     }, [queryClient, projectId, tableId, refetch]);
 
-    // Live Data Updates (WebSocket Server)
+    // Live Data Updates (Native Vercel Server-Sent Events - SSE)
     useEffect(() => {
         if (!projectId || !tableId) return;
 
         let isMounted = true;
-        const wsUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:4000';
-        let ws: WebSocket;
-        try {
-            ws = new WebSocket(wsUrl);
-        } catch (error) {
-            console.warn("[WS] Realtime updates disabled (likely due to mixed content or connection error):", error);
-            return;
-        }
+        const sseUrl = `/api/projects/${projectId}/tables/${tableId}/stream`;
 
-        ws.onopen = () => {
-            console.log(`[WS] Connected. Subscribing to live updates for table: ${tableId}`);
-            ws.send(JSON.stringify({ type: 'subscribe', projectId, tableId }));
-        };
+        console.log(`[SSE] Connecting to live updates for table: ${tableId} via Vercel Edge`);
+        const eventSource = new EventSource(sseUrl);
 
-        ws.onmessage = (event) => {
+        eventSource.addEventListener('update', (event) => {
             if (!isMounted) return;
             try {
                 const payload = JSON.parse(event.data);
+                console.log('[SSE] Realtime Update Received:', payload.operation, payload.data);
 
-                if (payload.type === 'update') {
-                    console.log('[WS] Realtime Update Received:', payload.operation, payload.data);
+                // Directly patch UI using React Query instead of invalidating queries
+                queryClient.setQueryData(['table-data', projectId, tableId], (oldData: any) => {
+                    if (!oldData || !oldData.pages) return oldData;
 
-                    // Directly patch UI using React Query instead of invalidating queries
-                    queryClient.setQueryData(['table-data', projectId, tableId], (oldData: any) => {
-                        if (!oldData || !oldData.pages) return oldData;
+                    let handledInsert = false;
 
-                        let handledInsert = false;
+                    const newPages = oldData.pages.map((page: any, pageIndex: number) => {
+                        let newRows = [...page.rows];
+                        const dataId = payload.data.id || payload.data._id || payload.data.uuid;
 
-                        const newPages = oldData.pages.map((page: any, pageIndex: number) => {
-                            let newRows = [...page.rows];
-                            const dataId = payload.data.id || payload.data._id || payload.data.uuid;
-
-                            if (payload.operation === 'DELETE') {
-                                const index = newRows.findIndex(r => r.id === dataId || r._id === dataId);
-                                if (index !== -1) newRows.splice(index, 1);
-                            }
-                            else if (payload.operation === 'UPDATE') {
-                                const index = newRows.findIndex(r => r.id === dataId || r._id === dataId);
-                                if (index !== -1) newRows[index] = { ...newRows[index], ...payload.data };
-                            }
-                            else if (payload.operation === 'INSERT') {
-                                // Add to the very first page top
-                                if (pageIndex === 0 && !handledInsert) {
-                                    if (!newRows.find(r => r.id === dataId || r._id === dataId)) {
-                                        newRows.unshift({ ...payload.data, _id: dataId || `temp_${Date.now()}` });
-                                        handledInsert = true;
-                                    }
+                        if (payload.operation === 'DELETE') {
+                            const index = newRows.findIndex(r => r.id === dataId || r._id === dataId);
+                            if (index !== -1) newRows.splice(index, 1);
+                        }
+                        else if (payload.operation === 'UPDATE') {
+                            const index = newRows.findIndex(r => r.id === dataId || r._id === dataId);
+                            if (index !== -1) newRows[index] = { ...newRows[index], ...payload.data };
+                        }
+                        else if (payload.operation === 'INSERT') {
+                            // Add to the very first page top
+                            if (pageIndex === 0 && !handledInsert) {
+                                if (!newRows.find(r => r.id === dataId || r._id === dataId)) {
+                                    newRows.unshift({ ...payload.data, _id: dataId || `temp_${Date.now()}` });
+                                    handledInsert = true;
                                 }
                             }
+                        }
 
-                            return { ...page, rows: newRows };
-                        });
-
-                        return { ...oldData, pages: newPages };
+                        return { ...page, rows: newRows };
                     });
-                } else if (payload.type === 'error') {
-                    console.error('[WS] Subscription Error:', payload.message);
-                }
-            } catch (err) {
-                console.error('[WS] Failed to parse payload:', err);
-            }
-        };
 
-        ws.onerror = (error) => {
+                    return { ...oldData, pages: newPages };
+                });
+            } catch (err) {
+                console.error('[SSE] Failed to parse payload:', err);
+            }
+        });
+
+        eventSource.onerror = (error) => {
             if (!isMounted) return;
-            console.error('[WS] WebSocket failed:', error);
-            ws.close();
+            // SSE automatically reconnects, we just log it.
+            console.warn('[SSE] Connection interrupted. Reconnecting automatically...', error);
         };
 
         return () => {
             isMounted = false;
-            console.log(`[WS] Unsubscribing from live updates for table: ${tableId}`);
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'unsubscribe', projectId, tableId }));
-            }
-            ws.close();
+            console.log(`[SSE] Disconnecting from live updates for table: ${tableId}`);
+            eventSource.close();
         };
     }, [projectId, tableId, queryClient]);
 
