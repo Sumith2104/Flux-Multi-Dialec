@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { getPgPool } from '@/lib/pg';
-import { runScraper } from '@/workers/scraper-worker';
 
 export async function POST(request: Request, context: any) {
     try {
@@ -25,11 +24,15 @@ export async function POST(request: Request, context: any) {
 
         const job = rows[0];
 
-        // Fire and forget triggering the worker
-        // In a true serverless env this might timeout, but it works for standard Node or short tasks
-        runScraper(job).catch(err => console.error(`Failed to run scraper ${scraperId} async:`, err));
+        // Fire and forget triggering the dedicated worker
+        const engineUrl = process.env.SCRAPER_ENGINE_URL || 'http://localhost:8080';
+        fetch(`${engineUrl}/api/run`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ job })
+        }).catch(err => console.error(`Failed to dispatch job to external Scraper Engine:`, err));
 
-        return NextResponse.json({ success: true, message: 'Scraper job triggered successfully in the background.' });
+        return NextResponse.json({ success: true, message: 'Scraper job dispatched to Cloud Engine successfully.' });
     } catch (error: any) {
         console.error('[POST /api/scrapers/[scraperId]/run Error]', error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
