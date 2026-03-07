@@ -136,9 +136,12 @@ export async function POST(request: Request) {
             const uppercaseQuery = typeof query === 'string' ? query.toUpperCase() : '';
             let mutatedTable = null;
 
-            const insertMatch = uppercaseQuery.match(/INTO\s+(?:public\.)?["`']?([a-zA-Z0-9_]+)["`']?/);
-            const updateMatch = uppercaseQuery.match(/UPDATE\s+(?:public\.)?["`']?([a-zA-Z0-9_]+)["`']?/);
-            const deleteMatch = uppercaseQuery.match(/FROM\s+(?:public\.)?["`']?([a-zA-Z0-9_]+)["`']?/); // Simple heuristic for DELETE FROM
+            const optSchema = `(?:["'\`]?[a-zA-Z0-9_]+["'\`]?\\.)?`;
+            const tblName = `["'\`]?([a-zA-Z0-9_]+)["'\`]?`;
+
+            const insertMatch = query.match(new RegExp(`INTO\\s+${optSchema}${tblName}`, 'i'));
+            const updateMatch = query.match(new RegExp(`UPDATE\\s+${optSchema}${tblName}`, 'i'));
+            const deleteMatch = query.match(new RegExp(`FROM\\s+${optSchema}${tblName}`, 'i')); // Simple heuristic for DELETE FROM
 
             if (insertMatch && insertMatch[1]) mutatedTable = insertMatch[1];
             else if (updateMatch && updateMatch[1]) mutatedTable = updateMatch[1];
