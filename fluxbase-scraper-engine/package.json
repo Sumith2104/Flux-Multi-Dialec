@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "npx ts-node index.ts",
+    "start": "npx ts-node --transpile-only index.ts",
     "build": "npx playwright install chromium"
   },
   "keywords": [],
