@@ -10,8 +10,9 @@ export function middleware(request: NextRequest) {
 
   // If user is logged in...
   if (userId) {
-    // and tries to access an auth page (login/signup/reset), redirect to dashboard.
-    if (isAuthPage) {
+    // and tries to access an auth page (login/signup), redirect to dashboard.
+    // We allow /reset-password so users can reset from their email link even if they have an active session
+    if (isAuthPage && pathname !== '/reset-password') {
       return NextResponse.redirect(new URL('/dashboard/projects', request.url));
     }
   }

@@ -7,7 +7,9 @@ import jwt from 'jsonwebtoken';
 import http from 'http';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fluxbase_dev_secret_key_123';
-const wss = new WebSocketServer({ port: 4000 });
+const PORT = parseInt(process.env.WS_PORT || '4000', 10);
+const wss = new WebSocketServer({ port: PORT });
+console.log(`[WS] Server starting on port ${PORT}...`);
 const clients = new Map<string, Set<WebSocket>>();
 const userConnectionCounts = new Map<string, number>();
 

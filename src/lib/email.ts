@@ -179,11 +179,20 @@ export async function sendWelcomeEmail(to: string, name: string) {
 }
 
 export async function sendPasswordResetEmail(to: string, resetLink: string) {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const html = buildEmailHtml({
         title: "Reset Your Password",
         greeting: "Hello,",
         instruction: "We received a request to reset the password for your Fluxbase account. Please click the secure link below to proceed.",
-        contentHtml: '<a href="' + resetLink + '" class="btn">Reset Password</a>'
+        contentHtml: `
+            <div style="margin-bottom: 24px;">
+                <a href="${resetLink}" class="btn">Reset Password</a>
+            </div>
+            <p style="color: #a1a1aa; font-size: 14px; margin: 0 0 16px 0;">If you remembered your password, you can simply log in instead:</p>
+            <div>
+                <a href="${baseUrl}" class="btn" style="background-color: transparent; border: 1px solid #52525b; color: #e4e4e7 !important;">Login to Fluxbase</a>
+            </div>
+        `
     });
 
     return sendEmail(to, "Fluxbase Password Reset", html, getBrandAttachments());

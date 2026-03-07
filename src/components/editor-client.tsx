@@ -251,7 +251,8 @@ export function EditorClient({
         if (!projectId || !tableId) return;
 
         let isMounted = true;
-        const ws = new WebSocket('ws://localhost:4000'); // Connect to our dedicated WS server
+        const wsUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:4000';
+        const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
             console.log(`[WS] Connected. Subscribing to live updates for table: ${tableId}`);
