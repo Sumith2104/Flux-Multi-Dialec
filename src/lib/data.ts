@@ -984,17 +984,21 @@ export async function getTableData(
             const mysqlPool = getMysqlPool();
             const dbName = `project_${projectId}`;
 
-            const [dataResult]: any = await mysqlPool.query(`SELECT * FROM \`${dbName}\`.\`${safeTableName}\` LIMIT ${limit} OFFSET ${offset}`);
-            const [countResult]: any = await mysqlPool.query(`SELECT COUNT(*) as count FROM \`${dbName}\`.\`${safeTableName}\``);
-
-            totalRows = parseInt(countResult[0].count);
-
-            const [pkColResult]: any = await mysqlPool.query(`
+            const dataPromise = mysqlPool.query(`SELECT * FROM \`${dbName}\`.\`${safeTableName}\` LIMIT ${limit} OFFSET ${offset}`);
+            const countPromise = mysqlPool.query(`SELECT COUNT(*) as count FROM \`${dbName}\`.\`${safeTableName}\``);
+            const pkColPromise = mysqlPool.query(`
                 SELECT COLUMN_NAME as column_name
                 FROM information_schema.COLUMNS 
                 WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_KEY = 'PRI' LIMIT 1
             `, [dbName, safeTableName]);
 
+            const [
+                [dataResult],
+                [countResult],
+                [pkColResult]
+            ]: any = await Promise.all([dataPromise, countPromise, pkColPromise]);
+
+            totalRows = parseInt(countResult[0].count);
             const pkName = pkColResult.length > 0 ? pkColResult[0].column_name : null;
 
             rows = dataResult.map((row: any, index: number) => {
@@ -1013,17 +1017,18 @@ export async function getTableData(
             const pool = getPgPool();
             const schemaName = `project_${projectId}`;
 
-            const dataResult = await pool.query(`SELECT * FROM "${schemaName}"."${safeTableName}" LIMIT $1 OFFSET $2`, [limit, offset]);
-            const countResult = await pool.query(`SELECT COUNT(*) FROM "${schemaName}"."${safeTableName}"`);
-
-            totalRows = parseInt(countResult.rows[0].count);
-            const pkColResult = await pool.query(`
+            const dataPromise = pool.query(`SELECT * FROM "${schemaName}"."${safeTableName}" LIMIT $1 OFFSET $2`, [limit, offset]);
+            const countPromise = pool.query(`SELECT COUNT(*) FROM "${schemaName}"."${safeTableName}"`);
+            const pkColPromise = pool.query(`
                 SELECT kcu.column_name 
                 FROM information_schema.table_constraints tc
                 JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
                 WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = $1 AND tc.table_name = $2 LIMIT 1
             `, [schemaName, safeTableName]);
 
+            const [dataResult, countResult, pkColResult] = await Promise.all([dataPromise, countPromise, pkColPromise]);
+
+            totalRows = parseInt(countResult.rows[0].count);
             const pkName = pkColResult.rows.length > 0 ? pkColResult.rows[0].column_name : null;
 
             rows = dataResult.rows.map((row, index) => {
