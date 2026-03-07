@@ -252,7 +252,13 @@ export function EditorClient({
 
         let isMounted = true;
         const wsUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:4000';
-        const ws = new WebSocket(wsUrl);
+        let ws: WebSocket;
+        try {
+            ws = new WebSocket(wsUrl);
+        } catch (error) {
+            console.warn("[WS] Realtime updates disabled (likely due to mixed content or connection error):", error);
+            return;
+        }
 
         ws.onopen = () => {
             console.log(`[WS] Connected. Subscribing to live updates for table: ${tableId}`);
