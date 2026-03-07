@@ -136,20 +136,20 @@ export function DataTable({
 
   if (loading && rows.length === 0) {
     return (
-      <div className="w-full h-[70vh] flex items-center justify-center rounded-xl border border-border/60 bg-card/40 backdrop-blur-2xl shadow-sm">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (!loading && rows.length === 0) {
-    return (
-      <div className="w-full h-[70vh] flex flex-col items-center justify-center rounded-xl border border-border/60 bg-card/40 backdrop-blur-2xl text-muted-foreground shadow-sm">
-        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted/50 mb-4">
-          <Database className="h-10 w-10 text-muted-foreground/50" />
+      <div className="w-full h-[70vh] flex flex-col rounded-xl border border-white/10 bg-black/40 shadow-2xl overflow-hidden relative">
+        {/* Render only headers for skeleton state */}
+        <div className="sticky top-0 z-20 bg-white border-b border-white/20 w-max min-w-full inline-flex text-xs font-bold tracking-widest uppercase text-zinc-800">
+          <div className="w-16 shrink-0 flex items-center justify-center border-r border-zinc-200/80 py-3.5 bg-zinc-100">#</div>
+          <div className="w-14 shrink-0 flex items-center justify-center border-r border-zinc-200/80 py-3.5 bg-white"><Checkbox disabled className="border-zinc-400" /></div>
+          {columns.map((c, i) => (
+            <div key={c.field} className={`relative flex items-center shrink-0 px-4 py-3.5 bg-white ${i !== columns.length - 1 ? 'border-r border-zinc-200/80' : ''}`} style={{ width: `${getColWidth(c.field)}px` }}>
+              <span className="truncate w-full text-zinc-800/50">{c.headerName}</span>
+            </div>
+          ))}
         </div>
-        <h3 className="text-lg font-semibold text-foreground">No rows found</h3>
-        <p className="text-sm mt-1 mb-4 text-center max-w-sm">This table is empty. Insert a new row or import data to get started.</p>
+        <div className="flex-1 flex items-center justify-center w-full">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/30" />
+        </div>
       </div>
     );
   }
@@ -248,6 +248,16 @@ export function DataTable({
             );
           })}
         </div>
+
+        {!loading && rows.length === 0 && (
+          <div className="w-full h-full min-h-[400px] flex flex-col items-center justify-center text-muted-foreground absolute inset-0 opacity-80 pointer-events-none mt-20">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-black/20 mb-4">
+              <Database className="h-8 w-8 text-white/30" />
+            </div>
+            <h3 className="text-lg font-semibold text-white/60">No rows found</h3>
+            <p className="text-sm mt-1 text-center max-w-sm text-white/40">This table is empty. Insert a new row.</p>
+          </div>
+        )}
       </div>
     </div>
   );

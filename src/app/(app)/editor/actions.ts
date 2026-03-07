@@ -128,17 +128,35 @@ export async function addRowAction(formData: FormData) {
                 }
             }
 
+            // Intercept manual "now()" typings from the table UI
+            if (value === 'now()') {
+                value = getLocalTimestamp(project?.timezone);
+            }
+
             if (col.column_name === 'id' && !value) {
                 const isNumeric = ['INT', 'INTEGER', 'NUMBER', 'FLOAT'].includes(col.data_type.toUpperCase());
                 value = isNumeric ? Date.now().toString() : uuidv4();
             }
 
-            if (value && ['timestamp', 'timestamptz', 'datetime'].includes(col.data_type.toLowerCase())) {
-                try {
-                    // Try parsing it. If it fails, keep the original string.
-                    value = new Date(value).toISOString();
-                } catch (e) {
-                    console.error("Invalid date value", value);
+            if (value) {
+                const dataType = col.data_type.toUpperCase();
+                if (dataType === 'TIME') {
+                    // Extract HH:mm:ss from ISO string if it is a full string
+                    if (value.includes('T')) {
+                        const timePart = value.split('T')[1];
+                        value = timePart.split('.')[0].slice(0, 8); // Ensures HH:mm:ss format without timezone Z
+                    }
+                } else if (dataType === 'DATE') {
+                    // Extract YYYY-MM-DD
+                    if (value.includes('T')) {
+                        value = value.split('T')[0];
+                    }
+                } else if (['TIMESTAMP', 'TIMESTAMPTZ', 'DATETIME'].includes(dataType)) {
+                    try {
+                        value = new Date(value).toISOString();
+                    } catch (e) {
+                        console.error("Invalid date value", value);
+                    }
                 }
             }
 
@@ -195,11 +213,28 @@ export async function editRowAction(formData: FormData) {
                     value = getLocalTimestamp(project?.timezone);
                 }
 
-                if (value && ['timestamp', 'timestamptz', 'datetime'].includes(col.data_type.toLowerCase())) {
-                    try {
-                        value = new Date(value).toISOString();
-                    } catch (e) {
-                        // Keep original
+                // Intercept manual "now()" typings from the table UI
+                if (value === 'now()') {
+                    value = getLocalTimestamp(project?.timezone);
+                }
+
+                if (value) {
+                    const dataType = col.data_type.toUpperCase();
+                    if (dataType === 'TIME') {
+                        if (value.includes('T')) {
+                            const timePart = value.split('T')[1];
+                            value = timePart.split('.')[0].slice(0, 8);
+                        }
+                    } else if (dataType === 'DATE') {
+                        if (value.includes('T')) {
+                            value = value.split('T')[0];
+                        }
+                    } else if (['TIMESTAMP', 'TIMESTAMPTZ', 'DATETIME'].includes(dataType)) {
+                        try {
+                            value = new Date(value).toISOString();
+                        } catch (e) {
+                            // Keep original
+                        }
                     }
                 }
 
