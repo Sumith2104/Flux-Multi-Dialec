@@ -60,18 +60,7 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
     }
 
     if (results && results.rows) {
-        if (results.rows.length === 0) {
-            return (
-                <div className="p-12 text-center h-full flex flex-col items-center justify-center text-muted-foreground bg-muted/5">
-                    <div className="rounded-full bg-background p-4 mb-4 border shadow-sm">
-                        <AlertCircle className="h-6 w-6 text-green-500" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-foreground">Success</h3>
-                    <p className="text-sm">Query executed successfully. No rows returned.</p>
-                    <p className="text-xs mt-2 font-mono bg-muted px-2 py-1 rounded">0 rows affected</p>
-                </div>
-            );
-        }
+        // Empty rows will fall through to the table renderer below instead of abruptly returning.
 
         return (
             <div className="flex flex-col h-full bg-background relative overflow-hidden">
@@ -111,22 +100,34 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {results.rows.map((row, rowIndex) => (
-                                    <TableRow key={rowIndex} className="border-b border-border/50 hover:bg-muted/30 transition-colors group">
-                                        {results.columns.map((col, colIndex) => (
-                                            <TableCell
-                                                key={`${rowIndex}-${col}`}
-                                                className="px-4 py-1.5 whitespace-nowrap font-mono text-xs border-r border-border/50 last:border-r-0 group-hover:border-border/80"
-                                            >
-                                                {row[col] === null ? (
-                                                    <span className="text-muted-foreground/50 italic text-[10px]">NULL</span>
-                                                ) : (
-                                                    <span className="text-foreground/90">{String(row[col])}</span>
-                                                )}
-                                            </TableCell>
-                                        ))}
+                                {results.rows.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={results.columns.length || 1} className="h-32 text-center text-muted-foreground">
+                                            <div className="flex flex-col items-center justify-center gap-2">
+                                                <AlertCircle className="h-8 w-8 text-muted-foreground/50 opacity-50" />
+                                                <p className="text-sm font-medium">No results found</p>
+                                                <p className="text-xs opacity-70">Query executed successfully, but 0 rows were returned.</p>
+                                            </div>
+                                        </TableCell>
                                     </TableRow>
-                                ))}
+                                ) : (
+                                    results.rows.map((row, rowIndex) => (
+                                        <TableRow key={rowIndex} className="border-b border-border/50 hover:bg-muted/30 transition-colors group">
+                                            {results.columns.map((col, colIndex) => (
+                                                <TableCell
+                                                    key={`${rowIndex}-${col}`}
+                                                    className="px-4 py-1.5 whitespace-nowrap font-mono text-xs border-r border-border/50 last:border-r-0 group-hover:border-border/80"
+                                                >
+                                                    {row[col] === null ? (
+                                                        <span className="text-muted-foreground/50 italic text-[10px]">NULL</span>
+                                                    ) : (
+                                                        <span className="text-foreground/90">{String(row[col])}</span>
+                                                    )}
+                                                </TableCell>
+                                            ))}
+                                        </TableRow>
+                                    ))
+                                )}
                             </TableBody>
                         </Table>
                     )}

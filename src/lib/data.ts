@@ -372,6 +372,10 @@ export async function createTable(projectId: string, tableName: string, descript
             if (type === 'NUMBER') type = 'DOUBLE';
             else if (type === 'VARCHAR') type = 'VARCHAR(255)';
             else if (type === 'BOOLEAN') type = 'TINYINT(1)';
+            else if (type === 'UUID') type = 'CHAR(36)';
+            else if (type === 'TIMETZ' || type === 'TIMESTAMPTZ') type = 'TIMESTAMP';
+            else if (type === 'JSONB') type = 'JSON';
+            else if (type.includes('[]')) type = 'JSON';
 
             let def = `\`${col.column_name}\` ${type}`;
 
@@ -383,7 +387,11 @@ export async function createTable(projectId: string, tableName: string, descript
             }
 
             if (col.default_value) {
-                if (col.default_value.includes('now()')) def += ' DEFAULT CURRENT_TIMESTAMP';
+                if (col.default_value.includes('now()')) {
+                    if (type === 'DATE') def += ' DEFAULT (CURRENT_DATE)';
+                    else if (type === 'TIME') def += ' DEFAULT (CURRENT_TIME)';
+                    else def += ' DEFAULT CURRENT_TIMESTAMP';
+                }
                 else if (col.default_value.includes('uuid()')) def += ' DEFAULT (UUID())';
                 else def += ` DEFAULT '${col.default_value}'`;
             }
