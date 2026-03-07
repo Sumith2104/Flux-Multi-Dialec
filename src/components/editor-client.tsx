@@ -260,9 +260,16 @@ export function EditorClient({
             if (!isMounted) return;
             try {
                 const payload = JSON.parse(event.data);
-                console.log('[SSE] Realtime Update Received:', payload.operation, payload.data);
+                console.log('[SSE] Realtime Update Received:', payload.event_type || payload.operation, payload);
 
-                // Directly patch UI using React Query instead of invalidating queries
+                // Raw SQL mutations (from execute-sql endpoint) — we don't have the full
+                // row data in the payload, so just invalidate the query to refetch.
+                if (payload.event_type === 'raw_sql_mutation') {
+                    queryClient.invalidateQueries({ queryKey: ['table-data', projectId, tableId] });
+                    return;
+                }
+
+                // Standard Fluxbase mutations — patch UI directly without a full refetch
                 queryClient.setQueryData(['table-data', projectId, tableId], (oldData: any) => {
                     if (!oldData || !oldData.pages) return oldData;
 
@@ -270,7 +277,7 @@ export function EditorClient({
 
                     const newPages = oldData.pages.map((page: any, pageIndex: number) => {
                         let newRows = [...page.rows];
-                        const dataId = payload.data.id || payload.data._id || payload.data.uuid;
+                        const dataId = payload.data?.id || payload.data?._id || payload.data?.uuid;
 
                         if (payload.operation === 'DELETE') {
                             const index = newRows.findIndex(r => r.id === dataId || r._id === dataId);

@@ -24,6 +24,18 @@ export async function GET(
         }
 
         const pool = getPgPool();
+
+        // Look up the actual table name for this tableId so we can match
+        // NOTIFY payloads from execute-sql (which sends table name, not UUID)
+        let tableName = tableId; // fallback
+        try {
+            const tnRes = await pool.query(
+                `SELECT table_name FROM fluxbase_tables WHERE table_id = $1 LIMIT 1`,
+                [tableId]
+            );
+            if (tnRes.rows.length > 0) tableName = tnRes.rows[0].table_name.toLowerCase();
+        } catch (_) { /* keep fallback */ }
+
         const client = await pool.connect();
 
         let isReleased = false;
@@ -63,8 +75,13 @@ export async function GET(
                     try {
                         const payload = JSON.parse(msg.payload);
 
-                        // We filter for matching project_id and table_id
-                        if (payload.project_id === projectId && (payload.table_id === tableId || payload.table_id === '*')) {
+                        // Match by project AND (tableId UUID OR table name)
+                        const matchesTable = payload.table_id === tableId
+                            || payload.table_id === tableName
+                            || payload.table_name === tableName
+                            || payload.table_id === '*';
+
+                        if (payload.project_id === projectId && matchesTable) {
                             const dataString = JSON.stringify(payload);
                             sendEvent('update', dataString);
                         }

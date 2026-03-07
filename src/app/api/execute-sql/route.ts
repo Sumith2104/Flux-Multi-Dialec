@@ -155,6 +155,8 @@ export async function POST(request: Request) {
                     const payload = {
                         event_type: 'raw_sql_mutation',
                         table_id: mutatedTable.toLowerCase(),
+                        table_name: mutatedTable.toLowerCase(),
+                        operation: uppercaseQuery.startsWith('INSERT') ? 'INSERT' : uppercaseQuery.startsWith('UPDATE') ? 'UPDATE' : 'DELETE',
                         timestamp: new Date().toISOString(),
                         project_id: projectId,
                         data: {}
