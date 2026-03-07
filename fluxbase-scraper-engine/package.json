@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "npx ts-node index.ts",
-    "build": "tsc"
+    "build": "npx playwright install chromium"
   },
   "keywords": [],
   "author": "",
