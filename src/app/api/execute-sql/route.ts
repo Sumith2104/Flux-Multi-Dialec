@@ -4,6 +4,7 @@ import { SqlEngine } from '@/lib/sql-engine';
 import { getProjectById, logAuditAction } from '@/lib/data';
 import { createHash } from 'crypto';
 import { redis } from '@/lib/redis';
+import { invalidateTableCache } from '@/lib/cache';
 import { Ratelimit } from '@upstash/ratelimit';
 
 export const maxDuration = 60; // 1 minute
@@ -129,6 +130,24 @@ export async function POST(request: Request) {
                 rows_affected: result.rows?.length || 0,
                 status: 'success'
             }).catch(e => console.error(e));
+
+            // Aggressive Cache Invalidation (Extracted from Regex)
+            const uppercaseQuery = typeof query === 'string' ? query.toUpperCase() : '';
+            let mutatedTable = null;
+
+            const insertMatch = uppercaseQuery.match(/INTO\s+(?:public\.)?["`']?([a-zA-Z0-9_]+)["`']?/);
+            const updateMatch = uppercaseQuery.match(/UPDATE\s+(?:public\.)?["`']?([a-zA-Z0-9_]+)["`']?/);
+            const deleteMatch = uppercaseQuery.match(/FROM\s+(?:public\.)?["`']?([a-zA-Z0-9_]+)["`']?/); // Simple heuristic for DELETE FROM
+
+            if (insertMatch && insertMatch[1]) mutatedTable = insertMatch[1];
+            else if (updateMatch && updateMatch[1]) mutatedTable = updateMatch[1];
+            else if (uppercaseQuery.startsWith('DELETE') && deleteMatch && deleteMatch[1]) mutatedTable = deleteMatch[1];
+
+            if (mutatedTable) {
+                invalidateTableCache(projectId, mutatedTable.toLowerCase()).catch(err => {
+                    console.warn(`[Upstash Invalidation Error] Failed to invalidate cache for ${mutatedTable}:`, err);
+                });
+            }
         }
 
         const responseData = {
