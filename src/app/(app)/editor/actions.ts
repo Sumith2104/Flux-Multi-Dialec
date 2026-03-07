@@ -75,7 +75,7 @@ async function validateForeignKey(projectId: string, tableId: string, newRow: Re
         const referencedTable = (await getTablesForProject(projectId)).find(t => t.table_id === constraint.referenced_table_id);
         if (!referencedTable) throw new Error(`Internal error: Referenced table with ID '${constraint.referenced_table_id}' not found.`);
 
-        const { rows: referencedData } = await getTableData(projectId, referencedTable.table_name, 1, 10000);
+        const { rows: referencedData } = await getTableData(projectId, referencedTable.table_name, 0, 100);
         const referencedPkColumns = (constraint.referenced_column_names || '').split(',');
 
         const referenceExists = referencedData.some((refRow: any) => {
@@ -86,7 +86,7 @@ async function validateForeignKey(projectId: string, tableId: string, newRow: Re
         });
 
         if (!referenceExists) {
-            throw new Error(`Foreign key violation on table '${referencedTable.table_name}': The value '${fkValue.replace(/-/g, ', ')}' for column '${constraint.column_names}' does not exist in the referenced table.`);
+            throw new Error(`Foreign key violation on table '${referencedTable.table_name}': The value '${fkValue}' for column '${constraint.column_names}' does not exist in the referenced table.`);
         }
     }
 }
