@@ -125,7 +125,7 @@ export class SqlEngine {
 
                     if (Array.isArray(queryResult)) {
                         if (queryResult.length === 0) {
-                        } else if (Array.isArray(queryResult[0]) || queryResult[0]?.constructor?.name === 'ResultSetHeader') {
+                        } else if (Array.isArray(queryResult[0]) || queryResult[0]?.constructor?.name === 'ResultSetHeader' || (queryResult[0] && typeof queryResult[0] === 'object' && 'affectedRows' in queryResult[0])) {
                             let targetRes = queryResult[queryResult.length - 1];
                             let targetFields = fields && fields.length > 0 ? fields[fields.length - 1] : undefined;
 
@@ -148,7 +148,9 @@ export class SqlEngine {
                             }
                         } else {
                             formattedRows = queryResult;
-                            if (fields && Array.isArray(fields)) formattedColumns = fields.map((f: any) => f.name);
+                            if (fields && Array.isArray(fields)) {
+                                formattedColumns = fields.filter((f: any) => f != null).map((f: any) => f.name);
+                            }
                             rowCount = queryResult.length;
                         }
                     } else if (queryResult && typeof queryResult === 'object') {
