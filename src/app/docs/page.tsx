@@ -1,6 +1,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Download } from 'lucide-react';
 
 export default function DocsPage() {
     return (
@@ -15,6 +16,14 @@ export default function DocsPage() {
                     <p className="text-lg text-muted-foreground">
                         Connect your applications directly to Fluxbase databases using standard HTTP REST or direct MySQL connections. No proprietary packages required.
                     </p>
+                    <a
+                        href="/fluxbase-integration-guide.pdf"
+                        download="Fluxbase-Integration-Guide.pdf"
+                        className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors"
+                    >
+                        <Download className="h-4 w-4" />
+                        Download Integration Guide (PDF)
+                    </a>
                 </div>
 
                 <section className="space-y-6">
