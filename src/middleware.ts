@@ -19,7 +19,7 @@ export function middleware(request: NextRequest) {
   // If user is not logged in...
   else {
     // allow public access to marketing pages: '/', '/pricing', etc.
-    const isPublicStaticPage = pathname === '/' || pathname === '/pricing';
+    const isPublicStaticPage = ['/', '/pricing', '/privacy', '/terms', '/docs', '/contact'].includes(pathname);
 
     // and tries to access a protected page, redirect to root
     if (!isAuthPage && !isPublicStaticPage) {
