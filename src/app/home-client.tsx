@@ -13,7 +13,8 @@ import {
     ArrowRight,
     CheckCircle2,
     Github,
-    Twitter
+    Twitter,
+    ServerCrash
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -21,6 +22,7 @@ import Aurora from '@/components/Aurora';
 import Navbar from '@/components/layout/navbar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { checkDatabaseHealthAction } from '@/lib/data';
 
 const LoginDialog = dynamic(() => import('@/components/auth/login-dialog').then(mod => mod.LoginDialog), {
     ssr: false,
@@ -35,8 +37,11 @@ export default function Home() {
     const [colors, setColors] = useState(['#111111', '#FF4B29', '#111111']);
     const [loginOpen, setLoginOpen] = useState(false);
     const [signupOpen, setSignupOpen] = useState(false);
+    const [isOffline, setIsOffline] = useState(false);
 
     useEffect(() => {
+        checkDatabaseHealthAction().then(isHealthy => setIsOffline(!isHealthy));
+
         const getRandomColor = () => {
             const letters = '0123456789ABCDEF';
             let color = '#';
@@ -93,15 +98,29 @@ export default function Home() {
                     />
                 </div>
                 <div className="relative z-10 text-center space-y-8 max-w-4xl mx-auto px-4">
-                    <motion.div
-                        initial={{ scale: 0.9, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ duration: 0.5 }}
-                        className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-medium mb-4"
-                    >
-                        <Zap className="h-3 w-3" />
-                        <span>v2.0 is now live</span>
-                    </motion.div>
+                    <div className="flex flex-col items-center gap-3">
+                        {isOffline && (
+                            <motion.div
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                transition={{ duration: 0.5 }}
+                                className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-destructive/10 border border-destructive/20 text-destructive text-xs font-medium"
+                            >
+                                <ServerCrash className="h-4 w-4" />
+                                <span>Fluxbase is undergoing maintenance - we'll be right back!</span>
+                            </motion.div>
+                        )}
+
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ duration: 0.5 }}
+                            className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-medium"
+                        >
+                            <Zap className="h-3 w-3" />
+                            <span>v2.0 is now live</span>
+                        </motion.div>
+                    </div>
                     <motion.h1
                         {...fadeIn}
                         className="text-6xl font-bold tracking-tight sm:text-7xl md:text-8xl bg-clip-text text-transparent bg-gradient-to-b from-foreground to-foreground/50"
