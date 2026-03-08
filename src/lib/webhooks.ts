@@ -38,7 +38,10 @@ export async function getWebhooksForProject(projectId: string, userId: string): 
     } as Webhook));
 }
 
+import { checkWebhookLimit } from '@/lib/limits';
+
 export async function createWebhook(projectId: string, userId: string, webhook: Omit<Webhook, 'webhook_id' | 'project_id' | 'user_id' | 'created_at'>): Promise<Webhook> {
+    await checkWebhookLimit(projectId, userId);
     const pool = getPgPool();
     const webhookId = crypto.randomUUID().replace(/-/g, '').substring(0, 20);
 

@@ -11,6 +11,9 @@ export async function createApiKeyAction(name: string, projectId?: string) {
     if (!userId) return { success: false, error: "Not authenticated" };
 
     try {
+        const { checkApiKeyLimit } = await import('@/lib/limits');
+        await checkApiKeyLimit(userId);
+
         let projectName: string | undefined;
 
         if (projectId) {

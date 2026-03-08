@@ -7,6 +7,25 @@ import { validateRow } from '@/lib/validation';
 import { fireWebhooks } from '@/lib/webhooks';
 import { unstable_cache, revalidateTag } from 'next/cache';
 
+export async function checkDatabaseHealthAction(): Promise<boolean> {
+    try {
+        const pool = getPgPool();
+        const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('DB connection timed out')), 3000)
+        );
+
+        await Promise.race([
+            pool.query('SELECT 1'),
+            timeoutPromise
+        ]);
+
+        return true;
+    } catch (error) {
+        console.error("Database health check failed:", error);
+        return false;
+    }
+}
+
 // --- Types ---
 
 export interface Project {
@@ -191,7 +210,7 @@ export async function createProject(name: string, description: string, dialect: 
     const pool = getPgPool();
 
     // Fetch Subscription Plan from DB
-    const userSnapshot = await pool.query('SELECT plan_type FROM fluxbase_global.users WHERE id = $1', [userId]);
+    const userSnapshot = await pool.query('SELECT plan_type FROM fluxbase_global.users WHERE user_id = $1', [userId]);
     const planType = userSnapshot.rows[0]?.plan_type || 'free';
 
     let maxProjects = 1;
@@ -352,9 +371,13 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
     }
 }
 
+import { checkTableLimit } from '@/lib/limits';
+
 export async function createTable(projectId: string, tableName: string, description: string, columns: Column[], explicitUserId?: string): Promise<Table> {
     const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
+
+    await checkTableLimit(projectId, userId);
 
     const project = await getProjectById(projectId, userId);
     if (!project) throw new Error("Project not found");

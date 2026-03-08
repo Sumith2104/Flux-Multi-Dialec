@@ -12,6 +12,7 @@ import { getProjectsForCurrentUser, Project } from "@/lib/data";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { useEffect, useState, useContext } from "react";
 import { cn } from "@/lib/utils";
+import { getUserPlanAction } from "@/app/(app)/settings/actions";
 import { logoutAction } from "./actions";
 import { LogoutButton } from "@/components/logout-button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,8 +27,10 @@ import {
     Settings as SettingsIcon,
     Table,
     Database,
-    Globe
+    Globe,
+    ServerCrash
 } from "lucide-react";
+import { checkDatabaseHealthAction } from "@/lib/data";
 
 
 const navItems = [
@@ -46,6 +49,8 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
     const [user, setUser] = useState<User | null>(null);
     const [userId, setUserId] = useState<string | null>(null);
+    const [planType, setPlanType] = useState<string>('Free');
+    const [isOffline, setIsOffline] = useState(false);
     const [projects, setProjects] = useState<Project[]>([]);
     const [userLoading, setUserLoading] = useState(true);
     const { project: selectedProject, setProject, loading: projectContextLoading } = useContext(ProjectContext);
@@ -54,12 +59,25 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         async function fetchData() {
             setUserLoading(true);
             try {
+                const isHealthy = await checkDatabaseHealthAction();
+                if (!isHealthy) {
+                    setIsOffline(true);
+                    setUserLoading(false);
+                    return;
+                }
+
                 const id = await getCurrentUserId();
                 setUserId(id);
 
                 if (id) {
                     const userData = await findUserById(id);
                     setUser(userData);
+
+                    const planRes = await getUserPlanAction();
+                    if (planRes?.success) {
+                        setPlanType(planRes.plan === 'max' ? 'Max' : (planRes.plan === 'pro' ? 'Pro' : 'Free'));
+                    }
+
                     const projectsData = await getProjectsForCurrentUser();
                     setProjects(projectsData);
 
@@ -144,6 +162,21 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         );
     }
 
+    if (isOffline) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen bg-background text-center px-4">
+                <div className="bg-destructive/10 p-6 rounded-full mb-6">
+                    <ServerCrash className="h-12 w-12 text-destructive" />
+                </div>
+                <h1 className="text-3xl font-bold tracking-tight mb-2">We'll be right back</h1>
+                <p className="text-muted-foreground text-lg max-w-md mx-auto mb-8">
+                    Fluxbase is currently undergoing scheduled maintenance or the database is temporarily offline. Please check back shortly.
+                </p>
+                <Button onClick={() => window.location.reload()}>Try Again</Button>
+            </div>
+        );
+    }
+
     if (!isLoading && !userId && !pathname.startsWith('/login') && !pathname.startsWith('/signup')) {
         return <div className="flex items-center justify-center h-screen">Redirecting to login...</div>;
     }
@@ -171,7 +204,19 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                         projects={projects}
                         selectedProject={selectedProject}
                     />
-                    {selectedProject && <Badge variant="outline">Free</Badge>}
+                    {selectedProject && (
+                        <Badge
+                            variant="outline"
+                            className={cn(
+                                "transition-colors shadow-none text-[10px] uppercase font-bold tracking-wider rounded-md",
+                                planType === 'Max' ? "border-amber-500/50 bg-amber-500/10 text-amber-500" :
+                                    planType === 'Pro' ? "border-blue-500/50 bg-blue-500/10 text-blue-500" :
+                                        "border-muted-foreground/30 bg-muted/10 text-muted-foreground"
+                            )}
+                        >
+                            {planType}
+                        </Badge>
+                    )}
                     <TimezoneSelector />
                 </div>
                 <div className="flex-1"></div>

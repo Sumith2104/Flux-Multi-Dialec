@@ -6,6 +6,24 @@ import { deleteUserAccount } from '@/lib/auth-actions';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
+export async function getUserPlanAction(): Promise<{ success: boolean; plan?: string; error?: string }> {
+    try {
+        const userId = await getCurrentUserId();
+        if (!userId) return { success: false, error: 'Unauthorized' };
+
+        const { getPgPool } = await import('@/lib/pg');
+        const pool = getPgPool();
+        const { rows } = await pool.query(
+            'SELECT plan_type FROM fluxbase_global.users WHERE id = $1',
+            [userId]
+        );
+
+        return { success: true, plan: rows[0]?.plan_type || 'free' };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
 export async function updateProjectSettingsAction(projectId: string, timezone: string) {
     const userId = await getCurrentUserId();
     if (!projectId || !userId || !timezone) {

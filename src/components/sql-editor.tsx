@@ -86,6 +86,10 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
                     return;
                 }
             }
+            // Fallback to grabbing the full text directly from Monaco to avoid React stale closures
+            const fullText = editorRef.current.getModel().getValue().trim();
+            onRun(fullText);
+            return;
         }
         onRun();
     };
@@ -96,9 +100,11 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
     };
 
     const handleFormatSql = () => {
-        // Basic SQL format mock for UI purposes
-        if (!query.trim()) return;
-        const formatted = query
+        // Fetch from Monaco reference to bypass old closures in shortcut handlers
+        const currentQuery = editorRef.current?.getModel().getValue() || query;
+        if (!currentQuery.trim()) return;
+
+        const formatted = currentQuery
             .replace(/\s+/g, ' ')
             .replace(/SELECT/gi, '\nSELECT')
             .replace(/FROM/gi, '\nFROM')

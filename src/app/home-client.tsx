@@ -100,7 +100,7 @@ export default function Home() {
                         className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-medium mb-4"
                     >
                         <Zap className="h-3 w-3" />
-                        <span>v1.0 is now live</span>
+                        <span>v2.0 is now live</span>
                     </motion.div>
                     <motion.h1
                         {...fadeIn}

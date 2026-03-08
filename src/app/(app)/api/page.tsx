@@ -3,7 +3,7 @@
 import { useContext, useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Copy, Check, Plus, Trash2, Key, Loader2 } from "lucide-react";
+import { Copy, Check, Plus, Trash2, Key, Loader2, Shield } from "lucide-react";
 import { BackButton } from "@/components/back-button";
 import { ProjectContext } from '@/contexts/project-context';
 import { getTablesForProject, Table as DbTable } from '@/lib/data';
@@ -32,6 +32,7 @@ import { type ApiKey } from "@/lib/api-keys";
 import { useRouter } from "next/navigation";
 import { Switch } from "@/components/ui/switch";
 import { getWebhooksAction, createWebhookAction, deleteWebhookAction, toggleWebhookAction } from '@/app/(app)/settings/actions';
+import { getUserPlanAction } from '@/app/(app)/settings/actions';
 import { type Webhook, type WebhookEvent } from '@/lib/webhooks';
 
 const timezones = Intl.supportedValuesOf('timeZone');
@@ -72,7 +73,15 @@ export default function ApiPage() {
     const [newKey, setNewKey] = useState<string | null>(null);
     const [keyName, setKeyName] = useState("");
     const [createDialogOpen, setCreateDialogOpen] = useState(false);
+    const [planType, setPlanType] = useState<string | null>(null);
     const { toast } = useToast();
+
+    // Fetch plan on load
+    useEffect(() => {
+        getUserPlanAction().then(res => {
+            if (res.success) setPlanType(res.plan ?? 'free');
+        });
+    }, []);
 
     useEffect(() => {
         if (selectedProject) {
@@ -139,6 +148,17 @@ export default function ApiPage() {
                         Manage your API access, keys, and project settings.
                     </p>
                 </div>
+                {planType && (
+                    <span className={`ml-auto inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${planType === 'max'
+                            ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                            : planType === 'pro'
+                                ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                                : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/30'
+                        }`}>
+                        <Shield className="h-3 w-3" />
+                        {planType.charAt(0).toUpperCase() + planType.slice(1)} Plan
+                    </span>
+                )}
             </div>
 
             {!selectedProject ? (

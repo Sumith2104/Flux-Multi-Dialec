@@ -41,6 +41,9 @@ export async function POST(request: Request) {
             return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
         }
 
+        const { checkScraperLimit } = await import('@/lib/limits');
+        await checkScraperLimit(projectId, auth.userId);
+
         const scraperId = uuidv4();
         const pool = getPgPool();
 
