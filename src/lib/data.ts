@@ -11,7 +11,7 @@ export async function checkDatabaseHealthAction(): Promise<boolean> {
     try {
         const pool = getPgPool();
         const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject('timeout'), 3000)
+            setTimeout(() => reject('timeout'), 1000)
         );
 
         await Promise.race([
