@@ -11,7 +11,7 @@ export async function checkDatabaseHealthAction(): Promise<boolean> {
     try {
         const pool = getPgPool();
         const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('DB connection timed out')), 3000)
+            setTimeout(() => reject('timeout'), 3000)
         );
 
         await Promise.race([
@@ -21,7 +21,7 @@ export async function checkDatabaseHealthAction(): Promise<boolean> {
 
         return true;
     } catch (error) {
-        console.error("Database health check failed:", error);
+        console.log("DB powered off");
         return false;
     }
 }
