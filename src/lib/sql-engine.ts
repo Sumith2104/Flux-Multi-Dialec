@@ -68,7 +68,7 @@ export class SqlEngine {
         }
     }
 
-    public async execute(query: string): Promise<SqlResult> {
+    public async execute(query: string, params?: any[]): Promise<SqlResult> {
         await this.init();
         if (!this.userId) throw new Error("Unauthorized");
 
@@ -113,7 +113,7 @@ export class SqlEngine {
 
                     // 2. Execute raw SQL natively on MySQL engine
                     // Using query() instead of execute() for raw multiple statements
-                    const [queryResult, fields]: any = await connection.query(queryCleaned);
+                    const [queryResult, fields]: any = await connection.query(queryCleaned, params || []);
 
                     const executionTime = (performance.now() - startTime).toFixed(2);
                     let explanation = [`Executed via Native AWS MySQL in ${executionTime}ms`];
@@ -177,7 +177,7 @@ export class SqlEngine {
                     await client.query(`SET search_path TO "project_${this.projectId}"`);
 
                     // 2. Execute the raw SQL directly on the Postgres engine
-                    const result = await client.query(queryCleaned);
+                    const result = await client.query(queryCleaned, params || []);
 
                     const executionTime = (performance.now() - startTime).toFixed(2);
                     let explanation = [`Executed via Native AWS PostgreSQL in ${executionTime}ms`];

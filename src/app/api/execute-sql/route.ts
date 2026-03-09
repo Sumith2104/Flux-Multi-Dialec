@@ -26,7 +26,7 @@ export async function POST(request: Request) {
         if (!auth) return NextResponse.json({ success: false, error: { message: 'User not authenticated', code: 'AUTH_REQUIRED' } }, { status: 401 });
         const { userId, allowedProjectId } = auth;
 
-        let { projectId, query } = await request.json();
+        let { projectId, query, params } = await request.json();
 
         // Enforce Scope
         if (allowedProjectId) {
@@ -63,7 +63,8 @@ export async function POST(request: Request) {
         let cacheKey = '';
 
         if (isSelect) {
-            cacheKey = createHash('sha256').update(`fluxQuery_${projectId}_${userId}_${query}`).digest('hex');
+            const paramsString = params ? JSON.stringify(params) : '';
+            cacheKey = createHash('sha256').update(`fluxQuery_${projectId}_${userId}_${query}_${paramsString}`).digest('hex');
 
             try {
                 const cached = await redis.get<CacheEntry>(cacheKey);
@@ -109,7 +110,7 @@ export async function POST(request: Request) {
 
         let result;
         try {
-            result = await engine.execute(query);
+            result = await engine.execute(query, params);
         } catch (e: any) {
             // Distinguish syntax errors from execution errors if possible
             return NextResponse.json({
