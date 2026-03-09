@@ -210,7 +210,7 @@ export async function createProject(name: string, description: string, dialect: 
     const pool = getPgPool();
 
     // Fetch Subscription Plan from DB
-    const userSnapshot = await pool.query('SELECT plan_type FROM fluxbase_global.users WHERE user_id = $1', [userId]);
+    const userSnapshot = await pool.query('SELECT plan_type FROM fluxbase_global.users WHERE id = $1', [userId]);
     const planType = userSnapshot.rows[0]?.plan_type || 'free';
 
     let maxProjects = 1;

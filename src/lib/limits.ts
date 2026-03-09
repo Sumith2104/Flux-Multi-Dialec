@@ -39,7 +39,7 @@ export class LimitExceededError extends Error {
 
 export async function getUserPlan(userId: string): Promise<PlanType> {
     const pool = getPgPool();
-    const res = await pool.query('SELECT plan_type FROM fluxbase_global.users WHERE user_id = $1', [userId]);
+    const res = await pool.query('SELECT plan_type FROM fluxbase_global.users WHERE id = $1', [userId]);
     const plan = res.rows[0]?.plan_type || 'free';
     // Validate the plan falls into one of our tiers, fallback to free
     if (plan in PLAN_LIMITS) return plan as PlanType;

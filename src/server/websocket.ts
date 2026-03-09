@@ -109,7 +109,7 @@ wss.on('connection', async (ws, req) => {
     }
 
     // Rate Limiting (Phase 3 Gatekeeping)
-    const userRes = await pool.query('SELECT plan_type FROM fluxbase_global.users WHERE user_id = $1', [userId]);
+    const userRes = await pool.query('SELECT plan_type FROM fluxbase_global.users WHERE id = $1', [userId]);
     const planType = userRes.rows[0]?.plan_type || 'free';
 
     let maxConnections = 100;
