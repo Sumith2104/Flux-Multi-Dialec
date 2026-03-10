@@ -7,24 +7,21 @@ const PLAN_LIMITS = {
         tablesPerProject: 5,
         rowsPerTable: 10000,
         apiKeys: 2,
-        webhooks: 0,
-        scrapers: 0
+        webhooks: 0
     },
     pro: {
         projects: 3,
         tablesPerProject: 15,
         rowsPerTable: 50000,
         apiKeys: 10,
-        webhooks: 5,
-        scrapers: 3
+        webhooks: 5
     },
     max: {
         projects: 999999, // Practically unlimited
         tablesPerProject: 999999,
         rowsPerTable: 999999999,
         apiKeys: 999999,
-        webhooks: 999999,
-        scrapers: 999999
+        webhooks: 999999
     }
 } as const;
 
@@ -133,22 +130,5 @@ export async function checkWebhookLimit(projectId: string, userId: string): Prom
 
     if (count >= limit) {
         throw new LimitExceededError(`Webhook limit reached. Your ${plan.toUpperCase()} plan allows a maximum of ${limit} webhooks per project. Please upgrade to create more.`);
-    }
-}
-
-export async function checkScraperLimit(projectId: string, userId: string): Promise<void> {
-    const plan = await getUserPlan(userId);
-    const limit = PLAN_LIMITS[plan].scrapers;
-
-    if (limit === 0) {
-        throw new LimitExceededError(`The Cloud Scraper Engine is only available on the PRO and MAX plans. Please upgrade to automate data extraction.`);
-    }
-
-    const pool = getPgPool();
-    const res = await pool.query('SELECT COUNT(*) as count FROM fluxbase_global.fluxbase_scrapers WHERE project_id = $1 AND user_id = $2', [projectId, userId]);
-    const count = parseInt(res.rows[0].count, 10);
-
-    if (count >= limit) {
-        throw new LimitExceededError(`Scraper limit reached. Your ${plan.toUpperCase()} plan allows a maximum of ${limit} scrapers per project. Please upgrade to allocate more engine workers.`);
     }
 }
