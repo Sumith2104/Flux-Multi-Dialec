@@ -15,7 +15,7 @@ interface SparklineCardProps {
 
 export function SparklineCard({ title, value, subtitle, type, color, data }: SparklineCardProps) {
     return (
-        <Card className="h-full w-full aspect-square flex flex-col justify-between relative overflow-hidden group border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md shadow-lg transition-colors hover:bg-zinc-900/60">
+        <Card className="h-36 w-full flex flex-col justify-between relative overflow-hidden group border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md shadow-lg transition-colors hover:bg-zinc-900/60">
             {/* Background Sparkline layer */}
             <div className="absolute inset-0 z-0 opacity-40 hover:opacity-100 transition-opacity duration-700 pb-4">
                 <ResponsiveContainer width="100%" height="100%">
@@ -82,7 +82,7 @@ export function SparklineCard({ title, value, subtitle, type, color, data }: Spa
             {/* Foreground Content */}
             <div className="relative z-10 flex flex-col justify-between h-full p-6 pointer-events-none">
                 <CardHeader className="p-0 pb-2">
-                    <CardTitle className="text-sm font-bold tracking-wider uppercase text-zinc-500 flex items-center gap-2">
+                    <CardTitle className="text-xs font-bold tracking-wider uppercase text-zinc-500 flex items-center gap-2">
                         {title}
                         {type === "line" && (
                             <div className="h-1.5 w-1.5 rounded-full bg-zinc-400" />
@@ -90,7 +90,7 @@ export function SparklineCard({ title, value, subtitle, type, color, data }: Spa
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
-                    <div className="text-4xl font-black tracking-tight text-white">
+                    <div className="text-2xl font-black tracking-tight text-white">
                         {value}
                     </div>
                     <p className="text-xs text-zinc-400 font-medium mt-1 truncate">

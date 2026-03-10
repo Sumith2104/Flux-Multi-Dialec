@@ -73,16 +73,16 @@ export function QueryTypeChart({ stats }: { stats: AnalyticsStats | null }) {
     }, [chartData])
 
     return (
-        <Card className="h-full w-full flex flex-col aspect-square justify-between border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md shadow-lg overflow-hidden transition-colors hover:bg-zinc-900/60">
-            <CardHeader className="items-center pb-4 border-b border-white/5 bg-zinc-900/20">
-                <CardTitle className="text-xl font-bold text-zinc-100 flex items-center gap-2">
+        <Card className="h-36 w-full flex flex-col justify-between border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md shadow-lg overflow-hidden transition-colors hover:bg-zinc-900/60">
+            <CardHeader className="items-center py-2 border-b border-white/5 bg-zinc-900/20">
+                <CardTitle className="text-xs font-bold text-zinc-500 flex items-center gap-2 uppercase tracking-wider">
                     Query Type
                 </CardTitle>
             </CardHeader>
-            <CardContent className="flex-1 pt-6 pb-6 flex items-center justify-center">
+            <CardContent className="flex-1 py-1 flex items-center justify-center">
                 <ChartContainer
                     config={chartConfig}
-                    className="mx-auto aspect-square w-full max-h-[250px] drop-shadow-[0_0_15px_rgba(0,0,0,0.5)]"
+                    className="mx-auto aspect-square w-full max-h-[100px]"
                 >
                     <PieChart>
                         <ChartTooltip
