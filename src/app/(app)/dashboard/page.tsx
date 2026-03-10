@@ -134,7 +134,7 @@ export default function DashboardPage() {
                         value={realtimeStats?.total_requests ?? 0}
                         subtitle="Real-time Interactions"
                         type="line"
-                        color="#94a3b8"
+                        color="#f97316"
                         data={historyStats.requests}
                     />
 
@@ -143,7 +143,7 @@ export default function DashboardPage() {
                         value={realtimeStats?.type_api_call ?? 0}
                         subtitle="Data Fetches"
                         type="bar"
-                        color="#64748b"
+                        color="#78716c"
                         data={historyStats.apiCalls}
                     />
 
@@ -154,7 +154,7 @@ export default function DashboardPage() {
                         value={formatSize(analytics?.totalSize ?? 0)}
                         subtitle={`${tables.length} Tables, ${analytics?.totalRows ?? 0} Rows`}
                         type="area"
-                        color="#6366f1"
+                        color="#ea580c"
                         data={Array(24).fill({ val: analytics?.totalSize ?? 0 })}
                     />
                 </div>

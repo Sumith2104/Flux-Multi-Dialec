@@ -28,23 +28,23 @@ const chartConfig = {
     },
     select: {
         label: "SELECT",
-        color: "#6366f1",
+        color: "#f97316",
     },
     insert: {
         label: "INSERT",
-        color: "#818cf8",
+        color: "#fb923c",
     },
     update: {
         label: "UPDATE",
-        color: "#94a3b8",
+        color: "#fdba74",
     },
     delete: {
         label: "DELETE",
-        color: "#475569",
+        color: "#78716c",
     },
     alter: {
         label: "ALTER",
-        color: "#334155",
+        color: "#44403c",
     },
 } satisfies ChartConfig
 
@@ -52,19 +52,19 @@ export function QueryTypeChart({ stats }: { stats: AnalyticsStats | null }) {
 
     const chartData = React.useMemo(() => {
         if (!stats) return [
-            { browser: "select", visitors: 0, fill: "#6366f1" },
-            { browser: "insert", visitors: 0, fill: "#818cf8" },
-            { browser: "update", visitors: 0, fill: "#94a3b8" },
-            { browser: "delete", visitors: 0, fill: "#475569" },
-            { browser: "alter", visitors: 0, fill: "#334155" },
+            { browser: "select", visitors: 0, fill: "#f97316" },
+            { browser: "insert", visitors: 0, fill: "#fb923c" },
+            { browser: "update", visitors: 0, fill: "#fdba74" },
+            { browser: "delete", visitors: 0, fill: "#78716c" },
+            { browser: "alter", visitors: 0, fill: "#44403c" },
         ];
 
         return [
-            { browser: "select", visitors: stats.type_sql_select || 0, fill: "#6366f1" },
-            { browser: "insert", visitors: stats.type_sql_insert || 0, fill: "#818cf8" },
-            { browser: "update", visitors: stats.type_sql_update || 0, fill: "#94a3b8" },
-            { browser: "delete", visitors: stats.type_sql_delete || 0, fill: "#475569" },
-            { browser: "alter", visitors: stats.type_sql_alter || 0, fill: "#334155" },
+            { browser: "select", visitors: stats.type_sql_select || 0, fill: "#f97316" },
+            { browser: "insert", visitors: stats.type_sql_insert || 0, fill: "#fb923c" },
+            { browser: "update", visitors: stats.type_sql_update || 0, fill: "#fdba74" },
+            { browser: "delete", visitors: stats.type_sql_delete || 0, fill: "#78716c" },
+            { browser: "alter", visitors: stats.type_sql_alter || 0, fill: "#44403c" },
         ]
     }, [stats]);
 

@@ -158,8 +158,8 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                     <div className="flex flex-col items-end">
                         <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Current</span>
                         <div className="flex items-center gap-2">
-                            <div className={`h-2 w-2 rounded-full bg-zinc-400`} />
-                            <span className="text-2xl font-bold font-mono text-zinc-200">
+                            <div className="h-2 w-2 rounded-full bg-orange-500/70" />
+                            <span className="text-2xl font-bold font-mono text-orange-400">
                                 {currentRPS}
                             </span>
                         </div>
@@ -184,16 +184,16 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                         <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                             <defs>
                                 <linearGradient id="colorRequests" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#94a3b8" stopOpacity={0.25} />
-                                    <stop offset="95%" stopColor="#94a3b8" stopOpacity={0} />
+                                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.25} />
+                                    <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
                                 </linearGradient>
                                 <linearGradient id="colorApi" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2} />
-                                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                                    <stop offset="5%" stopColor="#ea580c" stopOpacity={0.15} />
+                                    <stop offset="95%" stopColor="#ea580c" stopOpacity={0} />
                                 </linearGradient>
                                 <linearGradient id="colorSql" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#64748b" stopOpacity={0.2} />
-                                    <stop offset="95%" stopColor="#64748b" stopOpacity={0} />
+                                    <stop offset="5%" stopColor="#78716c" stopOpacity={0.15} />
+                                    <stop offset="95%" stopColor="#78716c" stopOpacity={0} />
                                 </linearGradient>
                             </defs>
                             <CartesianGrid strokeDasharray="3 3" stroke="#ffffff15" vertical={true} horizontal={true} />
@@ -259,7 +259,7 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                             <Area
                                 type="monotone"
                                 dataKey="requests"
-                                stroke="#94a3b8"
+                                stroke="#f97316"
                                 strokeWidth={1.5}
                                 fill="url(#colorRequests)"
                                 name="Total Requests"
@@ -270,8 +270,9 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                             <Area
                                 type="monotone"
                                 dataKey="api"
-                                stroke="#6366f1"
-                                strokeWidth={1.5}
+                                stroke="#ea580c"
+                                strokeWidth={1}
+                                strokeOpacity={0.7}
                                 fill="url(#colorApi)"
                                 name="API Calls"
                                 isAnimationActive={false}
@@ -281,8 +282,9 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                             <Area
                                 type="monotone"
                                 dataKey="sql"
-                                stroke="#475569"
-                                strokeWidth={1.5}
+                                stroke="#78716c"
+                                strokeWidth={1}
+                                strokeOpacity={0.7}
                                 fill="url(#colorSql)"
                                 name="SQL Executions"
                                 isAnimationActive={false}
