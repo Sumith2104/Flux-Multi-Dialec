@@ -73,7 +73,7 @@ export function QueryTypeChart({ stats }: { stats: AnalyticsStats | null }) {
     }, [chartData])
 
     return (
-        <Card className="h-36 w-full flex flex-col justify-between border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md shadow-lg overflow-hidden transition-colors hover:bg-zinc-900/60">
+        <Card className="w-52 h-52 flex flex-col justify-between border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md shadow-lg overflow-hidden transition-colors hover:bg-zinc-900/60">
             <CardHeader className="items-center py-2 border-b border-white/5 bg-zinc-900/20">
                 <CardTitle className="text-xs font-bold text-zinc-500 flex items-center gap-2 uppercase tracking-wider">
                     Query Type

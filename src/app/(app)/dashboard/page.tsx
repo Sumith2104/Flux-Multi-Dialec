@@ -127,7 +127,7 @@ export default function DashboardPage() {
             <div className="space-y-6">
 
                 {/* Real-time Metrics Grid */}
-                <div className="grid gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-4">
+                <div className="flex flex-wrap gap-4">
 
                     <SparklineCard
                         title="Total Requests"
