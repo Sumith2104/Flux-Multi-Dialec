@@ -26,16 +26,16 @@ export async function POST(request: Request, context: any) {
         if (rows.length === 0) return NextResponse.json({ success: false, error: 'Scraper job not found' }, { status: 404 });
 
         const job = rows[0];
-        const { target_url, target_table, project_id, selectors } = job;
+        const { url, table_name, project_id, selectors } = job;
         if (!selectors?.item) throw new Error("Invalid CSS selectors: missing 'item' container");
 
         // 2. Headless Browser Fetching
-        console.log(`[Native Scraper] Launching Chromium for ${target_url}...`);
+        console.log(`[Native Scraper] Launching Chromium for ${url}...`);
         browser = await chromium.launch({ headless: true });
         const ctx = await browser.newContext();
         const page = await ctx.newPage();
 
-        await page.goto(target_url, { waitUntil: 'networkidle', timeout: 45000 });
+        await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
         const html = await page.content();
         await browser.close();
 
@@ -60,7 +60,7 @@ export async function POST(request: Request, context: any) {
             // 4. Schema Generation & Database Ingestion
             const project = await getProjectById(project_id, auth.userId);
             const schema = 'project_' + project_id;
-            const safeTableName = target_table.replace(/[^a-zA-Z0-9_]/g, '');
+            const safeTableName = table_name.replace(/[^a-zA-Z0-9_]/g, '');
 
             // Ensure Table Exists
             const columns = extractKeys.map(k => `"${k.replace(/[^a-zA-Z0-9_]/g, '')}" TEXT`);
@@ -80,7 +80,7 @@ export async function POST(request: Request, context: any) {
                 let paramIndex = 1;
 
                 chunk.forEach(row => {
-                    const rowPlaceholders = [];
+                    const rowPlaceholders: string[] = [];
                     extractKeys.forEach(key => {
                         values.push(row[key] || null);
                         rowPlaceholders.push(`$${paramIndex++}`);
