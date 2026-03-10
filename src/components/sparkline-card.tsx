@@ -85,12 +85,12 @@ export function SparklineCard({ title, value, subtitle, type, color, data }: Spa
                     <CardTitle className="text-sm font-bold tracking-wider uppercase text-zinc-500 flex items-center gap-2">
                         {title}
                         {type === "line" && (
-                            <div className="h-2 w-2 animate-pulse rounded-full bg-green-500 shadow-[0_0_12px_#22c55e]" />
+                            <div className="h-1.5 w-1.5 rounded-full bg-zinc-400" />
                         )}
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
-                    <div className="text-4xl font-black tracking-tight" style={{ color: type === "line" ? "#fff" : color }}>
+                    <div className="text-4xl font-black tracking-tight text-white">
                         {value}
                     </div>
                     <p className="text-xs text-zinc-400 font-medium mt-1 truncate">

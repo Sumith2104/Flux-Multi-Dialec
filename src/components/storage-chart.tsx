@@ -42,11 +42,11 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<ValueType, NameT
           <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
             {formatTableName(String(label))}
           </span>
-          <span className="font-mono text-xl font-bold text-orange-400 drop-shadow-[0_0_10px_rgba(249,115,22,0.4)]">
+          <span className="font-mono text-xl font-bold text-zinc-100">
             {formatSize(value)}
           </span>
         </div>
-        <div className="h-2 w-2 rounded-full bg-orange-500 animate-pulse shadow-[0_0_8px_rgba(249,115,22,1)]" />
+        <div className="h-2 w-2 rounded-full bg-zinc-500" />
       </div>
     );
   }
@@ -101,8 +101,8 @@ export function StorageChart({ data }: StorageChartProps) {
             >
               <defs>
                 <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#f97316" stopOpacity={1} />
-                  <stop offset="100%" stopColor="#ea580c" stopOpacity={0.2} />
+                  <stop offset="0%" stopColor="#6366f1" stopOpacity={0.9} />
+                  <stop offset="100%" stopColor="#4f46e5" stopOpacity={0.2} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />

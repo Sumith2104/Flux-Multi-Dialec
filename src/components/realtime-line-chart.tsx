@@ -26,15 +26,11 @@ const renderCustomDot = (props: any) => {
     const { cx, cy, index, dataKey, payload } = props;
     const isLatest = payload?.isLatest;
 
-    // Only glow the latest point of the main "requests" line
+    // Only show a subtle dot at the latest point
     if (isLatest && dataKey === 'requests') {
         return (
             <g key={`dot-${index}`}>
-                <circle cx={cx} cy={cy} r={6} fill="#84cc16" opacity={0.3}>
-                    <animate attributeName="r" values="6;14;6" dur="2s" repeatCount="indefinite" />
-                    <animate attributeName="opacity" values="0.3;0;0.3" dur="2s" repeatCount="indefinite" />
-                </circle>
-                <circle cx={cx} cy={cy} r={4} fill="#84cc16" stroke="#18181b" strokeWidth={2} />
+                <circle cx={cx} cy={cy} r={3} fill="#94a3b8" stroke="#18181b" strokeWidth={2} />
             </g>
         );
     }
@@ -151,7 +147,7 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
             <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-white/5">
                 <div className="space-y-1">
                     <CardTitle className="text-xl font-bold flex items-center gap-2 text-zinc-100">
-                        <Activity className="h-5 w-5 text-lime-400 animate-pulse" />
+                        <Activity className="h-5 w-5 text-zinc-500" />
                         Real-Time Activity
                     </CardTitle>
                     <CardDescription className="text-zinc-400 font-medium">Live incoming requests</CardDescription>
@@ -162,8 +158,8 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                     <div className="flex flex-col items-end">
                         <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Current</span>
                         <div className="flex items-center gap-2">
-                            <div className={`h-2 w-2 rounded-full ${currentRPS > Math.max(40, Number(averages.requests) * 1.5) ? 'bg-lime-500 animate-ping' : 'bg-lime-500'}`} />
-                            <span className="text-2xl font-bold font-mono text-lime-400 drop-shadow-[0_0_15px_rgba(132,204,22,0.4)]">
+                            <div className={`h-2 w-2 rounded-full bg-zinc-400`} />
+                            <span className="text-2xl font-bold font-mono text-zinc-200">
                                 {currentRPS}
                             </span>
                         </div>
@@ -188,24 +184,17 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                         <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                             <defs>
                                 <linearGradient id="colorRequests" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#84cc16" stopOpacity={0.4} />
-                                    <stop offset="95%" stopColor="#84cc16" stopOpacity={0} />
+                                    <stop offset="5%" stopColor="#94a3b8" stopOpacity={0.25} />
+                                    <stop offset="95%" stopColor="#94a3b8" stopOpacity={0} />
                                 </linearGradient>
                                 <linearGradient id="colorApi" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
-                                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2} />
+                                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                                 </linearGradient>
                                 <linearGradient id="colorSql" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#a855f7" stopOpacity={0.4} />
-                                    <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
+                                    <stop offset="5%" stopColor="#64748b" stopOpacity={0.2} />
+                                    <stop offset="95%" stopColor="#64748b" stopOpacity={0} />
                                 </linearGradient>
-                                <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-                                    <feGaussianBlur stdDeviation="4" result="coloredBlur" />
-                                    <feMerge>
-                                        <feMergeNode in="coloredBlur" />
-                                        <feMergeNode in="SourceGraphic" />
-                                    </feMerge>
-                                </filter>
                             </defs>
                             <CartesianGrid strokeDasharray="3 3" stroke="#ffffff15" vertical={true} horizontal={true} />
                             <XAxis
@@ -270,10 +259,9 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                             <Area
                                 type="monotone"
                                 dataKey="requests"
-                                stroke="#84cc16"
-                                strokeWidth={2}
+                                stroke="#94a3b8"
+                                strokeWidth={1.5}
                                 fill="url(#colorRequests)"
-                                filter="url(#glow)"
                                 name="Total Requests"
                                 isAnimationActive={false}
                                 dot={renderCustomDot}
@@ -282,7 +270,7 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                             <Area
                                 type="monotone"
                                 dataKey="api"
-                                stroke="#3b82f6"
+                                stroke="#6366f1"
                                 strokeWidth={1.5}
                                 fill="url(#colorApi)"
                                 name="API Calls"
@@ -293,7 +281,7 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                             <Area
                                 type="monotone"
                                 dataKey="sql"
-                                stroke="#a855f7"
+                                stroke="#475569"
                                 strokeWidth={1.5}
                                 fill="url(#colorSql)"
                                 name="SQL Executions"

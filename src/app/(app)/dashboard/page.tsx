@@ -104,13 +104,13 @@ export default function DashboardPage() {
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-3xl font-bold flex items-center gap-3">
                     Dashboard
-                    <span className="relative flex h-3 w-3">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                    <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-zinc-400 opacity-30"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-zinc-400"></span>
                     </span>
                 </h1>
                 <div className="flex items-center gap-3">
-                    <Button asChild variant="outline" className="border-indigo-500/50 text-indigo-400 hover:bg-indigo-950/30 hover:text-indigo-300">
+                    <Button asChild variant="outline" className="border-zinc-700 text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-300 text-sm">
                         <Link href="/pricing">
                             Upgrade Plan
                         </Link>
@@ -134,7 +134,7 @@ export default function DashboardPage() {
                         value={realtimeStats?.total_requests ?? 0}
                         subtitle="Real-time Interactions"
                         type="line"
-                        color="#22c55e"
+                        color="#94a3b8"
                         data={historyStats.requests}
                     />
 
@@ -143,7 +143,7 @@ export default function DashboardPage() {
                         value={realtimeStats?.type_api_call ?? 0}
                         subtitle="Data Fetches"
                         type="bar"
-                        color="#3b82f6"
+                        color="#64748b"
                         data={historyStats.apiCalls}
                     />
 
@@ -154,8 +154,8 @@ export default function DashboardPage() {
                         value={formatSize(analytics?.totalSize ?? 0)}
                         subtitle={`${tables.length} Tables, ${analytics?.totalRows ?? 0} Rows`}
                         type="area"
-                        color="hsl(var(--primary))"
-                        data={Array(24).fill({ val: analytics?.totalSize ?? 0 })} // Flatline for storage since it's cumulative and not tracked hourly
+                        color="#6366f1"
+                        data={Array(24).fill({ val: analytics?.totalSize ?? 0 })}
                     />
                 </div>
 
