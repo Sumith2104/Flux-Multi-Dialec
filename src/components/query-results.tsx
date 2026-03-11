@@ -89,7 +89,7 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
                                 <TableRow className="hover:bg-muted/50 border-b border-border">
                                     {results.columns.map((col, idx) => (
                                         <TableHead
-                                            key={col}
+                                            key={`${idx}-${col}`}
                                             className="h-9 px-4 py-2 whitespace-nowrap bg-muted/80 backdrop-blur-sm text-xs font-semibold uppercase tracking-wider text-foreground border-r last:border-r-0 border-border select-none"
                                         >
                                             <div className="flex items-center gap-2">
@@ -115,7 +115,7 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
                                         <TableRow key={rowIndex} className="border-b border-border/50 hover:bg-muted/30 transition-colors group">
                                             {results.columns.map((col, colIndex) => (
                                                 <TableCell
-                                                    key={`${rowIndex}-${col}`}
+                                                    key={`${rowIndex}-${colIndex}-${col}`}
                                                     className="px-4 py-1.5 whitespace-nowrap font-mono text-xs border-r border-border/50 last:border-r-0 group-hover:border-border/80"
                                                 >
                                                     {row[col] === null ? (

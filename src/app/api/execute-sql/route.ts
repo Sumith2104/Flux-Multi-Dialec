@@ -126,8 +126,8 @@ export async function POST(request: Request) {
         const duration = Date.now() - startTime;
 
         if (!isSelect) {
-            // Asynchronously log any mutation or DDL directly into the global immutable log table
-            logAuditAction(projectId, userId, 'SQL_EXECUTION', query, {
+            // Synchronously await audit logging to prevent Next.js serverless early termination
+            await logAuditAction(projectId, userId, 'SQL_EXECUTION', query, {
                 duration_ms: duration,
                 rows_affected: result.rows?.length || 0,
                 status: 'success'
@@ -149,7 +149,7 @@ export async function POST(request: Request) {
             else if (uppercaseQuery.startsWith('DELETE') && deleteMatch && deleteMatch[1]) mutatedTable = deleteMatch[1];
 
             if (mutatedTable) {
-                invalidateTableCache(projectId, mutatedTable.toLowerCase()).catch(err => {
+                await invalidateTableCache(projectId, mutatedTable.toLowerCase()).catch(err => {
                     console.warn(`[Upstash Invalidation Error] Failed to invalidate cache for ${mutatedTable}:`, err);
                 });
 
@@ -166,12 +166,29 @@ export async function POST(request: Request) {
                         data: {}
                     };
                     const payloadString = JSON.stringify(payload).replace(/'/g, "''");
-                    pool.query(`NOTIFY fluxbase_live, '${payloadString}'`).catch(err => {
+                    await pool.query(`NOTIFY fluxbase_live, '${payloadString}'`).catch(err => {
                         console.warn(`[SSE Broadcast Error] Failed to fire NOTIFY for ${mutatedTable}:`, err);
                     });
                 } catch (e) {
                     // Ignore broadcast errors
                 }
+            }
+
+            // Detect Structural DDL Changes
+            const isSchemaChange = uppercaseQuery.includes('CREATE ') || uppercaseQuery.includes('DROP ') || uppercaseQuery.includes('ALTER ') || uppercaseQuery.includes('RENAME ');
+            if (isSchemaChange) {
+                try {
+                    const pool = getPgPool();
+                    const payload = {
+                        event_type: 'schema_update',
+                        timestamp: new Date().toISOString(),
+                        project_id: projectId
+                    };
+                    const payloadString = JSON.stringify(payload).replace(/'/g, "''");
+                    await pool.query(`NOTIFY fluxbase_live, '${payloadString}'`).catch(err => {
+                        console.warn(`[SSE Broadcast Error] Failed to fire schema_update NOTIFY:`, err);
+                    });
+                } catch (e) {}
             }
         }
 

@@ -10,8 +10,17 @@ interface ColumnDef {
     type: string;
 }
 
+interface IndexDef {
+    name: string;
+    table: string;
+}
+
 interface SchemaData {
-    [tableName: string]: ColumnDef[];
+    tables: Record<string, ColumnDef[]>;
+    views: string[];
+    indexes: IndexDef[];
+    functions: string[];
+    extensions: string[];
 }
 
 export function SchemaExplorer({ projectId, onInsertQuery }: { projectId?: string, onInsertQuery: (query: string) => void }) {
@@ -27,21 +36,46 @@ export function SchemaExplorer({ projectId, onInsertQuery }: { projectId?: strin
             setSchema(null);
             return;
         }
-        const fetchSchema = async () => {
-            setLoading(true);
+
+        let isMounted = true;
+        const fetchSchema = async (showLoading = true) => {
+            if (showLoading) setLoading(true);
             try {
-                const res = await fetch(`/api/schema?projectId=${projectId}`);
+                // Bypass caching for live updates
+                const res = await fetch(`/api/schema?projectId=${projectId}&_t=${Date.now()}`);
                 const data = await res.json();
-                if (data.success && data.tables) {
-                    setSchema(data.tables);
+                if (data.success && data.tables && isMounted) {
+                    setSchema(data as SchemaData);
                 }
             } catch (e) {
                 console.error(e);
             } finally {
-                setLoading(false);
+                if (isMounted) setLoading(false);
             }
         };
-        fetchSchema();
+        
+        // Initial Fetch
+        fetchSchema(true);
+
+        // Realtime SSE Listener for Schema Invalidations
+        console.log('[SSE] Connecting to live schema updates for Project View');
+        const eventSource = new EventSource(`/api/projects/${projectId}/schema/stream`);
+        
+        eventSource.addEventListener('schema_update', (event) => {
+            if (!isMounted) return;
+            console.log('[SSE] Global Schema Update trigger received! Refreshing schema view silently.');
+            fetchSchema(false);
+        });
+
+        eventSource.onerror = (error) => {
+            if (!isMounted) return;
+            console.warn('[SSE] Schema stream interrupted. Auto-reconnecting...', error);
+        };
+
+        return () => {
+            isMounted = false;
+            eventSource.close();
+        };
     }, [projectId]);
 
     const toggleFolder = (folder: string) => {
@@ -77,11 +111,11 @@ export function SchemaExplorer({ projectId, onInsertQuery }: { projectId?: strin
         );
     }
 
-    const tableNames = schema ? Object.keys(schema) : [];
+    const tableNames = schema?.tables ? Object.keys(schema.tables) : [];
 
     return (
         <div className="flex flex-col h-full overflow-y-auto w-full text-sm font-mono pb-8">
-            <div className="px-3 py-2 border-b bg-muted/10 sticky top-0 z-10 flex items-center gap-2">
+            <div className="px-3 py-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 sticky top-0 z-10 flex items-center gap-2">
                 <Database className="h-3.5 w-3.5 text-primary" />
                 <span className="font-semibold text-xs tracking-tight">Database Explorer</span>
             </div>
@@ -144,7 +178,7 @@ export function SchemaExplorer({ projectId, onInsertQuery }: { projectId?: strin
                                     {/* Columns */}
                                     {expandedTables.has(tableName) && (
                                         <div className="pl-5 py-1 border-l ml-2.5 border-border/30 flex flex-col gap-1">
-                                            {schema![tableName].map((col, idx) => (
+                                            {schema!.tables[tableName].map((col, idx) => (
                                                 <div key={idx} className="flex items-center justify-between group/col px-1">
                                                     <div className="flex items-center gap-1.5 overflow-hidden">
                                                         <Columns className="h-3 w-3 shrink-0 text-muted-foreground/60" />
@@ -161,31 +195,131 @@ export function SchemaExplorer({ projectId, onInsertQuery }: { projectId?: strin
                     )}
                 </div>
 
-                {/* Mocked structural folders matching IDE standards */}
+                {/* Views Folder */}
                 <div className="mb-1">
-                    <div className="flex items-center gap-1.5 p-1 rounded cursor-not-allowed opacity-50 text-muted-foreground">
-                        <Folder className="h-3.5 w-3.5" />
-                        <span className="text-xs font-medium">Views (0)</span>
+                    <div
+                        className="flex items-center gap-1.5 p-1 rounded hover:bg-muted/50 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => toggleFolder('views')}
+                    >
+                        {expandedFolders.has('views') ? <FolderOpen className="h-3.5 w-3.5" /> : <Folder className="h-3.5 w-3.5" />}
+                        <span className="text-xs font-medium">Views ({schema?.views?.length || 0})</span>
                     </div>
+
+                    {expandedFolders.has('views') && (
+                        <div className="pl-4 mt-1 border-l ml-2.5 border-border/40 flex flex-col gap-0.5">
+                            {(schema?.views?.length || 0) === 0 && !loading && (
+                                <span className="text-[10px] text-muted-foreground p-1 italic h-6 flex items-center">No views found</span>
+                            )}
+                            {schema?.views?.map((viewName) => (
+                                <div key={viewName} className="group flex flex-col rounded hover:bg-muted/40 transition-colors">
+                                    <div className="flex items-center justify-between p-1 pl-1">
+                                        <div className="flex items-center gap-1.5 overflow-hidden">
+                                            <Table2 className="h-3.5 w-3.5 shrink-0 text-amber-500/80" />
+                                            <span className="text-xs truncate" title={viewName}>{viewName}</span>
+                                        </div>
+                                    </div>
+                                    <div className="hidden group-hover:flex items-center gap-1 px-5 pb-1.5 pt-0.5">
+                                        <Button
+                                            variant="secondary" size="sm"
+                                            className="h-5 px-1.5 text-[9px] bg-primary/10 hover:bg-primary/20 text-primary border-transparent"
+                                            onClick={(e) => { e.stopPropagation(); onInsertQuery(`SELECT * FROM ${viewName} LIMIT 50;`); }}
+                                        >
+                                            Preview
+                                        </Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
+
+                {/* Indexes Folder */}
                 <div className="mb-1">
-                    <div className="flex items-center gap-1.5 p-1 rounded cursor-not-allowed opacity-50 text-muted-foreground">
-                        <Folder className="h-3.5 w-3.5" />
-                        <span className="text-xs font-medium">Indexes (0)</span>
+                    <div
+                        className="flex items-center gap-1.5 p-1 rounded hover:bg-muted/50 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => toggleFolder('indexes')}
+                    >
+                        {expandedFolders.has('indexes') ? <FolderOpen className="h-3.5 w-3.5" /> : <Folder className="h-3.5 w-3.5" />}
+                        <span className="text-xs font-medium">Indexes ({schema?.indexes?.length || 0})</span>
                     </div>
+
+                    {expandedFolders.has('indexes') && (
+                        <div className="pl-4 mt-1 border-l ml-2.5 border-border/40 flex flex-col gap-0.5">
+                            {(schema?.indexes?.length || 0) === 0 && !loading && (
+                                <span className="text-[10px] text-muted-foreground p-1 italic h-6 flex items-center">No indexes found</span>
+                            )}
+                            {schema?.indexes?.map((idxInfo, i) => (
+                                <div key={i} className="group flex flex-col rounded hover:bg-muted/40 transition-colors">
+                                    <div className="flex items-center justify-between p-1 pl-1">
+                                        <div className="flex items-center gap-1.5 overflow-hidden w-full">
+                                            <Hash className="h-3 w-3 shrink-0 text-pink-500/80" />
+                                            <span className="text-xs truncate w-full" title={`${idxInfo.name} on ${idxInfo.table}`}>
+                                                {idxInfo.name} <span className="text-[9px] text-muted-foreground ml-1">on {idxInfo.table}</span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
+
+                {/* Functions Folder */}
                 <div className="mb-1">
-                    <div className="flex items-center gap-1.5 p-1 rounded cursor-not-allowed opacity-50 text-muted-foreground">
-                        <FileCode2 className="h-3.5 w-3.5" />
-                        <span className="text-xs font-medium">Functions</span>
+                    <div
+                        className="flex items-center gap-1.5 p-1 rounded hover:bg-muted/50 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => toggleFolder('functions')}
+                    >
+                        {expandedFolders.has('functions') ? <FolderOpen className="h-3.5 w-3.5" /> : <FileCode2 className="h-3.5 w-3.5" />}
+                        <span className="text-xs font-medium">Functions ({schema?.functions?.length || 0})</span>
                     </div>
+
+                    {expandedFolders.has('functions') && (
+                        <div className="pl-4 mt-1 border-l ml-2.5 border-border/40 flex flex-col gap-0.5">
+                            {(schema?.functions?.length || 0) === 0 && !loading && (
+                                <span className="text-[10px] text-muted-foreground p-1 italic h-6 flex items-center">No functions found</span>
+                            )}
+                            {schema?.functions?.map((funcName, i) => (
+                                <div key={i} className="group flex flex-col rounded hover:bg-muted/40 transition-colors">
+                                    <div className="flex items-center justify-between p-1 pl-1">
+                                        <div className="flex items-center gap-1.5 overflow-hidden">
+                                            <Binary className="h-3 w-3 shrink-0 text-emerald-500/80" />
+                                            <span className="text-xs truncate" title={funcName}>{funcName}()</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
-                <div className="mb-1">
-                    <div className="flex items-center gap-1.5 p-1 rounded cursor-not-allowed opacity-50 text-muted-foreground">
-                        <Box className="h-3.5 w-3.5" />
-                        <span className="text-xs font-medium">Extensions</span>
+
+                {/* Extensions Folder (PG Only) */}
+                {(schema?.extensions || []).length > 0 && (
+                    <div className="mb-1">
+                        <div
+                            className="flex items-center gap-1.5 p-1 rounded hover:bg-muted/50 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+                            onClick={() => toggleFolder('extensions')}
+                        >
+                            {expandedFolders.has('extensions') ? <FolderOpen className="h-3.5 w-3.5" /> : <Box className="h-3.5 w-3.5" />}
+                            <span className="text-xs font-medium">Extensions ({schema?.extensions?.length || 0})</span>
+                        </div>
+
+                        {expandedFolders.has('extensions') && (
+                            <div className="pl-4 mt-1 border-l ml-2.5 border-border/40 flex flex-col gap-0.5">
+                                {schema?.extensions?.map((extName, i) => (
+                                    <div key={i} className="group flex flex-col rounded hover:bg-muted/40 transition-colors">
+                                        <div className="flex items-center justify-between p-1 pl-1">
+                                            <div className="flex items-center gap-1.5 overflow-hidden">
+                                                <Box className="h-3 w-3 shrink-0 text-indigo-500/80" />
+                                                <span className="text-xs truncate" title={extName}>{extName}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
-                </div>
+                )}
 
             </div>
         </div>

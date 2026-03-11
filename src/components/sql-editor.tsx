@@ -172,8 +172,8 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
                         <AlignLeft className="h-3 w-3 mr-1" /> Format
                     </Button>
                     <Separator orientation="vertical" className="h-4 mx-1" />
-                    <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground" onClick={handleExplainQuery} title="Generate Visual EXPLAIN plan">
-                        <Activity className="h-3 w-3 mr-1" /> Explain
+                    <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground hover:bg-orange-500/10 transition-colors group" onClick={handleExplainQuery} title="Generate Visual EXPLAIN plan">
+                        <Activity className="h-3 w-3 mr-1 text-orange-500 group-hover:animate-pulse" /> Explain
                     </Button>
                     <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground" onClick={handleSaveQuery} title="Save to Workspace (Ctrl+S)">
                         <Save className="h-3 w-3 mr-1" /> Save

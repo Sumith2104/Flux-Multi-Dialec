@@ -49,6 +49,14 @@ export async function generateSQLAction(projectId: string, userInput: string) {
             dialect
         });
 
+        // 5. Destructive Query Trap Intercept
+        if (result.isDangerous) {
+            console.warn("[AI SQL Engine] Destructive query flagged but allowed through for user confirmation.", result.reasoning);
+            // We no longer block here. We let the client handle confirmation.
+        }
+
+        console.log("[AI SQL Engine] Analysis Reasoning:", result.reasoning);
+
         // Ensure no markdown blocks snuck in
         let finalQuery = result.sqlQuery || '';
         if (finalQuery.startsWith('\`\`\`sql')) {
@@ -57,7 +65,12 @@ export async function generateSQLAction(projectId: string, userInput: string) {
             finalQuery = finalQuery.replace(/^\`\`\`\n?/, '').replace(/\n?\`\`\`$/, '');
         }
 
-        return { success: true, query: result.sqlQuery };
+        return { 
+            success: true, 
+            query: finalQuery,
+            isDangerous: result.isDangerous,
+            warning: result.userMessage
+        };
 
     } catch (error: any) {
         console.error('Error generating SQL:', error);

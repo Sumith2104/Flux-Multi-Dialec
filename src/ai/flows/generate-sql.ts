@@ -19,7 +19,10 @@ const GenerateSQLInputSchema = z.object({
 export type GenerateSQLInput = z.infer<typeof GenerateSQLInputSchema>;
 
 const GenerateSQLOutputSchema = z.object({
-  sqlQuery: z.string().describe('The generated SQL query.'),
+  reasoning: z.string().describe('Chain-of-Thought reasoning analyzing the user prompt against the table schema. Write out your analysis of how tables connect BEFORE generating the query.'),
+  isDangerous: z.boolean().describe('Set to true ONLY if the user prompt implies a destructive or modifying command (e.g., DELETE, DROP, TRUNCATE, ALTER).'),
+  userMessage: z.string().describe('If you block the query because it is dangerous, kindly explain to the user why you cannot process their request. Otherwise, leave empty.'),
+  sqlQuery: z.string().describe('The generated SQL query. Leave completely empty if isDangerous is true.'),
 });
 export type GenerateSQLOutput = z.infer<typeof GenerateSQLOutputSchema>;
 
@@ -31,22 +34,20 @@ const prompt = ai.definePrompt({
   name: 'generateSQLPrompt',
   input: { schema: GenerateSQLInputSchema },
   output: { schema: GenerateSQLOutputSchema },
-  prompt: `You are an expert SQL database administrator. The current database engine is explicitly {{dialect}}.
-STRICT RULES:
-1. ONLY return valid, executable SQL code. NO preamble, NO explanation.
-2. The target SQL dialect is {{dialect}}. If dialect contains "postgres" or "PostgreSQL", you MUST use proper PostgreSQL syntax (e.g., SERIAL or UUID for primary keys, TIMESTAMP, text, double quotes for identifiers). If dialect is MySQL, use MySQL syntax.
-3. If creating a table and inserting data, use multiple valid SQL statements separated by a semicolon (;).
-4. Do NOT use fake wrapper functions like CALL GENERATE_DATA. Use standard INSERT INTO statements if the user asks for mock data.
-5. NEVER enclose the SQL query inside markdown blocks like \\\`\\\`\\\`sql ... \\\`\\\`\\\`. Start immediately with the SQL command.
+  prompt: `You are an expert, highly secure SQL database administrator. The current database engine is explicitly {{dialect}}.
+STRICT ARCHITECTURAL RULES:
+1. DANGEROUS QUERY RECOGNITION: Analyze the prompt. If the user is asking to modify or destroy data (e.g., DELETE, DROP, TRUNCATE, UPDATE, INSERT, CREATE, ALTER), you MUST flag the query as dangerous. Set \`isDangerous\` to true and provide a polite \`userMessage\` warning them of the consequences. HOWEVER, YOU MUST STILL GENERATE THE \`sqlQuery\`. Do not leave it blank. You are an assistant, you provide the code and let the user decide whether to execute it.
+2. CHAIN OF THOUGHT: Write out your mental analysis inside the \`reasoning\` property. Analyze exactly how the {{tableSchema}} tables logically connect to each other before you construct your answer.
+3. SYNTAX: The target SQL dialect is {{dialect}}. If PostgreSQL, use strict PG syntax (double quotes for identifiers). If MySQL, use strict MySQL syntax.
+4. If creating a table and inserting data, use multiple valid SQL statements separated by a semicolon (;).
+5. NEVER enclose the SQL query inside markdown blocks like \\\`\\\`\\\`sql ... \\\`\\\`\\\`. Make the \`sqlQuery\` perfectly valid raw SQL code.
 
 Given a user question and a table schema, generate the SQL query that answers the question.
 Ignore any lines in the user input that are SQL comments (i.e., lines starting with '--').
 
 User Question: {{userInput}}
 Table Schema: {{tableSchema}}
-(If schema is empty you can still generate CREATE TABLE or logic queries.)
-
-SQL Query:`,
+(If schema is empty you can still generate CREATE TABLE or generic queries.)`,
 });
 
 const generateSQLFlow = ai.defineFlow(

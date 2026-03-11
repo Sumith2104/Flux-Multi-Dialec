@@ -22,6 +22,22 @@ import {
     getProjectById
 } from '@/lib/data';
 import { getLocalTimestamp } from '@/lib/utils';
+import { getPgPool } from '@/lib/pg';
+
+async function broadcastSchemaUpdate(projectId: string) {
+    try {
+        const pool = getPgPool();
+        const payload = {
+            event_type: 'schema_update',
+            timestamp: new Date().toISOString(),
+            project_id: projectId
+        };
+        const payloadString = JSON.stringify(payload).replace(/'/g, "''");
+        await pool.query(`NOTIFY fluxbase_live, '${payloadString}'`);
+    } catch (e) {
+        console.warn('Failed to broadcast schema update:', e);
+    }
+}
 
 // --- Constraint Validation Helpers ---
 
@@ -346,6 +362,7 @@ export async function addColumnAction(formData: FormData) {
             is_nullable: isNullable,
             default_value: defaultValue,
         });
+        await broadcastSchemaUpdate(projectId);
         return { success: true };
     } catch (error) {
         console.error('Failed to add column:', error);
@@ -367,6 +384,7 @@ export async function editColumnAction(formData: FormData) {
 
     try {
         await updateColumn(projectId, tableId, columnId, { column_name: newColumnName });
+        await broadcastSchemaUpdate(projectId);
         // revalidatePath(`/editor?projectId=${projectId}&tableId=${tableId}&tableName=${tableName}`);
         return { success: true };
     } catch (error) {
@@ -395,6 +413,7 @@ export async function deleteColumnAction(formData: FormData) {
 
         // Note: Field remains in documents until manually cleaned up or overwritten.
 
+        await broadcastSchemaUpdate(projectId);
         // revalidatePath(`/editor?projectId=${projectId}&tableId=${tableId}&tableName=${tableName}`);
         return { success: true };
     } catch (error) {
@@ -424,6 +443,7 @@ export async function addConstraintAction(formData: FormData) {
         }
 
         await addConstraint(projectId, constraint);
+        await broadcastSchemaUpdate(projectId);
         // revalidatePath(`/editor?projectId=${projectId}&tableId=${tableId}&tableName=${formData.get('tableName')}`);
         return { success: true };
 
@@ -441,6 +461,7 @@ export async function deleteConstraintAction(formData: FormData) {
 
     try {
         await deleteConstraint(projectId, constraintId);
+        await broadcastSchemaUpdate(projectId);
         // revalidatePath(`/editor?projectId=${projectId}&tableId=${tableId}&tableName=${tableName}`);
         return { success: true };
     } catch (error) {
@@ -451,6 +472,7 @@ export async function deleteConstraintAction(formData: FormData) {
 export async function deleteTableAction(projectId: string, tableId: string, tableName: string) {
     try {
         await deleteTable(projectId, tableId);
+        await broadcastSchemaUpdate(projectId);
         revalidatePath(`/dashboard?projectId=${projectId}`);
         return { success: true };
     } catch (error) {

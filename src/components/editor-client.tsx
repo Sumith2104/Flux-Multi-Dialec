@@ -320,6 +320,36 @@ export function EditorClient({
         };
     }, [projectId, tableId, queryClient]);
 
+    // Live Schema Updates (Native Vercel Server-Sent Events - SSE)
+    useEffect(() => {
+        if (!projectId) return;
+
+        let isMounted = true;
+        const sseUrl = `/api/projects/${projectId}/schema/stream`;
+
+        console.log(`[SSE] Connecting to live schema updates for Editor: ${projectId}`);
+        const eventSource = new EventSource(sseUrl);
+
+        eventSource.addEventListener('schema_update', (event) => {
+            if (!isMounted) return;
+            console.log('[SSE] Global Schema Update trigger received in Table Editor! Initiating silent route refresh.');
+            
+            // Re-fetch server props (columns, tables, constraints) silently
+            router.refresh();
+        });
+
+        eventSource.onerror = (error) => {
+            if (!isMounted) return;
+            console.warn('[SSE] Schema stream interrupted in Table Editor. Auto-reconnecting...', error);
+        };
+
+        return () => {
+            isMounted = false;
+            console.log(`[SSE] Disconnecting from live schema updates`);
+            eventSource.close();
+        };
+    }, [projectId, router]);
+
     const handleDeleteSelectedRows = async () => {
         if (!projectId || !tableId || !tableName || selectionModel.length === 0) return;
 

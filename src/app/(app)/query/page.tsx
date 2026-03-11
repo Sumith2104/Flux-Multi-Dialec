@@ -136,7 +136,11 @@ export default function QueryPage() {
 
       if (result.success && result.query) {
         setQuery(result.query);
-        toast({ title: "Query Generated", description: "Review the query in the editor." });
+        if (result.isDangerous) {
+            toast({ variant: "destructive", title: "Dangerous Query Flagged", description: result.warning || "Please review carefully." });
+        } else {
+            toast({ title: "Query Generated", description: "Review the query in the editor." });
+        }
         setAiInput(''); // Clear input on success
       } else {
         toast({ variant: "destructive", title: "Generation Failed", description: result.error });
@@ -162,6 +166,23 @@ export default function QueryPage() {
 
       if (result.success && result.query) {
         setQuery(result.query);
+        
+        if (result.isDangerous) {
+            const confirmed = await showConfirm(
+                `WARNING: ${result.warning || 'This query modifies or deletes data.'}\n\nDo you want to proceed and execute this query anyway?`, 
+                {
+                    title: 'Dangerous Query Flagged',
+                    confirmText: 'Execute Anyway',
+                    variant: 'destructive'
+                }
+            );
+            if (!confirmed) {
+                toast({ title: "Execution Cancelled", description: "The query was populated in the editor but not executed." });
+                setAiInput('');
+                return;
+            }
+        }
+
         toast({ title: "Query Generated & Executed", description: "Executing query..." });
         setAiInput('');
         // Execute immediately with the new query

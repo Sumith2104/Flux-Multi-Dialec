@@ -30,29 +30,29 @@ export async function GET(request: Request) {
         // Fetch tables and their columns efficiently
         // We do not use the AST here because we want raw information_schema querying
         // We use the tenant isolation capabilities of the engine.
-        const dbQuery = `
-            SELECT table_name, column_name, data_type 
-            FROM information_schema.columns 
-            WHERE table_schema = 'project_${projectId}'
-            ORDER BY table_name, ordinal_position;
-        `;
-
-        // Use the raw connection execution to bypass AST validation since this is an internal query
-        let result;
+        let resultTables, resultViews, resultIndexes, resultFunctions, resultExtensions;
+        
         if (project.dialect === 'mysql') {
-            result = await engine.execute(`
-                SELECT table_name, column_name, data_type 
-                FROM information_schema.columns 
-                WHERE table_schema = 'project_${projectId}';
-            `);
+            [resultTables, resultViews, resultIndexes, resultFunctions] = await Promise.all([
+                engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'project_${projectId}';`),
+                engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = 'project_${projectId}';`),
+                engine.execute(`SELECT index_name, table_name FROM information_schema.statistics WHERE table_schema = 'project_${projectId}';`),
+                engine.execute(`SELECT routine_name FROM information_schema.routines WHERE routine_schema = 'project_${projectId}' AND routine_type = 'FUNCTION';`)
+            ]);
+            resultExtensions = { rows: [] }; // MySQL doesn't natively use Extensions in this standard format
         } else {
-            result = await engine.execute(dbQuery);
+            [resultTables, resultViews, resultIndexes, resultFunctions, resultExtensions] = await Promise.all([
+                engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'project_${projectId}' ORDER BY table_name, ordinal_position;`),
+                engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = 'project_${projectId}';`),
+                engine.execute(`SELECT indexname, tablename FROM pg_indexes WHERE schemaname = 'project_${projectId}';`),
+                engine.execute(`SELECT routine_name FROM information_schema.routines WHERE routine_schema = 'project_${projectId}' AND routine_type = 'FUNCTION';`),
+                engine.execute(`SELECT extname FROM pg_extension;`)
+            ]);
         }
 
         const schemaGraph: Record<string, any[]> = {};
-
-        if (result && result.rows) {
-            for (const row of result.rows) {
+        if (resultTables && resultTables.rows) {
+            for (const row of resultTables.rows) {
                 const tName = row.table_name || row.TABLE_NAME;
                 const cName = row.column_name || row.COLUMN_NAME;
                 const dType = row.data_type || row.DATA_TYPE;
@@ -62,9 +62,21 @@ export async function GET(request: Request) {
             }
         }
 
+        const views = (resultViews?.rows || []).map((r: any) => r.table_name || r.TABLE_NAME);
+        const indexes = (resultIndexes?.rows || []).map((r: any) => ({
+            name: r.indexname || r.index_name || r.INDEX_NAME, 
+            table: r.tablename || r.table_name || r.TABLE_NAME
+        }));
+        const functions = (resultFunctions?.rows || []).map((r: any) => r.routine_name || r.ROUTINE_NAME);
+        const extensions = (resultExtensions?.rows || []).map((r: any) => r.extname || r.EXTNAME);
+
         return NextResponse.json({
             success: true,
-            tables: schemaGraph
+            tables: schemaGraph,
+            views,
+            indexes,
+            functions,
+            extensions
         });
 
     } catch (error: any) {
