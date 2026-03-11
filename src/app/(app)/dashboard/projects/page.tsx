@@ -4,6 +4,7 @@
 import { useEffect, useState, useContext } from 'react';
 import { getProjectsForCurrentUser, Project } from '@/lib/data';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Plus, ChevronRight, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
@@ -98,10 +99,13 @@ export default function SelectProjectPage() {
                           </CardTitle>
                           <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-1" />
                         </CardHeader>
-                        <CardContent>
+                        <CardContent className="flex items-center justify-between">
                           <p className="text-sm text-muted-foreground">
                             Created: {new Date(project.created_at).toLocaleDateString()}
                           </p>
+                          <Badge variant="outline" className="text-[10px] uppercase font-bold tracking-wider opacity-70">
+                            {project.dialect === 'mysql' ? 'MySQL' : 'PostgreSQL'}
+                          </Badge>
                         </CardContent>
                       </Card>
                     </button>
