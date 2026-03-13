@@ -36,6 +36,8 @@ export interface Project {
     dialect?: 'mysql' | 'postgresql' | 'oracle';
     timezone?: string;
     role?: string;
+    ai_allow_destructive?: boolean;
+    ai_schema_inference?: boolean;
 }
 
 export interface Table {
@@ -89,7 +91,7 @@ export async function getProjectsForCurrentUser(): Promise<Project[]> {
     try {
         const pool = getPgPool();
         const result = await pool.query(`
-            SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone,
+            SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.ai_allow_destructive, p.ai_schema_inference,
                    COALESCE(pm.role, CASE WHEN p.user_id = $1 THEN 'admin' ELSE 'developer' END) as role
             FROM fluxbase_global.projects p
             LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $1
@@ -104,7 +106,9 @@ export async function getProjectsForCurrentUser(): Promise<Project[]> {
             created_at: row.created_at.toISOString(),
             dialect: row.dialect,
             timezone: row.timezone,
-            role: row.role
+            role: row.role,
+            ai_allow_destructive: row.ai_allow_destructive ?? false,
+            ai_schema_inference: row.ai_schema_inference ?? true
         }));
     } catch (error) {
         console.error("Error fetching projects:", error);
@@ -119,7 +123,7 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
     try {
         const pool = getPgPool();
         const result = await pool.query(`
-            SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.user_id as owner_id,
+            SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.user_id as owner_id, p.ai_allow_destructive, p.ai_schema_inference,
                    COALESCE(pm.role, CASE WHEN p.user_id = $2 THEN 'admin' ELSE NULL END) as role
             FROM fluxbase_global.projects p
             LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $2
@@ -135,7 +139,9 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
             created_at: row.created_at.toISOString(),
             dialect: row.dialect,
             timezone: row.timezone,
-            role: row.role
+            role: row.role,
+            ai_allow_destructive: row.ai_allow_destructive ?? false,
+            ai_schema_inference: row.ai_schema_inference ?? true
         };
     } catch (error) {
         console.error("Error fetching project:", error);

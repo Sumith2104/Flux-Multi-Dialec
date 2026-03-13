@@ -10,43 +10,20 @@ interface ScraperRunsTableProps {
     scraperId: string | null
 }
 
+import { useQuery } from '@tanstack/react-query';
+
 export function ScraperRunsTable({ scraperId }: ScraperRunsTableProps) {
-    const [runs, setRuns] = useState<any[]>([])
-    const [loading, setLoading] = useState(false)
-    const [error, setError] = useState<string | null>(null)
-
-    useEffect(() => {
-        if (!scraperId) {
-            setRuns([])
-            return
-        }
-
-        setLoading(true);
-        setError(null);
-
-        const eventSource = new EventSource(`/api/scrapers/runs/stream?scraperId=${scraperId}`);
-
-        eventSource.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.success && data.runs) {
-                    setRuns(data.runs);
-                    setLoading(false);
-                }
-            } catch (err: any) {
-                console.error("Realtime Parse Error:", err);
-            }
-        };
-
-        eventSource.onerror = () => {
-            // Optional: handle connection drops gracefully
-            // setError("Lost connection to real-time cluster. Reconnecting...");
-        };
-
-        return () => {
-            eventSource.close();
-        };
-    }, [scraperId])
+    const { data: runs = [], isLoading: loading, error } = useQuery({
+        queryKey: ['scraper_runs', scraperId],
+        queryFn: async () => {
+            const res = await fetch(`/api/scrapers/runs?scraperId=${scraperId}`);
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || 'Failed to load runs');
+            return data.runs || [];
+        },
+        enabled: !!scraperId,
+        refetchInterval: 5000,
+    });
 
     if (!scraperId) {
         return <div className="p-8 text-center text-muted-foreground border rounded-md">Select a Scraper to view its execution history.</div>

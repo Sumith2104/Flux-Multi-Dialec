@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { SqlEngine } from '@/lib/sql-engine';
 import { getProjectById } from '@/lib/data';
+import { redis } from '@/lib/redis';
 
 // Response Schema: { tables: { tableName: ["col1", "col2"] } }
 export async function GET(request: Request) {
@@ -23,6 +24,29 @@ export async function GET(request: Request) {
         const project = await getProjectById(projectId, auth.userId);
         if (!project) {
             return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
+        }
+
+        if (project.ai_schema_inference === false) {
+            return NextResponse.json({
+                success: true,
+                tables: {},
+                views: [],
+                indexes: [],
+                functions: [],
+                extensions: [],
+                message: "Schema inference is disabled for this project."
+            });
+        }
+
+        const cacheKey = `schema_inference_${projectId}`;
+        try {
+            const cachedSchema = await redis.get(cacheKey) as any;
+            if (cachedSchema) {
+                console.log(`[DEBUG] Serving cached schema for AI core, project ${projectId}`);
+                return NextResponse.json(cachedSchema);
+            }
+        } catch (e) {
+            console.warn('Redis schema cache read error:', e);
         }
 
         const engine = new SqlEngine(projectId, auth.userId);
@@ -70,14 +94,22 @@ export async function GET(request: Request) {
         const functions = (resultFunctions?.rows || []).map((r: any) => r.routine_name || r.ROUTINE_NAME);
         const extensions = (resultExtensions?.rows || []).map((r: any) => r.extname || r.EXTNAME);
 
-        return NextResponse.json({
+        const payload = {
             success: true,
             tables: schemaGraph,
             views,
             indexes,
             functions,
             extensions
-        });
+        };
+
+        try {
+            await redis.set(cacheKey, payload, { ex: 3600 }); // Cache for 1 hour
+        } catch (e) {
+            console.warn('Redis schema cache write error:', e);
+        }
+
+        return NextResponse.json(payload);
 
     } catch (error: any) {
         console.error('[Schema API Error]', error);

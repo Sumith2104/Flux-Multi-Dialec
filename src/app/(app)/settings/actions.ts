@@ -43,6 +43,27 @@ export async function updateProjectSettingsAction(projectId: string, timezone: s
     }
 }
 
+export async function updateProjectAiSettingsAction(projectId: string, allowDestructive: boolean, schemaInference: boolean) {
+    const userId = await getCurrentUserId();
+    if (!projectId || !userId) {
+        return { error: 'Missing required fields for AI settings update.' };
+    }
+
+    try {
+        const { getPgPool } = await import('@/lib/pg');
+        const pool = getPgPool();
+        await pool.query(
+            'UPDATE fluxbase_global.projects SET ai_allow_destructive = $1, ai_schema_inference = $2 WHERE project_id = $3 AND user_id = $4', 
+            [allowDestructive, schemaInference, projectId, userId]
+        );
+
+        return { success: true };
+    } catch (error) {
+        console.error('Failed to update AI settings:', error);
+        return { error: `An unexpected error occurred: ${(error as Error).message}` };
+    }
+}
+
 export async function deleteProjectAction(projectId: string) {
     const userId = await getCurrentUserId();
     if (!projectId || !userId) {

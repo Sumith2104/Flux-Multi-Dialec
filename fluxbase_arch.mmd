@@ -1,0 +1,48 @@
+graph TD
+    %% Styling
+    classDef default fill:#1f2937,stroke:#374151,color:#f3f4f6,stroke-width:2px;
+    classDef frontend fill:#3b82f6,stroke:#2563eb,color:#ffffff,stroke-width:2px;
+    classDef backend fill:#8b5cf6,stroke:#7c3aed,color:#ffffff,stroke-width:2px;
+    classDef database fill:#10b981,stroke:#059669,color:#ffffff,stroke-width:2px;
+    classDef ai fill:#ec4899,stroke:#db2777,color:#ffffff,stroke-width:2px;
+
+    User([User / Browser]):::frontend
+    
+    subgraph Frontend [1. Next.js Client UI]
+        direction TB
+        UI1[App Dashboard]:::frontend --> UI2[SQL & Schema Editor]:::frontend
+        UI2 --> UI3[AI Prompt & Web Scraper]:::frontend
+    end
+    
+    subgraph Backend [2. Serverless APIs]
+        direction TB
+        API1[App Routing & Auth]:::backend --> API2[Central SQL Engine]:::backend
+        API2 --> API3[Modular Scraper Engine]:::backend
+    end
+    
+    subgraph AI [3. AI Intelligence]
+        direction TB
+        GenSchema[analyze schema]:::ai --> Gemini((Google Genkit / Gemini)):::ai
+    end
+    
+    subgraph Stream [4. Messaging & Cache]
+        direction TB
+        Redis[(Upstash Redis Cache)]:::database
+        SSE[SSE Edge Stream]:::backend
+        Redis ~~~ SSE
+    end
+    
+    subgraph DB [5. PostgreSQL / AWS RDS]
+        direction TB
+        PgGlobal[(fluxbase_global)]:::database --> PgTenant[(Isolated Project Schemas)]:::database
+        PgTenant --> PgNotify((LISTEN/NOTIFY PubSub)):::database
+    end
+
+    User -->|Interacts| Frontend
+    Frontend -->|API Calls & Actions| Backend
+    Backend -->|Generates SQL| AI
+    Backend -->|Reads/Writes| DB
+    Backend -->|Caches SELECTs| Stream
+    
+    DB -.->|Fires Triggers| Stream
+    Stream -.->|Pipes Live Events| Frontend

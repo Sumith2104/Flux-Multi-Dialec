@@ -3,13 +3,23 @@
 import { Button } from "@/components/ui/button";
 import { logoutAction } from "@/app/(app)/actions";
 import { useRouter } from "next/navigation";
-import { HTMLAttributes } from "react";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { LogOut } from "lucide-react";
 
 /**
  * Handles full sign-out:
- * 1. Signs out of Firebase Client SDK (clears IndexedDB/localStorage)
- * 2. Calls Server Action to clear 'session' cookie
- * 3. Redirects to login
+ * 1. Calls Server Action to clear 'session' cookie
+ * 2. Redirects to login
  */
 export function LogoutButton({ className, variant = 'outline', size = 'sm', children }: {
     className?: string,
@@ -21,20 +31,42 @@ export function LogoutButton({ className, variant = 'outline', size = 'sm', chil
 
     const handleLogout = async () => {
         // We only need to clear the Server-side cookie.
-        // Google OAuth and Native JWT do not maintain complex client-side states.
         await logoutAction();
         router.push('/');
         router.refresh();
     };
 
     return (
-        <Button
-            className={className}
-            variant={variant}
-            size={size}
-            onClick={handleLogout}
-        >
-            {children || 'Logout'}
-        </Button>
+        <AlertDialog>
+            <AlertDialogTrigger asChild>
+                <Button
+                    className={className}
+                    variant={variant}
+                    size={size}
+                    onClick={(e) => {
+                        // Let AlertDialog handle the click event instead of immediate logout
+                    }}
+                >
+                    {children || (
+                        <>
+                            <LogOut className="mr-2 h-4 w-4" />
+                            Logout
+                        </>
+                    )}
+                </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This will securely sign you out of your current session on this device. You will need to sign in again to access your projects.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleLogout}>Log out</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
     );
 }

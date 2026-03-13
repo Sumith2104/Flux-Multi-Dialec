@@ -2,10 +2,19 @@
 
 import { getPgPool } from '@/lib/pg';
 import { getCurrentUserId } from '@/lib/auth';
+import { redis } from '@/lib/redis';
 
 export async function getAnalyticsStatsAction(projectId: string) {
     const userId = await getCurrentUserId();
     if (!userId || !projectId) return null;
+
+    const cacheKey = `analytics_stats_${projectId}`;
+    try {
+        const cached = await redis.get(cacheKey) as any;
+        if (cached) return cached;
+    } catch (e) {
+        console.warn('Redis read error for analytics stats:', e);
+    }
 
     try {
         const pool = getPgPool();
@@ -44,6 +53,12 @@ export async function getAnalyticsStatsAction(projectId: string) {
             if (type === 'sql_update') stats.type_sql_update = count;
             if (type === 'sql_delete') stats.type_sql_delete = count;
             if (type === 'sql_alter') stats.type_sql_alter = count;
+        }
+
+        try {
+            await redis.set(cacheKey, stats, { ex: 300 }); // 5 minutes cache
+        } catch (e) {
+            console.warn('Redis write error for analytics stats:', e);
         }
 
         return stats;
@@ -100,6 +115,15 @@ export async function getRealtimeHistoryAction(projectId: string) {
 
 export async function getProjectHistoryAction(projectId: string) {
     if (!projectId) return null;
+
+    const cacheKey = `project_history_${projectId}`;
+    try {
+        const cached = await redis.get(cacheKey) as any;
+        if (cached) return cached;
+    } catch (e) {
+        console.warn('Redis read error for project history:', e);
+    }
+
     try {
         const pool = getPgPool();
         const stats = await getAnalyticsStatsAction(projectId);
@@ -144,13 +168,21 @@ export async function getProjectHistoryAction(projectId: string) {
             }
         }
 
-        return {
+        const payload = {
             daily: { 'today': stats?.total_requests || 0 },
             monthly: {},
             yearly: {},
             requests: requestsArr.map(val => ({ val })),
             apiCalls: apiCallsArr.map(val => ({ val }))
         };
+
+        try {
+            await redis.set(cacheKey, payload, { ex: 300 });
+        } catch (e) {
+            console.warn('Redis write error for project history:', e);
+        }
+
+        return payload;
     } catch (e) {
         console.error('getProjectHistoryAction error:', e);
         return {

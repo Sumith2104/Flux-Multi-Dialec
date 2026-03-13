@@ -15,6 +15,8 @@ interface IndexDef {
     table: string;
 }
 
+import { useQuery } from '@tanstack/react-query';
+
 interface SchemaData {
     tables: Record<string, ColumnDef[]>;
     views: string[];
@@ -23,60 +25,26 @@ interface SchemaData {
     extensions: string[];
 }
 
+const fetchSchema = async (projectId: string) => {
+    const res = await fetch(`/api/schema?projectId=${projectId}`);
+    const data = await res.json();
+    if (!data.success || !data.tables) return null;
+    return data as SchemaData;
+};
+
 export function SchemaExplorer({ projectId, onInsertQuery }: { projectId?: string, onInsertQuery: (query: string) => void }) {
-    const [schema, setSchema] = useState<SchemaData | null>(null);
-    const [loading, setLoading] = useState(false);
     const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
 
     // Core structural folders
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['tables']));
 
-    useEffect(() => {
-        if (!projectId) {
-            setSchema(null);
-            return;
-        }
-
-        let isMounted = true;
-        const fetchSchema = async (showLoading = true) => {
-            if (showLoading) setLoading(true);
-            try {
-                // Bypass caching for live updates
-                const res = await fetch(`/api/schema?projectId=${projectId}&_t=${Date.now()}`);
-                const data = await res.json();
-                if (data.success && data.tables && isMounted) {
-                    setSchema(data as SchemaData);
-                }
-            } catch (e) {
-                console.error(e);
-            } finally {
-                if (isMounted) setLoading(false);
-            }
-        };
-        
-        // Initial Fetch
-        fetchSchema(true);
-
-        // Realtime SSE Listener for Schema Invalidations
-        console.log('[SSE] Connecting to live schema updates for Project View');
-        const eventSource = new EventSource(`/api/projects/${projectId}/schema/stream`);
-        
-        eventSource.addEventListener('schema_update', (event) => {
-            if (!isMounted) return;
-            console.log('[SSE] Global Schema Update trigger received! Refreshing schema view silently.');
-            fetchSchema(false);
-        });
-
-        eventSource.onerror = (error) => {
-            if (!isMounted) return;
-            console.warn('[SSE] Schema stream interrupted. Auto-reconnecting...', error);
-        };
-
-        return () => {
-            isMounted = false;
-            eventSource.close();
-        };
-    }, [projectId]);
+    const { data: schema, isLoading: loading } = useQuery({
+        queryKey: ['schema', projectId],
+        queryFn: () => fetchSchema(projectId!),
+        enabled: !!projectId,
+        refetchInterval: 5000, // Poll every 5s silently
+        staleTime: 4000, 
+    });
 
     const toggleFolder = (folder: string) => {
         const next = new Set(expandedFolders);

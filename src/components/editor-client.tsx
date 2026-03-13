@@ -165,7 +165,8 @@ export function EditorClient({
         },
         getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.nextCursorId : null,
         enabled: !!tableId && !!tableName,
-        staleTime: 1000 * 60 * 5, // 5 minutes
+        staleTime: 4000,
+        refetchInterval: 5000,
         refetchOnWindowFocus: false,
     });
 
@@ -246,109 +247,7 @@ export function EditorClient({
         refetch();
     }, [queryClient, projectId, tableId, refetch]);
 
-    // Live Data Updates (Native Vercel Server-Sent Events - SSE)
-    useEffect(() => {
-        if (!projectId || !tableId) return;
 
-        let isMounted = true;
-        const sseUrl = `/api/projects/${projectId}/tables/${tableId}/stream`;
-
-        console.log(`[SSE] Connecting to live updates for table: ${tableId} via Vercel Edge`);
-        const eventSource = new EventSource(sseUrl);
-
-        eventSource.addEventListener('update', (event) => {
-            if (!isMounted) return;
-            try {
-                const payload = JSON.parse(event.data);
-                console.log('[SSE] Realtime Update Received:', payload.event_type || payload.operation, payload);
-
-                // Raw SQL mutations (from execute-sql endpoint) — we don't have the full
-                // row data in the payload, so just invalidate the query to refetch.
-                if (payload.event_type === 'raw_sql_mutation') {
-                    queryClient.invalidateQueries({ queryKey: ['table-data', projectId, tableId] });
-                    return;
-                }
-
-                // Standard Fluxbase mutations — patch UI directly without a full refetch
-                queryClient.setQueryData(['table-data', projectId, tableId], (oldData: any) => {
-                    if (!oldData || !oldData.pages) return oldData;
-
-                    let handledInsert = false;
-
-                    const newPages = oldData.pages.map((page: any, pageIndex: number) => {
-                        let newRows = [...page.rows];
-                        const dataId = payload.data?.id || payload.data?._id || payload.data?.uuid;
-
-                        if (payload.operation === 'DELETE') {
-                            const index = newRows.findIndex(r => r.id === dataId || r._id === dataId);
-                            if (index !== -1) newRows.splice(index, 1);
-                        }
-                        else if (payload.operation === 'UPDATE') {
-                            const index = newRows.findIndex(r => r.id === dataId || r._id === dataId);
-                            if (index !== -1) newRows[index] = { ...newRows[index], ...payload.data };
-                        }
-                        else if (payload.operation === 'INSERT') {
-                            // Add to the very first page top
-                            if (pageIndex === 0 && !handledInsert) {
-                                if (!newRows.find(r => r.id === dataId || r._id === dataId)) {
-                                    newRows.unshift({ ...payload.data, _id: dataId || `temp_${Date.now()}` });
-                                    handledInsert = true;
-                                }
-                            }
-                        }
-
-                        return { ...page, rows: newRows };
-                    });
-
-                    return { ...oldData, pages: newPages };
-                });
-            } catch (err) {
-                console.error('[SSE] Failed to parse payload:', err);
-            }
-        });
-
-        eventSource.onerror = (error) => {
-            if (!isMounted) return;
-            // SSE automatically reconnects, we just log it.
-            console.warn('[SSE] Connection interrupted. Reconnecting automatically...', error);
-        };
-
-        return () => {
-            isMounted = false;
-            console.log(`[SSE] Disconnecting from live updates for table: ${tableId}`);
-            eventSource.close();
-        };
-    }, [projectId, tableId, queryClient]);
-
-    // Live Schema Updates (Native Vercel Server-Sent Events - SSE)
-    useEffect(() => {
-        if (!projectId) return;
-
-        let isMounted = true;
-        const sseUrl = `/api/projects/${projectId}/schema/stream`;
-
-        console.log(`[SSE] Connecting to live schema updates for Editor: ${projectId}`);
-        const eventSource = new EventSource(sseUrl);
-
-        eventSource.addEventListener('schema_update', (event) => {
-            if (!isMounted) return;
-            console.log('[SSE] Global Schema Update trigger received in Table Editor! Initiating silent route refresh.');
-            
-            // Re-fetch server props (columns, tables, constraints) silently
-            router.refresh();
-        });
-
-        eventSource.onerror = (error) => {
-            if (!isMounted) return;
-            console.warn('[SSE] Schema stream interrupted in Table Editor. Auto-reconnecting...', error);
-        };
-
-        return () => {
-            isMounted = false;
-            console.log(`[SSE] Disconnecting from live schema updates`);
-            eventSource.close();
-        };
-    }, [projectId, router]);
 
     const handleDeleteSelectedRows = async () => {
         if (!projectId || !tableId || !tableName || selectionModel.length === 0) return;

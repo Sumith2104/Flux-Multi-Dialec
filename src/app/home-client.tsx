@@ -155,7 +155,7 @@ export default function Home() {
             <section id="features" className="py-24 px-4 bg-background relative z-10">
                 <div className="max-w-7xl mx-auto">
                     <div className="text-center space-y-4 mb-16">
-                        <h2 className="text-3xl font-bold tracking-tight sm:text-5xl">Built for Developers</h2>
+                        <h2 className="text-3xl font-bold tracking-tight sm:text-5xl">Built for Developers by Developers</h2>
                         <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
                             Everything you need to manage complex datasets without the overhead of a traditional database administrator.
                         </p>

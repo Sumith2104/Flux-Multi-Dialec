@@ -70,8 +70,18 @@ async function initDb() {
                 display_name VARCHAR(255) NOT NULL,
                 dialect VARCHAR(50) DEFAULT 'mysql',
                 timezone VARCHAR(100) DEFAULT 'UTC',
+                ai_allow_destructive BOOLEAN DEFAULT false,
+                ai_schema_inference BOOLEAN DEFAULT true,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             )
+        `);
+
+        // Phase 2 Migration: Add AI Preferences Columns to projects table
+        console.log("🔨 Migrating Table: fluxbase_global.projects (Adding AI Preference Columns)");
+        await client.query(`
+            ALTER TABLE fluxbase_global.projects 
+            ADD COLUMN IF NOT EXISTS ai_allow_destructive BOOLEAN DEFAULT false,
+            ADD COLUMN IF NOT EXISTS ai_schema_inference BOOLEAN DEFAULT true;
         `);
 
         console.log("🔨 Creating Table: fluxbase_global.api_keys");

@@ -209,6 +209,16 @@ export class SqlEngine {
             if (['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'ALTER', 'CREATE', 'DROP'].includes(firstWord)) {
                 await trackApiRequest(this.projectId, `sql_${firstWord.toLowerCase()}` as any);
             }
+            
+            // Invalidate AI Schema Cache on structural changes
+            if (['ALTER', 'CREATE', 'DROP'].includes(firstWord)) {
+                try {
+                    const { redis } = await import('@/lib/redis');
+                    await redis.del(`schema_inference_${this.projectId}`);
+                } catch (e) {
+                    console.warn('Failed to invalidate AI schema cache:', e);
+                }
+            }
 
         } catch (e: any) {
             console.error("[AWS Native Proxy Error]", e);

@@ -3,7 +3,7 @@
 import { useGlobalAlert } from '@/components/global-alert-provider';
 
 import { useState, useContext, useEffect, useCallback } from 'react';
-import { Play, Trash2, History as HistoryIcon, Sparkles, Layout, ChevronRight, ChevronLeft, Table2, ListRestart, Info, Database, AlertCircle, CheckCircle2, TerminalSquare, Bot } from 'lucide-react';
+import { Play, Trash2, History as HistoryIcon, Sparkles, Layout, ChevronRight, ChevronLeft, Table2, ListRestart, Info, Database, AlertCircle, CheckCircle2, TerminalSquare, Bot, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -22,6 +22,7 @@ import { generateSQLAction } from '@/actions/ai-sql-actions';
 export default function QueryPage() {
 
   const [query, setQuery] = useState('SELECT * FROM your_table_name LIMIT 100;');
+  const [isQueryLoaded, setIsQueryLoaded] = useState(false);
   const [queryResponse, setQueryResponse] = useState<any>(null);
   const [isExecuting, setIsExecuting] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -29,7 +30,8 @@ export default function QueryPage() {
 
   // AI State
   const [aiInput, setAiInput] = useState('');
-  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [isGeneratingSQL, setIsGeneratingSQL] = useState(false);
+  const [isExecutingAI, setIsExecutingAI] = useState(false);
 
   const { project } = useContext(ProjectContext);
   const { toast } = useToast();
@@ -46,6 +48,29 @@ export default function QueryPage() {
       setHistory([]);
     }
   }, [project?.project_id]);
+
+  // Persist Editor Query
+  useEffect(() => {
+    if (!project?.project_id) {
+      setQuery('SELECT * FROM your_table_name LIMIT 100;');
+      setIsQueryLoaded(true);
+      return;
+    }
+    setIsQueryLoaded(false);
+    const savedQuery = localStorage.getItem(`sqlQuery_${project.project_id}`);
+    if (savedQuery !== null) {
+      setQuery(savedQuery);
+    } else {
+      setQuery('SELECT * FROM your_table_name LIMIT 100;');
+    }
+    setIsQueryLoaded(true);
+  }, [project?.project_id]);
+
+  useEffect(() => {
+    if (isQueryLoaded && project?.project_id) {
+      localStorage.setItem(`sqlQuery_${project.project_id}`, query);
+    }
+  }, [query, isQueryLoaded, project?.project_id]);
 
   const addToHistory = (queryStr: string, success: boolean) => {
     if (!project?.project_id) return;
@@ -130,7 +155,7 @@ export default function QueryPage() {
       return;
     }
 
-    setIsGeneratingAI(true);
+    setIsGeneratingSQL(true);
     try {
       const result = await generateSQLAction(project.project_id, aiInput);
 
@@ -149,7 +174,7 @@ export default function QueryPage() {
       console.error(e);
       toast({ variant: "destructive", title: "Error", description: "Failed to connect to AI service." });
     } finally {
-      setIsGeneratingAI(false);
+      setIsGeneratingSQL(false);
     }
   };
 
@@ -160,7 +185,7 @@ export default function QueryPage() {
       return;
     }
 
-    setIsGeneratingAI(true);
+    setIsExecutingAI(true);
     try {
       const result = await generateSQLAction(project.project_id, aiInput);
 
@@ -194,7 +219,7 @@ export default function QueryPage() {
       console.error(e);
       toast({ variant: "destructive", title: "Error", description: "Failed to connect to AI service." });
     } finally {
-      setIsGeneratingAI(false);
+      setIsExecutingAI(false);
     }
   };
 
@@ -316,19 +341,19 @@ export default function QueryPage() {
                         variant="outline"
                         className="flex-1"
                         onClick={handleGenerateSQL}
-                        disabled={isGeneratingAI || !aiInput.trim()}
+                        disabled={isGeneratingSQL || isExecutingAI || !aiInput.trim()}
                       >
-                        {isGeneratingAI ? <Sparkles className="h-3.5 w-3.5 mr-2 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 mr-2" />}
-                        Generate
+                        {isGeneratingSQL ? <MoreHorizontal className="h-4 w-4 mr-2 animate-pulse" /> : <Sparkles className="h-3.5 w-3.5 mr-2" />}
+                        {isGeneratingSQL ? "Generating..." : "Generate"}
                       </Button>
                       <Button
                         size="sm"
                         className="flex-1"
                         onClick={handleDirectExecute}
-                        disabled={isGeneratingAI || !aiInput.trim()}
+                        disabled={isGeneratingSQL || isExecutingAI || !aiInput.trim()}
                       >
-                        {isGeneratingAI ? <Sparkles className="h-3.5 w-3.5 mr-2 animate-spin" /> : <Play className="h-3.5 w-3.5 mr-2" />}
-                        Execute
+                        {isExecutingAI ? <MoreHorizontal className="h-4 w-4 mr-2 animate-pulse" /> : <Play className="h-3.5 w-3.5 mr-2" />}
+                        {isExecutingAI ? "Executing..." : "Execute"}
                       </Button>
                     </div>
 

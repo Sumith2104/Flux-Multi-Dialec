@@ -5,41 +5,68 @@ import { generateSQL } from '@/ai/flows/generate-sql';
 
 export async function generateSQLAction(projectId: string, userInput: string) {
     try {
-        // 1. Fetch tables
-        const tables = await getTablesForProject(projectId);
-        console.log('[DEBUG] generateSQLAction tables:', tables.length);
-
-        // 2. Fetch columns for all tables and build schema string
-        let schemaDescription = '';
-
-        for (const table of tables) {
-            const columns = await getColumnsForTable(projectId, table.table_id);
-
-            const columnsDesc = columns.map(col =>
-                `${col.column_name} (${col.data_type}${col.is_primary_key ? ' PK' : ''}${col.is_nullable ? '' : ' NOT NULL'})`
-            ).join(', ');
-
-            schemaDescription += `Table: ${table.table_name}\nColumns: ${columnsDesc}\nDescription: ${table.description || 'No description'}\n\n`;
-        }
-
-        if (!schemaDescription) {
-            schemaDescription = "No tables exist in the project yet. The user may want to create a new table. Please generate a CREATE TABLE statement if requested.";
-        }
-
-        // 3. Get the project dialect, default to PostgreSQL
         const { getProjectById } = await import('@/lib/data');
         const { getCurrentUserId } = await import('@/lib/auth');
         const userId = await getCurrentUserId();
-
+        
         let dialect = 'PostgreSQL';
+        let aiAllowDestructive = false;
+        let aiSchemaInference = true;
+
         if (userId) {
             const project = await getProjectById(projectId, userId);
-            if (project && project.dialect) {
-                const fetchedDialect = project.dialect.toLowerCase();
-                if (fetchedDialect === 'postgresql') dialect = 'PostgreSQL';
-                else if (fetchedDialect === 'mysql') dialect = 'MySQL';
-                else dialect = project.dialect;
+            if (project) {
+                aiAllowDestructive = project.ai_allow_destructive ?? false;
+                aiSchemaInference = project.ai_schema_inference ?? true;
+                
+                if (project.dialect) {
+                    const fetchedDialect = project.dialect.toLowerCase();
+                    if (fetchedDialect === 'postgresql') dialect = 'PostgreSQL';
+                    else if (fetchedDialect === 'mysql') dialect = 'MySQL';
+                    else dialect = project.dialect;
+                }
             }
+        }
+
+        let schemaDescription = '';
+
+        if (aiSchemaInference) {
+            try {
+                const { redis } = await import('@/lib/redis');
+                const cachedSchema = await redis.get(`schema_inference_${projectId}`) as any;
+
+                if (cachedSchema && cachedSchema.tables) {
+                    console.log(`[AI SQL Engine] Serving instantly from Edge Redis Cache for project ${projectId}`);
+                    for (const [tableName, columns] of Object.entries(cachedSchema.tables)) {
+                        const cols = columns as any[];
+                        const columnsDesc = cols.map(col => `${col.name} (${col.type})`).join(', ');
+                        schemaDescription += `Table: ${tableName}\nColumns: ${columnsDesc}\n\n`;
+                    }
+                }
+            } catch (e) {
+                console.warn('[AI SQL Engine] Redis read error, falling back to DB', e);
+            }
+
+            // Fallback to DB if Redis is empty or errors
+            if (!schemaDescription) {
+                const tables = await getTablesForProject(projectId);
+                console.log('[DEBUG] generateSQLAction tables (DB Fallback):', tables.length);
+
+                for (const table of tables) {
+                    const columns = await getColumnsForTable(projectId, table.table_id);
+                    const columnsDesc = columns.map(col =>
+                        `${col.column_name} (${col.data_type}${col.is_primary_key ? ' PK' : ''}${col.is_nullable ? '' : ' NOT NULL'})`
+                    ).join(', ');
+
+                    schemaDescription += `Table: ${table.table_name}\nColumns: ${columnsDesc}\nDescription: ${table.description || 'No description'}\n\n`;
+                }
+            }
+
+            if (!schemaDescription) {
+                schemaDescription = "No tables exist in the project yet. The user may want to create a new table. Please generate a CREATE TABLE statement if requested.";
+            }
+        } else {
+             schemaDescription = "Realtime Schema Inference is disabled for this project. Write standard SQL assuming standard structures, or request the user to enable inference for accurate code generation.";
         }
 
         // 4. Call Genkit Flow
@@ -50,9 +77,12 @@ export async function generateSQLAction(projectId: string, userInput: string) {
         });
 
         // 5. Destructive Query Trap Intercept
-        if (result.isDangerous) {
-            console.warn("[AI SQL Engine] Destructive query flagged but allowed through for user confirmation.", result.reasoning);
-            // We no longer block here. We let the client handle confirmation.
+        if (result.isDangerous && !aiAllowDestructive) {
+            console.warn("[AI SQL Engine] Destructive query blocked by Project Settings.");
+            return {
+                success: false,
+                error: "The AI generated a destructive query (e.g. DROP, DELETE, TRUNCATE) which is blocked by your current project settings. Go to Settings -> AI Assistant to allow this behavior."
+            };
         }
 
         console.log("[AI SQL Engine] Analysis Reasoning:", result.reasoning);

@@ -37,12 +37,12 @@ export async function createSessionCookie(uid: string) {
     const expiresIn = 60 * 60 * 24 * 5; // 5 days in seconds
     try {
         const sessionCookie = jwt.sign({ uid }, JWT_SECRET, { expiresIn });
-        const isSecure = process.env.NEXT_PUBLIC_SECURE_COOKIES === 'true';
+        const isProduction = process.env.NODE_ENV === 'production';
 
         (await cookies()).set('session', sessionCookie, {
             maxAge: expiresIn * 1000,
             httpOnly: true,
-            secure: isSecure,
+            secure: isProduction,
             path: '/',
             sameSite: 'lax',
         });

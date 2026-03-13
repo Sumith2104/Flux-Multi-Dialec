@@ -34,7 +34,7 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
         }
     }, []);
 
-    const setProject = (project: Project | null) => {
+    const setProject = React.useCallback((project: Project | null) => {
         setProjectState(project);
         try {
             if (project) {
@@ -45,7 +45,7 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
         } catch (error) {
             console.error("Failed to save project to localStorage", error);
         }
-    };
+    }, []);
 
     return (
         <ProjectContext.Provider value={{ project, setProject, loading }}>

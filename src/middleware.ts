@@ -1,12 +1,44 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
 
-// This function can be marked `async` if using `await` inside
-export function middleware(request: NextRequest) {
+// Only create ratelimiter if we have env vars, otherwise bypass locally to avoid breaking dev
+const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
+const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+let ratelimit: Ratelimit | null = null;
+if (redisUrl && redisToken) {
+    ratelimit = new Ratelimit({
+        redis: new Redis({ url: redisUrl, token: redisToken }),
+        limiter: Ratelimit.slidingWindow(50, '10 s'), // 50 requests per 10s per IP globally
+        analytics: true,
+    });
+}
+
+export async function middleware(request: NextRequest) {
   const sessionCookie = request.cookies.get('session')?.value;
   const userId = !!sessionCookie; // Simple presence check for Edge compatibility
   const { pathname } = request.nextUrl;
 
   const isAuthPage = ['/login', '/signup', '/reset-password'].includes(pathname);
+
+  // Global API Rate Limiting for all /api/ endpoints to prevent brute-force and DDoS
+  if (pathname.startsWith('/api/') && ratelimit) {
+      const ip = (request as any).ip || request.headers.get('x-forwarded-for') || '127.0.0.1';
+      const { success, limit, reset, remaining } = await ratelimit.limit(`global_api_${ip}`);
+      
+      if (!success) {
+          return NextResponse.json({ success: false, error: 'Too Many Requests from your IP zone.' }, { 
+              status: 429,
+              headers: {
+                  'X-RateLimit-Limit': limit.toString(),
+                  'X-RateLimit-Remaining': remaining.toString(),
+                  'X-RateLimit-Reset': reset.toString()
+              }
+          });
+      }
+      // If successful, we just fall through and let Next.js handle the actual route
+  }
 
   // If user is logged in...
   if (userId) {
@@ -22,12 +54,13 @@ export function middleware(request: NextRequest) {
     const isPublicStaticPage = ['/', '/pricing', '/privacy', '/terms', '/docs', '/contact'].includes(pathname);
 
     // and tries to access a protected page, redirect to root
-    if (!isAuthPage && !isPublicStaticPage) {
+    if (!isAuthPage && !isPublicStaticPage && !pathname.startsWith('/api/')) {
       return NextResponse.redirect(new URL('/', request.url));
     }
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+  return response;
 }
 
 // See "Matching Paths" below to learn more

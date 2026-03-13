@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { getRealtimeHistoryAction } from '@/app/(app)/dashboard/analytics-actions';
 
 export interface RealtimeDataPoint {
@@ -13,26 +13,13 @@ export interface RealtimeDataPoint {
 }
 
 export function useRealtimeHistory(projectId: string | undefined): RealtimeDataPoint[] {
-    const [history, setHistory] = useState<RealtimeDataPoint[]>([]);
+    const { data } = useQuery({
+        queryKey: ['analytics_history', projectId],
+        queryFn: () => getRealtimeHistoryAction(projectId!),
+        enabled: !!projectId,
+        refetchInterval: 5000,
+        staleTime: 4000,
+    });
 
-    useEffect(() => {
-        if (!projectId) return;
-
-        const eventSource = new EventSource(`/api/projects/${projectId}/analytics/stream`);
-
-        eventSource.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.history) setHistory(data.history);
-            } catch (err) {
-                console.error("Error parsing SSE history data", err);
-            }
-        };
-
-        return () => {
-            eventSource.close();
-        };
-    }, [projectId]);
-
-    return history;
+    return data || [];
 }

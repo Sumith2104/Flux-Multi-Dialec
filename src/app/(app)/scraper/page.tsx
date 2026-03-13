@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useContext } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSearchParams } from "next/navigation"
 import { ProjectContext } from "@/contexts/project-context"
 import { Button } from "@/components/ui/button"
@@ -18,9 +19,7 @@ export default function ScraperDashboard() {
     const { project: contextProject } = useContext(ProjectContext)
 
     const projectId = projectIdParam || contextProject?.project_id
-    const [scrapers, setScrapers] = useState<any[]>([])
-    const [loading, setLoading] = useState(true)
-
+    const queryClient = useQueryClient()
     const [createOpen, setCreateOpen] = useState(false)
     const [editOpen, setEditOpen] = useState(false)
     const [selectedScraper, setSelectedScraper] = useState<any>(null)
@@ -28,62 +27,29 @@ export default function ScraperDashboard() {
     const [runningId, setRunningId] = useState<string | null>(null)
     const [viewingHistoryId, setViewingHistoryId] = useState<string | null>(null)
 
-    const fetchScrapers = async () => {
-        if (!projectId) return
-        try {
+    const { data: scrapers = [], isLoading: loading } = useQuery({
+        queryKey: ['scrapers', projectId],
+        queryFn: async () => {
             const res = await fetch(`/api/scrapers?projectId=${projectId}`)
             const data = await res.json()
-            if (data.success) {
-                setScrapers(data.scrapers)
-                if (!viewingHistoryId && data.scrapers.length > 0) {
-                    setViewingHistoryId(data.scrapers[0].id)
-                }
-            }
-        } catch (error) {
-            console.error("Failed to load scrapers", error)
-        } finally {
-            setLoading(false)
-        }
-    }
+            return data.success ? data.scrapers : []
+        },
+        enabled: !!projectId,
+        refetchInterval: 5000,
+    })
 
     useEffect(() => {
-        if (!projectId) return;
-
-        const eventSource = new EventSource(`/api/scrapers/stream?projectId=${projectId}`);
-
-        eventSource.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.success) {
-                    setScrapers((prev) => {
-                        // Only set viewingHistoryId on FIRST load if nothing selected
-                        if (!viewingHistoryId && data.scrapers.length > 0 && prev.length === 0) {
-                            setViewingHistoryId(data.scrapers[0].id);
-                        }
-                        return data.scrapers;
-                    });
-                    setLoading(false);
-                }
-            } catch (err) {
-                console.error("Failed to parse scrapers stream", err);
-            }
-        };
-
-        // Fallback robust manual fetch
-        fetchScrapers();
-
-        return () => {
-            eventSource.close();
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [projectId])
+        if (!viewingHistoryId && scrapers.length > 0) {
+            setViewingHistoryId(scrapers[0].id)
+        }
+    }, [scrapers, viewingHistoryId])
 
     const handleRun = async (scraperId: string) => {
         setRunningId(scraperId)
         setViewingHistoryId(scraperId)
         try {
             await fetch(`/api/scrapers/${scraperId}/run`, { method: "POST" })
-            await fetchScrapers() // refresh status
+            await queryClient.invalidateQueries({ queryKey: ['scrapers', projectId] })
         } catch (error) {
             console.error("Error running scraper:", error)
         } finally {
@@ -96,7 +62,7 @@ export default function ScraperDashboard() {
         try {
             await fetch(`/api/scrapers?id=${scraperId}`, { method: "DELETE" })
             if (viewingHistoryId === scraperId) setViewingHistoryId(null)
-            await fetchScrapers()
+            await queryClient.invalidateQueries({ queryKey: ['scrapers', projectId] })
         } catch (error) {
             console.error("Error deleting scraper:", error)
         }
@@ -238,14 +204,14 @@ export default function ScraperDashboard() {
                 open={createOpen}
                 onOpenChange={setCreateOpen}
                 projectId={projectId}
-                onSuccess={fetchScrapers}
+                onSuccess={() => queryClient.invalidateQueries({ queryKey: ['scrapers', projectId] })}
             />
 
             <EditScraperDialog
                 scraper={selectedScraper}
                 open={editOpen}
                 onOpenChange={setEditOpen}
-                onSuccess={fetchScrapers}
+                onSuccess={() => queryClient.invalidateQueries({ queryKey: ['scrapers', projectId] })}
             />
         </div>
     )
