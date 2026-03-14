@@ -120,7 +120,8 @@ export async function addRowAction(formData: FormData) {
     }
 
     try {
-        const { checkRowLimit } = await import('@/lib/limits');
+        const { checkRowLimit, checkProjectTrafficLimits } = await import('@/lib/limits');
+        await checkProjectTrafficLimits(projectId);
         await checkRowLimit(projectId, userId, tableName, 1);
 
         // 1. Prepare data

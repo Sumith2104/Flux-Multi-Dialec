@@ -57,23 +57,26 @@ export default function DocsPage() {
                                     <code>{`// Execute an SQL query over native Node.js fetch
 async function fetchUsers() {
   try {
-    const response = await fetch('https://api.fluxbase.io/v1/projects/YOUR_PROJECT_ID/query', {
+    const response = await fetch('https://api.fluxbase.io/api/execute-sql', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': \`Bearer \${process.env.FLUXBASE_SECRET_KEY}\`
       },
       body: JSON.stringify({
-        sql: 'SELECT * FROM users LIMIT 10;'
+        projectId: 'YOUR_PROJECT_ID',
+        query: 'SELECT * FROM users LIMIT 10;'
       })
     });
 
-    if (!response.ok) {
-       throw new Error(\`HTTP error! Status: \${response.status}\`);
+    const data = await response.json();
+    
+    if (!data.success) {
+       throw new Error(data.error?.message || 'Query failed');
     }
 
-    const { data } = await response.json();
-    return data;
+    // Access nested rows payload
+    return data.result.rows;
   } catch (err) {
     console.error("Database query failed:", err);
   }
@@ -88,7 +91,7 @@ fetchUsers().then(console.log);`}</code>
                                     <code>{`import os
 import requests
 
-FLUXBASE_API = "https://api.fluxbase.io/v1/projects/YOUR_PROJECT_ID/query"
+FLUXBASE_API = "https://api.fluxbase.io/api/execute-sql"
 API_KEY = os.getenv("FLUXBASE_SECRET_KEY")
 
 def get_users():
@@ -97,15 +100,17 @@ def get_users():
         "Content-Type": "application/json"
     }
     payload = {
-        "sql": "SELECT * FROM users ORDER BY created_at DESC"
+        "projectId": "YOUR_PROJECT_ID",
+        "query": "SELECT * FROM users ORDER BY created_at DESC"
     }
     
     response = requests.post(FLUXBASE_API, json=payload, headers=headers)
+    data = response.json()
     
-    if response.status_code == 200:
-        return response.json().get('data', [])
+    if data.get("success"):
+        return data["result"]["rows"]
     else:
-        print(f"Query Failed: {response.text}")
+        print(f"Query Failed: {data.get('error', {}).get('message')}")
         return None
 
 users = get_users()
@@ -184,7 +189,7 @@ public class FluxbaseExample {
 require 'net/http'
 require 'json'
 
-url = URI("https://api.fluxbase.io/v1/projects/YOUR_PROJECT_ID/query")
+url = URI("https://api.fluxbase.io/api/execute-sql")
 
 https = Net::HTTP.new(url.host, url.port)
 https.use_ssl = true
@@ -193,7 +198,8 @@ request = Net::HTTP::Post.new(url)
 request["Authorization"] = "Bearer your_super_secret_token"
 request["Content-Type"] = "application/json"
 request.body = JSON.dump({
-  "sql": "SELECT * FROM users"
+  "projectId": "YOUR_PROJECT_ID",
+  "query": "SELECT * FROM users"
 })
 
 response = https.request(request)
@@ -252,10 +258,10 @@ async fn main() -> Result<(), sqlx::Error> {
                             <TabsContent value="curl">
                                 <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-sm text-card-foreground">
                                     <code>{`# You can test your queries directly in your terminal using cURL
-curl -X POST "https://api.fluxbase.io/v1/projects/YOUR_PROJECT_ID/query" \\
+curl -X POST "https://api.fluxbase.io/api/execute-sql" \\
   -H "Authorization: Bearer your_super_secret_token" \\
   -H "Content-Type: application/json" \\
-  -d '{"sql": "SELECT * FROM users"}'`}</code>
+  -d '{"projectId": "YOUR_PROJECT_ID", "query": "SELECT * FROM users"}'`}</code>
                                 </pre>
                             </TabsContent>
                         </div>

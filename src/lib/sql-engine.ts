@@ -110,6 +110,13 @@ export class SqlEngine {
                 try {
                     // 1. Lock session to this tenant's isolated DB
                     await connection.query(`USE \`project_${this.projectId}\``);
+                    if (this.projectTimezone) {
+                        try {
+                            await connection.query(`SET time_zone = ?`, [this.projectTimezone]);
+                        } catch (tzErr) {
+                            console.warn(`Failed to set MySQL timezone to ${this.projectTimezone}:`, tzErr);
+                        }
+                    }
 
                     // 2. Execute raw SQL natively on MySQL engine
                     // Using query() instead of execute() for raw multiple statements
@@ -175,6 +182,15 @@ export class SqlEngine {
                 try {
                     // 1. Lock the session securely to this tenant's isolated schema
                     await client.query(`SET search_path TO "project_${this.projectId}"`);
+                    if (this.projectTimezone) {
+                        try {
+                            // PostgreSQL SET TIME ZONE expects a string literal or valid interval/alias, we can parameterize it using set_config or string injection safely
+                            // However, using set_config is safer than arbitrary string concatenation.
+                            await client.query(`SELECT set_config('timezone', $1, false)`, [this.projectTimezone]);
+                        } catch (tzErr) {
+                            console.warn(`Failed to set Postgres timezone to ${this.projectTimezone}:`, tzErr);
+                        }
+                    }
 
                     // 2. Execute the raw SQL directly on the Postgres engine
                     const result = await client.query(queryCleaned, params || []);

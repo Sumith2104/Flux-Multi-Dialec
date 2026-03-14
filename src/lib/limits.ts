@@ -1,5 +1,6 @@
 import { getPgPool } from '@/lib/pg';
 import { getProjectById, getTablesForProject } from '@/lib/data';
+import { sendLimitAlertEmail } from '@/lib/email';
 
 const PLAN_LIMITS = {
     free: {
@@ -8,7 +9,8 @@ const PLAN_LIMITS = {
         rowsPerTable: 10000,
         apiKeys: 2,
         webhooks: 0,
-        scrapers: 0
+        scrapers: 0,
+        allowedInstanceSizes: ['db.t3.micro']
     },
     pro: {
         projects: 3,
@@ -16,7 +18,8 @@ const PLAN_LIMITS = {
         rowsPerTable: 50000,
         apiKeys: 10,
         webhooks: 5,
-        scrapers: 3
+        scrapers: 3,
+        allowedInstanceSizes: ['db.t3.micro', 'db.t3.medium']
     },
     max: {
         projects: 999999, // Practically unlimited
@@ -24,7 +27,8 @@ const PLAN_LIMITS = {
         rowsPerTable: 999999999,
         apiKeys: 999999,
         webhooks: 999999,
-        scrapers: 999999
+        scrapers: 999999,
+        allowedInstanceSizes: ['db.t3.micro', 'db.t3.medium', 'db.t3.large']
     }
 } as const;
 
@@ -101,8 +105,82 @@ export async function checkRowLimit(projectId: string, userId: string, tableName
         }
     }
 
-    if (currentRows + insertingCount > limit) {
-        throw new LimitExceededError(`Row limit reached. Your ${plan.toUpperCase()} plan allows a maximum of ${limit} rows per table. You are trying to insert ${insertingCount} rows into a table that already has ${currentRows} rows. Please upgrade your plan.`);
+    const pgPool = getPgPool();
+    const configRes = await pgPool.query('SELECT display_name, custom_row_limit, alert_email, alert_threshold_percent, last_row_alert_at FROM fluxbase_global.projects WHERE project_id = $1', [projectId]);
+    const pConfig = configRes.rows[0];
+
+    // Priority 1: Custom User Project Limit
+    // Priority 2: Global Service Tier Limit
+    const activeLimit = pConfig?.custom_row_limit || limit;
+    const projectedRows = currentRows + insertingCount;
+
+    if (projectedRows > activeLimit) {
+        throw new LimitExceededError(`Row limit reached. The limit is ${activeLimit} rows per table. You are trying to insert ${insertingCount} rows into a table that already has ${currentRows} rows. Please upgrade your plan or adjust custom limits.`);
+    }
+
+    // Threshold Alert Tracking
+    if (pConfig?.alert_email && activeLimit > 0) {
+        const threshold = activeLimit * ((pConfig.alert_threshold_percent || 80) / 100);
+        
+        // If we exceed threshold and haven't alerted in the last 24h
+        if (projectedRows >= threshold) {
+            const lastAlert = pConfig.last_row_alert_at ? new Date(pConfig.last_row_alert_at).getTime() : 0;
+            const now = Date.now();
+            
+            // Only send one email every 24 hours per resource to prevent spam
+            if (now - lastAlert > 24 * 60 * 60 * 1000) {
+                // Fire and forget email dispatch
+                sendLimitAlertEmail(pConfig.alert_email, pConfig.display_name, `Rows in table '${tableName}'`, activeLimit, projectedRows >= activeLimit).catch(console.error);
+                
+                // Update alert timestamp
+                pgPool.query('UPDATE fluxbase_global.projects SET last_row_alert_at = NOW() WHERE project_id = $1', [projectId]).catch(console.error);
+            }
+        }
+    }
+}
+
+export async function checkProjectTrafficLimits(projectId: string): Promise<void> {
+    const pool = getPgPool();
+    const pRes = await pool.query(`
+        SELECT display_name, custom_api_limit, custom_request_limit, alert_email, alert_threshold_percent, last_api_alert_at 
+        FROM fluxbase_global.projects WHERE project_id = $1
+    `, [projectId]);
+    
+    if (pRes.rows.length === 0) return;
+    const pConfig = pRes.rows[0];
+
+    // Read cached traffic stats (assuming it tracks current period)
+    const { getAnalyticsStatsAction } = await import('@/app/(app)/dashboard/analytics-actions');
+    const stats = await getAnalyticsStatsAction(projectId);
+    if (!stats) return;
+
+    // Check Total Requests
+    if (pConfig.custom_request_limit && stats.total_requests > pConfig.custom_request_limit) {
+        throw new LimitExceededError(`Rate limit exceeded. Project has exceeded its custom total request limit of ${pConfig.custom_request_limit}.`);
+    }
+
+    // Check API / DB usage
+    const totalApi = stats.type_api_call + stats.type_sql_execution;
+    if (pConfig.custom_api_limit && totalApi > pConfig.custom_api_limit) {
+        throw new LimitExceededError(`Rate limit exceeded. Project has exceeded its custom API/Query limit of ${pConfig.custom_api_limit}.`);
+    }
+
+    // Threshold alerts
+    if (pConfig.alert_email) {
+        const checkAlert = (current: number, limit: number, resourceName: string) => {
+            if (!limit) return;
+            const threshold = limit * ((pConfig.alert_threshold_percent || 80) / 100);
+            if (current >= threshold) {
+                const lastAlert = pConfig.last_api_alert_at ? new Date(pConfig.last_api_alert_at).getTime() : 0;
+                if (Date.now() - lastAlert > 24 * 60 * 60 * 1000) {
+                    sendLimitAlertEmail(pConfig.alert_email, pConfig.display_name, resourceName, limit, current >= limit).catch(console.error);
+                    pool.query('UPDATE fluxbase_global.projects SET last_api_alert_at = NOW() WHERE project_id = $1', [projectId]).catch(console.error);
+                }
+            }
+        };
+
+        checkAlert(stats.total_requests, pConfig.custom_request_limit, "Total Requests");
+        checkAlert(totalApi, pConfig.custom_api_limit, "API/SQL Operations");
     }
 }
 
@@ -150,5 +228,15 @@ export async function checkScraperLimit(projectId: string, userId: string): Prom
 
     if (count >= limit) {
         throw new LimitExceededError(`Scraper limit reached. Your ${plan.toUpperCase()} plan allows a maximum of ${limit} scrapers per project. Please upgrade to allocate more engine workers.`);
+    }
+}
+
+export async function checkInstanceSizeLimit(userId: string, requestedSize: string): Promise<void> {
+    const plan = await getUserPlan(userId);
+    const allowedSizes = PLAN_LIMITS[plan].allowedInstanceSizes;
+
+    // We cast to readonly array check
+    if (!allowedSizes.includes(requestedSize as any)) {
+        throw new LimitExceededError(`Infrastructure Profile limit reached. Your ${plan.toUpperCase()} plan is not authorized to provision a '${requestedSize}' instance. Please upgrade your subscription to access larger database hardware.`);
     }
 }

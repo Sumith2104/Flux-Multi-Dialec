@@ -42,7 +42,10 @@ export async function getAnalyticsStatsAction(projectId: string) {
         for (const row of result.rows) {
             const type = row.event_type;
             const count = parseInt(row.total);
-            stats.total_requests += count;
+            
+            if (type === 'api_call' || type === 'sql_execution') {
+                stats.total_requests += count;
+            }
 
             if (type === 'api_call') stats.type_api_call = count;
             if (type === 'sql_execution') stats.type_sql_execution = count;
@@ -125,6 +128,13 @@ export async function getProjectHistoryAction(projectId: string) {
     }
 
     try {
+        if (process.env.NODE_ENV !== 'production') {
+            try {
+                // Auto-flush in development since Vercel Cron doesn't run locally
+                await fetch('http://localhost:3000/api/cron/flush-analytics').catch(() => {});
+            } catch (e) {}
+        }
+
         const pool = getPgPool();
         const stats = await getAnalyticsStatsAction(projectId);
 
@@ -159,10 +169,9 @@ export async function getProjectHistoryAction(projectId: string) {
                 const index = 23 - hoursAgo; // 23 is the current hour, 0 is 24 hours ago
                 const count = parseInt(row.total, 10);
 
-                requestsArr[index] += count; // All events contribute to total requests limit
-
-                // API Calls and SQL calls chart
+                // Only count top-level events for total requests and API calls
                 if (row.event_type === 'api_call' || row.event_type === 'sql_execution') {
+                    requestsArr[index] += count;
                     apiCallsArr[index] += count;
                 }
             }

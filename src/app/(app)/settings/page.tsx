@@ -53,7 +53,7 @@ export default function GeneralSettingsPage() {
         if (result.success) {
             toast({ title: 'Success', description: 'Your organization data has been cleared.' });
             await logoutAction();
-            router.push('/signup');
+            router.push('/');
         } else {
             toast({ variant: 'destructive', title: 'Error', description: result.error || 'Failed to clear organization data.' });
         }

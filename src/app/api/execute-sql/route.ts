@@ -97,6 +97,16 @@ export async function POST(request: Request) {
             return NextResponse.json({ success: false, error: { message: 'Project not found', code: 'NOT_FOUND' } }, { status: 404 });
         }
 
+        try {
+            const { checkProjectTrafficLimits } = await import('@/lib/limits');
+            await checkProjectTrafficLimits(projectId);
+        } catch (limitErr: any) {
+             return NextResponse.json({
+                success: false,
+                error: { message: limitErr.message || 'Limit Exceeded', code: 'LIMIT_EXCEEDED' }
+            }, { status: 403 });
+        }
+
         // Use the new SQL Engine
         const engine = new SqlEngine(projectId, userId);
 

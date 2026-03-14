@@ -2,6 +2,8 @@
 
 import { createProject } from '@/lib/data';
 import { provisionDatabaseInstance } from '@/lib/aws-rds';
+import { checkInstanceSizeLimit, getUserPlan } from '@/lib/limits';
+import { getCurrentUserId } from '@/lib/auth';
 import crypto from 'crypto';
 
 export async function createProjectAction(formData: FormData) {
@@ -16,6 +18,13 @@ export async function createProjectAction(formData: FormData) {
   }
 
   try {
+    const userId = await getCurrentUserId();
+    if (!userId) return { error: 'Unauthorized login required to create a project.' };
+
+    if (instanceSize) {
+        await checkInstanceSizeLimit(userId, instanceSize);
+    }
+
     // 1. Create the project entry in the metadata table
     const project = await createProject(projectName, "No description provided", dialect || 'postgresql', timezone);
 
@@ -44,5 +53,23 @@ export async function createProjectAction(formData: FormData) {
   } catch (error: any) {
     console.error('Project creation failed:', error);
     return { error: error.message || 'Failed to create project.' };
+  }
+}
+
+export async function getAllowedInstanceSizesAction() {
+  const userId = await getCurrentUserId();
+  if (!userId) return { allowedSizes: ['db.t3.micro'] as string[] }; // Default safe fallback
+
+  try {
+    const plan = await getUserPlan(userId);
+    // Fetch directly from limits logic to avoid duplication
+    switch (plan) {
+      case 'max': return { allowedSizes: ['db.t3.micro', 'db.t3.medium', 'db.t3.large'] as string[] };
+      case 'pro': return { allowedSizes: ['db.t3.micro', 'db.t3.medium'] as string[] };
+      case 'free':
+      default: return { allowedSizes: ['db.t3.micro'] as string[] };
+    }
+  } catch (e) {
+    return { allowedSizes: ['db.t3.micro'] as string[] };
   }
 }

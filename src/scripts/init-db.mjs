@@ -84,6 +84,19 @@ async function initDb() {
             ADD COLUMN IF NOT EXISTS ai_schema_inference BOOLEAN DEFAULT true;
         `);
 
+        // Phase 3 Migration: Add Resource Limits Constraints
+        console.log("🔨 Migrating Table: fluxbase_global.projects (Adding Custom Resource Limits Columns)");
+        await client.query(`
+            ALTER TABLE fluxbase_global.projects
+            ADD COLUMN IF NOT EXISTS custom_api_limit INTEGER,
+            ADD COLUMN IF NOT EXISTS custom_row_limit INTEGER,
+            ADD COLUMN IF NOT EXISTS custom_request_limit INTEGER,
+            ADD COLUMN IF NOT EXISTS alert_email VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS alert_threshold_percent INTEGER DEFAULT 80,
+            ADD COLUMN IF NOT EXISTS last_api_alert_at TIMESTAMP WITH TIME ZONE,
+            ADD COLUMN IF NOT EXISTS last_row_alert_at TIMESTAMP WITH TIME ZONE;
+        `);
+
         console.log("🔨 Creating Table: fluxbase_global.api_keys");
         await client.query(`
             CREATE TABLE IF NOT EXISTS fluxbase_global.api_keys (

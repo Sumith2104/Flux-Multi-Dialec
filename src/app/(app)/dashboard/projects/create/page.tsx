@@ -6,10 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { createProjectAction } from '@/components/layout/actions';
+import { createProjectAction, getAllowedInstanceSizesAction } from '@/components/layout/actions';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Database, Loader2 } from 'lucide-react';
-import { useState, useContext } from 'react';
+import { useState, useContext, useEffect } from 'react';
 import { ProjectContext } from '@/contexts/project-context';
 import { useToast } from '@/hooks/use-toast';
 
@@ -22,6 +22,11 @@ export default function CreateProjectPage() {
 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedDialect, setSelectedDialect] = useState<'postgresql' | 'mysql'>('postgresql');
+    const [allowedSizes, setAllowedSizes] = useState<string[]>(['db.t3.micro']);
+
+    useEffect(() => {
+        getAllowedInstanceSizesAction().then(res => setAllowedSizes(res.allowedSizes || ['db.t3.micro']));
+    }, []);
 
     async function handleCreateProject(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
@@ -126,8 +131,12 @@ export default function CreateProjectPage() {
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="db.t3.micro">Dev (t3.micro - 2 vCPU, 1GB RAM)</SelectItem>
-                                                <SelectItem value="db.t3.medium">Pro (t3.medium - 2 vCPU, 4GB RAM)</SelectItem>
-                                                <SelectItem value="db.t3.large">Scale (t3.large - 2 vCPU, 8GB RAM)</SelectItem>
+                                                <SelectItem value="db.t3.medium" disabled={!allowedSizes.includes('db.t3.medium')}>
+                                                    Pro (t3.medium - 2 vCPU, 4GB RAM) {!allowedSizes.includes('db.t3.medium') && <span className="text-xs text-muted-foreground ml-2">(Pro Plan)</span>}
+                                                </SelectItem>
+                                                <SelectItem value="db.t3.large" disabled={!allowedSizes.includes('db.t3.large')}>
+                                                    Scale (t3.large - 2 vCPU, 8GB RAM) {!allowedSizes.includes('db.t3.large') && <span className="text-xs text-muted-foreground ml-2">(Max Plan)</span>}
+                                                </SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>

@@ -198,6 +198,7 @@ export async function sendPasswordResetEmail(to: string, resetLink: string) {
     return sendEmail(to, "Fluxbase Password Reset", html, getBrandAttachments());
 }
 
+
 export async function sendLoginAlertEmail(to: string, name: string) {
     const safeName = name || 'Explorer';
     const url = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
@@ -209,4 +210,27 @@ export async function sendLoginAlertEmail(to: string, name: string) {
     });
 
     return sendEmail(to, "New login to your Fluxbase account", html, getBrandAttachments());
+}
+
+export async function sendLimitAlertEmail(to: string, projectName: string, resource: string, limit: number, isHardLimit: boolean = false) {
+    const url = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    
+    const title = isHardLimit ? "🚨 Resource Limit Exceeded" : "⚠️ Approaching Resource Limit";
+    const instruction = isHardLimit 
+        ? `Your project <b>${projectName}</b> has reached its configured limit for <b>${resource}</b> (${limit.toLocaleString()}). Further operations may be blocked until the limit is increased.`
+        : `Your project <b>${projectName}</b> is approaching its configured limit for <b>${resource}</b> (${limit.toLocaleString()}).`;
+
+    const html = buildEmailHtml({
+        title,
+        greeting: "Hello,",
+        instruction,
+        contentHtml: `
+            <div style="margin-bottom: 24px;">
+                <p style="color: #e4e4e7; font-size: 16px; margin: 0 0 16px 0;">To ensure uninterrupted service, please review your project's resource limits.</p>
+                <a href="${url}/dashboard" class="btn">Manage Limits in Dashboard</a>
+            </div>
+        `
+    });
+
+    return sendEmail(to, `[Fluxbase Alert] ${title} - ${projectName}`, html, getBrandAttachments());
 }

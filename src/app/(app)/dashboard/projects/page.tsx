@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ProjectContext } from '@/contexts/project-context';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 export default function SelectProjectPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -86,36 +87,67 @@ export default function SelectProjectPage() {
             ) : (
               <>
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                  {projects.map((project) => (
+                  {projects.map((project) => {
+                    const isPostgres = project.dialect !== 'mysql';
+                    return (
                     <button
                       key={project.project_id}
                       onClick={() => handleProjectSelect(project)}
-                      className="w-full text-left group"
+                      className="w-full text-left group relative outline-none"
                     >
-                      <Card className="flex flex-col h-full hover:border-primary transition-colors">
-                        <CardHeader className="flex-row items-center justify-between pb-2">
-                          <CardTitle className="text-base font-medium">
-                            {project.display_name}
-                          </CardTitle>
-                          <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-1" />
-                        </CardHeader>
-                        <CardContent className="flex items-center justify-between">
-                          <p className="text-sm text-muted-foreground">
-                            Created: {new Date(project.created_at).toLocaleDateString()}
-                          </p>
-                          <Badge variant="outline" className="text-[10px] uppercase font-bold tracking-wider opacity-70">
-                            {project.dialect === 'mysql' ? 'MySQL' : 'PostgreSQL'}
-                          </Badge>
-                        </CardContent>
+                      <Card className="relative overflow-hidden flex flex-col h-36 border-border bg-card/40 backdrop-blur-sm hover:border-primary/50 transition-all duration-300 hover:shadow-[0_0_2rem_-0.5rem_#ffffff15] hover:-translate-y-1">
+                        
+                        {/* Faint Background Logo Outline */}
+                        <div className="absolute -right-6 -bottom-6 w-36 h-36 group-hover:scale-110 transition-all duration-500 pointer-events-none overflow-visible z-0">
+                            {isPostgres ? (
+                                <img src="/postgres-bg.png" alt="PostgreSQL Background" className="w-full h-full object-contain grayscale opacity-[0.4] group-hover:opacity-[0.7] transition-opacity" loading="lazy" />
+                            ) : (
+                                <img src="/mysql-bg.png" alt="MySQL Background" className="w-full h-full object-contain grayscale opacity-[0.4] group-hover:opacity-[0.7] transition-opacity" loading="lazy" />
+                            )}
+                        </div>
+
+                        <div className="p-6 flex flex-col h-full z-10 relative">
+                            {/* Top: Dialect / Infra */}
+                            <div className="flex justify-between items-start mb-4">
+                                <Badge variant="secondary" className={cn(
+                                    "text-xs font-semibold tracking-wide uppercase px-2.5 py-0.5 shadow-sm",
+                                    isPostgres 
+                                      ? "bg-blue-500/10 text-blue-400 border-blue-500/20" 
+                                      : "bg-orange-500/10 text-orange-400 border-orange-500/20"
+                                )}>
+                                    {isPostgres ? 'PostgreSQL' : 'MySQL'}
+                                </Badge>
+                                <ChevronRight className="h-5 w-5 text-muted-foreground/50 transition-transform group-hover:translate-x-1 group-hover:text-primary" />
+                            </div>
+
+                            {/* Middle: Project Name */}
+                            <div className="mt-auto mb-2">
+                                <h3 className="text-xl font-bold tracking-tight text-foreground/90 group-hover:text-foreground transition-colors line-clamp-1">
+                                    {project.display_name}
+                                </h3>
+                            </div>
+
+                            {/* Bottom: Date */}
+                            <div className="flex items-center text-xs text-muted-foreground/60 font-medium mt-1">
+                                <span>Created {new Date(project.created_at).toLocaleDateString(undefined, {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric'
+                                })}</span>
+                            </div>
+                        </div>
                       </Card>
                     </button>
-                  ))}
+                  );
+                  })}
 
-                  <Link href="/dashboard/projects/create" className="w-full text-left group">
-                    <Card className="flex flex-col h-full items-center justify-center border-dashed hover:border-primary transition-colors">
-                      <CardContent className="text-center">
-                        <Plus className="h-8 w-8 mx-auto text-muted-foreground group-hover:text-primary" />
-                        <p className="mt-2 font-medium">New Project</p>
+                  <Link href="/dashboard/projects/create" className="w-full text-left group outline-none">
+                    <Card className="flex flex-col h-36 items-center justify-center border-dashed border-2 bg-transparent hover:bg-card/30 hover:border-primary/50 transition-all duration-300 hover:shadow-[0_0_2rem_-0.5rem_#ffffff10] hover:-translate-y-1">
+                      <CardContent className="text-center p-6 flex flex-col items-center justify-center h-full w-full">
+                        <div className="p-3 rounded-full bg-muted/50 group-hover:bg-primary/10 transition-colors mb-3">
+                            <Plus className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
+                        </div>
+                        <p className="font-semibold text-muted-foreground group-hover:text-foreground transition-colors">Create New Project</p>
                       </CardContent>
                     </Card>
                   </Link>
@@ -124,11 +156,6 @@ export default function SelectProjectPage() {
                 {projects.length === 0 && (
                   <div className="col-span-full text-center text-muted-foreground py-10">
                     <p>No projects yet.</p>
-                    <Button variant="link" asChild>
-                      <Link href="/dashboard/projects/create">
-                        Create your first project
-                      </Link>
-                    </Button>
                   </div>
                 )}
               </>

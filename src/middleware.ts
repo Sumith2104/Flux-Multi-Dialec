@@ -50,11 +50,16 @@ export async function middleware(request: NextRequest) {
   }
   // If user is not logged in...
   else {
+    // Intercept standalone /login and /signup requests and send to homepage modals
+    if (pathname === '/login' || pathname === '/signup') {
+        return NextResponse.redirect(new URL('/', request.url));
+    }
+
     // allow public access to marketing pages: '/', '/pricing', etc.
-    const isPublicStaticPage = ['/', '/pricing', '/privacy', '/terms', '/docs', '/contact'].includes(pathname);
+    const isPublicStaticPage = ['/', '/pricing', '/privacy', '/terms', '/docs', '/contact', '/reset-password'].includes(pathname);
 
     // and tries to access a protected page, redirect to root
-    if (!isAuthPage && !isPublicStaticPage && !pathname.startsWith('/api/')) {
+    if (!isPublicStaticPage && !pathname.startsWith('/api/')) {
       return NextResponse.redirect(new URL('/', request.url));
     }
   }
