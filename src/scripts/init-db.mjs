@@ -150,6 +150,32 @@ async function initDb() {
             )
         `);
 
+        console.log("🔨 Creating Table: fluxbase_global.storage_buckets");
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS fluxbase_global.storage_buckets (
+                id VARCHAR(128) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+                project_id VARCHAR(128) NOT NULL REFERENCES fluxbase_global.projects(project_id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL,
+                is_public BOOLEAN DEFAULT false,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (project_id, name)
+            )
+        `);
+
+        console.log("🔨 Creating Table: fluxbase_global.storage_objects");
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS fluxbase_global.storage_objects (
+                id VARCHAR(128) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+                bucket_id VARCHAR(128) NOT NULL REFERENCES fluxbase_global.storage_buckets(id) ON DELETE CASCADE,
+                project_id VARCHAR(128) NOT NULL REFERENCES fluxbase_global.projects(project_id) ON DELETE CASCADE,
+                name VARCHAR(1024) NOT NULL,
+                s3_key TEXT NOT NULL UNIQUE,
+                size BIGINT NOT NULL DEFAULT 0,
+                mime_type VARCHAR(255),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
         await client.query('COMMIT');
         console.log("✅ SUCCESS: Global Schemas and Metadata Tables Provisioned.");
     } catch (e) {

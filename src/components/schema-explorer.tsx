@@ -43,7 +43,8 @@ export function SchemaExplorer({ projectId, onInsertQuery }: { projectId?: strin
         queryFn: () => fetchSchema(projectId!),
         enabled: !!projectId,
         refetchInterval: 5000, // Poll every 5s silently
-        staleTime: 4000, 
+        staleTime: 5 * 60 * 1000, // 5 minutes
+        gcTime: 30 * 60 * 1000, // Keep in memory for 30 minutes even if unmounted
     });
 
     const toggleFolder = (folder: string) => {

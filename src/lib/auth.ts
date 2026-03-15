@@ -34,13 +34,15 @@ export async function getCurrentUserId(): Promise<string | null> {
  * Creates a JWT session cookie from a raw user ID.
  */
 export async function createSessionCookie(uid: string) {
-    const expiresIn = 60 * 60 * 24 * 5; // 5 days in seconds
+    const expiresIn = 60 * 60 * 24 * 30; // 30 days in seconds
     try {
         const sessionCookie = jwt.sign({ uid }, JWT_SECRET, { expiresIn });
         const isProduction = process.env.NODE_ENV === 'production';
+        const expiresAt = new Date(Date.now() + expiresIn * 1000);
 
         (await cookies()).set('session', sessionCookie, {
-            maxAge: expiresIn * 1000,
+            expires: expiresAt,
+            maxAge: expiresIn,
             httpOnly: true,
             secure: isProduction,
             path: '/',

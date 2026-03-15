@@ -127,6 +127,33 @@ export function EditorClient({
     const [sortConfig, setSortConfig] = useState<{ field: string; direction: 'asc' | 'desc' } | null>(null);
     const [filterConfig, setFilterConfig] = useState<{ field: string; operator: string; value: string } | null>(null);
 
+    // Load saved filters/sorts when table changes
+    useEffect(() => {
+        if (!projectId || !tableName) return;
+        try {
+            const savedSort = localStorage.getItem(`sort_${projectId}_${tableName}`);
+            const savedFilter = localStorage.getItem(`filter_${projectId}_${tableName}`);
+            setSortConfig(savedSort ? JSON.parse(savedSort) : null);
+            setFilterConfig(savedFilter ? JSON.parse(savedFilter) : null);
+        } catch (e) {
+            console.error("Failed to parse cached table view state", e);
+        }
+    }, [projectId, tableName]);
+
+    // Save sort selection
+    useEffect(() => {
+        if (!projectId || !tableName) return;
+        if (sortConfig) localStorage.setItem(`sort_${projectId}_${tableName}`, JSON.stringify(sortConfig));
+        else localStorage.removeItem(`sort_${projectId}_${tableName}`);
+    }, [sortConfig, projectId, tableName]);
+
+    // Save filter selection
+    useEffect(() => {
+        if (!projectId || !tableName) return;
+        if (filterConfig) localStorage.setItem(`filter_${projectId}_${tableName}`, JSON.stringify(filterConfig));
+        else localStorage.removeItem(`filter_${projectId}_${tableName}`);
+    }, [filterConfig, projectId, tableName]);
+
     useEffect(() => {
         setConstraints(initialConstraints);
     }, [initialConstraints]);

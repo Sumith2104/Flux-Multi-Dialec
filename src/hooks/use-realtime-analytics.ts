@@ -21,6 +21,7 @@ export function useRealtimeAnalytics(projectId: string | undefined): AnalyticsSt
         enabled: !!projectId,
         refetchInterval: 5000,
         staleTime: 4000,
+        gcTime: 30 * 60 * 1000, // Keep in memory for 30 minutes
     });
 
     return data || null;

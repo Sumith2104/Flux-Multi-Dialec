@@ -59,7 +59,7 @@ export async function getAnalyticsStatsAction(projectId: string) {
         }
 
         try {
-            await redis.set(cacheKey, stats, { ex: 300 }); // 5 minutes cache
+            await redis.set(cacheKey, stats, { ex: 5 }); // 5 seconds cache to match frontend polling
         } catch (e) {
             console.warn('Redis write error for analytics stats:', e);
         }
