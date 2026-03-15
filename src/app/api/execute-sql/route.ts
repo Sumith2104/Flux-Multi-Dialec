@@ -69,7 +69,6 @@ export async function POST(request: Request) {
             try {
                 const cached = await redis.get<CacheEntry>(cacheKey);
                 if (cached && cached.expiresAt > Date.now()) {
-                    console.log(`[DEBUG] Serving Upstash Redis cached result for query: ${query.substring(0, 50)}...`);
                     return NextResponse.json({
                         success: true,
                         result: cached.result,
@@ -85,15 +84,9 @@ export async function POST(request: Request) {
             }
         }
 
-        console.log('[DEBUG] execute-sql Project Found Check:');
-        console.log(`[DEBUG] Requested Project ID: ${projectId}`);
-        console.log(`[DEBUG] Authenticated User ID: ${userId}`);
-
         const project = await getProjectById(projectId, userId);
 
-        console.log(`[DEBUG] Project Found: ${!!project}`);
         if (!project) {
-            console.error(`[DEBUG] Project Not Found. UserId: ${userId}, ProjectId: ${projectId}`);
             return NextResponse.json({ success: false, error: { message: 'Project not found', code: 'NOT_FOUND' } }, { status: 404 });
         }
 

@@ -33,6 +33,11 @@ const sidebarNavItems = [
         href: "/settings/ai",
         icon: Bot,
     },
+    {
+        title: "Documentation",
+        href: "/settings/docs",
+        icon: Activity,
+    },
 ];
 
 export default function SettingsLayout({ children }: { children: ReactNode }) {
@@ -52,7 +57,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
             
             <div className="flex flex-col space-y-8 lg:flex-row lg:space-x-12 lg:space-y-0">
                 <aside className="lg:w-1/4">
-                    <nav className="flex space-x-2 lg:flex-col lg:space-x-0 lg:space-y-1">
+                    <nav className="flex space-x-2 lg:flex-col lg:space-x-0 lg:space-y-1 overflow-x-auto pb-2 lg:pb-0 hide-scrollbar">
                         {sidebarNavItems.map((item) => {
                             const Icon = item.icon;
                             const isActive = pathname === item.href;
@@ -62,7 +67,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
                                     key={item.href}
                                     href={item.href}
                                     className={cn(
-                                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted hover:text-foreground",
+                                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted hover:text-foreground flex-shrink-0 whitespace-nowrap",
                                         isActive ? "bg-muted text-primary" : "text-muted-foreground"
                                     )}
                                 >

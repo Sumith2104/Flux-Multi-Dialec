@@ -1,7 +1,0 @@
-Error: `cookies` was called outside a request scope. Read more: https://nextjs.org/docs/messages/next-dynamic-api-wrong-context
-    at throwForMissingRequestStore (C:\Users\sumit\Downloads\Flux-ServerBased-main\Flux-ServerBased-main\Flux-ServerBased-main\node_modules\next\src\server\app-render\work-unit-async-storage.external.ts:335:9)
-    at cookies (C:\Users\sumit\Downloads\Flux-ServerBased-main\Flux-ServerBased-main\Flux-ServerBased-main\node_modules\next\src\server\request\cookies.ts:177:30)
-    at getCurrentUserId (C:\Users\sumit\Downloads\Flux-ServerBased-main\Flux-ServerBased-main\Flux-ServerBased-main\src\lib\auth.ts:19:34)
-    at getTableData (C:\Users\sumit\Downloads\Flux-ServerBased-main\Flux-ServerBased-main\Flux-ServerBased-main\src\lib\data.ts:959:44)
-    at main (C:\Users\sumit\Downloads\Flux-ServerBased-main\Flux-ServerBased-main\Flux-ServerBased-main\src\scripts\test-getTableData.ts:27:45)
-    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)

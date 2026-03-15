@@ -127,7 +127,7 @@ export default function DashboardPage() {
             <div className="space-y-6">
 
                 {/* Real-time Metrics Grid */}
-                <div className="grid gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-4">
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
 
                     <SparklineCard
                         title="Total Requests"
@@ -162,12 +162,12 @@ export default function DashboardPage() {
                 {/* Charts Section */}
                 <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-7">
                     {/* Line Chart takes up more space */}
-                    <div className="col-span-4">
+                    <div className="col-span-1 lg:col-span-4">
                         <RealtimeLineChart projectId={selectedProject.project_id} />
                     </div>
 
                     {/* Storage Chart takes up less */}
-                    <div className="col-span-3">
+                    <div className="col-span-1 lg:col-span-3">
                         {analytics && analytics.tables.length > 0 ? (
                             <StorageChart data={analytics.tables} />
                         ) : (
@@ -189,7 +189,7 @@ export default function DashboardPage() {
                     </CardHeader>
                     <CardContent>
                         {tables.length > 0 ? (
-                            <div className="border rounded-lg">
+                            <div className="border rounded-lg overflow-x-auto">
                                 <ShadcnTable>
                                     <TableHeader>
                                         <TableRow>

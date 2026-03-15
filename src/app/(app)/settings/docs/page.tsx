@@ -1,34 +1,39 @@
 import * as React from 'react';
-import Link from 'next/link';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download } from 'lucide-react';
+import { Download, ExternalLink } from 'lucide-react';
 
-export default function DocsPage() {
+export default function settingsDocsPage() {
     return (
-        <div className="flex flex-col min-h-screen bg-background text-foreground overflow-x-hidden pt-12 pb-24">
-            <main className="max-w-4xl mx-auto w-full px-6 space-y-12">
-                <Link href="/" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                    &larr; Back to Home
-                </Link>
-
-                <div className="space-y-4">
-                    <h1 className="text-4xl font-bold tracking-tight">Fluxbase Documentation</h1>
-                    <p className="text-lg text-muted-foreground">
-                        Connect your applications directly to Fluxbase databases using standard HTTP REST, direct MySQL connections, or utilize our built-in <strong>Webhooks</strong> and <strong>Storage</strong> services.
-                    </p>
+        <div className="space-y-6 max-w-4xl">
+            <div className="flex flex-col gap-4">
+                <h2 className="text-2xl font-bold tracking-tight">Fluxbase Documentation</h2>
+                <p className="text-muted-foreground italic text-sm">
+                    This is a copy of the official documentation for quick reference within your settings.
+                </p>
+                <div className="flex gap-4">
                     <a
                         href="/fluxbase-integration-guide.pdf"
                         download="Fluxbase-Integration-Guide.pdf"
-                        className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors"
+                        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors w-fit"
                     >
                         <Download className="h-4 w-4" />
-                        Download Integration Guide (PDF)
+                        Download PDF Guide
+                    </a>
+                    <a
+                        href="/docs"
+                        target="_blank"
+                        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors w-fit"
+                    >
+                        <ExternalLink className="h-4 w-4" />
+                        Open Full Screen
                     </a>
                 </div>
+            </div>
 
-                <section className="space-y-6">
-                    <h2 className="text-2xl font-semibold border-b pb-2">1. Essential Requirements</h2>
-                    <ul className="list-disc list-inside space-y-3 text-muted-foreground">
+            <div className="space-y-12">
+                <section className="space-y-4">
+                    <h2 className="text-xl font-semibold border-b pb-2">1. Essential Requirements</h2>
+                    <ul className="list-disc list-inside space-y-2 text-sm text-muted-foreground">
                         <li><strong className="text-foreground">Fluxbase Project:</strong> You must have an active project initialized safely in your dashboard.</li>
                         <li><strong className="text-foreground">Database Credentials:</strong> Obtain your project database URL and safe credentials from your dashboard settings.</li>
                         <li><strong className="text-foreground">REST API Token:</strong> Required for both SQL execution and Storage/Webhook management.</li>
@@ -36,8 +41,8 @@ export default function DocsPage() {
                 </section>
 
                 <section className="space-y-6">
-                    <h2 className="text-2xl font-semibold border-b pb-2">2. Universal Language Setup (HTTP REST & MySQL)</h2>
-                    <p className="text-muted-foreground">Interact with Fluxbase entirely via standard HTTP networking or official MySQL drivers.</p>
+                    <h2 className="text-xl font-semibold border-b pb-2">2. Universal Language Setup</h2>
+                    <p className="text-sm text-muted-foreground">Interact with Fluxbase entirely via standard HTTP networking or official MySQL drivers.</p>
 
                     <Tabs defaultValue="nodejs" className="w-full mt-4">
                         <TabsList className="mb-4 flex flex-wrap h-auto gap-2 bg-muted/50 justify-start p-1 rounded-lg">
@@ -53,7 +58,7 @@ export default function DocsPage() {
 
                         <div className="mt-4">
                             <TabsContent value="nodejs">
-                                <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-sm text-card-foreground">
+                                <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-xs text-card-foreground">
                                     <code>{`// Execute an SQL query over native Node.js fetch
 async function fetchUsers() {
   try {
@@ -87,7 +92,7 @@ fetchUsers().then(console.log);`}</code>
                             </TabsContent>
 
                             <TabsContent value="python">
-                                <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-sm text-card-foreground">
+                                <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-xs text-card-foreground">
                                     <code>{`import os
 import requests
 
@@ -119,7 +124,7 @@ print(users)`}</code>
                             </TabsContent>
 
                             <TabsContent value="go">
-                                <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-sm text-card-foreground">
+                                <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-xs text-card-foreground">
                                     <code>{`import (
     "database/sql"
     "fmt"
@@ -152,7 +157,7 @@ func main() {
                             </TabsContent>
 
                             <TabsContent value="java">
-                                <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-sm text-card-foreground">
+                                <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-xs text-card-foreground">
                                     <code>{`import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -184,7 +189,7 @@ public class FluxbaseExample {
                             </TabsContent>
 
                             <TabsContent value="ruby">
-                                <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-sm text-card-foreground">
+                                <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-xs text-card-foreground">
                                     <code>{`require 'uri'
 require 'net/http'
 require 'json'
@@ -208,7 +213,7 @@ puts response.read_body`}</code>
                             </TabsContent>
 
                             <TabsContent value="php">
-                                <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-sm text-card-foreground">
+                                <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-xs text-card-foreground">
                                     <code>{`$dsn = 'mysql:host=db.fluxbase.io;dbname=project_123_schema;charset=utf8mb4';
 $user = 'project_123_admin';
 $password = 'your_super_secret_token';
@@ -232,7 +237,7 @@ try {
                             </TabsContent>
 
                             <TabsContent value="rust">
-                                <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-sm text-card-foreground">
+                                <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-xs text-card-foreground">
                                     <code>{`use sqlx::mysql::MySqlPoolOptions;
 
 #[tokio::main]
@@ -256,7 +261,7 @@ async fn main() -> Result<(), sqlx::Error> {
                             </TabsContent>
 
                             <TabsContent value="curl">
-                                <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-sm text-card-foreground">
+                                <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-xs text-card-foreground">
                                     <code>{`# You can test your queries directly in your terminal using cURL
 curl -X POST "https://api.fluxbase.io/api/execute-sql" \\
   -H "Authorization: Bearer your_super_secret_token" \\
@@ -269,33 +274,22 @@ curl -X POST "https://api.fluxbase.io/api/execute-sql" \\
                 </section>
 
                 <section className="space-y-6">
-                    <h2 className="text-2xl font-semibold border-b pb-2">3. Webhooks & Storage</h2>
-                    <p className="text-muted-foreground">
+                    <h2 className="text-xl font-semibold border-b pb-2">3. Webhooks & Storage</h2>
+                    <p className="text-sm text-muted-foreground">
                         Fluxbase provides advanced services for handling real-time data events and file management.
                     </p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="bg-card border p-5 rounded-xl space-y-3">
-                            <h3 className="font-semibold text-lg">Webhooks</h3>
-                            <p className="text-sm text-muted-foreground">Receive real-time POST notifications when rows are inserted, updated, or deleted.</p>
+                        <div className="bg-card border p-4 rounded-xl space-y-2">
+                            <h3 className="font-semibold text-base">Webhooks</h3>
+                            <p className="text-xs text-muted-foreground">Receive real-time POST notifications when rows are inserted, updated, or deleted.</p>
                         </div>
-                        <div className="bg-card border p-5 rounded-xl space-y-3">
-                            <h3 className="font-semibold text-lg">Storage</h3>
-                            <p className="text-sm text-muted-foreground">Securely upload and serve files with built-in S3 integration and presigned URLs.</p>
+                        <div className="bg-card border p-4 rounded-xl space-y-2">
+                            <h3 className="font-semibold text-base">Storage</h3>
+                            <p className="text-xs text-muted-foreground">Securely upload and serve files with built-in S3 integration and presigned URLs.</p>
                         </div>
-                    </div>
-                    <div className="bg-muted/30 p-6 rounded-xl border border-dashed text-center space-y-4">
-                        <p className="text-sm font-medium">Full implementation details for Webhooks and Storage are available in the integration guide.</p>
-                        <a
-                            href="/fluxbase-integration-guide.pdf"
-                            className="inline-flex items-center gap-2 text-primary font-semibold hover:underline"
-                        >
-                            <Download className="h-4 w-4" />
-                            View Full Integration Guide (PDF)
-                        </a>
                     </div>
                 </section>
-
-            </main>
+            </div>
         </div>
     );
 }

@@ -147,7 +147,7 @@ export default function Dock({
     <motion.div
       onMouseMove={(e) => mouseX.set(e.pageX)}
       onMouseLeave={() => mouseX.set(Infinity)}
-      className={`flex h-16 items-end gap-3 rounded-2xl border border-border/40 bg-background/70 shadow-[0_8px_32px_rgba(0,0,0,0.4)] ring-1 ring-white/5 px-3 pb-3 backdrop-blur-2xl ${className}`}
+      className={`flex h-16 items-end gap-3 rounded-2xl border border-border/40 bg-background/70 shadow-[0_8px_32px_rgba(0,0,0,0.4)] ring-1 ring-white/5 px-3 pb-3 backdrop-blur-2xl max-w-[calc(100vw-2rem)] overflow-x-auto overflow-y-hidden ${className}`}
       role="toolbar"
       aria-label="Application dock"
     >

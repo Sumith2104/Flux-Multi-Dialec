@@ -591,6 +591,193 @@ addH2('Support');
 addBullet('Web:   https://fluxbase.vercel.app/docs');
 addBullet('Email: sumithsumith4567890@gmail.com');
 
+// ─── WEBHOOKS ─────────────────────────────────────────────────────────────────
+newPage();
+addTitle('Webhooks');
+addText(
+    'Webhooks let Fluxbase notify your external application in real-time whenever data changes in a table — ' +
+    'a row is inserted, updated, or deleted. Fluxbase fires a POST request to your configured URL within ~1–2 seconds of the event.'
+);
+
+addAlert('How It Works',
+    'Row changes in Fluxbase → Fluxbase fires POST to your URL → Your app receives the payload and reacts (send notifications, sync data, trigger automations, etc.)',
+    'info'
+);
+
+addH2('Webhook Payload');
+addText('Every webhook delivers this JSON body to your endpoint:');
+addCodeBlock([
+    '{',
+    '  "event_type": "row.inserted",',
+    '  "table_id":   "matches",',
+    '  "timestamp":  "2026-03-15T11:00:00.000Z",',
+    '  "data": {',
+    '    "new": { "id": "abc123", "user_a": "sumit", "status": "pending" },',
+    '    "old": null',
+    '  }',
+    '}',
+], 'Webhook Payload (JSON)');
+
+addH3('Payload Fields', DARK);
+addBullet('"event_type" — One of: row.inserted | row.updated | row.deleted');
+addBullet('"table_id"   — The exact table name where the event occurred.');
+addBullet('"timestamp"  — ISO-8601 UTC timestamp when the event fired.');
+addBullet('"data.new"   — New row values (present on row.inserted and row.updated).');
+addBullet('"data.old"   — Previous row values (present on row.updated and row.deleted).');
+
+addH2('Step 1 — Create a Webhook Receiver in Your App');
+addText('Add an API route to your application to receive and process the events (Next.js example):');
+addCodeBlock([
+    '// src/app/api/webhook/fluxbase/route.ts',
+    "import { NextRequest, NextResponse } from 'next/server';",
+    '',
+    'export async function POST(req: NextRequest) {',
+    '  const { event_type, table_id, data } = await req.json();',
+    '',
+    "  if (table_id === 'matches' && event_type === 'row.inserted') {",
+    '    await sendMatchNotification(data.new.user_b, data.new.id);',
+    '  }',
+    '',
+    "  if (table_id === 'messages' && event_type === 'row.inserted') {",
+    '    await broadcastToUser(data.new.recipient_id, data.new);',
+    '  }',
+    '',
+    '  return NextResponse.json({ ok: true });',
+    '}',
+], 'TypeScript (Next.js)');
+
+addH2('Step 2 — Register the Webhook in Fluxbase');
+addText('Go to Settings → Webhooks → Add Webhook and fill in the following:');
+addBullet('Name:  A descriptive label (e.g. "Match Listener")');
+addBullet('URL:   The public URL of your receiver endpoint');
+addBullet('Event: row.inserted | row.updated | row.deleted | * for all');
+addBullet('Table: A specific table name, or * to listen to all tables');
+
+addH2('Step 3 — Test Your Webhook');
+addBullet('Use https://webhook.site as a temporary URL to inspect payloads live.');
+addBullet('Insert or update a row via the Table Editor or SQL editor.');
+addBullet('The webhook fires within 1–2 seconds and you will see the payload arrive.');
+addBullet('Check the X-Fluxbase-Event request header to easily filter by event type.');
+
+addAlert('Security Tip',
+    'Register a webhook Secret in Fluxbase. Your receiver endpoint can then verify the X-Fluxbase-Signature header using HMAC-SHA256 to confirm requests are genuine.',
+    'warn'
+);
+
+// ─── STORAGE ─────────────────────────────────────────────────────────────────
+newPage();
+addTitle('Storage');
+addText(
+    'Fluxbase Storage allows you to upload, manage and serve files (images, PDFs, videos, CSVs) ' +
+    'backed by AWS S3. All files are private by default — you use short-lived presigned URLs to serve them securely.'
+);
+
+addH2('Storage Workflow');
+addCodeBlock([
+    '1. Create a Bucket  —  a logical container for your files',
+    '2. Upload a File    →  POST /api/storage/upload  (multipart/form-data)',
+    '3. Save s3_key      —  store the returned s3_key in your own database table',
+    '4. Serve the file   →  GET /api/storage/url?s3Key=...  →  15-min presigned URL',
+    '5. Render           →  <img src={url} /> or trigger a download',
+], 'Workflow');
+
+addH2('Bucket Management');
+
+addH3('List Buckets — GET /api/storage/buckets', DARK);
+addCodeBlock([
+    'GET  /api/storage/buckets?projectId=YOUR_PROJECT_ID',
+    'Authorization: Bearer YOUR_API_KEY',
+    '',
+    '// Response',
+    '{ "success": true, "buckets": [{ "id": "...", "name": "profile-pictures", "is_public": false }] }',
+], 'HTTP');
+
+addH3('Create a Bucket — POST /api/storage/buckets', DARK);
+addCodeBlock([
+    'POST /api/storage/buckets',
+    'Authorization: Bearer YOUR_API_KEY',
+    'Content-Type: application/json',
+    '',
+    '{ "projectId": "YOUR_PROJECT_ID", "name": "profile-pictures", "isPublic": false }',
+    '',
+    '// Name rules: lowercase, alphanumeric + hyphens/underscores, 1-63 characters',
+    '// Response: { "success": true, "bucket": { "id": "...", "name": "..." } }',
+], 'HTTP');
+
+addH2('Uploading a File — POST /api/storage/upload');
+addCodeBlock([
+    'POST /api/storage/upload',
+    'Authorization: Bearer YOUR_API_KEY',
+    'Content-Type: multipart/form-data',
+    '',
+    'Form fields:',
+    '  file      — the File object (from <input type="file">)',
+    '  bucketId  — destination bucket ID',
+    '  projectId — your project ID',
+    '',
+    '// Response',
+    '{',
+    '  "success": true,',
+    '  "file": {',
+    '    "id": "...", "name": "avatar.jpg",',
+    '    "s3_key": "project_xxx/buckets/yyy/1711000000_avatar.jpg",',
+    '    "size": 204800, "mime_type": "image/jpeg"',
+    '  }',
+    '}',
+], 'HTTP');
+
+addH3('JavaScript Example', DARK);
+addCodeBlock([
+    "const form = new FormData();",
+    "form.append('file', document.getElementById('file-input').files[0]);",
+    "form.append('bucketId', 'YOUR_BUCKET_ID');",
+    "form.append('projectId', 'YOUR_PROJECT_ID');",
+    '',
+    "const res = await fetch('https://your-fluxbase.app/api/storage/upload', {",
+    "  method: 'POST',",
+    "  headers: { 'Authorization': 'Bearer YOUR_API_KEY' },",
+    "  body: form",
+    "});",
+    "const { file } = await res.json();",
+    "// Store file.s3_key in your DB, then use it later to get a download URL",
+], 'JavaScript');
+
+addH2('Getting a Download URL — GET /api/storage/url');
+addText('All files are private. Call this endpoint to get a 15-minute presigned URL to serve a file:');
+addCodeBlock([
+    'GET /api/storage/url?s3Key=YOUR_S3_KEY&projectId=YOUR_PROJECT_ID',
+    'Authorization: Bearer YOUR_API_KEY',
+    '',
+    '// Response',
+    '{ "success": true, "url": "https://s3.amazonaws.com/...", "expiresIn": 900 }',
+], 'HTTP');
+
+addH2('List Files — GET /api/storage/files');
+addCodeBlock([
+    'GET /api/storage/files?bucketId=YOUR_BUCKET_ID&projectId=YOUR_PROJECT_ID',
+    'Authorization: Bearer YOUR_API_KEY',
+    '',
+    '// Response',
+    '{ "success": true, "files": [{ "id", "name", "s3_key", "size", "mime_type", "created_at" }] }',
+], 'HTTP');
+
+addH2('Delete a File — DELETE /api/storage/files');
+addCodeBlock([
+    'DELETE /api/storage/files',
+    'Authorization: Bearer YOUR_API_KEY',
+    'Content-Type: application/json',
+    '',
+    '{ "fileId": "...", "s3Key": "...", "projectId": "YOUR_PROJECT_ID" }',
+    '',
+    '// Response: { "success": true }',
+], 'HTTP');
+
+addH2('Plan Limits & Supported File Types');
+addBullet('Free: up to 50 MB per file  |  Pro: 500 MB per file  |  Max: 2 GB per file');
+addBullet('Images: jpeg, png, gif, webp, svg');
+addBullet('Documents: pdf, txt, csv, json');
+addBullet('Video: mp4, webm  |  Audio: mp3, wav  |  Archives: zip');
+
 doc.setFontSize(9);
 doc.setTextColor(70, 70, 70);
 doc.text('© 2025 Fluxbase Inc. All rights reserved.  —  v2.0 corrected edition', MARGIN, doc.internal.pageSize.getHeight() - 30);

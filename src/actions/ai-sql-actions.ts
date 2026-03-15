@@ -36,7 +36,6 @@ export async function generateSQLAction(projectId: string, userInput: string) {
                 const cachedSchema = await redis.get(`schema_inference_${projectId}`) as any;
 
                 if (cachedSchema && cachedSchema.tables) {
-                    console.log(`[AI SQL Engine] Serving instantly from Edge Redis Cache for project ${projectId}`);
                     for (const [tableName, columns] of Object.entries(cachedSchema.tables)) {
                         const cols = columns as any[];
                         const columnsDesc = cols.map(col => `${col.name} (${col.type})`).join(', ');
@@ -50,7 +49,6 @@ export async function generateSQLAction(projectId: string, userInput: string) {
             // Fallback to DB if Redis is empty or errors
             if (!schemaDescription) {
                 const tables = await getTablesForProject(projectId);
-                console.log('[DEBUG] generateSQLAction tables (DB Fallback):', tables.length);
 
                 for (const table of tables) {
                     const columns = await getColumnsForTable(projectId, table.table_id);
@@ -84,8 +82,6 @@ export async function generateSQLAction(projectId: string, userInput: string) {
                 error: "The AI generated a destructive query (e.g. DROP, DELETE, TRUNCATE) which is blocked by your current project settings. Go to Settings -> AI Assistant to allow this behavior."
             };
         }
-
-        console.log("[AI SQL Engine] Analysis Reasoning:", result.reasoning);
 
         // Ensure no markdown blocks snuck in
         let finalQuery = result.sqlQuery || '';

@@ -209,7 +209,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                         <Badge
                             variant="outline"
                             className={cn(
-                                "transition-colors shadow-none text-[10px] uppercase font-bold tracking-wider rounded-md",
+                                "hidden sm:inline-flex transition-colors shadow-none text-[10px] uppercase font-bold tracking-wider rounded-md",
                                 planType === 'Max' ? "border-amber-500/50 bg-amber-500/10 text-amber-500" :
                                     planType === 'Pro' ? "border-blue-500/50 bg-blue-500/10 text-blue-500" :
                                         "border-muted-foreground/30 bg-muted/10 text-muted-foreground"
@@ -218,7 +218,9 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                             {planType}
                         </Badge>
                     )}
-                    <TimezoneSelector />
+                    <div className="hidden md:block">
+                        <TimezoneSelector />
+                    </div>
                 </div>
                 <div className="flex-1"></div>
                 {userId ? (

@@ -1009,7 +1009,6 @@ export async function getTableData(
         // Check Redis Cache First
         const cachedData = await getCachedTableRows(projectId, tableName, page);
         if (cachedData) {
-            console.log(`[DEBUG] Serving Redis cached table data for ${tableName} page ${page}`);
             return cachedData;
         }
 

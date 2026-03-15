@@ -42,7 +42,6 @@ export async function GET(request: Request) {
         try {
             const cachedSchema = await redis.get(cacheKey) as any;
             if (cachedSchema) {
-                console.log(`[DEBUG] Serving cached schema for AI core, project ${projectId}`);
                 return NextResponse.json(cachedSchema);
             }
         } catch (e) {

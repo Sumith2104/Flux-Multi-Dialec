@@ -438,10 +438,10 @@ export function EditorClient({
 
     return (
         <>
-            <div className="flex w-full items-start h-full">
+            <div className="flex flex-col md:flex-row w-full items-start h-full">
                 {/* Sidebar */}
-                <aside className="w-64 flex-shrink-0 border-r bg-background flex flex-col h-full">
-                    <div className="p-4">
+                <aside className="w-full md:w-64 flex-shrink-0 border-b md:border-b-0 md:border-r bg-background flex flex-col h-64 md:h-full overflow-hidden">
+                    <div className="p-4 hidden md:block">
                         <h2 className="text-lg font-semibold">Table Editor</h2>
                     </div>
                     <div className="p-2">
@@ -501,16 +501,16 @@ export function EditorClient({
                 </aside>
 
                 {/* Main Content */}
-                <main className="flex-1 flex flex-col overflow-hidden">
+                <main className="flex-1 flex flex-col overflow-hidden w-full">
                     {currentTable && tableId && tableName ? (
                         <>
-                            <header className="flex min-h-14 py-2 h-auto flex-wrap sm:flex-nowrap items-center gap-4 border-b bg-background px-6 flex-shrink-0">
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <header className="flex flex-col sm:flex-row min-h-14 py-2 h-auto items-start sm:items-center gap-4 border-b bg-background px-4 sm:px-6 flex-shrink-0 overflow-x-auto">
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground shrink-0">
                                     <Table className="h-4 w-4" />
                                     <span className="font-semibold text-foreground">{currentTable.table_name}</span>
                                 </div>
                                 <Separator orientation="vertical" className="h-6" />
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 shrink-0">
                                     {tableId && tableName && projectId && initialColumns && (
                                         <>
                                             <AddRowDialog
@@ -646,7 +646,7 @@ export function EditorClient({
                                         </AlertDialogContent>
                                     </AlertDialog>
                                 </div>
-                                <div className="flex items-center gap-2 ml-auto">
+                                <div className="flex items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0 sm:ml-auto shrink-0">
                                     <Popover>
                                         <PopoverTrigger asChild>
                                             <Button variant="outline" size="sm" className={filterConfig ? 'bg-primary/10 border-primary/20 text-primary' : ''}>
@@ -745,7 +745,7 @@ export function EditorClient({
                                                 </CardDescription>
                                             </CardHeader>
                                             <CardContent>
-                                                <div className="border rounded-lg">
+                                                <div className="border rounded-lg overflow-x-auto">
                                                     <ShadcnTable>
                                                         <TableHeader>
                                                             <TableRow>

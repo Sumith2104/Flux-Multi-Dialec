@@ -36,6 +36,14 @@ export default function QueryPage() {
   const { project } = useContext(ProjectContext);
   const { toast } = useToast();
 
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile(); // Check right away on mount
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   useEffect(() => {
     if (!project?.project_id) {
       setHistory([]);
@@ -233,7 +241,7 @@ export default function QueryPage() {
 
         {/* === TOP ROW: Editor (Left) | History/AI (Right) === */}
         <ResizablePanel defaultSize={60} minSize={30} className="flex flex-col">
-          <ResizablePanelGroup direction="horizontal" className="h-full w-full">
+          <ResizablePanelGroup direction={isMobile ? "vertical" : "horizontal"} className="h-full w-full">
 
             {/* 1. LEFT SIDEBAR: Schema Explorer */}
             <ResizablePanel defaultSize={20} minSize={15} className="flex flex-col border-r bg-muted/5 min-w-[200px]">
