@@ -6,6 +6,7 @@ import { Semaphore } from 'async-mutex';
 import { LRUCache } from 'lru-cache';
 import { performance } from 'perf_hooks';
 import { getPgPool } from '@/lib/pg';
+import { ERROR_CODES, FluxbaseError, FluxbaseErrorCode } from '@/lib/error-codes';
 
 // --- 1. Environment-Aware Concurrency Tuning ---
 const GLOBAL_LIMIT = parseInt(process.env.FLUX_GLOBAL_IN_FLIGHT_LIMIT || '8000', 10);
@@ -57,7 +58,7 @@ export class SqlEngine {
         if (!this.userId) {
             this.userId = await getCurrentUserId();
         }
-        if (!this.userId) throw new Error("Unauthorized");
+        if (!this.userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
         if (!this.projectTimezone || !this.projectDialect) {
             const project = await getProjectById(this.projectId, this.userId);
@@ -70,7 +71,7 @@ export class SqlEngine {
 
     public async execute(query: string, params?: any[]): Promise<SqlResult> {
         await this.init();
-        if (!this.userId) throw new Error("Unauthorized");
+        if (!this.userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
         const queryCleaned = query
             .replace(/--.*$/gm, '') // Remove single-line comments
@@ -238,7 +239,19 @@ export class SqlEngine {
 
         } catch (e: any) {
             console.error("[AWS Native Proxy Error]", e);
-            throw new Error(`AWS Database Error: ${e.message}`);
+            
+            // Detect Syntax Error
+            const errorMessage = e.message || '';
+            let code: FluxbaseErrorCode = ERROR_CODES.SQL_EXECUTION_ERROR;
+            
+            if (errorMessage.toLowerCase().includes('syntax error') || 
+                errorMessage.toLowerCase().includes('check the manual that corresponds to your mysql server version')) {
+                code = ERROR_CODES.SQL_SYNTAX;
+            } else if (errorMessage.toLowerCase().includes('connection') || errorMessage.toLowerCase().includes('econnrefused')) {
+                code = ERROR_CODES.DATABASE_CONNECTION_ERROR;
+            }
+
+            throw new FluxbaseError(`AWS Database Error: ${errorMessage}`, code, 400);
         } finally {
             // Guarantee all acquired locks are fully released back to the event-loop queue
             tenantRelease();

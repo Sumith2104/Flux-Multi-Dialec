@@ -289,6 +289,36 @@ curl -X POST "https://api.fluxbase.io/api/execute-sql" \\
                         </div>
                     </div>
                 </section>
+
+                <section className="space-y-6">
+                    <h2 className="text-xl font-semibold border-b pb-2">4. Real-time (SSE)</h2>
+                    <p className="text-sm text-muted-foreground">
+                        Subscribe to live database changes directly using <strong>Server-Sent Events</strong>.
+                    </p>
+                    <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-xs text-card-foreground">
+                        <code>{`const eventSource = new EventSource('/api/realtime/subscribe?projectId=ID');
+eventSource.onmessage = (e) => console.log(JSON.parse(e.data));`}</code>
+                    </pre>
+                </section>
+
+                <section className="space-y-6">
+                    <h2 className="text-xl font-semibold border-b pb-2">5. Error Codes</h2>
+                    <div className="bg-card border rounded-xl overflow-hidden text-xs">
+                        <table className="w-full text-left border-collapse">
+                            <thead className="bg-muted/50">
+                                <tr>
+                                    <th className="p-2 border-b">Code</th>
+                                    <th className="p-2 border-b">Description</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                                <tr><td className="p-2 font-mono text-primary">FLUX_SQL_SYNTAX</td><td className="p-2">Syntax error in query.</td></tr>
+                                <tr><td className="p-2 font-mono text-primary">FLUX_AUTH_REQUIRED</td><td className="p-2">Token missing/expired.</td></tr>
+                                <tr><td className="p-2 font-mono text-primary">FLUX_RATE_LIMIT</td><td className="p-2">Rate limit exceeded.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
             </div>
         </div>
     );

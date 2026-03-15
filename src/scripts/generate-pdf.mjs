@@ -16,6 +16,8 @@ if (!existsSync(publicDir)) {
 
 const doc = new jsPDF({ unit: 'pt', format: 'a4' });
 
+try {
+
 const W = doc.internal.pageSize.getWidth();
 const MARGIN = 50;
 const CONTENT_W = W - MARGIN * 2;
@@ -213,7 +215,7 @@ badges.forEach(b => {
 
 doc.setFontSize(10);
 doc.setTextColor(80, 80, 80);
-doc.text(`v2.0  •  corrected edition  •  ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}`, MARGIN, doc.internal.pageSize.getHeight() - 60);
+doc.text(`v4.0  •  Enhanced edition  •  ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}`, MARGIN, doc.internal.pageSize.getHeight() - 60);
 doc.text('© 2025 Fluxbase Inc. — For developer use only.', MARGIN, doc.internal.pageSize.getHeight() - 44);
 
 // ─── PAGE 2: OVERVIEW ───────────────────────────────────────────────────────
@@ -778,11 +780,63 @@ addBullet('Images: jpeg, png, gif, webp, svg');
 addBullet('Documents: pdf, txt, csv, json');
 addBullet('Video: mp4, webm  |  Audio: mp3, wav  |  Archives: zip');
 
+// ─── REAL-TIME SSE ─────────────────────────────────────────────────────────────
+newPage();
+addTitle('Real-time (SSE)');
+addText(
+    'While Webhooks are great for server-to-server communication, Fluxbase also provides a native ' +
+    'Server-Sent Events (SSE) endpoint at /api/realtime/subscribe. This allows your dashboard or ' +
+    'mobile app to listen for database changes directly with zero setup.'
+);
+
+addCodeBlock([
+    '// Subscribe to live updates',
+    'const source = new EventSource(\'/api/realtime/subscribe?projectId=YOUR_PROJECT_ID\');',
+    '',
+    'source.onmessage = (event) => {',
+    '  const payload = JSON.parse(event.data);',
+    "  console.log('Update in table:', payload.table_name);",
+    '};'
+]);
+
+addAlert('Pro Tip', 'Use SSE for building live feeds, notification bells, or collaborative editors without building a webhook bridge.');
+
+// ─── ERROR CODES ─────────────────────────────────────────────────────────────────
+newPage();
+addTitle('Structured Error Codes');
+addText(
+    'Fluxbase APIs return standardized error objects to help you handle failures programmatically. ' +
+    'Every error response follows this structure:'
+);
+
+addCodeBlock([
+'  {',
+'    "success": false,',
+'    "error": {',
+'      "message": "Human readable reason",',
+'      "code": "FLUX_ERROR_CODE"',
+'    }',
+'  }'
+]);
+
+addH2('Common Codes');
+addBullet('FLUX_AUTH_REQUIRED: Token is missing or invalid.');
+addBullet('FLUX_SQL_SYNTAX: Your query has a typo or invalid syntax.');
+addBullet('FLUX_RATE_LIMIT: You reached the request limit for your plan.');
+addBullet('FLUX_STORAGE_FULL: Your project storage quota is exceeded.');
+addBullet('FLUX_INTERNAL_ERROR: Something went wrong on our end.');
+
 doc.setFontSize(9);
 doc.setTextColor(70, 70, 70);
-doc.text('© 2025 Fluxbase Inc. All rights reserved.  —  v2.0 corrected edition', MARGIN, doc.internal.pageSize.getHeight() - 30);
+doc.text('© 2025 Fluxbase Inc. All rights reserved.  —  v4.0 Enhanced edition', MARGIN, doc.internal.pageSize.getHeight() - 30);
 
 // ─── WRITE FILE ──────────────────────────────────────────────────────────────
 const pdfBytes = doc.output('arraybuffer');
 writeFileSync(join(publicDir, 'fluxbase-integration-guide.pdf'), Buffer.from(pdfBytes));
 console.log('✅  PDF written to public/fluxbase-integration-guide.pdf');
+
+} catch (error) {
+    console.error('FATAL ERROR DURING PDF GENERATION:');
+    console.error(error);
+    process.exit(1);
+}

@@ -283,17 +283,75 @@ curl -X POST "https://api.fluxbase.io/api/execute-sql" \\
                             <p className="text-sm text-muted-foreground">Securely upload and serve files with built-in S3 integration and presigned URLs.</p>
                         </div>
                     </div>
-                    <div className="bg-muted/30 p-6 rounded-xl border border-dashed text-center space-y-4">
-                        <p className="text-sm font-medium">Full implementation details for Webhooks and Storage are available in the integration guide.</p>
-                        <a
-                            href="/fluxbase-integration-guide.pdf"
-                            className="inline-flex items-center gap-2 text-primary font-semibold hover:underline"
-                        >
-                            <Download className="h-4 w-4" />
-                            View Full Integration Guide (PDF)
-                        </a>
+                </section>
+
+                <section className="space-y-6">
+                    <h2 className="text-2xl font-semibold border-b pb-2">4. Real-time (SSE)</h2>
+                    <p className="text-muted-foreground">
+                        Subscribe to live database changes directly from the browser or server using <strong>Server-Sent Events (SSE)</strong>. No webhook receiver required.
+                    </p>
+                    <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-sm text-card-foreground">
+                        <code>{`// Subscribe to live updates for your project
+const eventSource = new EventSource(
+  \`/api/realtime/subscribe?projectId=YOUR_PROJECT_ID\`
+);
+
+eventSource.onmessage = (event) => {
+  const payload = JSON.parse(event.data);
+  console.log('Live Update:', payload.operation, payload.table_name);
+  
+  if (payload.event_type === 'raw_sql_mutation') {
+     // Refresh your UI or local state
+  }
+};`}</code>
+                    </pre>
+                </section>
+
+                <section className="space-y-6">
+                    <h2 className="text-2xl font-semibold border-b pb-2">5. Structured Error Codes</h2>
+                    <p className="text-muted-foreground">
+                        All Fluxbase APIs return standard HTTP status codes and structured error objects for programmatic handling.
+                    </p>
+                    <div className="bg-card border rounded-xl overflow-hidden text-sm">
+                        <table className="w-full text-left border-collapse">
+                            <thead className="bg-muted/50">
+                                <tr>
+                                    <th className="p-3 border-b">Code</th>
+                                    <th className="p-3 border-b">Description</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                                <tr>
+                                    <td className="p-3 font-mono text-xs text-primary">FLUX_SQL_SYNTAX</td>
+                                    <td className="p-3 text-muted-foreground">Invalid SQL syntax in your query request.</td>
+                                </tr>
+                                <tr>
+                                    <td className="p-3 font-mono text-xs text-primary">FLUX_AUTH_REQUIRED</td>
+                                    <td className="p-3 text-muted-foreground">Token missing or expired.</td>
+                                </tr>
+                                <tr>
+                                    <td className="p-3 font-mono text-xs text-primary">FLUX_RATE_LIMIT</td>
+                                    <td className="p-3 text-muted-foreground">Too many requests. Slow down.</td>
+                                </tr>
+                                <tr>
+                                    <td className="p-3 font-mono text-xs text-primary">FLUX_STORAGE_FULL</td>
+                                    <td className="p-3 text-muted-foreground">Project storage quota reached.</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </section>
+
+                <div className="bg-muted/30 p-6 rounded-xl border border-dashed text-center space-y-4">
+                    <p className="text-sm font-medium">Full implementation details and API references are available in the updated integration guide.</p>
+                    <a
+                        href="/fluxbase-integration-guide.pdf"
+                        className="inline-flex items-center gap-2 text-primary font-semibold hover:underline"
+                    >
+                        <Download className="h-4 w-4" />
+                        Download Full Integration Guide (PDF v4.0)
+                    </a>
+                </div>
 
             </main>
         </div>

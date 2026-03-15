@@ -7,6 +7,7 @@ import { createHash } from 'crypto';
 import { redis } from '@/lib/redis';
 import { invalidateTableCache } from '@/lib/cache';
 import { Ratelimit } from '@upstash/ratelimit';
+import { ERROR_CODES, FluxbaseError } from '@/lib/error-codes';
 
 export const maxDuration = 60; // 1 minute
 
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
     const startTime = Date.now();
     try {
         const auth = await getAuthContextFromRequest(request);
-        if (!auth) return NextResponse.json({ success: false, error: { message: 'User not authenticated', code: 'AUTH_REQUIRED' } }, { status: 401 });
+        if (!auth) return NextResponse.json({ success: false, error: { message: 'User not authenticated or token expired', code: ERROR_CODES.AUTH_REQUIRED } }, { status: 401 });
         const { userId, allowedProjectId } = auth;
 
         let { projectId, query, params } = await request.json();
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
         // Enforce Scope
         if (allowedProjectId) {
             if (projectId && projectId !== allowedProjectId) {
-                return NextResponse.json({ success: false, error: { message: `API Key is scoped to project ${allowedProjectId}, but request specified ${projectId}`, code: 'SCOPE_MISMATCH' } }, { status: 403 });
+                return NextResponse.json({ success: false, error: { message: `API Key is scoped to project ${allowedProjectId}, but request specified ${projectId}`, code: ERROR_CODES.SCOPE_MISMATCH } }, { status: 403 });
             }
             // Auto-inject if missing
             if (!projectId) {
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
         }
 
         if (!projectId || !query) {
-            return NextResponse.json({ success: false, error: { message: 'Missing projectId or query', code: 'BAD_REQUEST' } }, { status: 400 });
+            return NextResponse.json({ success: false, error: { message: 'Missing projectId or query', code: ERROR_CODES.BAD_REQUEST } }, { status: 400 });
         }
 
         // Global API Rate Limiting Setup
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
         if (!rlSuccess) {
             return NextResponse.json({
                 success: false,
-                error: { message: 'Too many simultaneous queries executing. Rate limit exceeded.', code: 'RATE_LIMIT_EXCEEDED' }
+                error: { message: 'Too many simultaneous queries executing. Rate limit exceeded.', code: ERROR_CODES.RATE_LIMIT_EXCEEDED }
             }, { status: 429 });
         }
 
@@ -87,7 +88,7 @@ export async function POST(request: Request) {
         const project = await getProjectById(projectId, userId);
 
         if (!project) {
-            return NextResponse.json({ success: false, error: { message: 'Project not found', code: 'NOT_FOUND' } }, { status: 404 });
+            return NextResponse.json({ success: false, error: { message: 'Project not found', code: ERROR_CODES.PROJECT_NOT_FOUND } }, { status: 404 });
         }
 
         try {
@@ -96,7 +97,7 @@ export async function POST(request: Request) {
         } catch (limitErr: any) {
              return NextResponse.json({
                 success: false,
-                error: { message: limitErr.message || 'Limit Exceeded', code: 'LIMIT_EXCEEDED' }
+                error: { message: limitErr.message || 'Limit Exceeded', code: ERROR_CODES.RATE_LIMIT_EXCEEDED }
             }, { status: 403 });
         }
 
@@ -115,12 +116,15 @@ export async function POST(request: Request) {
         try {
             result = await engine.execute(query, params);
         } catch (e: any) {
-            // Distinguish syntax errors from execution errors if possible
+            // Check if it's a FluxbaseError
+            if (e instanceof FluxbaseError) {
+                return NextResponse.json(e.toJSON(), { status: e.status });
+            }
             return NextResponse.json({
                 success: false,
                 error: {
                     message: e.message || 'SQL Execution Error',
-                    code: 'EXECUTION_ERROR',
+                    code: ERROR_CODES.SQL_EXECUTION_ERROR,
                     hint: 'Check syntax and table names.'
                 }
             }, { status: 200 });
@@ -226,13 +230,16 @@ export async function POST(request: Request) {
 
     } catch (error: any) {
         console.error('SQL Execution Failed:', error);
+        if (error instanceof FluxbaseError) {
+            return NextResponse.json(error.toJSON(), { status: error.status });
+        }
         return NextResponse.json({
             success: false,
             error: {
                 message: error.message || 'An unexpected error occurred',
-                code: 'INTERNAL_ERROR'
+                code: ERROR_CODES.INTERNAL_ERROR
             }
-        }, { status: 200 });
+        }, { status: 500 });
     }
 }
 

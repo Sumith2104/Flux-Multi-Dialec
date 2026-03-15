@@ -3,6 +3,7 @@ import { getPgPool } from '@/lib/pg';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { getProjectById } from '@/lib/data';
 import { deleteFromS3 } from '@/lib/storage';
+import { ERROR_CODES } from '@/lib/error-codes';
 
 // GET /api/storage/files?bucketId=xxx&projectId=xxx
 export async function GET(req: NextRequest) {
@@ -11,14 +12,14 @@ export async function GET(req: NextRequest) {
     const projectId = searchParams.get('projectId');
 
     if (!bucketId || !projectId) {
-        return NextResponse.json({ error: 'bucketId and projectId required' }, { status: 400 });
+        return NextResponse.json({ success: false, error: { message: 'bucketId and projectId required', code: ERROR_CODES.BAD_REQUEST } }, { status: 400 });
     }
 
     const auth = await getAuthContextFromRequest(req);
-    if (!auth?.userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!auth?.userId) return NextResponse.json({ success: false, error: { message: 'Unauthorized', code: ERROR_CODES.UNAUTHORIZED } }, { status: 401 });
 
     const project = await getProjectById(projectId, auth.userId);
-    if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    if (!project) return NextResponse.json({ success: false, error: { message: 'Project not found', code: ERROR_CODES.PROJECT_NOT_FOUND } }, { status: 404 });
 
     const pool = getPgPool();
     const result = await pool.query(
@@ -35,13 +36,13 @@ export async function GET(req: NextRequest) {
 // DELETE /api/storage/files  body: { fileId, s3Key, projectId }
 export async function DELETE(req: NextRequest) {
     const auth = await getAuthContextFromRequest(req);
-    if (!auth?.userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!auth?.userId) return NextResponse.json({ success: false, error: { message: 'Unauthorized', code: ERROR_CODES.UNAUTHORIZED } }, { status: 401 });
 
     const body = await req.json();
     const { fileId, s3Key, projectId } = body;
 
     if (!fileId || !s3Key || !projectId) {
-        return NextResponse.json({ error: 'fileId, s3Key and projectId required' }, { status: 400 });
+        return NextResponse.json({ success: false, error: { message: 'fileId, s3Key and projectId required', code: ERROR_CODES.BAD_REQUEST } }, { status: 400 });
     }
 
     const project = await getProjectById(projectId, auth.userId);
@@ -53,7 +54,7 @@ export async function DELETE(req: NextRequest) {
         `SELECT id FROM fluxbase_global.storage_objects WHERE id = $1 AND project_id = $2`,
         [fileId, projectId]
     );
-    if (fileRes.rows.length === 0) return NextResponse.json({ error: 'File not found' }, { status: 404 });
+    if (fileRes.rows.length === 0) return NextResponse.json({ success: false, error: { message: 'File not found', code: ERROR_CODES.FILE_NOT_FOUND } }, { status: 404 });
 
     // Delete from S3 first
     try {

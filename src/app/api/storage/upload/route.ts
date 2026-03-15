@@ -3,19 +3,20 @@ import { getPgPool } from '@/lib/pg';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { getProjectById } from '@/lib/data';
 import { uploadToS3, buildS3Key, ALLOWED_MIME_TYPES, PLAN_STORAGE_LIMITS } from '@/lib/storage';
+import { ERROR_CODES } from '@/lib/error-codes';
 import crypto from 'crypto';
 
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
     const auth = await getAuthContextFromRequest(req);
-    if (!auth?.userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!auth?.userId) return NextResponse.json({ success: false, error: { message: 'Unauthorized', code: ERROR_CODES.UNAUTHORIZED } }, { status: 401 });
 
     let formData: FormData;
     try {
         formData = await req.formData();
     } catch {
-        return NextResponse.json({ error: 'Invalid form data' }, { status: 400 });
+        return NextResponse.json({ success: false, error: { message: 'Invalid form data. Ensure Multipart encoding.', code: ERROR_CODES.BAD_REQUEST } }, { status: 400 });
     }
 
     const file = formData.get('file') as File | null;
@@ -23,12 +24,12 @@ export async function POST(req: NextRequest) {
     const projectId = formData.get('projectId') as string | null;
 
     if (!file || !bucketId || !projectId) {
-        return NextResponse.json({ error: 'file, bucketId and projectId are required' }, { status: 400 });
+        return NextResponse.json({ success: false, error: { message: 'file, bucketId and projectId are required', code: ERROR_CODES.MISSING_FIELD } }, { status: 400 });
     }
 
     // Validate project access
     const project = await getProjectById(projectId, auth.userId);
-    if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    if (!project) return NextResponse.json({ success: false, error: { message: 'Project not found', code: ERROR_CODES.PROJECT_NOT_FOUND } }, { status: 404 });
 
     // Validate bucket ownership
     const pool = getPgPool();
@@ -36,12 +37,12 @@ export async function POST(req: NextRequest) {
         `SELECT id FROM fluxbase_global.storage_buckets WHERE id = $1 AND project_id = $2`,
         [bucketId, projectId]
     );
-    if (bucketRes.rows.length === 0) return NextResponse.json({ error: 'Bucket not found' }, { status: 404 });
+    if (bucketRes.rows.length === 0) return NextResponse.json({ success: false, error: { message: 'Bucket not found', code: ERROR_CODES.BUCKET_NOT_FOUND } }, { status: 404 });
 
     // Validate file type
     const mimeType = file.type || 'application/octet-stream';
     if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-        return NextResponse.json({ error: `File type not allowed: ${mimeType}` }, { status: 400 });
+        return NextResponse.json({ success: false, error: { message: `File type ${mimeType} not allowed`, code: ERROR_CODES.MIME_TYPE_NOT_ALLOWED } }, { status: 400 });
     }
 
     // Validate file size against plan
@@ -53,7 +54,11 @@ export async function POST(req: NextRequest) {
     if (file.size > maxSize) {
         const mb = (maxSize / 1024 / 1024).toFixed(0);
         return NextResponse.json({
-            error: `File too large. Your ${planType} plan allows up to ${mb} MB per file.`
+            success: false,
+            error: {
+                message: `File too large. Your ${planType} plan allows up to ${mb} MB per file.`,
+                code: ERROR_CODES.FILE_SIZE_EXCEEDED
+            }
         }, { status: 413 });
     }
 
@@ -65,7 +70,7 @@ export async function POST(req: NextRequest) {
         await uploadToS3(s3Key, buffer, mimeType);
     } catch (e: any) {
         console.error('S3 upload error:', e);
-        return NextResponse.json({ error: 'Failed to upload to S3: ' + e.message }, { status: 500 });
+        return NextResponse.json({ success: false, error: { message: 'S3 storage backend failure', code: ERROR_CODES.INTERNAL_ERROR } }, { status: 500 });
     }
 
     // Save metadata to DB
