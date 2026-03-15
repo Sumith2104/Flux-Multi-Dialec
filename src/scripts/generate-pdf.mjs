@@ -714,7 +714,7 @@ addCodeBlock([
     '',
     'Form fields:',
     '  file      — the File object (from <input type="file">)',
-    '  bucketId  — destination bucket ID',
+    '  bucketId  — destination bucket ID or Bucket Name (e.g. "photos")',
     '  projectId — your project ID',
     '',
     '// Response',
@@ -732,7 +732,7 @@ addH3('JavaScript Example', DARK);
 addCodeBlock([
     "const form = new FormData();",
     "form.append('file', document.getElementById('file-input').files[0]);",
-    "form.append('bucketId', 'YOUR_BUCKET_ID');",
+    "form.append('bucketId', 'photos'); // Supports ID or Name",
     "form.append('projectId', 'YOUR_PROJECT_ID');",
     '',
     "const res = await fetch('https://your-fluxbase.app/api/storage/upload', {",

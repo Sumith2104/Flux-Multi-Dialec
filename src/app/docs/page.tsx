@@ -280,7 +280,7 @@ curl -X POST "https://api.fluxbase.io/api/execute-sql" \\
                         </div>
                         <div className="bg-card border p-5 rounded-xl space-y-3">
                             <h3 className="font-semibold text-lg">Storage</h3>
-                            <p className="text-sm text-muted-foreground">Securely upload and serve files with built-in S3 integration and presigned URLs.</p>
+                            <p className="text-sm text-muted-foreground">Securely upload and serve files with built-in S3 integration. <strong>Pro Tip:</strong> You can identify buckets by their <code>id</code> (UUID) or their <code>name</code> (e.g. "photos").</p>
                         </div>
                     </div>
                 </section>

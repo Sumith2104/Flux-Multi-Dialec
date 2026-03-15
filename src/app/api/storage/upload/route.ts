@@ -31,13 +31,16 @@ export async function POST(req: NextRequest) {
     const project = await getProjectById(projectId, auth.userId);
     if (!project) return NextResponse.json({ success: false, error: { message: 'Project not found', code: ERROR_CODES.PROJECT_NOT_FOUND } }, { status: 404 });
 
-    // Validate bucket ownership
+    // Validate bucket ownership (supports both ID or Name)
     const pool = getPgPool();
     const bucketRes = await pool.query(
-        `SELECT id FROM fluxbase_global.storage_buckets WHERE id = $1 AND project_id = $2`,
+        `SELECT id, name FROM fluxbase_global.storage_buckets WHERE (id = $1 OR name = $1) AND project_id = $2`,
         [bucketId, projectId]
     );
     if (bucketRes.rows.length === 0) return NextResponse.json({ success: false, error: { message: 'Bucket not found', code: ERROR_CODES.BUCKET_NOT_FOUND } }, { status: 404 });
+    
+    // IMPORTANT: use the canonical UUID from the database for consistency in S3 keys and metadata
+    const actualBucketId = bucketRes.rows[0].id;
 
     // Validate file type
     const mimeType = file.type || 'application/octet-stream';
@@ -64,7 +67,7 @@ export async function POST(req: NextRequest) {
 
     // Upload to S3
     const buffer = Buffer.from(await file.arrayBuffer());
-    const s3Key = buildS3Key(projectId, bucketId, file.name);
+    const s3Key = buildS3Key(projectId, actualBucketId, file.name);
 
     try {
         await uploadToS3(s3Key, buffer, mimeType);
@@ -78,7 +81,7 @@ export async function POST(req: NextRequest) {
     const result = await pool.query(
         `INSERT INTO fluxbase_global.storage_objects (id, bucket_id, project_id, name, s3_key, size, mime_type)
          VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-        [id, bucketId, projectId, file.name, s3Key, file.size, mimeType]
+        [id, actualBucketId, projectId, file.name, s3Key, file.size, mimeType]
     );
 
     return NextResponse.json({ success: true, file: result.rows[0] });

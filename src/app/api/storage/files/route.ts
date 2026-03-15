@@ -22,12 +22,25 @@ export async function GET(req: NextRequest) {
     if (!project) return NextResponse.json({ success: false, error: { message: 'Project not found', code: ERROR_CODES.PROJECT_NOT_FOUND } }, { status: 404 });
 
     const pool = getPgPool();
+    
+    // Resolve bucket ID first (supports both ID or Name)
+    const bucketQuery = await pool.query(
+        `SELECT id FROM fluxbase_global.storage_buckets WHERE (id = $1 OR name = $1) AND project_id = $2`,
+        [bucketId, projectId]
+    );
+
+    if (bucketQuery.rows.length === 0) {
+        return NextResponse.json({ success: false, error: { message: 'Bucket not found', code: ERROR_CODES.BUCKET_NOT_FOUND } }, { status: 404 });
+    }
+
+    const actualBucketId = bucketQuery.rows[0].id;
+
     const result = await pool.query(
         `SELECT id, name, s3_key, size, mime_type, created_at
          FROM fluxbase_global.storage_objects
          WHERE bucket_id = $1 AND project_id = $2
          ORDER BY created_at DESC`,
-        [bucketId, projectId]
+        [actualBucketId, projectId]
     );
 
     return NextResponse.json({ success: true, files: result.rows });

@@ -4,6 +4,8 @@ import { getAuthContextFromRequest } from '@/lib/auth';
 import { getProjectById } from '@/lib/data';
 import { getPresignedUrl } from '@/lib/storage';
 
+import { ERROR_CODES } from '@/lib/error-codes';
+
 // GET /api/storage/url?s3Key=xxx&projectId=xxx
 // Returns a 15-minute presigned download URL for a private S3 object
 export async function GET(req: NextRequest) {
@@ -12,14 +14,14 @@ export async function GET(req: NextRequest) {
     const projectId = searchParams.get('projectId');
 
     if (!s3Key || !projectId) {
-        return NextResponse.json({ error: 's3Key and projectId required' }, { status: 400 });
+        return NextResponse.json({ success: false, error: { message: 's3Key and projectId required', code: ERROR_CODES.BAD_REQUEST } }, { status: 400 });
     }
 
     const auth = await getAuthContextFromRequest(req);
-    if (!auth?.userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!auth?.userId) return NextResponse.json({ success: false, error: { message: 'Unauthorized', code: ERROR_CODES.UNAUTHORIZED } }, { status: 401 });
 
     const project = await getProjectById(projectId, auth.userId);
-    if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    if (!project) return NextResponse.json({ success: false, error: { message: 'Project not found', code: ERROR_CODES.PROJECT_NOT_FOUND } }, { status: 404 });
 
     // Verify the s3Key belongs to this project
     const pool = getPgPool();
@@ -28,7 +30,7 @@ export async function GET(req: NextRequest) {
         [s3Key, projectId]
     );
     if (fileRes.rows.length === 0) {
-        return NextResponse.json({ error: 'File not found or access denied' }, { status: 404 });
+        return NextResponse.json({ success: false, error: { message: 'File not found', code: ERROR_CODES.FILE_NOT_FOUND } }, { status: 404 });
     }
 
     try {
@@ -36,6 +38,6 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ success: true, url, expiresIn: 900 });
     } catch (e: any) {
         console.error('Presign error:', e);
-        return NextResponse.json({ error: 'Failed to generate URL' }, { status: 500 });
+        return NextResponse.json({ success: false, error: { message: 'Failed to generate URL', code: ERROR_CODES.INTERNAL_ERROR } }, { status: 500 });
     }
 }
