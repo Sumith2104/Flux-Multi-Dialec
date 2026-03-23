@@ -27,7 +27,7 @@ const AiIcon = ({ size = 24, className = "" }: { size?: number; className?: stri
   </svg>
 );
 
-export function FluxAiAssistant() {
+export function FluxAiAssistant({ userId }: { userId: string }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const isRestored = useRef(false);
@@ -45,9 +45,11 @@ export function FluxAiAssistant() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  const storageKey = `flux_ai_messages_${userId}`;
+
   useEffect(() => {
     if (!isRestored.current) {
-       const saved = localStorage.getItem('flux_ai_messages');
+       const saved = localStorage.getItem(storageKey);
        if (saved) {
            setMessages(JSON.parse(saved));
        } else {
@@ -55,14 +57,14 @@ export function FluxAiAssistant() {
        }
        isRestored.current = true;
     }
-  }, []);
+  }, [storageKey]);
 
   useEffect(() => {
     if (isRestored.current) {
-        localStorage.setItem('flux_ai_messages', JSON.stringify(messages));
+        localStorage.setItem(storageKey, JSON.stringify(messages));
     }
     scrollToBottom();
-  }, [messages, isTyping]);
+  }, [messages, isTyping, storageKey]);
 
   useEffect(() => {
     // Attempt to load voices ASAP

@@ -247,7 +247,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                             <Dock items={dockItems} className="pointer-events-auto" />
                         </div>
                     )}
-                    {userId && <FluxAiAssistant />}
+                    {userId && <FluxAiAssistant key={userId} userId={userId} />}
                 </main>
             </div>
         </div>
