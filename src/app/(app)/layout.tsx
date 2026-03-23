@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ProjectProvider, ProjectContext } from "@/contexts/project-context";
 import { TimezoneSelector } from "@/components/timezone-selector";
 import Dock from "@/components/dock";
+import { FluxAiAssistant } from "@/components/flux-ai-assistant";
 import {
     LayoutDashboard,
     BrainCircuit,
@@ -246,6 +247,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                             <Dock items={dockItems} className="pointer-events-auto" />
                         </div>
                     )}
+                    {userId && <FluxAiAssistant />}
                 </main>
             </div>
         </div>

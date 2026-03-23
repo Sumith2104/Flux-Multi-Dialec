@@ -162,7 +162,7 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
                                 </svg>
                                 Google
                             </Button>
-                            <Button variant="outline" type="button" disabled={isLoading} className="border-white/10 hover:bg-white/5 hover:text-white transition-colors">
+                            <Button onClick={() => window.location.href = '/api/auth/github'} variant="outline" type="button" disabled={isLoading} className="border-white/10 hover:bg-white/5 hover:text-white transition-colors">
                                 <Github className="mr-2 h-4 w-4" />
                                 GitHub
                             </Button>
