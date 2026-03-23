@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/navigation';
+import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { createSessionCookie } from '@/lib/auth';
 import { sendWelcomeEmail } from '@/lib/email';

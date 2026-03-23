@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/navigation';
+import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {
     const clientId = process.env.GITHUB_CLIENT_ID;
