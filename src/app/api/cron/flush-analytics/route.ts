@@ -44,7 +44,11 @@ export async function GET(request: Request) {
                 DO UPDATE SET count = fluxbase_global.analytics_rollups.count + EXCLUDED.count;
             `;
 
-            await pool.query(query, [projectId, periodStartISO, eventType, val]);
+            try {
+                await pool.query(query, [projectId, periodStartISO, eventType, val]);
+            } catch (err: any) {
+                console.error(`Skipping analytics flush for deleted project ${projectId}`);
+            }
             
             // Clear the actual counter safely post-sync
             await redis.del(key);
