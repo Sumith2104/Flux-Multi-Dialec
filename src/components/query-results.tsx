@@ -80,6 +80,16 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
                             <Button variant={chartType === 'pie' ? 'secondary' : 'ghost'} size="sm" className="h-6 w-6 p-0" onClick={() => setChartType('pie')}><PieChartIcon className="h-3 w-3" /></Button>
                         </div>
                     )}
+                    {results.rows.length > 100 && view === 'table' && (
+                        <div className="text-[10px] text-muted-foreground mr-2 font-medium flex items-center">
+                            Showing first 100 of {results.rows.length.toLocaleString()} rows
+                        </div>
+                    )}
+                    {results.rows.length > 500 && view === 'chart' && (
+                        <div className="text-[10px] text-muted-foreground mr-2 font-medium flex items-center">
+                            Showing first 500 of {results.rows.length.toLocaleString()} rows
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex-grow relative overflow-auto">
@@ -111,7 +121,7 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    results.rows.map((row, rowIndex) => (
+                                    results.rows.slice(0, 100).map((row, rowIndex) => (
                                         <TableRow key={rowIndex} className="border-b border-border/50 hover:bg-muted/30 transition-colors group">
                                             {results.columns.map((col, colIndex) => (
                                                 <TableCell
@@ -136,14 +146,14 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
                         <div className="h-full w-full p-6 flex flex-col pt-8 pb-12">
                             <ResponsiveContainer width="100%" height="100%">
                                 {chartType === 'bar' ? (
-                                    <BarChart data={results.rows}>
+                                    <BarChart data={results.rows.slice(0, 500)}>
                                         <XAxis dataKey={chartDataConfig.xAxisKey} tick={{ fontSize: 12, fill: '#888' }} />
                                         <YAxis tick={{ fontSize: 12, fill: '#888' }} />
                                         <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', borderRadius: '8px' }} itemStyle={{ color: '#e5e7eb' }} />
                                         <Bar dataKey={chartDataConfig.yAxisKey} fill="#3b82f6" radius={[4, 4, 0, 0]} />
                                     </BarChart>
                                 ) : chartType === 'line' ? (
-                                    <LineChart data={results.rows}>
+                                    <LineChart data={results.rows.slice(0, 500)}>
                                         <XAxis dataKey={chartDataConfig.xAxisKey} tick={{ fontSize: 12, fill: '#888' }} />
                                         <YAxis tick={{ fontSize: 12, fill: '#888' }} />
                                         <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', borderRadius: '8px' }} itemStyle={{ color: '#e5e7eb' }} />
@@ -152,8 +162,8 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
                                 ) : (
                                     <PieChart>
                                         <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', borderRadius: '8px' }} itemStyle={{ color: '#e5e7eb' }} />
-                                        <Pie data={results.rows} dataKey={chartDataConfig.yAxisKey} nameKey={chartDataConfig.xAxisKey} cx="50%" cy="50%" outerRadius={120}>
-                                            {results.rows.map((_, index) => (
+                                        <Pie data={results.rows.slice(0, 500)} dataKey={chartDataConfig.yAxisKey} nameKey={chartDataConfig.xAxisKey} cx="50%" cy="50%" outerRadius={120}>
+                                            {results.rows.slice(0, 500).map((_, index) => (
                                                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                             ))}
                                         </Pie>
@@ -166,7 +176,7 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
                     {view === 'json' && (
                         <div className="p-4 h-full overflow-auto bg-[#1e1e1e]">
                             <pre className="text-xs font-mono text-green-400">
-                                {JSON.stringify(results.rows, null, 2)}
+                                {JSON.stringify(results.rows.slice(0, 100), null, 2)}
                             </pre>
                         </div>
                     )}

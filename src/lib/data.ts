@@ -285,6 +285,11 @@ export async function resetProjectData(projectId: string) {
         await pool.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
         await pool.query(`CREATE SCHEMA "${schemaName}"`);
     }
+
+    try {
+        const { redis } = await import('@/lib/redis');
+        await redis.del(`schema_inference_${projectId}`);
+    } catch(e){}
 }
 
 export async function updateProjectTimezone(projectId: string, timezone: string): Promise<boolean> {
@@ -319,7 +324,16 @@ export async function deleteProject(projectId: string) {
     }
 
     // Remove the catalog entry
-    await pool.query('DELETE FROM fluxbase_global.projects WHERE project_id = $1 AND user_id = $2', [projectId, userId]);
+    const res = await pool.query('DELETE FROM fluxbase_global.projects WHERE project_id = $1 AND user_id = $2', [projectId, userId]);
+    if (res.rowCount === 0) {
+        // User might be a member but not the owner. Delete from members instead.
+        await pool.query('DELETE FROM fluxbase_global.project_members WHERE project_id = $1 AND user_id = $2', [projectId, userId]);
+    }
+
+    try {
+        const { redis } = await import('@/lib/redis');
+        await redis.del(`schema_inference_${projectId}`);
+    } catch(e){}
 }
 
 // --- Tables ---
@@ -340,7 +354,8 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
             const [rows]: any = await mysqlPool.query(`
                 SELECT table_name 
                 FROM information_schema.tables 
-                WHERE table_schema = ? AND table_type = 'BASE TABLE'
+                WHERE table_schema = ? AND table_type = 'BASE TABLE' 
+                AND table_name NOT LIKE '\_flux\_internal\_%'
             `, [dbName]);
 
             return rows.map((row: any) => ({
@@ -360,6 +375,7 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
                 SELECT table_name 
                 FROM information_schema.tables 
                 WHERE table_schema = $1 AND table_type = 'BASE TABLE'
+                AND table_name NOT LIKE '\_flux\_internal\_%'
             `, [schemaName]);
 
             return result.rows.map(row => ({

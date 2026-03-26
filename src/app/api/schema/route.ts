@@ -57,16 +57,16 @@ export async function GET(request: Request) {
         
         if (project.dialect === 'mysql') {
             [resultTables, resultViews, resultIndexes, resultFunctions] = await Promise.all([
-                engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'project_${projectId}';`),
-                engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = 'project_${projectId}';`),
+                engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'project_${projectId}' AND table_name NOT LIKE '\_flux\_internal\_%';`),
+                engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = 'project_${projectId}' AND table_name NOT LIKE '\_flux\_internal\_%';`),
                 engine.execute(`SELECT index_name, table_name FROM information_schema.statistics WHERE table_schema = 'project_${projectId}';`),
                 engine.execute(`SELECT routine_name FROM information_schema.routines WHERE routine_schema = 'project_${projectId}' AND routine_type = 'FUNCTION';`)
             ]);
             resultExtensions = { rows: [] }; // MySQL doesn't natively use Extensions in this standard format
         } else {
             [resultTables, resultViews, resultIndexes, resultFunctions, resultExtensions] = await Promise.all([
-                engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'project_${projectId}' ORDER BY table_name, ordinal_position;`),
-                engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = 'project_${projectId}';`),
+                engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'project_${projectId}' AND table_name NOT LIKE '\_flux\_internal\_%' ORDER BY table_name, ordinal_position;`),
+                engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = 'project_${projectId}' AND table_name NOT LIKE '\_flux\_internal\_%';`),
                 engine.execute(`SELECT indexname, tablename FROM pg_indexes WHERE schemaname = 'project_${projectId}';`),
                 engine.execute(`SELECT routine_name FROM information_schema.routines WHERE routine_schema = 'project_${projectId}' AND routine_type = 'FUNCTION';`),
                 engine.execute(`SELECT extname FROM pg_extension;`)

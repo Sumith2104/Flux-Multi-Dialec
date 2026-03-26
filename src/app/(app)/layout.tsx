@@ -29,7 +29,8 @@ import {
     Table,
     Database,
     Globe,
-    ServerCrash
+    ServerCrash,
+    BarChart3
 } from "lucide-react";
 import { checkDatabaseHealthAction } from "@/lib/data";
 
@@ -39,6 +40,7 @@ const navItems = [
     { href: "/editor", label: "Table Editor", icon: <Table /> },
     { href: "/database", label: "Database", icon: <Database /> },
     { href: "/query", label: "SQL Editor", icon: <BrainCircuit /> },
+    { href: "/analytics", label: "Analytics", icon: <BarChart3 /> },
     { href: "/api", label: "API", icon: <Code /> },
     { href: "/scraper", label: "Scraper", icon: <Globe /> },
     { href: "/storage", label: "Storage", icon: <Folder /> },
@@ -125,7 +127,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
     const dockItems = navItems.map(item => {
         // Reduced list of project-specific pages
-        const isProjectSpecific = ["/editor", "/api", "/storage", "/query", "/database", "/scraper", "/settings"].includes(item.href);
+        const isProjectSpecific = ["/editor", "/api", "/storage", "/query", "/database", "/analytics", "/scraper", "/settings"].includes(item.href);
         const isDisabled = isProjectSpecific && !selectedProject?.project_id;
         let finalHref = item.href;
 

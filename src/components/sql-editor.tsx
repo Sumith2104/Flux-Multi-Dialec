@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef } from 'react';
-import { Play, Save, Download, Loader2, Plus, AlignLeft, Activity, Share2 } from 'lucide-react';
+import { Play, Save, Download, Loader2, Plus, AlignLeft, Activity, Share2, Upload } from 'lucide-react';
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
 import { Card, CardContent, CardHeader } from './ui/card';
@@ -118,6 +118,24 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
         toast({ title: "SQL Formatted", description: "Query has been pretty-printed." });
     };
 
+    const handleImportSql = () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.sql';
+        input.onchange = (e: any) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const content = e.target?.result as string;
+                setQuery(content);
+                toast({ title: "SQL Imported", description: `Successfully loaded ${file.name}` });
+            };
+            reader.readAsText(file);
+        };
+        input.click();
+    };
+
     const handleExplainQuery = () => {
         onRun(`EXPLAIN ANALYZE ${query}`);
     };
@@ -172,6 +190,9 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
                         <AlignLeft className="h-3 w-3 mr-1" /> Format
                     </Button>
                     <Separator orientation="vertical" className="h-4 mx-1" />
+                    <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground" onClick={handleImportSql} title="Import .sql File">
+                        <Upload className="h-3 w-3 mr-1" /> Import
+                    </Button>
                     <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground hover:bg-orange-500/10 transition-colors group" onClick={handleExplainQuery} title="Generate Visual EXPLAIN plan">
                         <Activity className="h-3 w-3 mr-1 text-orange-500 group-hover:animate-pulse" /> Explain
                     </Button>
