@@ -168,8 +168,8 @@ export async function POST(request: Request) {
                         ? 'row.updated' 
                         : 'row.deleted';
 
-                // We run fireWebhooks asynchronously so we don't block the API response
-                fireWebhooks(
+                // We await fireWebhooks so Vercel does not terminate the lambda before outbound POSTs complete
+                await fireWebhooks(
                     projectId, 
                     userId, 
                     mutatedTable.toLowerCase(), 
