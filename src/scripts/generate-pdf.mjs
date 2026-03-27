@@ -545,76 +545,34 @@ addCodeBlock([
 ], 'JSON');
 
 addH2('Update a Row');
-addCodeBlock([
-    '{',
-    '  "projectId": "YOUR_PROJECT_ID",',
-    '  "query": "UPDATE users SET name = \'Bob\' WHERE id = 42"',
-    '}',
-], 'JSON');
-
-addH2('Delete a Row');
-addCodeBlock([
-    '{',
-    '  "projectId": "YOUR_PROJECT_ID",',
-    '  "query": "DELETE FROM users WHERE id = 42"',
-    '}',
-], 'JSON');
-
-addH2('Join Tables');
-addCodeBlock([
-    '{',
-    '  "projectId": "YOUR_PROJECT_ID",',
-    '  "query": "SELECT u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id"',
-    '}',
-], 'JSON');
-
-addH2('Create a Table (DDL)');
-addCodeBlock([
-    '{',
-    '  "projectId": "YOUR_PROJECT_ID",',
-    '  "query": "CREATE TABLE products (id SERIAL PRIMARY KEY, name TEXT, price NUMERIC)"',
-    '}',
-], 'JSON');
-addText('DDL statements (CREATE, ALTER, DROP) return { success: true, result: { message: "..." } } with no rows.');
-
-addH2('Rate Limiting');
-addBullet('Limit: 30 requests per 10 seconds per project per user.');
-addBullet('When exceeded the API returns HTTP 429 with code RATE_LIMIT_EXCEEDED.');
-addBullet('SELECT queries are cached server-side for 15 seconds — duplicate identical reads are free.');
-
-y += 10;
-addH2('Getting Your Credentials');
-addBullet('Project ID   — Dashboard → Your Project → Settings → Project ID');
-addBullet('API Key      — Dashboard → Your Project → Settings → API Keys → Create Key');
-addBullet('Scope your API key to a single project for maximum security.');
-
-y += 10;
-addH2('Support');
-addBullet('Web:   https://fluxbase.vercel.app/docs');
-addBullet('Email: sumithsumith4567890@gmail.com');
-
 // ─── WEBHOOKS ─────────────────────────────────────────────────────────────────
 newPage();
 addTitle('Webhooks');
 addText(
-    'Webhooks let Fluxbase notify your external application in real-time whenever data changes in a table — ' +
-    'a row is inserted, updated, or deleted. Fluxbase fires a POST request to your configured URL within ~1–2 seconds of the event.'
+    'Webhooks let Fluxbase automatically notify your application whenever data changes in a table — ' +
+    'a row is inserted, updated, or deleted. Fluxbase fires an outbound HTTP POST to your app\'s URL ' +
+    'within ~1–2 seconds of the event, no persistent connection required.'
 );
 
-addAlert('How It Works',
-    'Row changes in Fluxbase → Fluxbase fires POST to your URL → Your app receives the payload and reacts (send notifications, sync data, trigger automations, etc.)',
+addAlert('Architecture — Outbound HTTP (No Extra Server Needed)',
+    'Direction: Fluxbase (on Vercel) ─── POST ───→ Your App\n\n' +
+    'Webhooks are OUTBOUND from Fluxbase. You do NOT need Render or any long-running server ' +
+    'for webhooks. Fluxbase calls YOUR endpoint. Any publicly accessible URL works — ' +
+    'Vercel, Railway, Render, AWS Lambda, Cloudflare Workers, etc.\n\n' +
+    'NOTE: SSE/Realtime is different and DOES require a persistent server. ' +
+    'Webhooks and Realtime are separate features with different infrastructure needs.',
     'info'
 );
 
 addH2('Webhook Payload');
-addText('Every webhook delivers this JSON body to your endpoint:');
+addText('Every webhook event delivers this JSON body to your endpoint:');
 addCodeBlock([
     '{',
     '  "event_type": "row.inserted",',
-    '  "table_id":   "matches",',
-    '  "timestamp":  "2026-03-15T11:00:00.000Z",',
+    '  "table_id":   "orders",',
+    '  "timestamp":  "2026-03-27T19:00:00.000Z",',
     '  "data": {',
-    '    "new": { "id": "abc123", "user_a": "sumit", "status": "pending" },',
+    '    "new": { "id": "abc123", "amount": 500, "status": "pending" },',
     '    "old": null',
     '  }',
     '}',
@@ -622,15 +580,17 @@ addCodeBlock([
 
 addH3('Payload Fields', DARK);
 addBullet('"event_type" — One of: row.inserted | row.updated | row.deleted');
-addBullet('"table_id"   — The exact table name where the event occurred.');
-addBullet('"timestamp"  — ISO-8601 UTC timestamp when the event fired.');
+addBullet('"table_id"   — The table name where the event occurred.');
+addBullet('"timestamp"  — ISO-8601 UTC timestamp of the event.');
 addBullet('"data.new"   — New row values (present on row.inserted and row.updated).');
 addBullet('"data.old"   — Previous row values (present on row.updated and row.deleted).');
 
-addH2('Step 1 — Create a Webhook Receiver in Your App');
-addText('Add an API route to your application to receive and process the events (Next.js example):');
+addH2('Step 1 — Create a Receiver Endpoint in Your App');
+addText('Add any HTTP POST route to your application. Fluxbase will call this URL every time a relevant event fires.');
+
+addH3('Next.js (App Router)', DARK);
 addCodeBlock([
-    '// src/app/api/webhook/fluxbase/route.ts',
+    '// app/api/fluxbase-webhook/route.ts',
     "import { NextRequest, NextResponse } from 'next/server';",
     '',
     'export async function POST(req: NextRequest) {',
