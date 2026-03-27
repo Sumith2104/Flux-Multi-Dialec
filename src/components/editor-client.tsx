@@ -114,6 +114,7 @@ export function EditorClient({
     const [isDeleting, setIsDeleting] = useState(false);
     const [activeTab, setActiveTab] = useState('data');
     const [isImportingCsv, setIsImportingCsv] = useState(false);
+    const [tableSearchQuery, setTableSearchQuery] = useState('');
     const csvInputRef = React.useRef<HTMLInputElement>(null);
 
     const [foreignKeyData, setForeignKeyData] = useState<Record<string, any[]>>({});
@@ -123,6 +124,8 @@ export function EditorClient({
     // Local copy of tables — updated optimistically so sidebar doesn't need router.refresh() on delete
     const [localTables, setLocalTables] = useState<DbTable[]>(allTables);
     const [, startTransition] = useTransition();
+
+    const searchedTables = React.useMemo(() => { return localTables.filter(t => t.table_name.toLowerCase().includes(tableSearchQuery.toLowerCase())); }, [localTables, tableSearchQuery]);
 
     const [sortConfig, setSortConfig] = useState<{ field: string; direction: 'asc' | 'desc' } | null>(null);
     const [filterConfig, setFilterConfig] = useState<{ field: string; operator: string; value: string } | null>(null);
@@ -451,10 +454,10 @@ export function EditorClient({
                     </div>
                     <div className="p-2 relative">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input placeholder="Search tables..." className="pl-8" />
+                        <Input placeholder="Search tables..." className="pl-8" value={tableSearchQuery} onChange={(e) => setTableSearchQuery(e.target.value)} />
                     </div>
                     <nav className="flex-1 overflow-y-auto px-2 space-y-1 py-2">
-                        {localTables.map((table) => (
+                        {searchedTables.map((table) => (
                             <div
                                 key={table.table_id}
                                 className={`group flex items-center justify-between rounded-md text-sm font-medium hover:bg-accent ${table.table_id === tableId ? 'bg-accent' : ''}`}
@@ -505,10 +508,11 @@ export function EditorClient({
                     {currentTable && tableId && tableName ? (
                         <>
                             <header className="flex flex-col sm:flex-row min-h-14 py-2 h-auto items-start sm:items-center gap-4 border-b bg-background px-4 sm:px-6 flex-shrink-0 overflow-x-auto">
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground shrink-0">
-                                    <Table className="h-4 w-4" />
-                                    <span className="font-semibold text-foreground">{currentTable.table_name}</span>
-                                </div>
+                                  <div className="flex items-center gap-2 text-sm text-muted-foreground shrink-0">
+                                       <Table className="h-4 w-4" />
+                                       <span className="font-semibold text-foreground">{currentTable.table_name}</span>
+                                       <span className="ml-3 text-xs text-muted-foreground font-medium">({rowCount.toLocaleString()} rows)</span>
+                                  </div>
                                 <Separator orientation="vertical" className="h-6" />
                                 <div className="flex items-center gap-2 shrink-0">
                                     {tableId && tableName && projectId && initialColumns && (
@@ -716,10 +720,15 @@ export function EditorClient({
 
                             <div className="p-6 flex-grow flex flex-col overflow-hidden">
                                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col min-h-0">
-                                    <TabsList>
-                                        <TabsTrigger value="data">Data</TabsTrigger>
-                                        <TabsTrigger value="structure">Structure</TabsTrigger>
-                                    </TabsList>
+                                    <div className="flex items-center justify-between w-full border-b pb-2 mb-2">
+                                        <TabsList>
+                                            <TabsTrigger value="data">Data</TabsTrigger>
+                                            <TabsTrigger value="structure">Structure</TabsTrigger>
+                                        </TabsList>
+                                        <div className="text-sm font-medium text-muted-foreground px-4 py-1.5 bg-muted/50 rounded-md border shadow-sm">
+                                            {rowCount.toLocaleString()} Rows
+                                        </div>
+                                    </div>
                                     <TabsContent value="data" className="mt-6 flex-1 flex flex-col min-h-0 relative overflow-hidden">
                                         <div className="flex-1 min-h-0">
                                             <DataTable
@@ -738,12 +747,12 @@ export function EditorClient({
                                     </TabsContent>
                                     <TabsContent value="structure" className="mt-4 space-y-6 overflow-y-auto flex-1 min-h-0 pb-24 pr-2">
                                         <Card>
-                                            <CardHeader>
-                                                <CardTitle>Table Structure</CardTitle>
-                                                <CardDescription>
-                                                    {currentTable.description || `This is the schema for the '${currentTable.table_name}' table.`}
-                                                </CardDescription>
-                                            </CardHeader>
+                                         <CardHeader>
+                                             <CardTitle>Table Structure</CardTitle>
+                                              <CardDescription>
+                                                  {currentTable.description || `This is the schema for the '${currentTable.table_name}' table.`}
+                                              </CardDescription>
+                                         </CardHeader>
                                             <CardContent>
                                                 <div className="border rounded-lg overflow-x-auto">
                                                     <ShadcnTable>

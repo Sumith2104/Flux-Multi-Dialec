@@ -76,6 +76,9 @@ export async function GET(request: NextRequest) {
 
         if (existing.rows.length > 0) {
             userId = existing.rows[0].id;
+            if (photoUrl) {
+                await pool.query('UPDATE fluxbase_global.users SET photo_url = $1 WHERE id = $2', [photoUrl, userId]);
+            }
         } else {
             isNewUser = true;
             userId = crypto.randomUUID();

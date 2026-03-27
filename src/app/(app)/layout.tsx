@@ -4,7 +4,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { getCurrentUserId, User } from "@/lib/auth";
 import { findUserById } from "@/lib/auth-actions";
@@ -200,6 +200,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
             <header className="sticky top-0 flex h-14 items-center gap-4 border-b bg-background px-4 md:px-6 z-40">
                 <div className="flex items-center gap-2">
                     <Avatar className="h-8 w-8">
+                        {(user as any)?.photo_url && <AvatarImage src={(user as any).photo_url} referrerPolicy="no-referrer" />}
                         <AvatarFallback>{avatarFallback}</AvatarFallback>
                     </Avatar>
                     <ProjectSwitcher

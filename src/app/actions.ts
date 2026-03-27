@@ -44,6 +44,9 @@ export async function googleAuthAction(accessToken: string) {
     if (existing.rows.length > 0) {
       // User exists, just log them in
       userId = existing.rows[0].id;
+      if (photoUrl) {
+          await pool.query('UPDATE fluxbase_global.users SET photo_url = $1 WHERE id = $2', [photoUrl, userId]);
+      }
     } else {
       // 2. New User - Auto Signup
       isNewUser = true;
