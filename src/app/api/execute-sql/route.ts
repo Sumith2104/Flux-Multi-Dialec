@@ -8,6 +8,7 @@ import { redis } from '@/lib/redis';
 import { invalidateTableCache } from '@/lib/cache';
 import { Ratelimit } from '@upstash/ratelimit';
 import { ERROR_CODES, FluxbaseError } from '@/lib/error-codes';
+import { fireWebhooks, WebhookEvent } from '@/lib/webhooks';
 
 export const maxDuration = 60; // 1 minute
 
@@ -159,6 +160,24 @@ export async function POST(request: Request) {
                 await invalidateTableCache(projectId, mutatedTable.toLowerCase()).catch(err => {
                     console.warn(`[Upstash Invalidation Error] Failed to invalidate cache for ${mutatedTable}:`, err);
                 });
+
+                // Fire Outbound Webhooks and Real-Time SSE
+                const webhookEvent = uppercaseQuery.startsWith('INSERT') 
+                    ? 'row.inserted' 
+                    : uppercaseQuery.startsWith('UPDATE') 
+                        ? 'row.updated' 
+                        : 'row.deleted';
+
+                // We run fireWebhooks asynchronously so we don't block the API response
+                fireWebhooks(
+                    projectId, 
+                    userId, 
+                    mutatedTable.toLowerCase(), 
+                    webhookEvent as WebhookEvent,
+                    // Note: For raw SQL without RETURNING we don't have exact row data,
+                    // but we can pass the params if it was an INSERT for basic context
+                    uppercaseQuery.startsWith('INSERT') && Array.isArray(params) ? { raw_params: params } : undefined
+                ).catch(err => console.error(`[Webhook Dispatch Error]`, err));
 
                 // Fire SSE Live Broadcast for Vercel
                 try {
