@@ -1,6 +1,7 @@
 'use server';
 import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
+import { validateApiKey } from '@/lib/api-keys';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fluxbase_dev_secret_key_123';
 
@@ -65,7 +66,6 @@ export async function logout() {
  * Retrieves the user ID from the request, checking both session cookies and API keys.
  * enhancing security for API routes.
  */
-import { validateApiKey } from '@/lib/api-keys';
 
 export async function getUserIdFromRequest(request: Request): Promise<string | null> {
     const context = await getAuthContextFromRequest(request);

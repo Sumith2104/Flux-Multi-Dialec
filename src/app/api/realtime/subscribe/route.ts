@@ -49,45 +49,50 @@ export async function GET(req: NextRequest) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
         async start(controller) {
-            const client = await pool.connect();
-            
-            // Send initial heartbeat
-            controller.enqueue(encoder.encode('retry: 10000\n\n'));
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'connected', timestamp: new Date().toISOString() })}\n\n`));
+            try {
+                const client = await pool.connect();
+                
+                // Send initial heartbeat
+                controller.enqueue(encoder.encode('retry: 10000\n\n'));
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'connected', timestamp: new Date().toISOString() })}\n\n`));
 
-            const handleNotification = (msg: any) => {
-                if (msg.channel === 'fluxbase_live') {
-                    try {
-                        const payload = JSON.parse(msg.payload);
-                        // Only send if it belongs to this project
-                        if (payload.project_id === projectId) {
-                            controller.enqueue(encoder.encode(`data: ${msg.payload}\n\n`));
+                const handleNotification = (msg: any) => {
+                    if (msg.channel === 'fluxbase_live') {
+                        try {
+                            const payload = JSON.parse(msg.payload);
+                            // Only send if it belongs to this project
+                            if (payload.project_id === projectId) {
+                                controller.enqueue(encoder.encode(`data: ${msg.payload}\n\n`));
+                            }
+                        } catch (e) {
+                            console.error('SSE payload parse error:', e);
                         }
-                    } catch (e) {
-                        console.error('SSE payload parse error:', e);
                     }
-                }
-            };
+                };
 
-            client.on('notification', handleNotification);
-            await client.query('LISTEN fluxbase_live');
+                client.on('notification', handleNotification);
+                await client.query('LISTEN fluxbase_live');
 
-            // Keep-alive heartbeat every 15s to prevent timeouts
-            const interval = setInterval(() => {
-                try {
-                    controller.enqueue(encoder.encode(': heartbeat\n\n'));
-                } catch (e) {
+                // Keep-alive heartbeat every 15s to prevent timeouts
+                const interval = setInterval(() => {
+                    try {
+                        controller.enqueue(encoder.encode(': heartbeat\n\n'));
+                    } catch (e) {
+                        clearInterval(interval);
+                    }
+                }, 15000);
+
+                req.signal.addEventListener('abort', async () => {
                     clearInterval(interval);
-                }
-            }, 15000);
-
-            req.signal.onabort = async () => {
-                clearInterval(interval);
-                client.off('notification', handleNotification);
-                await client.query('UNLISTEN fluxbase_live');
-                client.release();
-                controller.close();
-            };
+                    client.off('notification', handleNotification);
+                    await client.query('UNLISTEN fluxbase_live').catch(() => {});
+                    client.release();
+                    try { controller.close(); } catch(e) {}
+                });
+            } catch (err) {
+                console.error("Realtime Stream Error:", err);
+                try { controller.error(err); } catch(e) {}
+            }
         }
     });
 
