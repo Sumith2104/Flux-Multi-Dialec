@@ -47,14 +47,14 @@ function checkPageBreak(needed = 40) {
 
 function addTitle(text) {
     checkPageBreak(80);
-    doc.setFillColor(...PRIMARY);
-    doc.rect(MARGIN, y, CONTENT_W, 2, 'F');
-    y += 12;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(26);
     doc.setTextColor(...DARK);
     doc.text(text, MARGIN, y);
-    y += 34;
+    y += 8;
+    doc.setFillColor(...PRIMARY);
+    doc.rect(MARGIN, y, CONTENT_W, 2, 'F');
+    y += 24;
 }
 
 function addH2(text) {
