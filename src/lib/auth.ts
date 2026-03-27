@@ -82,15 +82,23 @@ export async function getAuthContextFromRequest(request: Request): Promise<AuthC
     const userId = await getCurrentUserId();
     if (userId) return { userId };
 
-    // 2. Check Authorization Header (API Access)
+    // 2. Check Authorization Header OR URL Search Params (API Access for SSE/WebSockets)
+    let apiKey = '';
     const authHeader = request.headers.get('Authorization');
     if (authHeader && authHeader.startsWith('Bearer ')) {
-        const apiKey = authHeader.split('Bearer ')[1].trim();
-        if (apiKey) {
-            const result = await validateApiKey(apiKey);
-            if (result) {
-                return { userId: result.userId, allowedProjectId: result.projectId };
-            }
+        apiKey = authHeader.split('Bearer ')[1].trim();
+    } else {
+        // Fallback for EventSource which cannot send headers cross-origin
+        try {
+            const url = new URL(request.url);
+            apiKey = url.searchParams.get('apiKey') || '';
+        } catch (e) {}
+    }
+
+    if (apiKey) {
+        const result = await validateApiKey(apiKey);
+        if (result) {
+            return { userId: result.userId, allowedProjectId: result.projectId };
         }
     }
 
