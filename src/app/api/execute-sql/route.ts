@@ -168,15 +168,39 @@ export async function POST(request: Request) {
                         ? 'row.updated' 
                         : 'row.deleted';
 
+                let newDataParsed: Record<string, any> | undefined = undefined;
+
+                if (webhookEvent === 'row.inserted') {
+                    try {
+                        const { Parser } = require('node-sql-parser');
+                        const parser = new Parser();
+                        const ast: any = parser.astify(query);
+                        const insertAst = Array.isArray(ast) ? ast[0] : ast;
+                        
+                        if (insertAst && insertAst.type === 'insert' && Array.isArray(insertAst.columns)) {
+                            const cols = insertAst.columns;
+                            const valsNode = Array.isArray(insertAst.values) ? insertAst.values : insertAst.values?.values;
+                            
+                            if (Array.isArray(valsNode) && valsNode.length > 0) {
+                                const rowVals = valsNode[0].value;
+                                newDataParsed = {};
+                                for (let i = 0; i < cols.length; i++) {
+                                    newDataParsed[cols[i]] = rowVals[i]?.value ?? null;
+                                }
+                            }
+                        }
+                    } catch (parserErr) {
+                        console.error('[AST Webhook Parser] Failed to parse INSERT row data:', parserErr);
+                    }
+                }
+
                 // We await fireWebhooks so Vercel does not terminate the lambda before outbound POSTs complete
                 await fireWebhooks(
                     projectId, 
                     userId, 
                     mutatedTable.toLowerCase(), 
                     webhookEvent as WebhookEvent,
-                    // Note: For raw SQL without RETURNING we don't have exact row data,
-                    // but we can pass the params if it was an INSERT for basic context
-                    uppercaseQuery.startsWith('INSERT') && Array.isArray(params) ? { raw_params: params } : undefined
+                    newDataParsed || (uppercaseQuery.startsWith('INSERT') && Array.isArray(params) ? { raw_params: params } : undefined)
                 ).catch(err => console.error(`[Webhook Dispatch Error]`, err));
 
                 // Fire SSE Live Broadcast for Vercel
