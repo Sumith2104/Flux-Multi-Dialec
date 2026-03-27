@@ -64,11 +64,11 @@ function addH2(text) {
     doc.setFontSize(15);
     doc.setTextColor(...PRIMARY);
     doc.text(text, MARGIN, y);
-    y += 5;
+    y += 22; // Move line down to sit below text instead of striking through
     doc.setDrawColor(...PRIMARY);
     doc.setLineWidth(0.7);
     doc.line(MARGIN, y, MARGIN + CONTENT_W, y);
-    y += 16;
+    y += 14;
 }
 
 function addH3(text, color = DARK) {
