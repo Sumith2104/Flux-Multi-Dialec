@@ -142,7 +142,7 @@ export async function POST(request: Request) {
             }).catch(e => console.error(e));
 
             // Aggressive Cache Invalidation (Extracted from Regex)
-            const uppercaseQuery = typeof query === 'string' ? query.toUpperCase() : '';
+            const uppercaseQuery = typeof query === 'string' ? query.trim().toUpperCase() : '';
             let mutatedTable = null;
 
             const optSchema = `(?:["'\`]?[a-zA-Z0-9_]+["'\`]?\\.)?`;

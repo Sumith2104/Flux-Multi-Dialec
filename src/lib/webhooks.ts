@@ -92,6 +92,7 @@ export async function fireWebhooks(
 ) {
     try {
         const webhooks = await getWebhooksForProject(projectId, userId);
+        console.log(`[Webhook Engine] Initialized for ${projectId}/${tableId}/${eventType}. Found ${webhooks.length} webhooks in DB.`);
 
         const payload: WebhookPayload = {
             event_type: eventType,
@@ -127,7 +128,12 @@ export async function fireWebhooks(
             return eventMatches && tableMatches;
         });
 
-        if (targetWebhooks.length === 0) return;
+        if (targetWebhooks.length === 0) {
+            console.log(`[Webhook Engine] Abandoning dispatch: 0 targets matched criteria.`);
+            return;
+        }
+
+        console.log(`[Webhook Engine] Dispatching to ${targetWebhooks.length} target(s).`);
 
         const dispatchPromises = targetWebhooks.map(async (webhook) => {
             try {
@@ -137,11 +143,13 @@ export async function fireWebhooks(
                     'X-Fluxbase-Event': eventType
                 };
 
+                console.log(`[Webhook Engine] Sending POST to ${webhook.url}`);
                 const response = await fetch(webhook.url, {
                     method: 'POST',
                     headers,
                     body: JSON.stringify(payload),
-                    signal: AbortSignal.timeout(5000)
+                    signal: AbortSignal.timeout(5000),
+                    cache: 'no-store'
                 });
 
                 if (!response.ok) {
