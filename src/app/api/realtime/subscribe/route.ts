@@ -37,8 +37,15 @@ export async function GET(req: NextRequest) {
     }
 
     // Verify project access
+    if (auth.allowedProjectId && auth.allowedProjectId !== projectId) {
+        return new Response(JSON.stringify({ 
+            success: false, 
+            error: { message: 'API Key is restricted to a different project', code: ERROR_CODES.UNAUTHORIZED } 
+        }), { status: 403 });
+    }
+
     const pool = getPgPool();
-    const projectRes = await pool.query('SELECT id FROM fluxbase_global.projects WHERE id = $1 AND user_id = $2', [projectId, auth.userId]);
+    const projectRes = await pool.query('SELECT project_id FROM fluxbase_global.projects WHERE project_id = $1 AND user_id = $2', [projectId, auth.userId]);
     if (projectRes.rows.length === 0) {
         return new Response(JSON.stringify({ 
             success: false, 
