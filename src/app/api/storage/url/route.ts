@@ -10,11 +10,11 @@ import { ERROR_CODES } from '@/lib/error-codes';
 // Returns a 15-minute presigned download URL for a private S3 object
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
-    const s3Key = searchParams.get('s3Key');
+    const s3KeyParam = searchParams.get('s3Key') || searchParams.get('fileId') || searchParams.get('id');
     const projectId = searchParams.get('projectId');
 
-    if (!s3Key || !projectId) {
-        return NextResponse.json({ success: false, error: { message: 's3Key and projectId required', code: ERROR_CODES.BAD_REQUEST } }, { status: 400 });
+    if (!s3KeyParam || !projectId) {
+        return NextResponse.json({ success: false, error: { message: 's3Key (or fileId) and projectId required', code: ERROR_CODES.BAD_REQUEST } }, { status: 400 });
     }
 
     const auth = await getAuthContextFromRequest(req);
@@ -23,18 +23,20 @@ export async function GET(req: NextRequest) {
     const project = await getProjectById(projectId, auth.userId);
     if (!project) return NextResponse.json({ success: false, error: { message: 'Project not found', code: ERROR_CODES.PROJECT_NOT_FOUND } }, { status: 404 });
 
-    // Verify the s3Key belongs to this project
+    // Verify the file belongs to this project by exact S3 Key OR unique File ID
     const pool = getPgPool();
     const fileRes = await pool.query(
-        `SELECT id FROM fluxbase_global.storage_objects WHERE s3_key = $1 AND project_id = $2`,
-        [s3Key, projectId]
+        `SELECT id, s3_key FROM fluxbase_global.storage_objects WHERE (s3_key = $1 OR id = $1) AND project_id = $2`,
+        [s3KeyParam, projectId]
     );
     if (fileRes.rows.length === 0) {
         return NextResponse.json({ success: false, error: { message: 'File not found', code: ERROR_CODES.FILE_NOT_FOUND } }, { status: 404 });
     }
+    
+    const actualS3Key = fileRes.rows[0].s3_key;
 
     try {
-        const url = await getPresignedUrl(s3Key, 900); // 15 minutes
+        const url = await getPresignedUrl(actualS3Key, 900); // 15 minutes
         return NextResponse.json({ success: true, url, expiresIn: 900 });
     } catch (e: any) {
         console.error('Presign error:', e);
