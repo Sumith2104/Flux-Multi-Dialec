@@ -545,6 +545,54 @@ addCodeBlock([
 ], 'JSON');
 
 addH2('Update a Row');
+addCodeBlock([
+    '{',
+    '  "projectId": "YOUR_PROJECT_ID",',
+    '  "query": "UPDATE users SET name = \'Bob\' WHERE id = 42"',
+    '}',
+], 'JSON');
+
+addH2('Delete a Row');
+addCodeBlock([
+    '{',
+    '  "projectId": "YOUR_PROJECT_ID",',
+    '  "query": "DELETE FROM users WHERE id = 42"',
+    '}',
+], 'JSON');
+
+addH2('Join Tables');
+addCodeBlock([
+    '{',
+    '  "projectId": "YOUR_PROJECT_ID",',
+    '  "query": "SELECT u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id"',
+    '}',
+], 'JSON');
+
+addH2('Create a Table (DDL)');
+addCodeBlock([
+    '{',
+    '  "projectId": "YOUR_PROJECT_ID",',
+    '  "query": "CREATE TABLE products (id SERIAL PRIMARY KEY, name TEXT, price NUMERIC)"',
+    '}',
+], 'JSON');
+addText('DDL statements (CREATE, ALTER, DROP) return { success: true, result: { message: "..." } } with no rows.');
+
+addH2('Rate Limiting');
+addBullet('Limit: 30 requests per 10 seconds per project per user.');
+addBullet('When exceeded the API returns HTTP 429 with code RATE_LIMIT_EXCEEDED.');
+addBullet('SELECT queries are cached server-side for 15 seconds — duplicate identical reads are free.');
+
+y += 10;
+addH2('Getting Your Credentials');
+addBullet('Project ID   — Dashboard → Your Project → Settings → Project ID');
+addBullet('API Key      — Dashboard → Your Project → Settings → API Keys → Create Key');
+addBullet('Scope your API key to a single project for maximum security.');
+
+y += 10;
+addH2('Support');
+addBullet('Web:   https://fluxbase.vercel.app/docs');
+addBullet('Email: sumithsumith4567890@gmail.com');
+
 // ─── WEBHOOKS ─────────────────────────────────────────────────────────────────
 newPage();
 addTitle('Webhooks');
@@ -608,21 +656,71 @@ addCodeBlock([
     '}',
 ], 'TypeScript (Next.js)');
 
+addH3('Node.js / Express', DARK);
+addCodeBlock([
+    "const express = require('express');",
+    'const app = express();',
+    'app.use(express.json());',
+    '',
+    "app.post('/fluxbase-webhook', (req, res) => {",
+    '  const { event_type, table_id, data } = req.body;',
+    "  if (event_type === 'row.inserted') console.log('New row in', table_id, data.new);",
+    '  res.status(200).send("ok");',
+    '});',
+    'app.listen(3000);',
+], 'JavaScript (Express)');
+
 addH2('Step 2 — Register the Webhook in Fluxbase');
-addText('Go to Settings → Webhooks → Add Webhook and fill in the following:');
-addBullet('Name:  A descriptive label (e.g. "Match Listener")');
-addBullet('URL:   The public URL of your receiver endpoint');
-addBullet('Event: row.inserted | row.updated | row.deleted | * for all');
+addText('Option A — Via the Dashboard: Settings → Webhooks → Add Webhook');
+addBullet('Name:  A descriptive label (e.g. "New Order Listener")');
+addBullet('URL:   The fully public URL (e.g. https://myapp.vercel.app/api/fluxbase-webhook)');
+addBullet('Event: row.inserted | row.updated | row.deleted | * for all events');
 addBullet('Table: A specific table name, or * to listen to all tables');
 
-addH2('Step 3 — Test Your Webhook');
-addBullet('Use https://webhook.site as a temporary URL to inspect payloads live.');
-addBullet('Insert or update a row via the Table Editor or SQL editor.');
-addBullet('The webhook fires within 1–2 seconds and you will see the payload arrive.');
-addBullet('Check the X-Fluxbase-Event request header to easily filter by event type.');
+addText('Option B — Via the REST API:');
+addCodeBlock([
+    'POST /api/webhooks',
+    'Authorization: Bearer YOUR_API_KEY',
+    'Content-Type: application/json',
+    '',
+    '{',
+    '  "projectId": "YOUR_PROJECT_ID",',
+    '  "name":      "New Order Listener",',
+    '  "url":       "https://myapp.vercel.app/api/fluxbase-webhook",',
+    '  "event":     "row.inserted",',
+    '  "table_id":  "orders",',
+    '  "is_active": true',
+    '}',
+], 'HTTP');
+
+addH2('Step 3 — Test Locally with ngrok');
+addText(
+    'Fluxbase can only POST to a public URL — localhost will not work. ' +
+    'Use ngrok to expose your local server during development:'
+);
+addCodeBlock([
+    '# Install ngrok once',
+    'npm install -g ngrok',
+    '',
+    '# Start your local dev server',
+    'npm run dev   # running on port 3000',
+    '',
+    '# In a 2nd terminal, open a tunnel',
+    'ngrok http 3000',
+    '',
+    '# ngrok gives you a URL like:',
+    '#   https://a1b2-103-123-456.ngrok-free.app',
+    '',
+    '# Register that URL in Fluxbase:',
+    '#   https://a1b2-103-123-456.ngrok-free.app/api/fluxbase-webhook',
+], 'bash');
+
+addH2('Quick Test Without Code');
+addText('Go to https://webhook.site, copy the unique URL it gives you, register it as your Fluxbase webhook, then insert a row via the Table Editor. The full JSON payload will appear on webhook.site instantly.');
 
 addAlert('Security Tip',
-    'Register a webhook Secret in Fluxbase. Your receiver endpoint can then verify the X-Fluxbase-Signature header using HMAC-SHA256 to confirm requests are genuine.',
+    'Register a webhook Secret in Fluxbase. Your receiver endpoint can then verify the ' +
+    'X-Fluxbase-Signature header using HMAC-SHA256 to confirm requests are genuinely from Fluxbase.',
     'warn'
 );
 
