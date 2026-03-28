@@ -18,8 +18,16 @@ declare const ERROR_CODES: {
 };
 type ErrorCode = typeof ERROR_CODES[keyof typeof ERROR_CODES];
 interface FluxbaseConfig {
-    /** The full URL of your Fluxbase backend (Vercel or Render). */
+    /** The full URL of your Fluxbase backend (Vercel or local). Used for all SQL/REST queries. */
     url: string;
+    /**
+     * Optional: The URL of your Fluxbase Realtime sidecar (Render).
+     * If not provided, falls back to `url` for SSE connections.
+     *
+     * @example
+     * realtimeUrl: 'https://fluxbase-realtime.onrender.com'
+     */
+    realtimeUrl?: string;
     /** Your Fluxbase Project ID. */
     projectId: string;
     /** Your Fluxbase API Key (fl_...). */
@@ -238,6 +246,6 @@ declare class FluxbaseClient {
  *   { debug: true, timeout: 8000, retries: 3 }
  * );
  */
-declare function createClient(url: string, projectId: string, apiKey: string, options?: Pick<FluxbaseConfig, 'debug' | 'timeout' | 'retries'>): FluxbaseClient;
+declare function createClient(url: string, projectId: string, apiKey: string, options?: Pick<FluxbaseConfig, 'debug' | 'timeout' | 'retries' | 'realtimeUrl'>): FluxbaseClient;
 
 export { type AuthErrorCallback, Deduplicator, ERROR_CODES, type ErrorCode, FluxbaseClient, type FluxbaseConfig, type FluxbaseError, type FluxbaseResponse, Logger, QueryBuilder, type RealtimeCallback, RealtimeChannel, type RealtimeEvent, type RealtimePayload, createClient };

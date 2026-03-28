@@ -160,7 +160,8 @@ export class RealtimeChannel {
 
     if (!ESClass) return;
 
-    const url = new URL(`${this._config.url}/api/realtime/subscribe`);
+    const baseUrl = this._config.realtimeUrl || this._config.url;
+    const url = new URL(`${baseUrl}/api/realtime/subscribe`);
     url.searchParams.set('projectId', this._config.projectId);
     url.searchParams.set('apiKey', this._config.apiKey);
 

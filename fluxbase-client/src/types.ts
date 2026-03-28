@@ -35,8 +35,16 @@ export type ErrorCode = typeof ERROR_CODES[keyof typeof ERROR_CODES];
 
 // ─── Config ──────────────────────────────────────────────────
 export interface FluxbaseConfig {
-  /** The full URL of your Fluxbase backend (Vercel or Render). */
+  /** The full URL of your Fluxbase backend (Vercel or local). Used for all SQL/REST queries. */
   url: string;
+  /**
+   * Optional: The URL of your Fluxbase Realtime sidecar (Render).
+   * If not provided, falls back to `url` for SSE connections.
+   * 
+   * @example
+   * realtimeUrl: 'https://fluxbase-realtime.onrender.com'
+   */
+  realtimeUrl?: string;
   /** Your Fluxbase Project ID. */
   projectId: string;
   /** Your Fluxbase API Key (fl_...). */

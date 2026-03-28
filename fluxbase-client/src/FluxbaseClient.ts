@@ -22,6 +22,7 @@ export class FluxbaseClient {
     this._config = {
       ...config,
       url: config.url.replace(/\/$/, ''),
+      realtimeUrl: config.realtimeUrl ? config.realtimeUrl.replace(/\/$/, '') : config.url.replace(/\/$/, ''),
       timeout: config.timeout ?? 10000,
       retries: config.retries ?? 2,
       debug: config.debug ?? false,
@@ -153,7 +154,7 @@ export function createClient(
   url: string,
   projectId: string,
   apiKey: string,
-  options?: Pick<FluxbaseConfig, 'debug' | 'timeout' | 'retries'>
+  options?: Pick<FluxbaseConfig, 'debug' | 'timeout' | 'retries' | 'realtimeUrl'>
 ): FluxbaseClient {
   return new FluxbaseClient({ url, projectId, apiKey, ...options });
 }

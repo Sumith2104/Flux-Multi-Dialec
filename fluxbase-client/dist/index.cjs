@@ -361,7 +361,8 @@ var RealtimeChannel = class {
       return null;
     });
     if (!ESClass) return;
-    const url = new URL(`${this._config.url}/api/realtime/subscribe`);
+    const baseUrl = this._config.realtimeUrl || this._config.url;
+    const url = new URL(`${baseUrl}/api/realtime/subscribe`);
     url.searchParams.set("projectId", this._config.projectId);
     url.searchParams.set("apiKey", this._config.apiKey);
     this._log.info(`Channel '${this._channelName}' connecting to SSE...`);
@@ -552,6 +553,7 @@ var FluxbaseClient = class {
     this._config = {
       ...config,
       url: config.url.replace(/\/$/, ""),
+      realtimeUrl: config.realtimeUrl ? config.realtimeUrl.replace(/\/$/, "") : config.url.replace(/\/$/, ""),
       timeout: config.timeout ?? 1e4,
       retries: config.retries ?? 2,
       debug: config.debug ?? false
