@@ -840,49 +840,183 @@ addBullet('Video: mp4, webm  |  Audio: mp3, wav  |  Archives: zip');
 
 // ─── REAL-TIME SSE ─────────────────────────────────────────────────────────────
 newPage();
-addTitle('Real-time (SSE)');
+addTitle('Real-time (SSE) — @fluxbaseteam/fluxbase SDK');
 addText(
-    'While Webhooks are great for server-to-server communication, Fluxbase also provides a native ' +
-    'Server-Sent Events (SSE) endpoint at /api/realtime/subscribe. This allows your dashboard or ' +
-    'mobile app to listen for database changes directly with zero setup.'
+    'Fluxbase provides native Server-Sent Events (SSE) for real-time database change notifications. ' +
+    'The official SDK wraps the SSE connection with automatic reconnection, exponential backoff, ' +
+    'online/offline detection, and Node.js compatibility.'
 );
 
+addAlert('Architecture — Two URLs Required',
+    'Fluxbase requires two separate URLs:\n' +
+    '  url         — Vercel deployment: handles all SQL/REST queries\n' +
+    '  realtimeUrl — Render sidecar:    handles persistent SSE connections\n\n' +
+    'The Render sidecar is required because Vercel serverless functions cannot hold ' +
+    'persistent connections. Pass both URLs to createClient().',
+    'warn'
+);
+
+addH2('Installation');
 addCodeBlock([
-    '// Subscribe to live updates',
-    'const source = new EventSource(\'/api/realtime/subscribe?projectId=YOUR_PROJECT_ID\');',
+    'npm install @fluxbaseteam/fluxbase',
+], 'bash');
+
+addH2('Initialize with Both URLs');
+addCodeBlock([
+    "import { createClient } from '@fluxbaseteam/fluxbase';",
     '',
+    'const flux = createClient(',
+    "  'https://your-app.vercel.app',",
+    "  'your-project-id',",
+    "  'fl_your-api-key',",
+    '  {',
+    "    realtimeUrl: 'https://fluxbase-realtime.onrender.com', // SSE → Render",
+    '    debug: true,     // logs all events to console',
+    '    timeout: 8000,',
+    '    retries: 3,',
+    '  }',
+    ');',
+], 'TypeScript');
+
+addH2('Subscribe to Live Events');
+addCodeBlock([
+    "const channel = flux.channel('chat', 'messages')",
+    '',
+    "  .on('row.inserted', (payload) => {",
+    '    const newRow = payload.data?.new;',
+    "    console.log('New row:', newRow);",
+    '  })',
+    "  .on('row.updated', (p) => console.log('Updated:', p.data?.new))",
+    "  .on('row.deleted', (p) => console.log('Deleted:', p.data?.old))",
+    "  .on('*', (p) => console.log('Any event:', p.event_type))",
+    '',
+    '  // Lifecycle hooks',
+    "  .onConnect(() => setStatus('connected'))",
+    "  .onDisconnect(() => setStatus('disconnected'))",
+    '  .onReconnect((attempt, delay) => {',
+    "    console.log('Retry #' + attempt + ' in ' + delay + 'ms');",
+    '  })',
+    '',
+    '  .subscribe();',
+], 'TypeScript');
+
+addH2('Pause, Resume and Unsubscribe');
+addCodeBlock([
+    'channel.pause();       // stop receiving (keeps subscription registered)',
+    'channel.resume();      // reconnect after pause',
+    'channel.unsubscribe(); // permanently close and clean up',
+    "console.log(channel.state); // 'connected' | 'connecting' | 'disconnected' | 'paused'",
+], 'TypeScript');
+
+addH2('React Hook Pattern');
+addCodeBlock([
+    "import { useEffect } from 'react';",
+    "import { createClient } from '@fluxbaseteam/fluxbase';",
+    '',
+    'const flux = createClient(',
+    '  process.env.NEXT_PUBLIC_FLUXBASE_URL,',
+    '  process.env.NEXT_PUBLIC_FLUXBASE_PROJECT_ID,',
+    '  process.env.NEXT_PUBLIC_FLUXBASE_API_KEY,',
+    '  { realtimeUrl: process.env.NEXT_PUBLIC_FLUXBASE_REALTIME_URL }',
+    ');',
+    '',
+    'function ChatRoom() {',
+    '  useEffect(() => {',
+    "    const ch = flux.channel('chat', 'messages')",
+    "      .on('row.inserted', (p) => setMessages(m => [...m, p.data?.new]))",
+    '      .subscribe();',
+    '    return () => ch.unsubscribe(); // cleanup on unmount',
+    '  }, []);',
+    '}',
+], 'TypeScript (React)');
+
+addH2('Required Environment Variables');
+addCodeBlock([
+    '# .env.local',
+    'NEXT_PUBLIC_FLUXBASE_URL=https://your-app.vercel.app',
+    'NEXT_PUBLIC_FLUXBASE_PROJECT_ID=your-project-id',
+    'NEXT_PUBLIC_FLUXBASE_API_KEY=fl_your-api-key',
+    'NEXT_PUBLIC_FLUXBASE_REALTIME_URL=https://fluxbase-realtime.onrender.com',
+], '.env.local');
+
+addH2('Raw EventSource (Without SDK)');
+addText('For non-JS environments or advanced use only — the SDK handles reconnection automatically.');
+addCodeBlock([
+    "const url = new URL('https://fluxbase-realtime.onrender.com/api/realtime/subscribe');",
+    "url.searchParams.set('projectId', 'YOUR_PROJECT_ID');",
+    "url.searchParams.set('apiKey', 'fl_YOUR_API_KEY');",
+    '',
+    'const source = new EventSource(url.toString());',
+    "source.onopen = () => console.log('SSE connected');",
     'source.onmessage = (event) => {',
     '  const payload = JSON.parse(event.data);',
-    "  console.log('Update in table:', payload.table_name);",
-    '};'
-]);
+    "  if (payload.type === 'connected') return; // ignore heartbeat",
+    '  console.log(payload.event_type, payload.data?.new);',
+    '};',
+    'source.onerror = () => console.warn("Connection lost — browser will auto-retry");',
+], 'JavaScript (Raw SSE)');
 
-addAlert('Pro Tip', 'Use SSE for building live feeds, notification bells, or collaborative editors without building a webhook bridge.');
+addAlert('SDK Advantage',
+    'The @fluxbaseteam/fluxbase SDK adds: exponential backoff reconnect (1s→2s→4s→max 30s), ' +
+    'auto-pause/resume on browser offline/online events, Node.js compatibility via EventSource ponyfill, ' +
+    'and typed error codes. Use the SDK in production apps.',
+    'info'
+);
 
 // ─── ERROR CODES ─────────────────────────────────────────────────────────────────
 newPage();
 addTitle('Structured Error Codes');
 addText(
-    'Fluxbase APIs return standardized error objects to help you handle failures programmatically. ' +
-    'Every error response follows this structure:'
+    'Fluxbase APIs and the @fluxbaseteam/fluxbase SDK return standardized error objects ' +
+    'so your app can handle failures programmatically. Import ERROR_CODES for type-safe matching.'
 );
 
+addH2('SDK Error Handling');
 addCodeBlock([
-'  {',
-'    "success": false,',
-'    "error": {',
-'      "message": "Human readable reason",',
-'      "code": "FLUX_ERROR_CODE"',
-'    }',
-'  }'
-]);
+    "import { createClient, ERROR_CODES } from '@fluxbaseteam/fluxbase';",
+    '',
+    'const flux = createClient(url, projectId, apiKey, { realtimeUrl });',
+    '',
+    '// Global auth error handler',
+    'flux.onAuthError((err) => {',
+    "  if (err.code === ERROR_CODES.UNAUTHORIZED) router.push('/login');",
+    '});',
+    '',
+    '// Per-query error handling',
+    "const { data, error, success } = await flux.from('users').select('*');",
+    'if (!success) {',
+    '  switch (error.code) {',
+    '    case ERROR_CODES.TIMEOUT:',
+    "      showToast('Request timed out — check your connection.');",
+    '      break;',
+    '    case ERROR_CODES.CORS_ERROR:',
+    "      console.error('CORS: Add Authorization to Access-Control-Allow-Headers');",
+    '      break;',
+    '    case ERROR_CODES.RATE_LIMIT_EXCEEDED:',
+    "      showToast('Too many requests — slow down.');",
+    '      break;',
+    '    default:',
+    '      console.error(error.message, error.hint);',
+    '  }',
+    '}',
+], 'TypeScript');
 
-addH2('Common Codes');
-addBullet('FLUX_AUTH_REQUIRED: Token is missing or invalid.');
-addBullet('FLUX_SQL_SYNTAX: Your query has a typo or invalid syntax.');
-addBullet('FLUX_RATE_LIMIT: You reached the request limit for your plan.');
-addBullet('FLUX_STORAGE_FULL: Your project storage quota is exceeded.');
-addBullet('FLUX_INTERNAL_ERROR: Something went wrong on our end.');
+addH2('All Error Codes');
+addBullet('AUTH_REQUIRED (401)      — Missing or invalid API key.');
+addBullet('UNAUTHORIZED (401)       — API key is expired or revoked.');
+addBullet('SCOPE_MISMATCH (403)     — API key scoped to a different project.');
+addBullet('TOKEN_EXPIRED            — Session token has expired.');
+addBullet('BAD_REQUEST (400)        — Missing projectId or query field.');
+addBullet('PROJECT_NOT_FOUND (404)  — Project does not exist.');
+addBullet('TABLE_NOT_FOUND (404)    — Table referenced in query does not exist.');
+addBullet('SQL_EXECUTION_ERROR      — SQL syntax or runtime error. Check error.message.');
+addBullet('RATE_LIMIT_EXCEEDED (429)— 30 requests / 10 seconds per project exceeded.');
+addBullet('NETWORK_ERROR            — Could not reach the server (connection issue).');
+addBullet('TIMEOUT                  — Request exceeded the configured timeout ms.');
+addBullet('CORS_ERROR               — Cross-origin request blocked. Check CORS headers.');
+addBullet('ABORTED                  — Request cancelled via AbortController.abort().');
+addBullet('REALTIME_CONNECTION_FAILED — SSE connection could not be established.');
+addBullet('INTERNAL_ERROR (500)     — Server-side error. Check Render/Vercel logs.');
 
 doc.setFontSize(9);
 doc.setTextColor(70, 70, 70);
