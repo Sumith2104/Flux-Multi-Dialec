@@ -1,0 +1,42 @@
+{
+  "name": "@fluxbaseteam/fluxbase",
+  "version": "1.1.0",
+  "description": "Official JavaScript/TypeScript client SDK for Fluxbase — the developer-first, SQL-powered backend platform with real-time database subscriptions.",
+  "author": "fluxbaseteam",
+  "license": "MIT",
+  "keywords": [
+    "fluxbase", "database", "realtime", "sql", "backend", "sse", "client", "sdk", "typescript"
+  ],
+  "homepage": "https://github.com/Sumith2104/Fluxbase",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sumith2104/Fluxbase.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Sumith2104/Fluxbase/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "eventsource": "^3.0.2"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0"
+  }
+}
