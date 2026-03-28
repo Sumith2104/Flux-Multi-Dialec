@@ -1,6 +1,6 @@
 {
   "name": "@fluxbaseteam/fluxbase",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Official JavaScript/TypeScript client SDK for Fluxbase — the developer-first, SQL-powered backend platform with real-time database subscriptions.",
   "author": "fluxbaseteam",
   "license": "MIT",
