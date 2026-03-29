@@ -118,7 +118,7 @@ export default function Home() {
                             className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-medium"
                         >
                             <Zap className="h-3 w-3" />
-                            <span>v0.8 is now live</span>
+                            <span>v0.5 is now live</span>
                         </motion.div>
                     </div>
                     <motion.h1
