@@ -17,6 +17,7 @@ import {
     Bell, Archive
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 
 interface CommandItem {
     id: string;
@@ -93,16 +94,13 @@ export function CommandPalette() {
         router.push(item.href);
     }, [router]);
 
-    useEffect(() => {
-        const down = (e: KeyboardEvent) => {
-            if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                setOpen(o => !o);
-            }
-        };
-        document.addEventListener('keydown', down);
-        return () => document.removeEventListener('keydown', down);
-    }, []);
+    useKeyboardShortcuts([
+        {
+            combination: { key: 'k', ctrl: true },
+            handler: () => setOpen(o => !o),
+            description: 'Toggle Command Palette'
+        }
+    ]);
 
     useEffect(() => {
         setSelected(0);

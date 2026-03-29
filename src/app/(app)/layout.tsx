@@ -25,6 +25,7 @@ import { FeedbackWidget } from "@/components/feedback-widget";
 import { ChangelogPopover } from "@/components/changelog-popover";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { StatusIndicator } from "@/components/status-indicator";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import {
     LayoutDashboard,
     BrainCircuit,
@@ -149,6 +150,50 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
             },
         };
     });
+
+    // Global Keyboard Shortcuts
+    useKeyboardShortcuts([
+        { 
+            combination: 'g d', 
+            handler: () => router.push('/dashboard'),
+            description: 'Go to Dashboard'
+        },
+        { 
+            combination: 'g e', 
+            handler: () => selectedProject?.project_id ? router.push(`/editor?projectId=${selectedProject.project_id}`) : router.push('/dashboard/projects'),
+            description: 'Go to Table Editor'
+        },
+        { 
+            combination: 'g b', 
+            handler: () => selectedProject?.project_id ? router.push(`/database?projectId=${selectedProject.project_id}`) : router.push('/dashboard/projects'),
+            description: 'Go to Database'
+        },
+        { 
+            combination: 'g q', 
+            handler: () => selectedProject?.project_id ? router.push(`/query?projectId=${selectedProject.project_id}`) : router.push('/dashboard/projects'),
+            description: 'Go to SQL Editor'
+        },
+        { 
+            combination: 'g a', 
+            handler: () => selectedProject?.project_id ? router.push(`/analytics?projectId=${selectedProject.project_id}`) : router.push('/dashboard/projects'),
+            description: 'Go to Analytics'
+        },
+        { 
+            combination: 'g s', 
+            handler: () => selectedProject?.project_id ? router.push(`/settings?projectId=${selectedProject.project_id}`) : router.push('/dashboard/projects'),
+            description: 'Go to Settings'
+        },
+        { 
+            combination: 'g i', 
+            handler: () => selectedProject?.project_id ? router.push(`/api?projectId=${selectedProject.project_id}`) : router.push('/dashboard/projects'),
+            description: 'Go to API'
+        },
+        { 
+            combination: 'g w', 
+            handler: () => selectedProject?.project_id ? router.push(`/scraper?projectId=${selectedProject.project_id}`) : router.push('/dashboard/projects'),
+            description: 'Go to Scraper'
+        },
+    ], !!userId);
 
 
     if (isLoading) {

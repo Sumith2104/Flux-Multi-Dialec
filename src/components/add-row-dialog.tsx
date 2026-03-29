@@ -30,6 +30,8 @@ type AddRowDialogProps = {
   foreignKeyData: Record<string, any[]>;
   allTables: DbTable[];
   constraints: Constraint[];
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
 export function AddRowDialog({
@@ -40,10 +42,15 @@ export function AddRowDialog({
   onRowAdded,
   foreignKeyData,
   allTables,
-  constraints
+  constraints,
+  isOpen: propIsOpen,
+  onOpenChange
 }: AddRowDialogProps) {
   const { toast } = useToast();
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
+
+  const isOpen = propIsOpen !== undefined ? propIsOpen : internalIsOpen;
+  const setIsOpen = onOpenChange || setInternalIsOpen;
 
   const handleAction = async (formData: FormData) => {
     const result = await addRowAction(formData);

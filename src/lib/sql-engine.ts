@@ -395,24 +395,24 @@ export class SqlEngine {
 
         const readOps = ['SELECT', 'SHOW', 'DESCRIBE', 'EXPLAIN'];
         const writeOps = ['INSERT', 'UPDATE', 'DELETE', 'CALL'];
-        const adminOps = ['CREATE', 'DROP', 'ALTER', 'TRUNCATE', 'RENAME'];
+        const adminOps = ['CREATE', 'DROP', 'ALTER', 'TRUNCATE', 'RENAME', 'GRANT', 'REVOKE'];
 
         if (readOps.includes(firstWord)) {
             if (!this.scopes.includes('read') && !this.scopes.includes('write') && !this.scopes.includes('admin')) {
-                throw new FluxbaseError(`Scope 'read' required for ${firstWord} operations`, ERROR_CODES.FORBIDDEN, 403);
+                throw new FluxbaseError(`Insufficient Permissions: Scope 'read' is required for ${firstWord} operations. Please update your API key in the Fluxbase settings.`, ERROR_CODES.FORBIDDEN, 403);
             }
         } else if (writeOps.includes(firstWord)) {
             if (!this.scopes.includes('write') && !this.scopes.includes('admin')) {
-                throw new FluxbaseError(`Scope 'write' required for ${firstWord} operations`, ERROR_CODES.FORBIDDEN, 403);
+                throw new FluxbaseError(`Insufficient Permissions: Scope 'write' is required for ${firstWord} operations. Please update your API key in the Fluxbase settings.`, ERROR_CODES.FORBIDDEN, 403);
             }
         } else if (adminOps.includes(firstWord)) {
             if (!this.scopes.includes('admin')) {
-                throw new FluxbaseError(`Scope 'admin' required for ${firstWord} operations`, ERROR_CODES.FORBIDDEN, 403);
+                throw new FluxbaseError(`Insufficient Permissions: Scope 'admin' is required for ${firstWord} operations. Please update your API key in the Fluxbase settings.`, ERROR_CODES.FORBIDDEN, 403);
             }
         } else {
             // Default to requiring admin for unknown ops (safety first)
             if (!this.scopes.includes('admin')) {
-                throw new FluxbaseError(`Scope 'admin' required for unknown operation: ${firstWord}`, ERROR_CODES.FORBIDDEN, 403);
+                throw new FluxbaseError(`Insufficient Permissions: Scope 'admin' is required for the unknown operation: ${firstWord}. Please update your API key in the Fluxbase settings.`, ERROR_CODES.FORBIDDEN, 403);
             }
         }
     }

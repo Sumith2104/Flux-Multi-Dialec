@@ -69,6 +69,8 @@ import { DeleteProgress } from './delete-progress';
 import { Badge } from './ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
+import { useRef } from 'react';
 
 const DataTable = dynamic(() => import('@/components/data-table').then(mod => mod.DataTable), {
     ssr: false,
@@ -106,6 +108,7 @@ export function EditorClient({
     const [isEditRowOpen, setIsEditRowOpen] = useState(false);
     const [isEditColumnOpen, setIsEditColumnOpen] = useState(false);
     const [isAddColumnOpen, setIsAddColumnOpen] = useState(false);
+    const [isAddRowOpen, setIsAddRowOpen] = useState(false);
     const [isDeleteTableAlertOpen, setIsDeleteTableAlertOpen] = useState(false);
     const [tableToDelete, setTableToDelete] = useState<DbTable | null>(null);
     const [columnToEdit, setColumnToEdit] = useState<DbColumn | null>(null);
@@ -115,7 +118,8 @@ export function EditorClient({
     const [activeTab, setActiveTab] = useState('data');
     const [isImportingCsv, setIsImportingCsv] = useState(false);
     const [tableSearchQuery, setTableSearchQuery] = useState('');
-    const csvInputRef = React.useRef<HTMLInputElement>(null);
+    const csvInputRef = useRef<HTMLInputElement>(null);
+    const searchInputRef = useRef<HTMLInputElement>(null);
 
     const [foreignKeyData, setForeignKeyData] = useState<Record<string, any[]>>({});
     const [constraints, setConstraints] = useState<DbConstraint[]>(initialConstraints);
@@ -124,6 +128,33 @@ export function EditorClient({
     // Local copy of tables — updated optimistically so sidebar doesn't need router.refresh() on delete
     const [localTables, setLocalTables] = useState<DbTable[]>(allTables);
     const [, startTransition] = useTransition();
+
+    useKeyboardShortcuts([
+        {
+            combination: 'n',
+            handler: () => setIsAddRowOpen(true),
+            description: 'Add New Row'
+        },
+        {
+            combination: { key: 'f', ctrl: true },
+            handler: () => searchInputRef.current?.focus(),
+            description: 'Search Table'
+        },
+        {
+            combination: 'delete',
+            handler: () => {
+                if (selectionModel.length > 0) {
+                    handleDeleteSelectedRows();
+                }
+            },
+            description: 'Delete Selected Rows'
+        },
+        {
+            combination: 'escape',
+            handler: () => setSelectionModel([]),
+            description: 'Clear Selection'
+        }
+    ], !!tableId);
 
     const searchedTables = React.useMemo(() => { return localTables.filter(t => t.table_name.toLowerCase().includes(tableSearchQuery.toLowerCase())); }, [localTables, tableSearchQuery]);
 
@@ -454,7 +485,13 @@ export function EditorClient({
                     </div>
                     <div className="p-2 relative">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input placeholder="Search tables..." className="pl-8" value={tableSearchQuery} onChange={(e) => setTableSearchQuery(e.target.value)} />
+                        <Input 
+                            ref={searchInputRef}
+                            placeholder="Search tables..." 
+                            className="pl-8" 
+                            value={tableSearchQuery} 
+                            onChange={(e) => setTableSearchQuery(e.target.value)} 
+                        />
                     </div>
                     <nav className="flex-1 overflow-y-auto px-2 space-y-1 py-2">
                         {searchedTables.map((table) => (
@@ -526,6 +563,8 @@ export function EditorClient({
                                                 foreignKeyData={foreignKeyData}
                                                 allTables={allTables}
                                                 constraints={constraints}
+                                                isOpen={isAddRowOpen}
+                                                onOpenChange={setIsAddRowOpen}
                                             />
                                             <Button
                                                 variant="outline"

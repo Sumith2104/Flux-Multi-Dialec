@@ -18,6 +18,7 @@ import { SchemaExplorer } from '@/components/schema-explorer';
 import { ProjectContext } from '@/contexts/project-context';
 import { useToast } from '@/hooks/use-toast';
 import { generateSQLAction } from '@/actions/ai-sql-actions';
+import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 
 export default function QueryPage() {
 
@@ -230,6 +231,14 @@ export default function QueryPage() {
       setIsExecutingAI(false);
     }
   };
+
+  useKeyboardShortcuts([
+    {
+      combination: { key: 'enter', ctrl: true },
+      handler: () => handleRunQuery(),
+      description: 'Run SQL Query'
+    }
+  ], !isExecuting);
 
   return (
     <div className="h-[calc(100vh-57px)] w-full p-2 bg-background">
