@@ -47,7 +47,6 @@ const navItems = [
     { href: "/database", label: "Database", icon: <Database /> },
     { href: "/query", label: "SQL Editor", icon: <BrainCircuit /> },
     { href: "/analytics", label: "Analytics", icon: <BarChart3 /> },
-    { href: "/api", label: "API", icon: <Code /> },
     { href: "/scraper", label: "Scraper", icon: <Globe /> },
     { href: "/storage", label: "Storage", icon: <Folder /> },
     { href: "/settings", label: "Settings", icon: <SettingsIcon /> },
@@ -133,7 +132,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
     const dockItems = navItems.map(item => {
         // Reduced list of project-specific pages
-        const isProjectSpecific = ["/editor", "/api", "/storage", "/query", "/database", "/analytics", "/scraper", "/settings"].includes(item.href);
+        const isProjectSpecific = ["/editor", "/storage", "/query", "/database", "/analytics", "/scraper", "/settings"].includes(item.href);
         const isDisabled = isProjectSpecific && !selectedProject?.project_id;
         let finalHref = item.href;
 
@@ -182,11 +181,6 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
             combination: 'g s', 
             handler: () => selectedProject?.project_id ? router.push(`/settings?projectId=${selectedProject.project_id}`) : router.push('/dashboard/projects'),
             description: 'Go to Settings'
-        },
-        { 
-            combination: 'g i', 
-            handler: () => selectedProject?.project_id ? router.push(`/api?projectId=${selectedProject.project_id}`) : router.push('/dashboard/projects'),
-            description: 'Go to API'
         },
         { 
             combination: 'g w', 

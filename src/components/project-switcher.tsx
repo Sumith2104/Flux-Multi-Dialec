@@ -12,7 +12,7 @@ import {
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { Check, ChevronsUpDown, Plus } from 'lucide-react';
+import { Check, ChevronsUpDown, Plus, Settings } from 'lucide-react';
 import type { Project } from '@/lib/data';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -97,6 +97,13 @@ export function ProjectSwitcher({
           <Link href="/dashboard/projects/create">
             <Plus className="mr-2 h-4 w-4" />
             Create Project
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href={selectedProject?.project_id ? `/settings?projectId=${selectedProject.project_id}` : '/settings'}>
+            <Settings className="mr-2 h-4 w-4" />
+            Settings
           </Link>
         </DropdownMenuItem>
       </DropdownMenuContent>
