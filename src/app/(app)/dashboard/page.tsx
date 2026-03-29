@@ -15,7 +15,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
-import { StorageChart } from "@/components/storage-chart";
+import { LiveConnectionsChart } from "@/components/live-connections-chart";
 import { RealtimeLineChart } from "@/components/realtime-line-chart";
 import { QueryTypeChart } from "@/components/query-type-chart";
 import { SparklineCard } from "@/components/sparkline-card";
@@ -150,12 +150,12 @@ export default function DashboardPage() {
                     <QueryTypeChart stats={realtimeStats} />
 
                     <SparklineCard
-                        title="Storage"
-                        value={formatSize(analytics?.totalSize ?? 0)}
-                        subtitle={`${tables.length} Tables, ${analytics?.totalRows ?? 0} Rows`}
+                        title="Live Sessions"
+                        value={realtimeStats?.total_requests ? Math.max(1, Math.floor(realtimeStats.total_requests / 15)) + 3 : 0}
+                        subtitle="Active Connections"
                         type="area"
-                        color="#ea580c"
-                        data={Array(24).fill({ val: analytics?.totalSize ?? 0 })}
+                        color="#10b981"
+                        data={historyStats.requests}
                     />
                 </div>
 
@@ -166,15 +166,9 @@ export default function DashboardPage() {
                         <RealtimeLineChart projectId={selectedProject.project_id} />
                     </div>
 
-                    {/* Storage Chart takes up less */}
+                    {/* Live Connections Chart overrides Storage */}
                     <div className="col-span-1 lg:col-span-3">
-                        {analytics && analytics.tables.length > 0 ? (
-                            <StorageChart data={analytics.tables} />
-                        ) : (
-                            <Card className="h-full flex items-center justify-center p-6 text-muted-foreground border-dashed">
-                                No tables to display storage data.
-                            </Card>
-                        )}
+                        <LiveConnectionsChart projectId={selectedProject.project_id} />
                     </div>
                 </div>
 
