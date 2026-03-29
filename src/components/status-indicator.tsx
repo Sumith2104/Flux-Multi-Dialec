@@ -3,11 +3,10 @@
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from '@/components/ui/tooltip';
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from '@/components/ui/popover';
 
 type HealthStatus = 'checking' | 'healthy' | 'degraded' | 'offline';
 
@@ -74,55 +73,53 @@ export function StatusIndicator() {
     };
 
     return (
-        <TooltipProvider>
-            <Tooltip>
-                <TooltipTrigger asChild>
-                    <button
-                        id="status-indicator"
-                        className="flex items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-muted/40 transition-colors h-8"
-                    >
-                        <span className="relative flex h-2 w-2">
-                            {overall === 'healthy' && (
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-                            )}
-                            <span className={cn('relative inline-flex rounded-full h-2 w-2', colors[overall])} />
-                        </span>
-                        <span className="hidden lg:block text-xs text-muted-foreground">Status</span>
-                    </button>
-                </TooltipTrigger>
-                <TooltipContent
-                    side="bottom"
-                    align="end"
-                    className="bg-zinc-950 border-zinc-800 p-0 overflow-hidden min-w-[200px]"
+        <Popover>
+            <PopoverTrigger asChild>
+                <button
+                    id="status-indicator"
+                    className="flex items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-muted/40 transition-colors h-8 focus:outline-none"
                 >
-                    <div className="px-3 py-2 border-b border-zinc-800">
-                        <p className="text-xs font-medium text-foreground">{labels[overall]}</p>
-                    </div>
-                    <div className="p-2 space-y-1">
-                        {services.map(svc => (
-                            <div key={svc.name} className="flex items-center justify-between px-1 py-0.5">
-                                <div className="flex items-center gap-2">
-                                    <span className={cn('h-1.5 w-1.5 rounded-full', colors[svc.status])} />
-                                    <span className="text-xs text-zinc-300">{svc.name}</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    {svc.latency && (
-                                        <span className="text-[10px] text-zinc-500">{svc.latency}ms</span>
-                                    )}
-                                    <span className={cn(
-                                        'text-[10px] capitalize',
-                                        svc.status === 'healthy' ? 'text-emerald-400' :
-                                        svc.status === 'degraded' ? 'text-yellow-400' :
-                                        svc.status === 'offline' ? 'text-red-400' : 'text-zinc-500'
-                                    )}>
-                                        {svc.status}
-                                    </span>
-                                </div>
+                    <span className="relative flex h-2 w-2">
+                        {overall === 'healthy' && (
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+                        )}
+                        <span className={cn('relative inline-flex rounded-full h-2 w-2', colors[overall])} />
+                    </span>
+                    <span className="hidden lg:block text-xs text-muted-foreground">Status</span>
+                </button>
+            </PopoverTrigger>
+            <PopoverContent
+                side="bottom"
+                align="end"
+                className="bg-zinc-950 border-zinc-800 p-0 overflow-hidden min-w-[220px] shadow-2xl duration-75 animate-in fade-in-0 zoom-in-95"
+            >
+                <div className="px-3 py-2 border-b border-zinc-800">
+                    <p className="text-xs font-semibold text-foreground">{labels[overall]}</p>
+                </div>
+                <div className="p-2 space-y-1">
+                    {services.map(svc => (
+                        <div key={svc.name} className="flex items-center justify-between px-1 py-0.5">
+                            <div className="flex items-center gap-2">
+                                <span className={cn('h-1.5 w-1.5 rounded-full', colors[svc.status])} />
+                                <span className="text-xs text-zinc-300">{svc.name}</span>
                             </div>
-                        ))}
-                    </div>
-                </TooltipContent>
-            </Tooltip>
-        </TooltipProvider>
+                            <div className="flex items-center gap-2">
+                                {svc.latency && (
+                                    <span className="text-[10px] text-zinc-500">{svc.latency}ms</span>
+                                )}
+                                <span className={cn(
+                                    'text-[10px] capitalize font-medium',
+                                    svc.status === 'healthy' ? 'text-emerald-400' :
+                                    svc.status === 'degraded' ? 'text-yellow-400' :
+                                    svc.status === 'offline' ? 'text-red-400' : 'text-zinc-500'
+                                )}>
+                                    {svc.status}
+                                </span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </PopoverContent>
+        </Popover>
     );
 }

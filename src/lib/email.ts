@@ -234,3 +234,40 @@ export async function sendLimitAlertEmail(to: string, projectName: string, resou
 
     return sendEmail(to, `[Fluxbase Alert] ${title} - ${projectName}`, html, getBrandAttachments());
 }
+
+/**
+ * Sends a branded email report for user feedback.
+ */
+export async function sendFeedbackEmail(to: string, mood: number | null, message: string, page: string | null, userId: string = 'Anonymous') {
+    const moodMap: Record<number, { label: string, color: string }> = {
+        1: { label: 'Bad ☹️', color: '#f87171' },
+        2: { label: 'Okay 😐', color: '#fbbf24' },
+        3: { label: 'Good 🙂', color: '#34d399' },
+        4: { label: 'Love it! 🤩', color: '#60a5fa' },
+    };
+
+    const moodData = mood ? moodMap[mood] : { label: 'None', color: '#71717a' };
+    
+    const html = buildEmailHtml({
+        title: "New Feedback Received",
+        greeting: "Hello, you have received new user feedback.",
+        instruction: "Below are the details shared by the user.",
+        contentHtml: `
+            <div style="text-align: left; background: rgba(255,255,255,0.03); border-radius: 12px; padding: 24px; border: 1px solid #27272a;">
+                <p style="margin: 0 0 16px 0; font-size: 14px; color: #71717a; text-transform: uppercase; letter-spacing: 1px;">User Identity</p>
+                <p style="margin: 0 0 24px 0; font-size: 16px; color: #ffffff; font-family: monospace;">${userId}</p>
+                
+                <p style="margin: 0 0 8px 0; font-size: 14px; color: #71717a; text-transform: uppercase; letter-spacing: 1px;">Experience Mood</p>
+                <p style="margin: 0 0 24px 0; font-size: 18px; font-weight: 700; color: ${moodData.color};">${moodData.label}</p>
+                
+                <p style="margin: 0 0 8px 0; font-size: 14px; color: #71717a; text-transform: uppercase; letter-spacing: 1px;">Message</p>
+                <p style="margin: 0 0 24px 0; font-size: 16px; color: #e4e4e7; line-height: 1.6; white-space: pre-wrap;">${message || 'No written message provided.'}</p>
+                
+                <p style="margin: 0 0 8px 0; font-size: 14px; color: #71717a; text-transform: uppercase; letter-spacing: 1px;">Source Page</p>
+                <p style="margin: 0; font-size: 13px; color: #a1a1aa; font-family: monospace; word-break: break-all;">${page || 'Unknown'}</p>
+            </div>
+        `
+    });
+
+    return sendEmail(to, `[Fluxbase Feedback] New response from ${userId}`, html, getBrandAttachments());
+}

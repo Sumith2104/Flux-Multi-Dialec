@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { getAuthContextFromRequest } from '@/lib/auth';
+import { sendFeedbackEmail } from '@/lib/email';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +29,22 @@ export async function POST(req: NextRequest) {
             `INSERT INTO fluxbase_global.feedback (user_id, mood, message, page) VALUES ($1, $2, $3, $4)`,
             [auth?.userId || 'anonymous', mood ?? null, message || null, req.headers.get('referer') || null]
         );
+
+        // Send email notification
+        if (process.env.SMTP_USER) {
+            try {
+                await sendFeedbackEmail(
+                    process.env.SMTP_USER,
+                    mood,
+                    message,
+                    req.headers.get('referer'),
+                    auth?.userId || 'Anonymous'
+                );
+            } catch (emailErr) {
+                console.error('Failed to send feedback email:', emailErr);
+                // Don't fail the whole request if email fails
+            }
+        }
 
         return NextResponse.json({ success: true });
     } catch (e: any) {

@@ -135,7 +135,7 @@ export function CommandPalette() {
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className="p-0 gap-0 max-w-lg overflow-hidden bg-zinc-950 border-zinc-800">
                     <DialogTitle className="sr-only">Command Palette</DialogTitle>
-                    <div className="flex items-center border-b border-zinc-800 px-3">
+                    <div className="flex items-center border-b border-zinc-800 px-3 pr-12">
                         <Search className="h-4 w-4 text-muted-foreground shrink-0" />
                         <Input
                             autoFocus
