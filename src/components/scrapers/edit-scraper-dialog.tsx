@@ -89,10 +89,8 @@ export function EditScraperDialog({ scraper, open, onOpenChange, onSuccess }: Ed
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[500px]">
                 <DialogHeader>
-                    <DialogTitle>Edit Web Scraper</DialogTitle>
-                    <DialogDescription>
-                        Update the extraction configuration for this engine job.
-                    </DialogDescription>
+                    <DialogTitle>Edit Scraper</DialogTitle>
+                    <DialogDescription>Update the scraper configuration.</DialogDescription>
                 </DialogHeader>
 
                 {error && (

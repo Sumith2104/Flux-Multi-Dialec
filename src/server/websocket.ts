@@ -5,6 +5,11 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { Pool } from 'pg';
 import jwt from 'jsonwebtoken';
 import http from 'http';
+import { Redis } from '@upstash/redis';
+
+const url = process.env.UPSTASH_REDIS_REST_URL || 'https://dummy.upstash.io';
+const token = process.env.UPSTASH_REDIS_REST_TOKEN || 'dummy';
+const redis = new Redis({ url, token });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fluxbase_dev_secret_key_123';
 const PORT = parseInt(process.env.WS_PORT || '4000', 10);
@@ -148,6 +153,9 @@ wss.on('connection', async (ws, req) => {
                 }
                 clients.get(channelId)!.add(ws);
                 userSubscriptions.add(channelId);
+                
+                // Track this active session in Redis
+                await redis.incr(`live_sessions:${projectId}`).catch(() => {});
 
                 console.log(`[WS] Client subscribed to ${channelId}`);
                 ws.send(JSON.stringify({ type: 'subscribed', channel: channelId }));
@@ -160,6 +168,10 @@ wss.on('connection', async (ws, req) => {
                     clients.get(channelId)!.delete(ws);
                 }
                 userSubscriptions.delete(channelId);
+                
+                // Untrack this session in Redis
+                await redis.decr(`live_sessions:${projectId}`).catch(() => {});
+                
                 console.log(`[WS] Client unsubscribed from ${channelId}`);
             }
 
@@ -176,6 +188,11 @@ wss.on('connection', async (ws, req) => {
         for (const channelId of userSubscriptions) {
             if (clients.has(channelId)) {
                 clients.get(channelId)!.delete(ws);
+            }
+            // Extract projectId from channelId (format: projectId:tableId)
+            const projId = channelId.split(':')[0];
+            if (projId) {
+                redis.decr(`live_sessions:${projId}`).catch(() => {});
             }
         }
     });

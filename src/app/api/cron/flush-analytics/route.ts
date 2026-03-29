@@ -47,7 +47,7 @@ export async function GET(request: Request) {
             try {
                 await pool.query(query, [projectId, periodStartISO, eventType, val]);
             } catch (err: any) {
-                console.error(`Skipping analytics flush for deleted project ${projectId}`);
+                // Silently skip if project doesn't exist anymore, no need to spam logs
             }
             
             // Clear the actual counter safely post-sync

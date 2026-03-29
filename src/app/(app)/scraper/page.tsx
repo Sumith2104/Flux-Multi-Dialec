@@ -77,7 +77,7 @@ export default function ScraperDashboard() {
     }
 
     return (
-        <div className="container py-8 max-w-7xl mx-auto space-y-8 animate-in fade-in zoom-in-95 duration-500">
+        <div className="w-full py-8 space-y-8 animate-in fade-in zoom-in-95 duration-500">
 
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-6">
                 <div>

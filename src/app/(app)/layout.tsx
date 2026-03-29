@@ -20,6 +20,11 @@ import { ProjectProvider, ProjectContext } from "@/contexts/project-context";
 import { TimezoneSelector } from "@/components/timezone-selector";
 import Dock from "@/components/dock";
 import { FluxAiAssistant } from "@/components/flux-ai-assistant";
+import { CommandPalette } from "@/components/command-palette";
+import { FeedbackWidget } from "@/components/feedback-widget";
+import { ChangelogPopover } from "@/components/changelog-popover";
+import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
+import { StatusIndicator } from "@/components/status-indicator";
 import {
     LayoutDashboard,
     BrainCircuit,
@@ -228,10 +233,15 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                 </div>
                 <div className="flex-1"></div>
                 {userId ? (
-                    <div className="flex items-center">
-                        <div className="flex items-center">
-                            <LogoutButton />
-                        </div>
+                    <div className="flex items-center gap-0.5">
+                        <CommandPalette />
+                        <div className="w-px h-5 bg-border mx-1 hidden md:block" />
+                        <StatusIndicator />
+                        <ChangelogPopover />
+                        <FeedbackWidget />
+                        <KeyboardShortcuts />
+                        <div className="w-px h-5 bg-border mx-1" />
+                        <LogoutButton />
                     </div>
                 ) : (
                     <Button asChild variant="outline" size="sm">
@@ -242,7 +252,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
             <div className="flex flex-1 overflow-hidden relative">
                 <main className={cn("flex-1 overflow-auto pb-24", {
                     "p-0": isEditorOrDbPage,
-                    "p-4 md:p-8": !isEditorOrDbPage,
+                    "p-4 md:p-6": !isEditorOrDbPage,
                 })}>
                     {children}
                     {shouldShowDock && (

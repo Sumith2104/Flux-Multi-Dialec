@@ -31,7 +31,7 @@ async function Database({ projectId }: { projectId: string }) {
 
 function DatabaseSkeleton() {
     return (
-        <div className="w-full h-full p-6">
+        <div className="w-full h-full">
             <Skeleton className="h-full w-full" />
         </div>
     )

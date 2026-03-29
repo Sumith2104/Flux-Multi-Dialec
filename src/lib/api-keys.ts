@@ -7,6 +7,7 @@ export interface ApiKey {
     name: string;
     projectId?: string; // Stored as project_id
     projectName?: string; // Stored as project_name
+    scopes: string[]; // Stored as scopes (JSONB)
     preview: string;
     createdAt: string; // Stored as created_at
     lastUsedAt?: string; // Stored as last_used_at
@@ -17,16 +18,16 @@ export interface CreateApiKeyResult {
     apiKeyData: ApiKey;
 }
 
-export async function generateApiKey(userId: string, name: string, projectId?: string, projectName?: string): Promise<CreateApiKeyResult> {
+export async function generateApiKey(userId: string, name: string, projectId?: string, projectName?: string, scopes: string[] = ['read']): Promise<CreateApiKeyResult> {
     const rawKey = 'fl_' + randomBytes(24).toString('hex');
     const hash = createHash('sha256').update(rawKey).digest('hex');
     const preview = `${rawKey.substring(0, 7)}...${rawKey.substring(rawKey.length - 4)}`;
 
     const pool = getPgPool();
     await pool.query(
-        `INSERT INTO fluxbase_global.api_keys (id, user_id, name, project_id, project_name, preview) 
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [hash, userId, name, projectId || null, projectName || null, preview]
+        `INSERT INTO fluxbase_global.api_keys (id, user_id, name, project_id, project_name, preview, scopes) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [hash, userId, name, projectId || null, projectName || null, preview, JSON.stringify(scopes)]
     );
 
     const apiKeyData: ApiKey = {
@@ -36,17 +37,18 @@ export async function generateApiKey(userId: string, name: string, projectId?: s
         preview,
         createdAt: new Date().toISOString(),
         projectId,
-        projectName
+        projectName,
+        scopes
     };
 
     return { key: rawKey, apiKeyData };
 }
 
-export async function validateApiKey(rawKey: string): Promise<{ userId: string, projectId?: string } | null> {
+export async function validateApiKey(rawKey: string): Promise<{ userId: string, projectId?: string, scopes: string[] } | null> {
     const hash = createHash('sha256').update(rawKey).digest('hex');
 
     const pool = getPgPool();
-    const result = await pool.query('SELECT user_id, project_id FROM fluxbase_global.api_keys WHERE id = $1', [hash]);
+    const result = await pool.query('SELECT user_id, project_id, scopes FROM fluxbase_global.api_keys WHERE id = $1', [hash]);
 
     if (result.rows.length === 0) return null;
 
@@ -57,7 +59,8 @@ export async function validateApiKey(rawKey: string): Promise<{ userId: string, 
 
     return {
         userId: result.rows[0].user_id,
-        projectId: result.rows[0].project_id
+        projectId: result.rows[0].project_id,
+        scopes: result.rows[0].scopes || ['read']
     };
 }
 
@@ -71,6 +74,7 @@ export async function listApiKeys(userId: string): Promise<ApiKey[]> {
         name: row.name,
         projectId: row.project_id,
         projectName: row.project_name,
+        scopes: row.scopes || ['read'],
         preview: row.preview,
         createdAt: row.created_at.toISOString(),
         lastUsedAt: row.last_used_at ? row.last_used_at.toISOString() : undefined

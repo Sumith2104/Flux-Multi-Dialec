@@ -75,6 +75,7 @@ export async function getUserIdFromRequest(request: Request): Promise<string | n
 export interface AuthContext {
     userId: string;
     allowedProjectId?: string; // If present, the user is restricted to this project
+    scopes?: string[]; // If present (API access), these define permitted actions
 }
 
 export async function getAuthContextFromRequest(request: Request): Promise<AuthContext | null> {
@@ -98,7 +99,11 @@ export async function getAuthContextFromRequest(request: Request): Promise<AuthC
     if (apiKey) {
         const result = await validateApiKey(apiKey);
         if (result) {
-            return { userId: result.userId, allowedProjectId: result.projectId };
+            return { 
+                userId: result.userId, 
+                allowedProjectId: result.projectId,
+                scopes: result.scopes 
+            };
         }
     }
 

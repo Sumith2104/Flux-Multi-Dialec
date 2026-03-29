@@ -150,12 +150,12 @@ export default function DashboardPage() {
                     <QueryTypeChart stats={realtimeStats} />
 
                     <SparklineCard
-                        title="Storage"
-                        value={formatSize(analytics?.totalSize ?? 0)}
-                        subtitle={`${tables.length} Tables, ${analytics?.totalRows ?? 0} Rows`}
+                        title="Live Sessions"
+                        value={realtimeStats?.live_sessions ?? 0}
+                        subtitle="Active Connections"
                         type="area"
-                        color="#ea580c"
-                        data={Array(24).fill({ val: analytics?.totalSize ?? 0 })}
+                        color="#10b981"
+                        data={historyStats.requests}
                     />
                 </div>
 

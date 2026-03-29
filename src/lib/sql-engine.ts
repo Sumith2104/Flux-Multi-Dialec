@@ -47,11 +47,13 @@ export class SqlEngine {
     private projectTimezone?: string;
     private projectDialect?: string;
     private parser: Parser;
+    private scopes: string[] | null = null;
 
-    constructor(projectId: string, userId?: string) {
+    constructor(projectId: string, userId?: string, scopes?: string[]) {
         this.projectId = projectId;
         this.userId = userId || null;
         this.parser = new Parser();
+        this.scopes = scopes || null;
     }
 
     private async init() {
@@ -69,9 +71,12 @@ export class SqlEngine {
         }
     }
 
-    public async execute(query: string, params?: any[]): Promise<SqlResult> {
+    public async execute(query: string, params?: any[], options: { skipTracking?: boolean } = {}): Promise<SqlResult> {
         await this.init();
         if (!this.userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
+
+        const firstWord = query.trim().split(/\s+/)[0].toUpperCase();
+        this.validateScope(firstWord);
 
         const queryCleaned = query
             .replace(/--.*$/gm, '') // Remove single-line comments
@@ -100,8 +105,10 @@ export class SqlEngine {
         ]);
 
         try {
-            await trackApiRequest(this.projectId, 'api_call');
-            await trackApiRequest(this.projectId, 'sql_execution');
+            if (!options.skipTracking) {
+                await trackApiRequest(this.projectId, 'api_call');
+                await trackApiRequest(this.projectId, 'sql_execution');
+            }
 
             if (this.projectDialect?.toLowerCase() === 'mysql') {
                 const { getMysqlPool } = await import('@/lib/mysql');
@@ -120,7 +127,6 @@ export class SqlEngine {
                     }
 
                     // 2. Execute raw SQL natively on MySQL engine
-                    // Using query() instead of execute() for raw multiple statements
                     const [queryResult, fields]: any = await connection.query(queryCleaned, params || []);
 
                     const executionTime = (performance.now() - startTime).toFixed(2);
@@ -185,8 +191,6 @@ export class SqlEngine {
                     await client.query(`SET search_path TO "project_${this.projectId}"`);
                     if (this.projectTimezone) {
                         try {
-                            // PostgreSQL SET TIME ZONE expects a string literal or valid interval/alias, we can parameterize it using set_config or string injection safely
-                            // However, using set_config is safer than arbitrary string concatenation.
                             await client.query(`SELECT set_config('timezone', $1, false)`, [this.projectTimezone]);
                         } catch (tzErr) {
                             console.warn(`Failed to set Postgres timezone to ${this.projectTimezone}:`, tzErr);
@@ -221,9 +225,18 @@ export class SqlEngine {
                 }
             }
 
+            const durationMs = performance.now() - startTime;
+            if (!options.skipTracking) {
+                const pool = getPgPool();
+                pool.query(
+                    `INSERT INTO fluxbase_global.audit_logs (project_id, user_id, action, statement, duration_ms, success) 
+                     VALUES ($1, $2, $3, $4, $5, $6)`,
+                    [this.projectId, this.userId, firstWord, queryCleaned, durationMs, true]
+                ).catch(err => console.error('[SqlEngine] Audit log failed:', err));
+            }
+
             // Quick Telemetry Inference
-            const firstWord = queryCleaned.trim().split(/\s+/)[0].toUpperCase();
-            if (['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'ALTER', 'CREATE', 'DROP'].includes(firstWord)) {
+            if (!options.skipTracking && ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'ALTER', 'CREATE', 'DROP'].includes(firstWord)) {
                 await trackApiRequest(this.projectId, `sql_${firstWord.toLowerCase()}` as any);
             }
             
@@ -251,9 +264,18 @@ export class SqlEngine {
                 code = ERROR_CODES.DATABASE_CONNECTION_ERROR;
             }
 
+            const durationMs = performance.now() - startTime;
+            if (!options.skipTracking) {
+                const pool = getPgPool();
+                pool.query(
+                    `INSERT INTO fluxbase_global.audit_logs (project_id, user_id, action, statement, duration_ms, success, error) 
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                    [this.projectId, this.userId, firstWord, queryCleaned, durationMs, false, errorMessage]
+                ).catch(err => console.error('[SqlEngine] Audit log failure track failed:', err));
+            }
+
             throw new FluxbaseError(`AWS Database Error: ${errorMessage}`, code, 400);
         } finally {
-            // Guarantee all acquired locks are fully released back to the event-loop queue
             tenantRelease();
             globalRelease();
         }
@@ -320,7 +342,6 @@ export class SqlEngine {
                 const schemaName = 'project_' + this.projectId;
                 const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
 
-                // To be purely Postgres native, rely on PG for loops or parameterized queries
                 for (let i = 0; i < count; i++) {
                     const ObjectCols: string[] = [];
                     const ObjectVals: string[] = [];
@@ -366,6 +387,33 @@ export class SqlEngine {
         } catch (e: any) {
             console.error('Generate Data Error:', e);
             throw new Error('Data Generation Failed: ' + e.message);
+        }
+    }
+
+    private validateScope(firstWord: string) {
+        if (!this.scopes) return; // UI sessions have all scopes
+
+        const readOps = ['SELECT', 'SHOW', 'DESCRIBE', 'EXPLAIN'];
+        const writeOps = ['INSERT', 'UPDATE', 'DELETE', 'CALL'];
+        const adminOps = ['CREATE', 'DROP', 'ALTER', 'TRUNCATE', 'RENAME'];
+
+        if (readOps.includes(firstWord)) {
+            if (!this.scopes.includes('read') && !this.scopes.includes('write') && !this.scopes.includes('admin')) {
+                throw new FluxbaseError(`Scope 'read' required for ${firstWord} operations`, ERROR_CODES.FORBIDDEN, 403);
+            }
+        } else if (writeOps.includes(firstWord)) {
+            if (!this.scopes.includes('write') && !this.scopes.includes('admin')) {
+                throw new FluxbaseError(`Scope 'write' required for ${firstWord} operations`, ERROR_CODES.FORBIDDEN, 403);
+            }
+        } else if (adminOps.includes(firstWord)) {
+            if (!this.scopes.includes('admin')) {
+                throw new FluxbaseError(`Scope 'admin' required for ${firstWord} operations`, ERROR_CODES.FORBIDDEN, 403);
+            }
+        } else {
+            // Default to requiring admin for unknown ops (safety first)
+            if (!this.scopes.includes('admin')) {
+                throw new FluxbaseError(`Scope 'admin' required for unknown operation: ${firstWord}`, ERROR_CODES.FORBIDDEN, 403);
+            }
         }
     }
 }

@@ -419,7 +419,7 @@ export default function QueryPage() {
 
               <TabsContent value="explanation" className="h-full m-0 p-4 overflow-auto absolute inset-0">
                 {queryResponse?.explanation ? (
-                  <div className="space-y-4 max-w-4xl mx-auto">
+                  <div className="space-y-4 w-full">
                     <div className="rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden">
                       {queryResponse.explanation.map((line: string, i: number) => (
                         <div key={i} className="flex items-start gap-3 p-2.5 border-b last:border-0 border-border/40 hover:bg-muted/50 font-mono text-xs">
@@ -439,7 +439,7 @@ export default function QueryPage() {
 
               <TabsContent value="messages" className="h-full m-0 p-4 overflow-auto absolute inset-0">
                 {queryResponse?.error ? (
-                  <div className="max-w-2xl mx-auto mt-8">
+                  <div className="w-full mt-4">
                     <Alert variant="destructive" className="border-red-900/50 bg-red-900/10 shadow-sm text-red-500">
                       <AlertCircle className="h-5 w-5" />
                       <AlertTitle className="font-mono text-sm font-bold flex items-center gap-2">
@@ -459,7 +459,7 @@ export default function QueryPage() {
                     </Alert>
                   </div>
                 ) : queryResponse?.result?.message ? (
-                  <Alert className="bg-green-500/10 border-green-500/20 text-green-600 max-w-2xl mx-auto mt-8">
+                  <Alert className="bg-green-500/10 border-green-500/20 text-green-600 w-full mt-4">
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 text-green-500" />
                       <AlertTitle className="font-medium">Success</AlertTitle>

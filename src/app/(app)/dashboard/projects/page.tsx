@@ -47,7 +47,7 @@ export default function SelectProjectPage() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-full bg-background p-4 animate-in fade-in duration-500">
-        <div className="w-full max-w-4xl">
+      <div className="w-full max-w-7xl">
           <Card>
             <CardHeader>
               <Skeleton className="h-8 w-48" />
@@ -66,7 +66,7 @@ export default function SelectProjectPage() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-full bg-background p-4 animate-in fade-in duration-500">
-      <div className="w-full max-w-4xl">
+      <div className="w-full max-w-7xl">
         <Card>
           <CardHeader>
             <CardTitle className="text-2xl">Select a Project</CardTitle>

@@ -718,7 +718,7 @@ export function EditorClient({
                                 </div>
                             </header>
 
-                            <div className="p-6 flex-grow flex flex-col overflow-hidden">
+                            <div className="flex-grow flex flex-col overflow-hidden">
                                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col min-h-0">
                                     <div className="flex items-center justify-between w-full border-b pb-2 mb-2">
                                         <TabsList>

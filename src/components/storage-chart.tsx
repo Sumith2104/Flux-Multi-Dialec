@@ -1,6 +1,7 @@
 
 'use client';
 
+import { useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, TooltipProps } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { NameType, ValueType } from 'recharts/types/component/DefaultTooltipContent';
@@ -79,8 +80,16 @@ const CustomXAxisTick = ({ x, y, payload }: any) => {
 };
 
 export function StorageChart({ data }: StorageChartProps) {
+  const [isHovered, setIsHovered] = useState(false);
+  const startColor = isHovered ? "#f97316" : "#71717a";
+  const endColor = isHovered ? "#ea580c" : "#3f3f46";
+
   return (
-    <Card className="border-zinc-800 flex flex-col h-full min-h-[400px] bg-zinc-950/40 backdrop-blur-md shadow-2xl">
+    <Card 
+        className="border-zinc-800 flex flex-col h-full min-h-[400px] bg-zinc-950/40 backdrop-blur-md shadow-2xl transition-colors hover:bg-zinc-900/60"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+    >
       <CardHeader className="border-b border-white/5 pb-4">
         <CardTitle className="text-xl font-bold text-zinc-100 flex items-center gap-2">
           Storage Usage
@@ -101,8 +110,8 @@ export function StorageChart({ data }: StorageChartProps) {
             >
               <defs>
                 <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#f97316" stopOpacity={0.85} />
-                  <stop offset="100%" stopColor="#ea580c" stopOpacity={0.15} />
+                  <stop offset="0%" stopColor={startColor} stopOpacity={0.85} />
+                  <stop offset="100%" stopColor={endColor} stopOpacity={0.15} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />

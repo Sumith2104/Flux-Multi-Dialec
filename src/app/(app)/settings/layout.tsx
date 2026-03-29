@@ -4,7 +4,7 @@ import { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Settings, Key, Webhook, Bot, Activity } from 'lucide-react';
+import { Settings, Key, Webhook, Bot, Activity, Users, Bell, Archive } from 'lucide-react';
 import { BackButton } from "@/components/back-button";
 
 const sidebarNavItems = [
@@ -29,6 +29,21 @@ const sidebarNavItems = [
         icon: Activity,
     },
     {
+        title: "Team & Audit",
+        href: "/settings/team",
+        icon: Users,
+    },
+    {
+        title: "Alerting",
+        href: "/settings/alerts",
+        icon: Bell,
+    },
+    {
+        title: "Backups",
+        href: "/settings/backups",
+        icon: Archive,
+    },
+    {
         title: "AI Assistant",
         href: "/settings/ai",
         icon: Bot,
@@ -44,7 +59,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
     const pathname = usePathname();
 
     return (
-        <div className="space-y-6 max-w-5xl mx-auto pb-16">
+        <div className="space-y-6 w-full pb-16">
             <div className="flex items-center gap-4">
                 <BackButton />
                 <div>
@@ -78,7 +93,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
                         })}
                     </nav>
                 </aside>
-                <div className="flex-1 lg:max-w-3xl">{children}</div>
+                <div className="flex-1">{children}</div>
             </div>
         </div>
     );

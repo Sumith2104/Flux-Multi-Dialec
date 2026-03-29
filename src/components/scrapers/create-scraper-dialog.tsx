@@ -77,7 +77,7 @@ export function CreateScraperDialog({ open, onOpenChange, projectId, onSuccess }
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[500px]">
                 <DialogHeader>
-                    <DialogTitle>Create New Web Scraper</DialogTitle>
+                    <DialogTitle>Create New Scraper</DialogTitle>
                     <DialogDescription>
                         Configure a new data extraction engine. The data will automatically be inserted into your database.
                     </DialogDescription>

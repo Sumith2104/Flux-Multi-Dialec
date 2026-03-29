@@ -58,6 +58,10 @@ export async function GET(req: NextRequest) {
         async start(controller) {
             try {
                 const client = await pool.connect();
+                const { redis } = await import('@/lib/redis');
+                
+                // Increment live sessions count for this project
+                await redis.incr(`live_sessions:${projectId}`).catch(() => {});
                 
                 // Send initial heartbeat
                 controller.enqueue(encoder.encode('retry: 10000\n\n'));
@@ -94,6 +98,11 @@ export async function GET(req: NextRequest) {
                     client.off('notification', handleNotification);
                     await client.query('UNLISTEN fluxbase_live').catch(() => {});
                     client.release();
+                    
+                    // Decrement live sessions count for this project
+                    const { redis } = await import('@/lib/redis');
+                    await redis.decr(`live_sessions:${projectId}`).catch(() => {});
+                    
                     try { controller.close(); } catch(e) {}
                 });
             } catch (err) {

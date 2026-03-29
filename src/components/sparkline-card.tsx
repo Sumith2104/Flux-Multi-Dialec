@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Area, AreaChart, Bar, BarChart, Line, LineChart, ResponsiveContainer, Tooltip } from "recharts";
+import { Area, AreaChart, Bar, BarChart, Line, LineChart, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface SparklineCardProps {
@@ -14,8 +14,15 @@ interface SparklineCardProps {
 }
 
 export function SparklineCard({ title, value, subtitle, type, color, data }: SparklineCardProps) {
+    const [isHovered, setIsHovered] = useState(false);
+    const activeColor = isHovered ? "#ea580c" : "#52525b"; // grey initially, orange on hover
+
     return (
-        <Card className="h-full w-full aspect-square flex flex-col justify-between relative overflow-hidden group border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md shadow-lg transition-colors hover:bg-zinc-900/60">
+        <Card 
+            className="h-full w-full aspect-square flex flex-col justify-between relative overflow-hidden group border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md shadow-lg transition-colors hover:bg-zinc-900/60"
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+        >
             {/* Background Sparkline layer */}
             <div className="absolute inset-0 z-0 opacity-40 hover:opacity-100 transition-opacity duration-700 pb-4">
                 <ResponsiveContainer width="100%" height="100%">
@@ -24,13 +31,14 @@ export function SparklineCard({ title, value, subtitle, type, color, data }: Spa
                             <Tooltip
                                 cursor={{ stroke: "rgba(255,255,255,0.1)", strokeWidth: 1, strokeDasharray: "4 4" }}
                                 contentStyle={{ backgroundColor: "#18181b", borderColor: "#27272a", borderRadius: "8px", color: "#fff" }}
-                                itemStyle={{ color: color }}
+                                itemStyle={{ color: activeColor }}
                                 labelStyle={{ display: "none" }}
                             />
+                            <YAxis hide domain={[0, (dataMax: number) => Math.max(10, dataMax)]} />
                             <Line
                                 type="monotone"
                                 dataKey="val"
-                                stroke={color}
+                                stroke={activeColor}
                                 strokeWidth={3}
                                 dot={false}
                                 isAnimationActive={false}
@@ -41,12 +49,13 @@ export function SparklineCard({ title, value, subtitle, type, color, data }: Spa
                             <Tooltip
                                 cursor={{ fill: "rgba(255,255,255,0.1)" }}
                                 contentStyle={{ backgroundColor: "#18181b", borderColor: "#27272a", borderRadius: "8px", color: "#fff" }}
-                                itemStyle={{ color: color }}
+                                itemStyle={{ color: activeColor }}
                                 labelStyle={{ display: "none" }}
                             />
+                            <YAxis hide domain={[0, (dataMax: number) => Math.max(10, dataMax)]} />
                             <Bar
                                 dataKey="val"
-                                fill={color}
+                                fill={activeColor}
                                 radius={[4, 4, 0, 0]}
                                 isAnimationActive={false}
                             />
@@ -56,19 +65,20 @@ export function SparklineCard({ title, value, subtitle, type, color, data }: Spa
                             <Tooltip
                                 cursor={{ stroke: "rgba(255,255,255,0.1)", strokeWidth: 1, strokeDasharray: "4 4" }}
                                 contentStyle={{ backgroundColor: "#18181b", borderColor: "#27272a", borderRadius: "8px", color: "#fff" }}
-                                itemStyle={{ color: color }}
+                                itemStyle={{ color: activeColor }}
                                 labelStyle={{ display: "none" }}
                             />
+                            <YAxis hide domain={[0, (dataMax: number) => Math.max(10, dataMax)]} />
                             <defs>
                                 <linearGradient id={`color-${title.replace(/\s+/g, '')}`} x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor={color} stopOpacity={0.8} />
-                                    <stop offset="95%" stopColor={color} stopOpacity={0} />
+                                    <stop offset="5%" stopColor={activeColor} stopOpacity={0.8} />
+                                    <stop offset="95%" stopColor={activeColor} stopOpacity={0} />
                                 </linearGradient>
                             </defs>
                             <Area
                                 type="monotone"
                                 dataKey="val"
-                                stroke={color}
+                                stroke={activeColor}
                                 fillOpacity={1}
                                 fill={`url(#color-${title.replace(/\s+/g, '')})`}
                                 isAnimationActive={false}

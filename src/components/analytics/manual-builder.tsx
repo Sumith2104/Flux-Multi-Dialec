@@ -81,8 +81,8 @@ export function ManualBuilder({ projectId, onSaved }: { projectId: string; onSav
             </DialogTrigger>
             <DialogContent className="sm:max-w-[700px] border-white/10 bg-background/95 backdrop-blur-xl">
                 <DialogHeader>
-                    <DialogTitle>Visual Widget Builder</DialogTitle>
-                    <DialogDescription>Map your database schema directly to a chart visually.</DialogDescription>
+                    <DialogTitle>Manual Analytics Builder</DialogTitle>
+                    <DialogDescription>Create custom charts by defining the data source and visualization style.</DialogDescription>
                 </DialogHeader>
                 
                 <div className="grid gap-6 py-4">

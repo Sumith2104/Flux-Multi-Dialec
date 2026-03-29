@@ -49,31 +49,42 @@ const chartConfig = {
 } satisfies ChartConfig
 
 export function QueryTypeChart({ stats }: { stats: AnalyticsStats | null }) {
+    const [isHovered, setIsHovered] = React.useState(false);
 
     const chartData = React.useMemo(() => {
+        const selectColor = isHovered ? "#f97316" : "#71717a";
+        const insertColor = isHovered ? "#fb923c" : "#52525b";
+        const updateColor = isHovered ? "#fdba74" : "#3f3f46";
+        const deleteColor = isHovered ? "#fdbf83" : "#27272a";
+        const alterColor  = isHovered ? "#ffcf9f" : "#18181b";
+
         if (!stats) return [
-            { browser: "select", visitors: 0, fill: "#f97316" },
-            { browser: "insert", visitors: 0, fill: "#fb923c" },
-            { browser: "update", visitors: 0, fill: "#fdba74" },
-            { browser: "delete", visitors: 0, fill: "#78716c" },
-            { browser: "alter", visitors: 0, fill: "#44403c" },
+            { browser: "select", visitors: 0, fill: selectColor },
+            { browser: "insert", visitors: 0, fill: insertColor },
+            { browser: "update", visitors: 0, fill: updateColor },
+            { browser: "delete", visitors: 0, fill: deleteColor },
+            { browser: "alter", visitors: 0, fill: alterColor },
         ];
 
         return [
-            { browser: "select", visitors: stats.type_sql_select || 0, fill: "#f97316" },
-            { browser: "insert", visitors: stats.type_sql_insert || 0, fill: "#fb923c" },
-            { browser: "update", visitors: stats.type_sql_update || 0, fill: "#fdba74" },
-            { browser: "delete", visitors: stats.type_sql_delete || 0, fill: "#78716c" },
-            { browser: "alter", visitors: stats.type_sql_alter || 0, fill: "#44403c" },
+            { browser: "select", visitors: stats.type_sql_select || 0, fill: selectColor },
+            { browser: "insert", visitors: stats.type_sql_insert || 0, fill: insertColor },
+            { browser: "update", visitors: stats.type_sql_update || 0, fill: updateColor },
+            { browser: "delete", visitors: stats.type_sql_delete || 0, fill: deleteColor },
+            { browser: "alter", visitors: stats.type_sql_alter || 0, fill: alterColor },
         ]
-    }, [stats]);
+    }, [stats, isHovered]);
 
     const totalVisitors = React.useMemo(() => {
         return chartData.reduce((acc, curr) => acc + curr.visitors, 0)
     }, [chartData])
 
     return (
-        <Card className="h-full w-full flex flex-col aspect-square justify-between border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md shadow-lg overflow-hidden transition-colors hover:bg-zinc-900/60">
+        <Card 
+            className="h-full w-full flex flex-col aspect-square justify-between border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md shadow-lg overflow-hidden transition-colors hover:bg-zinc-900/60"
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+        >
             <CardHeader className="items-center pb-4 border-b border-white/5 bg-zinc-900/20">
                 <CardTitle className="text-xl font-bold text-zinc-100 flex items-center gap-2">
                     Query Type

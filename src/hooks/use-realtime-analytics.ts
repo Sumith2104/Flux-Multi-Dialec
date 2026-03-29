@@ -9,9 +9,10 @@ export interface AnalyticsStats {
     type_storage_write: number;
     type_sql_select?: number;
     type_sql_insert?: number;
-    type_sql_update?: number;
-    type_sql_delete?: number;
-    type_sql_alter?: number;
+    type_sql_update: number;
+    type_sql_delete: number;
+    type_sql_alter: number;
+    live_sessions: number; // Real-time active connection tracking
 }
 
 export function useRealtimeAnalytics(projectId: string | undefined): AnalyticsStats | null {

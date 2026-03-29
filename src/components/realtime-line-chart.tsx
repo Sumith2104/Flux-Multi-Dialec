@@ -60,7 +60,12 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
         }
         return initialData;
     });
+    const [isHovered, setIsHovered] = useState(false);
     const [peakRPS, setPeakRPS] = useState(0);
+
+    const reqColor = isHovered ? "#f97316" : "#71717a";
+    const apiColor = isHovered ? "#ea580c" : "#52525b";
+    const sqlColor = isHovered ? "#78716c" : "#3f3f46";
 
     // Keep track of the absolute stats independently
     const currentStatsRef = useRef<AnalyticsStats | null>(null);
@@ -143,8 +148,12 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
     }));
 
     return (
-        <Card className="col-span-4 flex flex-col h-full min-h-[400px] border-zinc-800 bg-zinc-950/40 backdrop-blur-md shadow-2xl">
-            <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-white/5">
+        <Card 
+            className="col-span-4 flex flex-col h-full min-h-[400px] border-zinc-800 bg-zinc-950/40 backdrop-blur-md shadow-2xl transition-colors hover:bg-zinc-900/60"
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+        >
+            <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-white/5 bg-zinc-900/20">
                 <div className="space-y-1">
                     <CardTitle className="text-xl font-bold flex items-center gap-2 text-zinc-100">
                         <Activity className="h-5 w-5 text-zinc-500" />
@@ -184,16 +193,16 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                         <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                             <defs>
                                 <linearGradient id="colorRequests" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.25} />
-                                    <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+                                    <stop offset="5%" stopColor={reqColor} stopOpacity={0.25} />
+                                    <stop offset="95%" stopColor={reqColor} stopOpacity={0} />
                                 </linearGradient>
                                 <linearGradient id="colorApi" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#ea580c" stopOpacity={0.15} />
-                                    <stop offset="95%" stopColor="#ea580c" stopOpacity={0} />
+                                    <stop offset="5%" stopColor={apiColor} stopOpacity={0.15} />
+                                    <stop offset="95%" stopColor={apiColor} stopOpacity={0} />
                                 </linearGradient>
                                 <linearGradient id="colorSql" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#78716c" stopOpacity={0.15} />
-                                    <stop offset="95%" stopColor="#78716c" stopOpacity={0} />
+                                    <stop offset="5%" stopColor={sqlColor} stopOpacity={0.15} />
+                                    <stop offset="95%" stopColor={sqlColor} stopOpacity={0} />
                                 </linearGradient>
                             </defs>
                             <CartesianGrid strokeDasharray="3 3" stroke="#ffffff15" vertical={true} horizontal={true} />
@@ -259,7 +268,7 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                             <Area
                                 type="monotone"
                                 dataKey="requests"
-                                stroke="#f97316"
+                                stroke={reqColor}
                                 strokeWidth={1.5}
                                 fill="url(#colorRequests)"
                                 name="Total Requests"
@@ -270,7 +279,7 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                             <Area
                                 type="monotone"
                                 dataKey="api"
-                                stroke="#ea580c"
+                                stroke={apiColor}
                                 strokeWidth={1}
                                 strokeOpacity={0.7}
                                 fill="url(#colorApi)"
@@ -282,7 +291,7 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                             <Area
                                 type="monotone"
                                 dataKey="sql"
-                                stroke="#78716c"
+                                stroke={sqlColor}
                                 strokeWidth={1}
                                 strokeOpacity={0.7}
                                 fill="url(#colorSql)"

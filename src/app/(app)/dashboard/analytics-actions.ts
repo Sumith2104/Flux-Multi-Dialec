@@ -18,7 +18,7 @@ export async function getAnalyticsStatsAction(projectId: string) {
 
     try {
         const pool = getPgPool();
-        // Sum up all rollups for this project
+        // Sum up all rollups for this project. We skip tracking to avoid recursive analytics spikes.
         const result = await pool.query(`
             SELECT event_type, SUM(count) as total
             FROM fluxbase_global.analytics_rollups
@@ -58,6 +58,39 @@ export async function getAnalyticsStatsAction(projectId: string) {
             if (type === 'sql_alter') stats.type_sql_alter = count;
         }
 
+        // --- PHASE 2: Merge "In-Flight" data from Redis (Unsynced) ---
+        try {
+            const keys = await redis.keys(`analytics_rollup:${projectId}:*`);
+            if (keys && keys.length > 0) {
+                const values = await redis.mget(...keys);
+                for (let i = 0; i < keys.length; i++) {
+                    const key = keys[i];
+                    const val = parseInt(values[i] as string || '0', 10);
+                    const type = key.split(':')[3];
+
+                    if (type === 'api_call' || type === 'sql_execution') stats.total_requests += val;
+                    if (type === 'api_call') stats.type_api_call += val;
+                    if (type === 'sql_execution') stats.type_sql_execution += val;
+                    if (type === 'storage_read') stats.type_storage_read += val;
+                    if (type === 'storage_write') stats.type_storage_write += val;
+                    if (type?.startsWith('sql_')) {
+                        const sqlAction = `type_${type}` as keyof typeof stats;
+                        if (stats[sqlAction] !== undefined) (stats as any)[sqlAction] += val;
+                    }
+                }
+            }
+        } catch (redisErr) {
+            console.warn('Error merging Redis in-flight analytics:', redisErr);
+        }
+
+        // --- PHASE 3: Fetch Live Sessions ---
+        try {
+            const liveSessions = await redis.get(`live_sessions:${projectId}`);
+            (stats as any).live_sessions = parseInt(liveSessions as string || '0', 10);
+        } catch (redisErr) {
+            (stats as any).live_sessions = 0;
+        }
+
         try {
             await redis.set(cacheKey, stats, { ex: 5 }); // 5 seconds cache to match frontend polling
         } catch (e) {
@@ -75,41 +108,69 @@ export async function getRealtimeHistoryAction(projectId: string) {
     if (!projectId) return [];
     try {
         const pool = getPgPool();
-        // Get the last 60 minutes of data, grouped by minute
-        // In a real high-scale system, we'd query a time-series table.
-        // For now, we simulate grouping the rollups (which might just have overall counts)
-        // Wait, the schema in 'fluxbase_global.analytics_rollups' seems to be an aggregate.
-        // Let's assume we want to pull real history. If there's no timestamp column, we return dummy.
-        // Let's check if there's a timestamp or window_start column. Let's assume 'window_start' or we just generate stable dummy data for demo if it fails.
-        // For a robust fix without knowing the exact schema, let's create a realistic curve based on current stats + jitter.
+        
+        // Fetch actual last 60 minutes history from postgres rollups table
+        const historyQuery = `
+            SELECT 
+                period_start,
+                event_type,
+                SUM(count) as total
+            FROM fluxbase_global.analytics_rollups
+            WHERE project_id = $1 
+              AND period_start >= NOW() - INTERVAL '60 minutes'
+            GROUP BY period_start, event_type
+            ORDER BY period_start ASC
+        `;
 
-        // Let's try to query actual history if available, fallback to generated.
-        // Since we don't know the exact schema of a history table, let's fetch the current totals and generate a realistic trailing 60m graph.
-        const stats = await getAnalyticsStatsAction(projectId);
-        const baseReq = stats ? (stats.type_api_call + stats.type_sql_execution) / 60 : 10;
+        const result = await pool.query(historyQuery, [projectId]);
 
-        const history = [];
-        const now = Date.now();
+        // Build array of 60 points representing each of the last 60 minutes
+        const historyMap = new Map();
+        const now = new Date();
+        now.setSeconds(0, 0); // Align to the minute
+
+        // Initialize 60 empty buckets
         for (let i = 59; i >= 0; i--) {
-            const time = now - i * 60000;
+            const time = now.getTime() - (i * 60000);
             const date = new Date(time);
-            // Generate some deterministic but jittery data that looks real based on the project ID and time
-            const seed = parseInt(projectId.replace(/[^0-9]/g, '')) || 123;
-            const jitter = Math.sin(time / 100000 + seed) * (baseReq * 0.5);
-            const val = Math.max(0, Math.floor(baseReq + jitter));
-
-            history.push({
-                timestamp: time,
-                timeLabel: date.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' }),
-                requests: val,
-                api: Math.floor(val * 0.6),
-                sql: Math.floor(val * 0.4),
-                deltaRequests: Math.floor(jitter * 0.1),
-                deltaApi: Math.floor(jitter * 0.06),
-                deltaSql: Math.floor(jitter * 0.04),
+            const timeLabel = date.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' });
+            historyMap.set(time, { 
+                timestamp: time, 
+                timeLabel, 
+                requests: 0, 
+                api: 0, 
+                sql: 0, 
+                deltaRequests: 0, 
+                deltaApi: 0, 
+                deltaSql: 0 
             });
         }
-        return history;
+
+        // Fill with real data
+        for (const row of result.rows) {
+            const rowTime = new Date(row.period_start).getTime();
+            const matchingBucket = Array.from(historyMap.keys()).find(k => Math.abs(k - rowTime) < 60000);
+            
+            if (matchingBucket) {
+                const bucket = historyMap.get(matchingBucket);
+                const count = parseInt(row.total, 10);
+                
+                if (row.event_type === 'api_call') {
+                    bucket.api += count;
+                    bucket.requests += count;
+                    bucket.deltaApi += count;
+                    bucket.deltaRequests += count;
+                }
+                if (row.event_type === 'sql_execution') {
+                    bucket.sql += count;
+                    bucket.requests += count;
+                    bucket.deltaSql += count;
+                    bucket.deltaRequests += count;
+                }
+            }
+        }
+
+        return Array.from(historyMap.values());
     } catch (e) {
         console.error('getRealtimeHistoryAction error:', e);
         return [];

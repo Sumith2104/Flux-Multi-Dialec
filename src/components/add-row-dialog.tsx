@@ -126,7 +126,7 @@ export function AddRowDialog({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add New Row to `{tableName}`</DialogTitle>
+          <DialogTitle>Add New Row</DialogTitle>
           <DialogDescription>
             Fill in the details for the new row. The 'id' will be generated automatically.
           </DialogDescription>

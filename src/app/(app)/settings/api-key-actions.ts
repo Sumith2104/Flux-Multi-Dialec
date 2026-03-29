@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache';
 
 import { getProjectById, getProjectsForCurrentUser } from '@/lib/data';
 
-export async function createApiKeyAction(name: string, projectId?: string) {
+export async function createApiKeyAction(name: string, projectId?: string, scopes: string[] = ['read']) {
     const userId = await getCurrentUserId();
     if (!userId) return { success: false, error: "Not authenticated" };
 
@@ -24,7 +24,7 @@ export async function createApiKeyAction(name: string, projectId?: string) {
             projectName = project.display_name;
         }
 
-        const result = await generateApiKey(userId, name, projectId, projectName);
+        const result = await generateApiKey(userId, name, projectId, projectName, scopes);
         // revalidatePath('/settings'); // Don't revalidate, let client handle state to keep the secret key visible
         return { success: true, data: result };
     } catch (error: any) {

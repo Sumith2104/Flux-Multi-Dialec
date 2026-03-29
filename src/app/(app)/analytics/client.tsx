@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Sparkles, Trash2, LayoutGrid, Loader2 } from 'lucide-react';
+import { Sparkles, Trash2, LayoutGrid, Loader2, Zap, Layers } from 'lucide-react';
 import { UniversalChartRenderer } from '@/components/analytics/chart-renderer';
 import { ManualBuilder } from '@/components/analytics/manual-builder';
 import {
@@ -14,11 +14,11 @@ import {
 import { Responsive as ResponsiveGridLayout } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-
-// Moved above
-import { createWidgetAction, removeWidgetAction } from './actions';
+import { SystemMetrics } from '@/components/analytics/system-metrics';
+import { cn } from '@/lib/utils';
+import { useRouter } from 'next/navigation';
+import { createWidgetAction, removeWidgetAction, updateWidgetConfigAction } from './actions';
 import { useToast } from "@/hooks/use-toast";
-import { updateWidgetConfigAction } from './actions';
 
 function AsyncWidget({ projectId, widget, onRemove }: { projectId: string, widget: any, onRemove: (id: string) => void }) {
     const [data, setData] = useState<any[]>([]);
@@ -61,7 +61,7 @@ function AsyncWidget({ projectId, widget, onRemove }: { projectId: string, widge
                     variant="ghost" 
                     size="icon" 
                     className="h-6 w-6 opacity-0 group-hover/header:opacity-100 transition-opacity text-muted-foreground hover:bg-destructive/20 hover:text-destructive shrink-0" 
-                    onMouseDown={e => e.stopPropagation()} // Prevent clicking delete from starting a drag
+                    onMouseDown={e => e.stopPropagation()} 
                     onClick={() => onRemove(widget.id)}
                 >
                     <Trash2 className="h-4 w-4" />
@@ -84,8 +84,6 @@ function AsyncWidget({ projectId, widget, onRemove }: { projectId: string, widge
     );
 }
 
-import { useRouter } from 'next/navigation';
-
 export default function AnalyticsDashboardClient({ projectId, initialWidgets }: { projectId: string, initialWidgets: any[] }) {
     const { toast } = useToast();
     const router = useRouter();
@@ -95,6 +93,7 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
         configObj: typeof w.config === 'string' ? JSON.parse(w.config || '{}') : (w.config || {}),
     }));
     const [widgets, setWidgets] = useState(parsedWidgets);
+    const [activeTab, setActiveTab] = useState<'performance' | 'system'>('performance');
 
     useEffect(() => {
         const updatedParsed = initialWidgets.map(w => ({
@@ -119,7 +118,6 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
             });
             const json = await res.json();
             if (!res.ok) throw new Error(json.error || 'Generation failed');
-
             if (!json.widgets || !Array.isArray(json.widgets)) throw new Error('Invalid AI response format');
 
             for (const widget of json.widgets) {
@@ -148,34 +146,47 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
     };
 
     const handleLayoutChange = async (layout: any[]) => {
-        // Find if geometry actually changed
         for (const l of layout) {
             const widget = widgets.find(w => w.id === l.i);
             if (widget) {
                 const currentL = widget.configObj.layout || {};
                  if (currentL.x !== l.x || currentL.y !== l.y || currentL.w !== l.w || currentL.h !== l.h) {
                      const newConfig = { ...widget.configObj, layout: { x: l.x, y: l.y, w: l.w, h: l.h, i: l.i } };
-                     // background save
                      updateWidgetConfigAction(projectId, widget.id, newConfig).catch(e => console.error('Save layout failed', e));
-                     // optimistically update local state
                      widget.configObj = newConfig;
                  }
             }
         }
     };
 
-    // Generate initial react-grid-layout map
     const layoutMap = widgets.map((w, i) => {
         return w.configObj.layout || { i: w.id, x: (i * 4) % 12, y: Infinity, w: 4, h: 10 };
     });
 
     return (
-        <div className="h-full min-h-screen flex flex-col space-y-6 p-6 relative">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Power BI Dashboard</h1>
-                    <p className="text-muted-foreground">Visualize and analyze your database instantly.</p>
+        <div className="h-full min-h-screen flex flex-col space-y-6 relative">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-2 p-1.5 bg-zinc-900 border border-zinc-800 rounded-lg w-fit shrink-0">
+                    <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className={cn("h-8 text-xs px-4 rounded-md transition-all", activeTab === 'performance' ? "bg-orange-600 text-white hover:bg-orange-500 shadow-lg shadow-orange-950/20" : "text-zinc-500 hover:text-zinc-300")}
+                        onClick={() => setActiveTab('performance')}
+                    >
+                        <Zap className="h-3.5 w-3.5 mr-2" />
+                        Performance
+                    </Button>
+                    <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className={cn("h-8 text-xs px-4 rounded-md transition-all", activeTab === 'system' ? "bg-orange-600 text-white hover:bg-orange-500 shadow-lg shadow-orange-950/20" : "text-zinc-500 hover:text-zinc-300")}
+                        onClick={() => setActiveTab('system')}
+                    >
+                        <Layers className="h-3.5 w-3.5 mr-2" />
+                        System Health
+                    </Button>
                 </div>
+                
                 <div className="flex items-center gap-2">
                     <ManualBuilder projectId={projectId} onSaved={() => router.refresh()} />
                     <Dialog open={aiOpen} onOpenChange={setAiOpen}>
@@ -188,7 +199,7 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
                         <DialogContent className="sm:max-w-[500px] border-white/10 bg-background/95 backdrop-blur-xl">
                             <DialogHeader>
                                 <DialogTitle>Generate Analytics Widget</DialogTitle>
-                                <DialogDescription>Describe the data you want to see. AI will write the SQL and pick the best chart (Bar, Line, Pie, Map, etc).</DialogDescription>
+                                <DialogDescription>Describe the data you want to see. AI will write the SQL and pick the best chart.</DialogDescription>
                             </DialogHeader>
                             <div className="grid gap-4 py-4">
                                 <Input 
@@ -201,41 +212,46 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
                                 />
                             </div>
                             <Button onClick={handleGenerate} disabled={generating} className="w-full">
-                                {generating ? <><Loader2 className="w-4 h-4 mr-2 animate-spin"/> Generating SQL & Flow...</> : 'Generate Chart'}
+                                {generating ? <><Loader2 className="w-4 h-4 mr-2 animate-spin"/> Generating...</> : 'Generate Chart'}
                             </Button>
                         </DialogContent>
                     </Dialog>
                 </div>
             </div>
 
-            {widgets.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-xl bg-white/5">
-                    <div className="w-16 h-16 rounded-full bg-blue-500/10 flex items-center justify-center mb-4">
-                        <Sparkles className="w-8 h-8 text-blue-500" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-white">No widgets yet</h3>
-                    <p className="text-muted-foreground text-sm mb-6 max-w-sm text-center">Your dashboard is empty. Use the Ask AI button or Manual Builder to pin charts here.</p>
-                    <Button onClick={() => setAiOpen(true)}>Generate First Chart</Button>
-                </div>
+            {activeTab === 'system' ? (
+                <SystemMetrics projectId={projectId} />
             ) : (
-                <div 
-                    className="flex-1 rounded-xl border border-white/5 bg-black/20 relative pt-4 -mx-6 px-6"
-                    style={{ backgroundImage: 'radial-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px)', backgroundSize: '24px 24px' }}
-                >
-                    <AutoSizedGrid 
-                        layoutMap={layoutMap} 
-                        handleLayoutChange={handleLayoutChange} 
-                        widgets={widgets} 
-                        projectId={projectId} 
-                        handleRemove={handleRemove} 
-                    />
+                <div className="flex-1 flex flex-col min-h-0">
+                    {widgets.length === 0 ? (
+                        <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-xl bg-white/5 min-h-[400px]">
+                            <div className="w-16 h-16 rounded-full bg-blue-500/10 flex items-center justify-center mb-4">
+                                <Sparkles className="w-8 h-8 text-blue-500" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-white">No widgets yet</h3>
+                            <p className="text-muted-foreground text-sm mb-6 max-w-sm text-center">Your dashboard is empty. Use the Ask AI button or Manual Builder to pin charts here.</p>
+                            <Button onClick={() => setAiOpen(true)}>Generate First Chart</Button>
+                        </div>
+                    ) : (
+                        <div 
+                            className="flex-1 rounded-xl border border-white/5 bg-black/20 relative pt-4 -mx-6 px-6 overflow-y-auto"
+                            style={{ backgroundImage: 'radial-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px)', backgroundSize: '24px 24px' }}
+                        >
+                            <AutoSizedGrid 
+                                layoutMap={layoutMap} 
+                                handleLayoutChange={handleLayoutChange} 
+                                widgets={widgets} 
+                                projectId={projectId} 
+                                handleRemove={handleRemove} 
+                            />
+                        </div>
+                    )}
                 </div>
             )}
         </div>
     );
 }
 
-// Custom WidthProvider to entirely bypass Turbopack ESM export crashes
 function AutoSizedGrid({ layoutMap, handleLayoutChange, widgets, projectId, handleRemove }: any) {
     const [width, setWidth] = useState(1200);
     const ref = useRef<HTMLDivElement>(null);

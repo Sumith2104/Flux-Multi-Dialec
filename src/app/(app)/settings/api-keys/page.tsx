@@ -1,58 +1,58 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
 import { createApiKeyAction, getApiKeysAction, revokeApiKeyAction, getProjectsAction } from '../api-key-actions';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Key, Shield, ShieldAlert, ShieldCheck, Copy, Loader2, Globe, Lock, Clock, Calendar } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { formatDistanceToNow } from 'date-fns';
+
+const SCOPES = [
+    { id: 'read', label: 'Read Access', description: 'Can only execute SELECT queries', icon: ShieldCheck },
+    { id: 'write', label: 'Write Access', description: 'Can execute INSERT, UPDATE, DELETE', icon: Shield },
+    { id: 'admin', label: 'Admin Access', description: 'Full access to schema and settings', icon: ShieldAlert },
+];
 
 export default function ApiKeysPage() {
     const { toast } = useToast();
-    const [keys, setKeys] = useState<{ id: string, name: string, preview: string, createdAt: string, lastUsedAt?: string }[]>([]);
+    const [keys, setKeys] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [newKey, setNewKey] = useState<string | null>(null);
     const [keyName, setKeyName] = useState('');
-
+    const [selectedScopes, setSelectedScopes] = useState<string[]>(['read']);
     const [projects, setProjects] = useState<{ project_id: string, display_name: string }[]>([]);
     const [selectedProjectId, setSelectedProjectId] = useState<string>('global');
 
     useEffect(() => {
-        getApiKeysAction().then(res => {
-            if (res.success && res.data) setKeys(res.data);
-        });
-        getProjectsAction().then(res => {
-            if (res.success && res.data) setProjects(res.data);
-        });
+        getApiKeysAction().then(res => { if (res.success && res.data) setKeys(res.data); });
+        getProjectsAction().then(res => { if (res.success && res.data) setProjects(res.data); });
     }, []);
 
     const handleCreateKey = async () => {
         if (!keyName.trim()) return;
         setLoading(true);
         const projectId = selectedProjectId === 'global' ? undefined : selectedProjectId;
-        const res = await createApiKeyAction(keyName, projectId);
+        const res = await createApiKeyAction(keyName, projectId, selectedScopes);
         setLoading(false);
 
         if (res.success && res.data) {
             setNewKey(res.data.key);
             setKeys([res.data.apiKeyData, ...keys]);
             setKeyName('');
-            toast({ title: "Success", description: "API Key generated successfully." });
+            toast({ title: "API Key Generated" });
         } else {
-            toast({ variant: "destructive", title: "Error", description: res.error || "Failed to generate key." });
+            toast({ variant: "destructive", title: "Error", description: res.error });
         }
     };
 
@@ -60,141 +60,148 @@ export default function ApiKeysPage() {
         const res = await revokeApiKeyAction(id);
         if (res.success) {
             setKeys(keys.filter(k => k.id !== id));
-            toast({ title: "Success", description: "API Key revoked." });
-        } else {
-            toast({ variant: "destructive", title: "Error", description: res.error || "Failed to revoke key." });
+            toast({ title: "Key Revoked" });
         }
-    }
+    };
+
+    const toggleScope = (id: string) => {
+        setSelectedScopes(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
+    };
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle>API Access Keys</CardTitle>
-                <CardDescription>Manage API keys for programmatic access to your databases and AI models.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-                <div className="flex flex-col sm:flex-row gap-4 items-end">
-                    <div className="space-y-2 flex-1">
-                        <Label htmlFor="key-name">New Key Name</Label>
-                        <Input
-                            id="key-name"
-                            placeholder="e.g. Mobile App Production"
-                            value={keyName}
-                            onChange={(e) => setKeyName(e.target.value)}
-                        />
-                    </div>
-                    <div className="space-y-2 w-full sm:w-48">
-                        <Label htmlFor="key-scope">Scope</Label>
-                        <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
-                            <SelectTrigger id="key-scope">
-                                <SelectValue placeholder="Select Scope" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="global">All Projects (Global)</SelectItem>
-                                {projects.map(p => (
-                                    <SelectItem key={p.project_id} value={p.project_id}>
-                                        {p.display_name}
-                                    </SelectItem>
+        <div className="space-y-6">
+            <Card className="border-zinc-800 bg-zinc-950/50">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Key className="h-5 w-5 text-orange-400" />
+                        API Access Keys
+                    </CardTitle>
+                    <CardDescription>Manage keys for programmatic access with granular scopes.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    <div className="grid gap-6">
+                        <div className="grid sm:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Key Name</Label>
+                                <Input placeholder="Production Worker" value={keyName} onChange={e => setKeyName(e.target.value)} className="bg-zinc-900 border-zinc-700 h-10" />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Project Scope</Label>
+                                <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+                                    <SelectTrigger className="bg-zinc-900 border-zinc-700 h-10"><SelectValue /></SelectTrigger>
+                                    <SelectContent className="bg-zinc-950 border-zinc-800">
+                                        <SelectItem value="global">Global (Full Workspace)</SelectItem>
+                                        {projects.map(p => <SelectItem key={p.project_id} value={p.project_id}>{p.display_name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Permissions (Scopes)</Label>
+                            <div className="grid gap-3 sm:grid-cols-3">
+                                {SCOPES.map(scope => (
+                                    <div key={scope.id} 
+                                        className={cn(
+                                            "flex flex-col gap-2 p-3 rounded-lg border transition-all cursor-pointer group hover:bg-zinc-900",
+                                            selectedScopes.includes(scope.id) ? "border-orange-500/50 bg-orange-500/5" : "border-zinc-800 bg-zinc-900/30"
+                                        )}
+                                        onClick={() => toggleScope(scope.id)}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <scope.icon className={cn("h-4 w-4", selectedScopes.includes(scope.id) ? "text-orange-400" : "text-muted-foreground")} />
+                                            <Checkbox checked={selectedScopes.includes(scope.id)} className="border-zinc-700 data-[state=checked]:bg-orange-500 data-[state=checked]:border-orange-500" />
+                                        </div>
+                                        <div>
+                                            <div className="text-sm font-medium">{scope.label}</div>
+                                            <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">{scope.description}</div>
+                                        </div>
+                                    </div>
                                 ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <Button onClick={handleCreateKey} disabled={loading || !keyName.trim()} className="w-full sm:w-auto">
-                        {loading ? 'Generating...' : 'Generate New Key'}
-                    </Button>
-                </div>
-
-                {newKey && (
-                    <div className="p-4 bg-muted rounded-md border border-yellow-500/50 bg-yellow-500/10 dark:text-yellow-200 text-yellow-800">
-                        <p className="font-semibold mb-2">Secret Key Generated (Shown once):</p>
-                        <code className="bg-background p-3 rounded block break-all font-mono text-sm border shadow-inner">
-                            {newKey}
-                        </code>
-                        <div className="flex items-center justify-between mt-3">
-                            <p className="text-xs opacity-90">Store this key safely! It will not be shown again.</p>
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => {
-                                    navigator.clipboard.writeText(newKey);
-                                    toast({ title: "Copied!" });
-                                }}>
-                                Copy Key
-                            </Button>
+                            </div>
                         </div>
-                    </div>
-                )}
 
-                <div className="border rounded-md divide-y overflow-hidden shadow-sm">
-                    {keys.length === 0 ? (
-                        <div className="p-12 text-center text-muted-foreground text-sm bg-muted/30">
-                            No active API keys found.
+                        <Button onClick={handleCreateKey} disabled={loading || !keyName.trim() || selectedScopes.length === 0} className="w-full bg-orange-600 hover:bg-orange-500 shadow-lg shadow-orange-950/20">
+                            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Key className="h-4 w-4 mr-2" />}
+                            Generate API Key
+                        </Button>
+                    </div>
+
+                    {newKey && (
+                        <div className="p-4 rounded-xl border border-yellow-500/30 bg-yellow-500/5 space-y-3 animate-in fade-in slide-in-from-top-2">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-yellow-500 flex items-center gap-1.5"><ShieldAlert className="h-3 w-3" />Secret Key (Save it now!)</span>
+                                <Button variant="ghost" size="sm" className="h-7 text-xs text-yellow-500 hover:bg-yellow-500/10"
+                                    onClick={() => { navigator.clipboard.writeText(newKey); toast({ title: "Copied!" }); }}>
+                                    <Copy className="h-3 w-3 mr-1.5" />Copy
+                                </Button>
+                            </div>
+                            <code className="block p-3 bg-black rounded-lg border border-yellow-500/20 font-mono text-sm break-all text-yellow-200/90 shadow-inner">
+                                {newKey}
+                            </code>
+                            <p className="text-[10px] text-yellow-500/70">Warning: For security, this key won't be shown again. Lose it, and you'll have to generate a new one.</p>
                         </div>
-                    ) : (
-                        keys.map(key => (
-                            <div key={key.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-muted/30 transition-colors">
-                                <div>
-                                    <p className="font-semibold">{key.name}</p>
-                                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                                        <code className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded font-mono border">
-                                            {key.preview}
-                                        </code>
-                                        {/* @ts-ignore */}
-                                        {key.projectName && (
-                                            <span className="text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 px-2 py-0.5 rounded-full font-medium">
-                                                {/* @ts-ignore */}
-                                                Scope: {key.projectName}
-                                            </span>
-                                        )}
-                                        {/* @ts-ignore */}
-                                        {!key.projectName && (
-                                            <span className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-300 px-2 py-0.5 rounded-full font-medium">
-                                                Global Access
-                                            </span>
-                                        )}
+                    )}
+                </CardContent>
+            </Card>
+
+            <div className="space-y-3">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground px-1">Manage Active Keys</h3>
+                {keys.length === 0 ? (
+                    <div className="p-12 text-center text-sm text-muted-foreground border border-dashed border-zinc-800 rounded-xl">
+                        No active API keys found.
+                    </div>
+                ) : (
+                    <div className="grid gap-3">
+                        {keys.map(key => (
+                            <Card key={key.id} className="border-zinc-800 bg-zinc-950/30 group hover:border-zinc-700 transition-colors overflow-hidden">
+                                <CardContent className="flex items-center gap-4 p-4">
+                                    <div className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 shrink-0">
+                                        <Lock className="h-4 w-4 text-zinc-500" />
                                     </div>
-                                    <div className="text-xs text-muted-foreground mt-2 flex gap-4">
-                                        <span>Created: {new Date(key.createdAt).toLocaleDateString()}</span>
-                                        {key.lastUsedAt && (
-                                            <span>Last Request: {new Date(key.lastUsedAt).toLocaleDateString()}</span>
-                                        )}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="font-semibold text-sm truncate">{key.name}</span>
+                                            <div className="flex items-center gap-1.5">
+                                                {key.scopes?.map((s: string) => (
+                                                    <Badge key={s} variant="outline" className="text-[9px] h-4 px-1.5 font-bold bg-zinc-900/50 border-zinc-800 text-zinc-400 capitalize">
+                                                        {s}
+                                                    </Badge>
+                                                )) || <Badge variant="outline" className="text-[9px]">no-scopes</Badge>}
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-4 text-[10px] text-muted-foreground">
+                                            <code className="text-zinc-600 bg-zinc-900/50 px-1.5 py-0.5 rounded font-mono border border-zinc-800/50">{key.preview}</code>
+                                            <span className="flex items-center gap-1"><Globe className="h-3 w-3" />{key.projectName || 'Global'}</span>
+                                            <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />{new Date(key.createdAt).toLocaleDateString()}</span>
+                                            {key.lastUsedAt ? (
+                                                <span className="flex items-center gap-1 text-emerald-500/80"><Clock className="h-3 w-3" />Active {formatDistanceToNow(new Date(key.lastUsedAt), { addSuffix: true })}</span>
+                                            ) : (
+                                                <span className="flex items-center gap-1 opacity-50"><Clock className="h-3 w-3" />Never used</span>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="flex-shrink-0">
                                     <AlertDialog>
                                         <AlertDialogTrigger asChild>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="text-destructive border-destructive/30 hover:bg-destructive hover:text-destructive-foreground transition-colors w-full"
-                                            >
-                                                Revoke Access
-                                            </Button>
+                                            <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-red-400 shrink-0">Revoke</Button>
                                         </AlertDialogTrigger>
-                                        <AlertDialogContent>
+                                        <AlertDialogContent className="bg-zinc-950 border-zinc-800">
                                             <AlertDialogHeader>
-                                                <AlertDialogTitle>Revoke "{key.name}"?</AlertDialogTitle>
-                                                <AlertDialogDescription>
-                                                    This will permanently destroy the API token matching <code className="font-mono text-xs">{key.preview}</code>. Any external apps using this key will be instantly blocked.
-                                                </AlertDialogDescription>
+                                                <AlertDialogTitle>Revoke Key?</AlertDialogTitle>
+                                                <AlertDialogDescription>This will instantly block all programmatic requests using <code className="bg-zinc-800 px-1 rounded">{key.preview}</code>. This cannot be undone.</AlertDialogDescription>
                                             </AlertDialogHeader>
                                             <AlertDialogFooter>
                                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                <AlertDialogAction
-                                                    onClick={() => handleRevokeKey(key.id)}
-                                                    className="bg-destructive hover:bg-destructive/90"
-                                                >
-                                                    Confirm Revocation
-                                                </AlertDialogAction>
+                                                <AlertDialogAction onClick={() => handleRevokeKey(key.id)} className="bg-destructive hover:bg-destructive/90">Revoke Access</AlertDialogAction>
                                             </AlertDialogFooter>
                                         </AlertDialogContent>
                                     </AlertDialog>
-                                </div>
-                            </div>
-                        ))
-                    )}
-                </div>
-            </CardContent>
-        </Card>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
     );
 }
