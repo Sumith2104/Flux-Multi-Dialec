@@ -1,5 +1,12 @@
 'use server';
 
+function ensureRole(project: Project | null, allowedRoles: string[]): asserts project is Project {
+    if (!project) throw new Error("Project not found or access denied.");
+    if (!project.role || !allowedRoles.includes(project.role)) {
+        throw new Error(`Insufficient Permissions: Your role (${project.role || 'none'}) does not have permission to perform this action. Required: ${allowedRoles.join(', ')}`);
+    }
+}
+
 import { getPgPool } from '@/lib/pg';
 import { getCurrentUserId } from '@/lib/auth';
 import crypto from 'crypto';
@@ -92,10 +99,10 @@ export async function getProjectsForCurrentUser(): Promise<Project[]> {
         const pool = getPgPool();
         const result = await pool.query(`
             SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.ai_allow_destructive, p.ai_schema_inference,
-                   COALESCE(pm.role, CASE WHEN p.user_id = $1 THEN 'admin' ELSE 'developer' END) as role
+                   COALESCE(pm.role, CASE WHEN p.user_id = $1::text THEN 'admin' ELSE 'developer' END) as role
             FROM fluxbase_global.projects p
-            LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $1
-            WHERE p.user_id = $1 OR pm.user_id = $1
+            LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $1::text
+            WHERE p.user_id = $1::text OR pm.user_id = $1::text
             ORDER BY p.created_at DESC
         `, [userId]);
 
@@ -124,10 +131,10 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
         const pool = getPgPool();
         const result = await pool.query(`
             SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.user_id as owner_id, p.ai_allow_destructive, p.ai_schema_inference,
-                   COALESCE(pm.role, CASE WHEN p.user_id = $2 THEN 'admin' ELSE NULL END) as role
+                   COALESCE(pm.role, CASE WHEN p.user_id = $2::text THEN 'admin' ELSE NULL END) as role
             FROM fluxbase_global.projects p
-            LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $2
-            WHERE p.project_id = $1 AND (p.user_id = $2 OR pm.user_id = $2)
+            LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $2::text
+            WHERE p.project_id = $1 AND (p.user_id = $2::text OR pm.user_id = $2::text)
         `, [projectId, userId]);
         if (result.rows.length === 0) return null;
 
@@ -155,7 +162,7 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
 export async function getUserProfile(userId: string) {
     try {
         const pool = getPgPool();
-        const result = await pool.query('SELECT id, email, display_name, photo_url, created_at FROM fluxbase_global.users WHERE id = $1', [userId]);
+        const result = await pool.query('SELECT id, email, display_name, photo_url, created_at FROM fluxbase_global.users WHERE id = $1::text', [userId]);
         return result.rows.length > 0 ? result.rows[0] : null;
     } catch (error) {
         console.error("Error fetching user profile:", error);
@@ -168,7 +175,7 @@ export async function createUserProfile(userId: string, email: string, displayNa
     const pool = getPgPool();
     try {
         await pool.query(
-            'INSERT INTO fluxbase_global.users (id, email, display_name, photo_url) VALUES ($1, $2, $3, $4) ON CONFLICT (email) DO NOTHING',
+            'INSERT INTO fluxbase_global.users (id, email, display_name, photo_url) VALUES ($1::text, $2, $3, $4) ON CONFLICT (email) DO NOTHING',
             [userId, email, displayName || email.split('@')[0], photoURL || null]
         );
     } catch (error) {
@@ -194,7 +201,7 @@ export async function updateUserProfile(userId: string, displayName?: string, ph
 
     if (updates.length > 0) {
         updates.push(`updated_at = CURRENT_TIMESTAMP`);
-        const query = `UPDATE fluxbase_global.users SET ${updates.join(', ')} WHERE id = $1`;
+        const query = `UPDATE fluxbase_global.users SET ${updates.join(', ')} WHERE id = $1::text`;
         await pool.query(query, values);
     }
 }
@@ -216,7 +223,7 @@ export async function createProject(name: string, description: string, dialect: 
     const pool = getPgPool();
 
     // Fetch Subscription Plan from DB
-    const userSnapshot = await pool.query('SELECT plan_type FROM fluxbase_global.users WHERE id = $1', [userId]);
+    const userSnapshot = await pool.query('SELECT plan_type FROM fluxbase_global.users WHERE id = $1::text', [userId]);
     const planType = userSnapshot.rows[0]?.plan_type || 'free';
 
     let maxProjects = 1;
@@ -224,7 +231,7 @@ export async function createProject(name: string, description: string, dialect: 
     if (planType === 'max') maxProjects = 999999;
 
     // Check limit
-    const projectsSnapshot = await pool.query('SELECT COUNT(*) as count FROM fluxbase_global.projects WHERE user_id = $1', [userId]);
+    const projectsSnapshot = await pool.query('SELECT COUNT(*) as count FROM fluxbase_global.projects WHERE user_id = $1::text', [userId]);
     const count = parseInt(projectsSnapshot.rows[0].count);
     if (count >= maxProjects) {
         throw new Error(`Project limit reached. Your ${planType.toUpperCase()} plan only allows ${maxProjects} project(s). Please upgrade your subscription to create more.`);
@@ -234,7 +241,7 @@ export async function createProject(name: string, description: string, dialect: 
     const finalTimezone = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     await pool.query(
-        'INSERT INTO fluxbase_global.projects (project_id, user_id, display_name, dialect, timezone) VALUES ($1, $2, $3, $4, $5)',
+        'INSERT INTO fluxbase_global.projects (project_id, user_id, display_name, dialect, timezone) VALUES ($1, $2::text, $3, $4, $5)',
         [projectId, userId, name, dialect, finalTimezone]
     );
 
@@ -272,7 +279,7 @@ export async function resetProjectData(projectId: string) {
 
     const pool = getPgPool();
     const project = await getProjectById(projectId, userId);
-    if (!project) throw new Error("Project not found");
+    ensureRole(project, ['admin']);
 
     if (project.dialect?.toLowerCase() === 'mysql') {
         const { getMysqlPool } = await import('@/lib/mysql');
@@ -296,9 +303,12 @@ export async function updateProjectTimezone(projectId: string, timezone: string)
     const userId = await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
+    const project = await getProjectById(projectId, userId);
+    ensureRole(project, ['admin']);
+
     const pool = getPgPool();
     await pool.query(
-        'UPDATE fluxbase_global.projects SET timezone = $1 WHERE project_id = $2 AND user_id = $3',
+        'UPDATE fluxbase_global.projects SET timezone = $1 WHERE project_id = $2 AND user_id = $3::text',
         [timezone, projectId, userId]
     );
 
@@ -309,9 +319,10 @@ export async function deleteProject(projectId: string) {
     const userId = await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    const pool = getPgPool();
     const project = await getProjectById(projectId, userId);
-    if (!project) throw new Error("Project not found or access denied.");
+    ensureRole(project, ['admin']);
+
+    const pool = getPgPool();
 
     if (project.dialect?.toLowerCase() === 'mysql') {
         const { getMysqlPool } = await import('@/lib/mysql');
@@ -324,10 +335,10 @@ export async function deleteProject(projectId: string) {
     }
 
     // Remove the catalog entry
-    const res = await pool.query('DELETE FROM fluxbase_global.projects WHERE project_id = $1 AND user_id = $2', [projectId, userId]);
+    const res = await pool.query('DELETE FROM fluxbase_global.projects WHERE project_id = $1 AND user_id = $2::text', [projectId, userId]);
     if (res.rowCount === 0) {
         // User might be a member but not the owner. Delete from members instead.
-        await pool.query('DELETE FROM fluxbase_global.project_members WHERE project_id = $1 AND user_id = $2', [projectId, userId]);
+        await pool.query('DELETE FROM fluxbase_global.project_members WHERE project_id = $1 AND user_id = $2::text', [projectId, userId]);
     }
 
     try {
@@ -402,7 +413,7 @@ export async function createTable(projectId: string, tableName: string, descript
     await checkTableLimit(projectId, userId);
 
     const project = await getProjectById(projectId, userId);
-    if (!project) throw new Error("Project not found");
+    ensureRole(project, ['admin', 'developer']);
 
     const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
 
@@ -532,7 +543,7 @@ export async function deleteTable(projectId: string, tableId: string, explicitUs
     if (!userId) throw new Error("Unauthorized");
 
     const project = await getProjectById(projectId, userId);
-    if (!project) throw new Error("Project not found");
+    ensureRole(project, ['admin', 'developer']);
 
     const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
 
@@ -640,7 +651,7 @@ export async function addColumn(projectId: string, tableId: string, column: Omit
     if (!userId) throw new Error("Unauthorized");
 
     const project = await getProjectById(projectId, userId);
-    if (!project) throw new Error("Project not found");
+    ensureRole(project, ['admin', 'developer']);
 
     const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
 
@@ -693,7 +704,7 @@ export async function deleteColumn(projectId: string, tableId: string, columnId:
     if (!userId) throw new Error("Unauthorized");
 
     const project = await getProjectById(projectId, userId);
-    if (!project) throw new Error("Project not found");
+    ensureRole(project, ['admin', 'developer']);
 
     const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
     const safeColName = columnId.replace(/[^a-zA-Z0-9_]/g, '');
@@ -719,7 +730,7 @@ export async function updateColumn(projectId: string, tableId: string, columnId:
     if (!userId) throw new Error("Unauthorized");
 
     const project = await getProjectById(projectId, userId);
-    if (!project) throw new Error("Project not found");
+    ensureRole(project, ['admin', 'developer']);
     const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
     const safeColName = columnId.replace(/[^a-zA-Z0-9_]/g, '');
 
@@ -921,7 +932,7 @@ export async function addConstraint(projectId: string, constraint: Omit<Constrai
     if (!userId) throw new Error("Unauthorized");
 
     const project = await getProjectById(projectId, userId);
-    if (!project) throw new Error("Project not found");
+    ensureRole(project, ['admin', 'developer']);
 
     const safeTableName = constraint.table_id.replace(/[^a-zA-Z0-9_]/g, '');
     const colName = constraint.column_names.replace(/[^a-zA-Z0-9_]/g, '');
@@ -973,7 +984,7 @@ export async function deleteConstraint(projectId: string, constraintId: string, 
     if (!tableId) throw new Error("Table ID required for native constraint deletion");
 
     const project = await getProjectById(projectId, userId);
-    if (!project) throw new Error("Project not found");
+    ensureRole(project, ['admin', 'developer']);
 
     const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
     const safeConstraint = constraintId.replace(/[^a-zA-Z0-9_]/g, '');
@@ -1118,7 +1129,7 @@ export async function insertRow(projectId: string, tableId: string, rowData: Rec
     if (!userId) throw new Error("Unauthorized");
 
     const project = await getProjectById(projectId, userId);
-    if (!project) throw new Error("Project not found");
+    ensureRole(project, ['admin', 'developer']);
 
     const columns = await getColumnsForTable(projectId, tableId);
     validateRow(rowData as Row, columns);
@@ -1197,7 +1208,7 @@ export async function updateRow(projectId: string, tableId: string, rowId: strin
     if (!userId) throw new Error("Unauthorized");
 
     const project = await getProjectById(projectId, userId);
-    if (!project) throw new Error("Project not found");
+    ensureRole(project, ['admin', 'developer']);
 
     const columns = await getColumnsForTable(projectId, tableId);
     const pkCol = columns.find(c => c.is_primary_key);
@@ -1246,11 +1257,11 @@ export async function updateRow(projectId: string, tableId: string, rowId: strin
             const pool = getPgPool();
             const schemaName = `project_${projectId}`;
 
-            const oldDataResult = await pool.query(`SELECT * FROM "${schemaName}"."${safeTableName}" WHERE "${pkCol.column_name}" = $1`, [rowId]);
+            const oldDataResult = await pool.query(`SELECT * FROM "${schemaName}"."${safeTableName}" WHERE "${pkCol.column_name}"::text = $1`, [rowId]);
             if (oldDataResult.rows.length === 0) throw new Error(`Row with PK '${rowId}' not found.`);
             oldData = oldDataResult.rows[0];
 
-            const ddl = `UPDATE "${schemaName}"."${safeTableName}" SET ${setClauses.join(', ')} WHERE "${pkCol.column_name}" = $${i} RETURNING *`;
+            const ddl = `UPDATE "${schemaName}"."${safeTableName}" SET ${setClauses.join(', ')} WHERE "${pkCol.column_name}"::text = $${i} RETURNING *`;
             const result = await pool.query(ddl, params);
             updatedRow = result.rows[0];
         }
@@ -1271,7 +1282,7 @@ export async function deleteRow(projectId: string, tableId: string, rowId: strin
     if (!userId) throw new Error("Unauthorized");
 
     const project = await getProjectById(projectId, userId);
-    if (!project) throw new Error("Project not found");
+    ensureRole(project, ['admin', 'developer']);
 
     const columns = await getColumnsForTable(projectId, tableId);
     const pkCol = columns.find(c => c.is_primary_key);
@@ -1390,7 +1401,7 @@ export async function logAuditAction(projectId: string, userId: string, action: 
     try {
         const pool = getPgPool();
         await pool.query(
-            'INSERT INTO fluxbase_global.audit_logs (project_id, user_id, action, statement, metadata) VALUES ($1, $2, $3, $4, $5)',
+            'INSERT INTO fluxbase_global.audit_logs (project_id, user_id, action, statement, metadata) VALUES ($1, $2::text, $3, $4, $5)',
             [projectId, userId, action, statement, JSON.stringify(metadata)]
         );
     } catch (e) {

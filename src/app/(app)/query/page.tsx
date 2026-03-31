@@ -3,14 +3,20 @@
 import { useGlobalAlert } from '@/components/global-alert-provider';
 
 import { useState, useContext, useEffect, useCallback } from 'react';
-import { Play, Trash2, History as HistoryIcon, Sparkles, Layout, ChevronRight, ChevronLeft, Table2, ListRestart, Info, Database, AlertCircle, CheckCircle2, TerminalSquare, Bot, MoreHorizontal } from 'lucide-react';
+import { Play, Trash2, History as HistoryIcon, Sparkles, Layout, ChevronRight, ChevronLeft, Table2, ListRestart, Info, Database, AlertCircle, CheckCircle2, TerminalSquare, Bot, MoreHorizontal, FileJson, FileType, Copy as CopyIcon, AlignLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+    DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { SqlEditor } from '@/components/sql-editor';
 import { QueryResults } from '@/components/query-results';
 import { QueryHistory, HistoryItem } from '@/components/query-history';
@@ -237,8 +243,67 @@ export default function QueryPage() {
       combination: { key: 'enter', ctrl: true },
       handler: () => handleRunQuery(),
       description: 'Run SQL Query'
+    },
+    {
+      combination: { key: 'i', ctrl: true, shift: true },
+      handler: () => formatSql(),
+      description: 'Format SQL'
     }
   ], !isExecuting);
+
+  const formatSql = () => {
+    // Basic regex-based SQL formatter
+    let formatted = query
+      .replace(/\s+/g, ' ')
+      .replace(/\s*,\s*/g, ', ')
+      .replace(/\s*\(\s*/g, ' (')
+      .replace(/\s*\)\s*/g, ') ')
+      .replace(/\b(SELECT|FROM|WHERE|GROUP BY|ORDER BY|HAVING|LIMIT|INSERT|UPDATE|DELETE|JOIN|LEFT JOIN|RIGHT JOIN|INNER JOIN|UNION|VALUES|SET|AND|OR)\b/gi, (match) => `\n${match.toUpperCase()}`)
+      .trim();
+    setQuery(formatted);
+  };
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(query);
+    toast({ title: "Copied", description: "Query copied to clipboard." });
+  };
+
+  const exportData = (type: 'json' | 'csv') => {
+    if (!queryResponse?.result || !Array.isArray(queryResponse.result)) return;
+
+    let content = '';
+    let fileName = `query_export_${Date.now()}`;
+    let mimeType = '';
+
+    if (type === 'json') {
+      content = JSON.stringify(queryResponse.result, null, 2);
+      fileName += '.json';
+      mimeType = 'application/json';
+    } else {
+      const rows = queryResponse.result;
+      if (rows.length === 0) return;
+      const headers = Object.keys(rows[0]);
+      content = [
+        headers.join(','),
+        ...rows.map(row => headers.map(h => {
+          const val = row[h];
+          return typeof val === 'string' ? `"${val.replace(/"/g, '""')}"` : val;
+        }).join(','))
+      ].join('\n');
+      fileName += '.csv';
+      mimeType = 'text/csv';
+    }
+
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="h-[calc(100vh-57px)] w-full p-2 bg-background">
@@ -268,9 +333,30 @@ export default function QueryPage() {
                   <ChevronRight className="h-3 w-3 text-muted-foreground/50 rotate-90" />
                   <span className="text-xs text-muted-foreground font-mono">Editor</span>
                 </div>
-                {/* Advanced Editor Toolbar Placeholder */}
-                <div className="flex items-center gap-2">
-                  {/* Toolbars will be mounted here in the next step */}
+                {/* Advanced Editor Toolbar */}
+                <div className="flex items-center gap-1.5">
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={formatSql} title="Format SQL (Ctrl+Shift+I)">
+                    <AlignLeft className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={copyToClipboard} title="Copy to clipboard">
+                    <CopyIcon className="h-3.5 w-3.5" />
+                  </Button>
+                  <Separator orientation="vertical" className="h-4 mx-0.5" />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground" disabled={!queryResponse?.success || !Array.isArray(queryResponse.result)}>
+                        <Upload className="h-3 w-3 rotate-180" /> Export
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-32">
+                      <DropdownMenuItem onClick={() => exportData('csv')} className="text-xs">
+                        <FileType className="mr-2 h-3.5 w-3.5 opacity-60" /> CSV
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => exportData('json')} className="text-xs">
+                        <FileJson className="mr-2 h-3.5 w-3.5 opacity-60" /> JSON
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
               <div className="flex-grow overflow-hidden relative">

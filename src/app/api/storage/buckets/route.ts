@@ -20,7 +20,14 @@ export async function GET(req: NextRequest) {
 
     const pool = getPgPool();
     const result = await pool.query(
-        `SELECT id, name, is_public, created_at FROM fluxbase_global.storage_buckets WHERE project_id = $1 ORDER BY created_at ASC`,
+        `SELECT 
+            b.id, b.name, b.is_public, b.created_at,
+            COALESCE(SUM(o.size), 0) as total_size
+         FROM fluxbase_global.storage_buckets b
+         LEFT JOIN fluxbase_global.storage_objects o ON b.id = o.bucket_id
+         WHERE b.project_id = $1 
+         GROUP BY b.id, b.name, b.is_public, b.created_at
+         ORDER BY b.created_at ASC`,
         [projectId]
     );
     return NextResponse.json({ success: true, buckets: result.rows });

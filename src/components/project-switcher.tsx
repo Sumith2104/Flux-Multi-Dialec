@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useContext } from 'react';
 import { ProjectContext } from '@/contexts/project-context';
+import { cn } from '@/lib/utils';
 
 type ProjectSwitcherProps = {
   headerTitle: string;
@@ -80,14 +81,39 @@ export function ProjectSwitcher({
               key={project.project_id}
               onSelect={() => handleSelect(project)}
             >
-              <div className="flex items-center w-full">
-                <span className="flex-1 truncate pr-2">{project.display_name}</span>
-                <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${project.dialect === 'mysql' ? 'bg-blue-500/10 text-blue-500' : 'bg-primary/10 text-primary'}`}>
-                  {project.dialect === 'mysql' ? 'MySQL' : 'PG'}
+              <div className="flex items-center w-full min-w-0 gap-3 py-0.5">
+                {/* Project Name (Truncated) */}
+                <span className="flex-1 truncate font-medium text-sm text-foreground/90 group-hover:text-foreground transition-colors pr-1">
+                    {project.display_name}
                 </span>
-                {selectedProject?.project_id === project.project_id && (
-                  <Check className="ml-2 h-4 w-4 shrink-0" />
-                )}
+
+                {/* Metadata Badges Container (Fixed Width/Alignment) */}
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span className={cn(
+                        "text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider",
+                        project.dialect === 'mysql' ? 'bg-orange-500/10 text-orange-400' : 'bg-blue-500/10 text-blue-400'
+                    )}>
+                      {project.dialect === 'mysql' ? 'MySQL' : 'PG'}
+                    </span>
+                    
+                    {project.role && (
+                        <span className={cn(
+                            "text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider border shadow-sm transition-colors",
+                            project.role === 'admin' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20 group-hover:bg-amber-500/20' : 
+                            project.role === 'developer' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20 group-hover:bg-blue-500/20' : 
+                            'bg-zinc-500/10 text-zinc-400 border-zinc-500/20 group-hover:bg-zinc-500/20'
+                        )}>
+                            {project.role}
+                        </span>
+                    )}
+                </div>
+
+                {/* Selected Checkmark */}
+                <div className="w-4 flex-shrink-0 flex justify-end">
+                    {selectedProject?.project_id === project.project_id && (
+                        <Check className="h-4 w-4 text-primary animate-in zoom-in-50 duration-200" />
+                    )}
+                </div>
               </div>
             </DropdownMenuItem>
           ))}

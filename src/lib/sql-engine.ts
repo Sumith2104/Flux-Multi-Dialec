@@ -48,12 +48,14 @@ export class SqlEngine {
     private projectDialect?: string;
     private parser: Parser;
     private scopes: string[] | null = null;
+    private role: string | null = null;
 
-    constructor(projectId: string, userId?: string, scopes?: string[]) {
+    constructor(projectId: string, userId?: string, scopes?: string[], role?: string) {
         this.projectId = projectId;
         this.userId = userId || null;
         this.parser = new Parser();
         this.scopes = scopes || null;
+        this.role = role || null;
     }
 
     private async init() {
@@ -391,11 +393,19 @@ export class SqlEngine {
     }
 
     private validateScope(firstWord: string) {
-        if (!this.scopes) return; // UI sessions have all scopes
-
         const readOps = ['SELECT', 'SHOW', 'DESCRIBE', 'EXPLAIN'];
         const writeOps = ['INSERT', 'UPDATE', 'DELETE', 'CALL'];
         const adminOps = ['CREATE', 'DROP', 'ALTER', 'TRUNCATE', 'RENAME', 'GRANT', 'REVOKE'];
+
+        // 1. Enforce Built-in Roles (UI Sessions)
+        if (this.role === 'viewer') {
+            if (!readOps.includes(firstWord)) {
+                throw new FluxbaseError(`Insufficient Permissions: Your role (Viewer) is restricted to read-only operations. You cannot execute ${firstWord} commands.`, ERROR_CODES.FORBIDDEN, 403);
+            }
+        }
+
+        // 2. Enforce API Scopes (External Clients)
+        if (!this.scopes) return; // UI sessions use the role check above
 
         if (readOps.includes(firstWord)) {
             if (!this.scopes.includes('read') && !this.scopes.includes('write') && !this.scopes.includes('admin')) {

@@ -1,5 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getAnalyticsStatsAction } from '@/app/(app)/dashboard/analytics-actions';
+import { useRealtimeSubscription } from '@/hooks/use-realtime-subscription';
+import { useEffect } from 'react';
 
 export interface AnalyticsStats {
     total_requests: number;
@@ -16,14 +18,27 @@ export interface AnalyticsStats {
 }
 
 export function useRealtimeAnalytics(projectId: string | undefined): AnalyticsStats | null {
-    const { data } = useQuery({
-        queryKey: ['analytics_stats', projectId],
+    const queryClient = useQueryClient();
+    const { lastEvent } = useRealtimeSubscription(projectId);
+
+    const queryKey = ['analytics_stats', projectId];
+
+    const { data, refetch } = useQuery({
+        queryKey,
         queryFn: () => getAnalyticsStatsAction(projectId!),
         enabled: !!projectId,
         refetchInterval: 5000,
         staleTime: 4000,
         gcTime: 30 * 60 * 1000, // Keep in memory for 30 minutes
     });
+
+    // Instant refresh when a WebSocket event arrives
+    useEffect(() => {
+        if (lastEvent) {
+            console.log('[Realtime Analytics] Pushing update for event:', lastEvent.type);
+            refetch();
+        }
+    }, [lastEvent, refetch]);
 
     return data || null;
 }

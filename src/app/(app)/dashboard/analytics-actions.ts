@@ -217,6 +217,7 @@ export async function getProjectHistoryAction(projectId: string) {
         // Initialize 24 hourly buckets
         const requestsArr = Array(24).fill(0);
         const apiCallsArr = Array(24).fill(0);
+        const sessionsArr = Array(24).fill(0);
 
         const now = new Date();
         now.setMinutes(0, 0, 0); // Align to current hour
@@ -230,12 +231,41 @@ export async function getProjectHistoryAction(projectId: string) {
                 const index = 23 - hoursAgo; // 23 is the current hour, 0 is 24 hours ago
                 const count = parseInt(row.total, 10);
 
-                // Only count top-level events for total requests and API calls
+                // Total Requests: Sum of API Calls and SQL Executions
                 if (row.event_type === 'api_call' || row.event_type === 'sql_execution') {
                     requestsArr[index] += count;
+                }
+
+                // API Calls: ONLY api_call events
+                if (row.event_type === 'api_call') {
                     apiCallsArr[index] += count;
                 }
+
+                // Real Sessions from rollups table
+                if (row.event_type === 'sessions') {
+                    sessionsArr[index] += count;
+                }
             }
+        }
+
+        // --- PHASE 2: Merge "In-Flight" session data from Redis (Unsynced) ---
+        try {
+            const keys = await redis.keys(`analytics_rollup:${projectId}:*:sessions`);
+            if (keys && keys.length > 0) {
+                for (const key of keys) {
+                    const rowTime = parseInt(key.split(':')[2], 10);
+                    const nowTime = now.getTime();
+                    const hoursAgo = Math.floor((nowTime - rowTime) / (1000 * 60 * 60));
+
+                    if (hoursAgo >= 0 && hoursAgo < 24) {
+                        const index = 23 - hoursAgo;
+                        const val = await redis.scard(key);
+                        sessionsArr[index] = Math.max(sessionsArr[index], val); // Use max because scard is current state
+                    }
+                }
+            }
+        } catch (redisErr) {
+            console.warn('Error merging Redis in-flight sessions:', redisErr);
         }
 
         const payload = {
@@ -243,7 +273,8 @@ export async function getProjectHistoryAction(projectId: string) {
             monthly: {},
             yearly: {},
             requests: requestsArr.map(val => ({ val })),
-            apiCalls: apiCallsArr.map(val => ({ val }))
+            apiCalls: apiCallsArr.map(val => ({ val })),
+            sessions: sessionsArr.map(val => ({ val }))
         };
 
         try {

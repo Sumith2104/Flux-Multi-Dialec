@@ -45,7 +45,7 @@ export async function googleAuthAction(accessToken: string) {
       // User exists, just log them in
       userId = existing.rows[0].id;
       if (photoUrl) {
-          await pool.query('UPDATE fluxbase_global.users SET photo_url = $1 WHERE id = $2', [photoUrl, userId]);
+          await pool.query('UPDATE fluxbase_global.users SET photo_url = $1 WHERE id = $2::text', [photoUrl, userId]);
       }
     } else {
       // 2. New User - Auto Signup
@@ -53,7 +53,7 @@ export async function googleAuthAction(accessToken: string) {
       userId = crypto.randomUUID();
       await pool.query(
         `INSERT INTO fluxbase_global.users (id, email, display_name, photo_url) 
-                 VALUES ($1, $2, $3, $4)`,
+                 VALUES ($1::text, $2, $3, $4)`,
         [userId, email, name, photoUrl]
       );
 
@@ -61,7 +61,17 @@ export async function googleAuthAction(accessToken: string) {
       sendWelcomeEmail(email, name).catch(console.error);
     }
 
-    // 3. Create active session cookie securely
+    // 3. Check for 2FA requirement
+    const { rows: userSettings } = await pool.query(
+      'SELECT two_factor_enabled FROM fluxbase_global.users WHERE id = $1::text',
+      [userId]
+    );
+
+    if (userSettings[0]?.two_factor_enabled) {
+      return { success: true, requires2FA: true, userId };
+    }
+
+    // 4. Create active session cookie securely
     await createSessionCookie(userId);
     return { success: true, isNewUser };
 
@@ -150,7 +160,7 @@ export async function verifyOtpAction(formData: FormData) {
     // OTP Valid! Create the real user from the pending hash
     const userId = crypto.randomUUID();
     await pool.query(
-      'INSERT INTO fluxbase_global.users (id, email, display_name, password_hash) VALUES ($1, $2, $3, $4)',
+      'INSERT INTO fluxbase_global.users (id, email, display_name, password_hash) VALUES ($1::text, $2, $3, $4)',
       [userId, email, pendingUser.name, pendingUser.password_hash]
     );
 
@@ -198,11 +208,51 @@ export async function loginAction(formData: FormData) {
       return { error: "Invalid password." };
     }
 
+    // Check for 2FA
+    const { rows: userSettings } = await pool.query(
+      'SELECT two_factor_enabled FROM fluxbase_global.users WHERE id = $1::text',
+      [user.id]
+    );
+
+    if (userSettings[0]?.two_factor_enabled) {
+      return { success: true, requires2FA: true, userId: user.id };
+    }
+
     await createSessionCookie(user.id);
     return { success: true };
   } catch (error: any) {
     console.error("Native Login Error:", error);
     return { error: "Authentication failed. Please try again." };
+  }
+}
+
+export async function verify2FALoginAction(userId: string, code: string) {
+  if (!userId || !code) return { error: "Missing verification data" };
+
+  try {
+    const { getPgPool } = await import('@/lib/pg');
+    const { verifyTOTPCode } = await import('@/lib/2fa');
+    
+    const pool = getPgPool();
+    const { rows } = await pool.query(
+      'SELECT two_factor_secret, two_factor_enabled FROM fluxbase_global.users WHERE id = $1::text',
+      [userId]
+    );
+
+    const user = rows[0];
+    if (!user || !user.two_factor_enabled || !user.two_factor_secret) {
+      return { error: "2FA not properly configured for this user" };
+    }
+
+    if (verifyTOTPCode(user.two_factor_secret, code)) {
+      await createSessionCookie(userId);
+      return { success: true };
+    } else {
+      return { error: "Invalid verification code" };
+    }
+  } catch (error: any) {
+    console.error("2FA Verification Error:", error);
+    return { error: "Verification failed. Please try again." };
   }
 }
 

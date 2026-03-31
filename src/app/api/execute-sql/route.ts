@@ -103,7 +103,7 @@ export async function POST(request: Request) {
         }
 
         // Use the new SQL Engine
-        const engine = new SqlEngine(projectId, userId, auth.scopes);
+        const engine = new SqlEngine(projectId, userId, auth.scopes, project.role);
 
         // Split multiple queries if any (semicolon) - basic support
         // The parser handles one statement at a time mostly, so we might need a loop if the UI sends multiple.

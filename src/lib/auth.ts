@@ -99,6 +99,12 @@ export async function getAuthContextFromRequest(request: Request): Promise<AuthC
     if (apiKey) {
         const result = await validateApiKey(apiKey);
         if (result) {
+            // Track session for API key users (they have a specific project context)
+            if (result.projectId) {
+                const { trackSession } = await import('@/lib/track-session');
+                await trackSession(result.projectId, result.userId);
+            }
+
             return { 
                 userId: result.userId, 
                 allowedProjectId: result.projectId,

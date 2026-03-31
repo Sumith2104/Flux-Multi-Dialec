@@ -17,12 +17,12 @@ export async function GET(req: NextRequest) {
         ? `SELECT al.id, al.user_id as "userId", u.email as "userEmail", al.action, al.statement, al.created_at as "createdAt", al.metadata
            FROM fluxbase_global.audit_logs al
            LEFT JOIN fluxbase_global.users u ON u.id = al.user_id
-           WHERE al.project_id = $1 AND (al.statement ILIKE $2 OR al.action ILIKE $2)
+           WHERE al.project_id = $1::text AND (al.statement ILIKE $2::text OR al.action ILIKE $2::text)
            ORDER BY al.created_at DESC LIMIT 200`
         : `SELECT al.id, al.user_id as "userId", u.email as "userEmail", al.action, al.statement, al.created_at as "createdAt", al.metadata
            FROM fluxbase_global.audit_logs al
            LEFT JOIN fluxbase_global.users u ON u.id = al.user_id
-           WHERE al.project_id = $1
+           WHERE al.project_id = $1::text
            ORDER BY al.created_at DESC LIMIT 200`;
 
     const params = search ? [projectId, `%${search}%`] : [projectId];

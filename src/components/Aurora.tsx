@@ -10,9 +10,9 @@ interface AuroraProps {
 }
 
 export default function Aurora({
-    colorStops = ["#FF4B29", "#FF8F29", "#111111"],
+    colorStops = ["#261005", "#4a2c0f", "#000000"], // More subtle, dark orange/black palette
     amplitude = 1.0,
-    speed = 0.5,
+    speed = 0.2, // Slower for premium feel
 }: AuroraProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 

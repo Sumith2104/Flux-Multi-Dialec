@@ -33,12 +33,19 @@ export async function POST(req: NextRequest) {
         );
     }
 
-    // Validate project access
+    // Validate project access & role
     const project = await getProjectById(projectId, auth.userId);
     if (!project) {
         return NextResponse.json(
             { success: false, error: { message: 'Project not found', code: ERROR_CODES.PROJECT_NOT_FOUND } },
             { status: 404 }
+        );
+    }
+
+    if (project.role === 'viewer') {
+        return NextResponse.json(
+            { success: false, error: { message: 'Insufficient Permissions: Viewers cannot create webhooks.', code: ERROR_CODES.FORBIDDEN } },
+            { status: 403 }
         );
     }
 
@@ -115,9 +122,9 @@ export async function GET(req: NextRequest) {
         const res = await pool.query(
             `SELECT webhook_id as id, name, url, event, table_id, secret, is_active, created_at 
              FROM fluxbase_global.webhooks 
-             WHERE project_id = $1 AND user_id = $2 
+             WHERE project_id = $1
              ORDER BY created_at DESC`,
-            [projectId, auth.userId]
+            [projectId]
         );
 
         return NextResponse.json({
@@ -169,11 +176,19 @@ export async function DELETE(req: NextRequest) {
         );
     }
 
+    if (project.role === 'viewer') {
+        return NextResponse.json(
+            { success: false, error: { message: 'Insufficient Permissions: Viewers cannot delete webhooks.', code: ERROR_CODES.FORBIDDEN } },
+            { status: 403 }
+        );
+    }
+
     const pool = getPgPool();
     try {
+        // Allow admins/developers to delete any project webhook, not just their own
         const res = await pool.query(
-            `DELETE FROM fluxbase_global.webhooks WHERE webhook_id = $1 AND project_id = $2 AND user_id = $3 RETURNING webhook_id`,
-            [webhookId, projectId, auth.userId]
+            `DELETE FROM fluxbase_global.webhooks WHERE webhook_id = $1 AND project_id = $2 RETURNING webhook_id`,
+            [webhookId, projectId]
         );
 
         if (res.rowCount === 0) {

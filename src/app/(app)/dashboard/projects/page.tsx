@@ -109,14 +109,27 @@ export default function SelectProjectPage() {
                         <div className="p-6 flex flex-col h-full z-10 relative">
                             {/* Top: Dialect / Infra */}
                             <div className="flex justify-between items-start mb-4">
-                                <Badge variant="secondary" className={cn(
-                                    "text-xs font-semibold tracking-wide uppercase px-2.5 py-0.5 shadow-sm",
-                                    isPostgres 
-                                      ? "bg-blue-500/10 text-blue-400 border-blue-500/20" 
-                                      : "bg-orange-500/10 text-orange-400 border-orange-500/20"
-                                )}>
-                                    {isPostgres ? 'PostgreSQL' : 'MySQL'}
-                                </Badge>
+                                <div className="flex gap-2">
+                                    <Badge variant="secondary" className={cn(
+                                        "text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 shadow-sm",
+                                        isPostgres 
+                                          ? "bg-blue-500/10 text-blue-400 border-blue-500/20" 
+                                          : "bg-orange-500/10 text-orange-400 border-orange-500/20"
+                                    )}>
+                                        {isPostgres ? 'PostgreSQL' : 'MySQL'}
+                                    </Badge>
+                                    
+                                    {project.role && (
+                                        <Badge variant="secondary" className={cn(
+                                            "text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 shadow-sm border",
+                                            project.role === 'admin' && "bg-amber-500/10 text-amber-400 border-amber-500/20",
+                                            project.role === 'developer' && "bg-blue-500/10 text-blue-400 border-blue-500/20",
+                                            project.role === 'viewer' && "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
+                                        )}>
+                                            {project.role}
+                                        </Badge>
+                                    )}
+                                </div>
                                 <ChevronRight className="h-5 w-5 text-muted-foreground/50 transition-transform group-hover:translate-x-1 group-hover:text-primary" />
                             </div>
 

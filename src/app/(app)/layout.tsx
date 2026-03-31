@@ -26,6 +26,7 @@ import { ChangelogPopover } from "@/components/changelog-popover";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { StatusIndicator } from "@/components/status-indicator";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { PremiumLoader } from "@/components/ui/premium-loader";
 import {
     LayoutDashboard,
     BrainCircuit,
@@ -36,13 +37,15 @@ import {
     Database,
     Globe,
     ServerCrash,
-    BarChart3
+    BarChart3,
+    History
 } from "lucide-react";
 import { checkDatabaseHealthAction } from "@/lib/data";
 
 
 const navItems = [
     { href: "/dashboard", label: "Dashboard", icon: <LayoutDashboard /> },
+    { href: "/dashboard/activity", label: "Activity", icon: <History /> },
     { href: "/editor", label: "Table Editor", icon: <Table /> },
     { href: "/database", label: "Database", icon: <Database /> },
     { href: "/query", label: "SQL Editor", icon: <BrainCircuit /> },
@@ -104,6 +107,15 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         fetchData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [setProject]);
+
+    // Real-time Session Tracking
+    useEffect(() => {
+        if (userId && selectedProject?.project_id) {
+            import('@/lib/track-session').then(({ trackSession }) => {
+                trackSession(selectedProject.project_id, userId);
+            });
+        }
+    }, [userId, selectedProject?.project_id, pathname]); // Re-track on page shifts too
 
     // Redirect logic
     useEffect(() => {
@@ -191,23 +203,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
 
     if (isLoading) {
-        return (
-            <div className="flex min-h-screen w-full flex-col bg-background">
-                <header className="sticky top-0 flex h-14 items-center gap-4 border-b bg-background px-4 md:px-6 z-50">
-                    <Skeleton className="h-8 w-8 rounded-full" />
-                    <Skeleton className="h-6 w-40" />
-                    <div className="flex-1"></div>
-                    <Skeleton className="h-8 w-20" />
-                </header>
-                <div className="flex flex-1 overflow-hidden">
-                    <main className="flex-1 overflow-auto p-4 md:p-8">
-                        <div className="flex items-center justify-center h-full">
-                            <p>Loading...</p>
-                        </div>
-                    </main>
-                </div>
-            </div>
-        );
+        return <PremiumLoader text="Initializing Fluxbase..."/>;
     }
 
     if (isOffline) {
@@ -254,17 +250,30 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                         selectedProject={selectedProject}
                     />
                     {selectedProject && (
-                        <Badge
-                            variant="outline"
-                            className={cn(
-                                "hidden sm:inline-flex transition-colors shadow-none text-[10px] uppercase font-bold tracking-wider rounded-md",
-                                planType === 'Max' ? "border-amber-500/50 bg-amber-500/10 text-amber-500" :
-                                    planType === 'Pro' ? "border-blue-500/50 bg-blue-500/10 text-blue-500" :
-                                        "border-muted-foreground/30 bg-muted/10 text-muted-foreground"
-                            )}
-                        >
-                            {planType}
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                            <Badge
+                                variant="secondary"
+                                className={cn(
+                                    "hidden sm:inline-flex transition-colors shadow-none text-[9px] uppercase font-bold tracking-wider rounded-md border",
+                                    selectedProject.role === 'admin' && "bg-amber-500/10 text-amber-400 border-amber-500/20",
+                                    selectedProject.role === 'developer' && "bg-blue-500/10 text-blue-400 border-blue-500/20",
+                                    selectedProject.role === 'viewer' && "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
+                                )}
+                            >
+                                {selectedProject.role}
+                            </Badge>
+                            <Badge
+                                variant="outline"
+                                className={cn(
+                                    "hidden sm:inline-flex transition-colors shadow-none text-[9px] uppercase font-bold tracking-wider rounded-md",
+                                    planType === 'Max' ? "border-amber-500/50 bg-amber-500/10 text-amber-500" :
+                                        planType === 'Pro' ? "border-blue-500/50 bg-blue-500/10 text-blue-500" :
+                                            "border-muted-foreground/30 bg-muted/10 text-muted-foreground"
+                                )}
+                            >
+                                {planType}
+                            </Badge>
+                        </div>
                     )}
                     <div className="hidden md:block">
                         <TimezoneSelector />

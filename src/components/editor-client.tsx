@@ -46,6 +46,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { deleteRowAction, deleteTableAction, deleteColumnAction, deleteConstraintAction } from '@/app/(app)/editor/actions';
 // Removed getTableData import to prevent client boundary violations
 import { useToast } from '@/hooks/use-toast';
+import { useRealtimeSubscription } from '@/hooks/use-realtime-subscription';
 import { useRouter } from 'next/navigation';
 import {
     AlertDialog,
@@ -202,6 +203,8 @@ export function EditorClient({
         setLocalColumns(initialColumns);
     }, [tableId]); // tableId change = different table → reset to server-provided columns
 
+    const { lastEvent } = useRealtimeSubscription(projectId);
+
     const {
         data: infiniteData,
         fetchNextPage,
@@ -227,7 +230,7 @@ export function EditorClient({
         getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.nextCursorId : null,
         enabled: !!tableId && !!tableName,
         staleTime: 4000,
-        refetchInterval: 5000,
+        refetchInterval: 10000, // Reduced polling since we have WS now
         refetchOnWindowFocus: false,
     });
 
@@ -307,6 +310,14 @@ export function EditorClient({
         queryClient.removeQueries({ queryKey: ['table-data', projectId, tableId] });
         refetch();
     }, [queryClient, projectId, tableId, refetch]);
+
+    // Instant refresh for table data when a WebSocket event arrives for this specific table
+    useEffect(() => {
+        if (lastEvent && lastEvent.type === 'update' && lastEvent.table === tableName) {
+            console.log('[Realtime Editor] Pushing update for table:', tableName);
+            refreshData();
+        }
+    }, [lastEvent, tableName, refreshData]);
 
 
 

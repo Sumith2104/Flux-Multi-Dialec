@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useState, useEffect, useCallback, useContext } from 'react';
+import { ProjectContext } from '@/contexts/project-context';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,8 +40,8 @@ const roleColors = {
 };
 
 export default function TeamPage() {
-    const searchParams = useSearchParams();
-    const projectId = searchParams.get('projectId') || '';
+    const { project: selectedProject } = useContext(ProjectContext);
+    const projectId = selectedProject?.project_id || '';
 
     const [members, setMembers] = useState<Member[]>([]);
     const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -125,6 +125,26 @@ export default function TeamPage() {
         !auditSearch || l.statement?.toLowerCase().includes(auditSearch.toLowerCase()) || l.action?.toLowerCase().includes(auditSearch.toLowerCase())
     );
 
+    if (!selectedProject) {
+        return (
+            <div className="space-y-6">
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+                        <Users className="h-6 w-6 text-blue-400" />
+                        Team & Audit Log
+                    </h1>
+                    <p className="text-muted-foreground text-sm mt-1">Manage team members and view a full history of all database operations</p>
+                </div>
+                <Card className="mt-4 border-dashed border-zinc-800">
+                    <CardContent className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
+                        <Users className="h-10 w-10 opacity-20" />
+                        <p className="text-sm">Please select a project to manage team members.</p>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -145,11 +165,13 @@ export default function TeamPage() {
 
                 {/* Members Tab */}
                 <TabsContent value="members" className="mt-4 space-y-4">
-                    <div className="flex justify-end">
-                        <Button onClick={() => setShowInvite(true)} className="bg-orange-600 hover:bg-orange-500" id="invite-member">
-                            <Plus className="h-4 w-4 mr-2" />Invite Member
-                        </Button>
-                    </div>
+                    {selectedProject.role === 'admin' && (
+                        <div className="flex justify-end">
+                            <Button onClick={() => setShowInvite(true)} className="bg-orange-600 hover:bg-orange-500" id="invite-member">
+                                <Plus className="h-4 w-4 mr-2" />Invite Member
+                            </Button>
+                        </div>
+                    )}
 
                     {loading ? (
                         <div className="flex items-center justify-center h-32"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
@@ -168,7 +190,11 @@ export default function TeamPage() {
                                             <p className="text-xs text-muted-foreground truncate">{member.email}</p>
                                         </div>
                                         <div className="flex items-center gap-2 shrink-0">
-                                            <Select value={member.role} onValueChange={v => handleRoleChange(member.userId, v)} disabled={member.role === 'admin'}>
+                                            <Select 
+                                                value={member.role} 
+                                                onValueChange={v => handleRoleChange(member.userId, v)} 
+                                                disabled={selectedProject.role !== 'admin' || member.role === 'admin'}
+                                            >
                                                 <SelectTrigger className={cn('h-7 text-xs w-28 border', roleColors[member.role])} id={`role-${member.userId}`}>
                                                     <SelectValue />
                                                 </SelectTrigger>
@@ -178,7 +204,7 @@ export default function TeamPage() {
                                                     <SelectItem value="viewer">Viewer</SelectItem>
                                                 </SelectContent>
                                             </Select>
-                                            {member.role !== 'admin' && (
+                                            {selectedProject.role === 'admin' && member.role !== 'admin' && (
                                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-red-400"
                                                     onClick={() => handleRemove(member.userId)} id={`remove-${member.userId}`}>
                                                     <Trash2 className="h-3.5 w-3.5" />

@@ -7,12 +7,14 @@ export interface ProjectHistory {
     yearly?: Record<string, number>;
     requests: { val: number }[];
     apiCalls: { val: number }[];
+    sessions: { val: number }[];
 }
 
 export function useProjectHistory(projectId: string | undefined): ProjectHistory {
     const [history, setHistory] = useState<ProjectHistory>({
         requests: Array(24).fill({ val: 0 }),
-        apiCalls: Array(24).fill({ val: 0 })
+        apiCalls: Array(24).fill({ val: 0 }),
+        sessions: Array(24).fill({ val: 0 })
     });
 
     useEffect(() => {
@@ -27,7 +29,8 @@ export function useProjectHistory(projectId: string | undefined): ProjectHistory
                         ...data,
                         // Provide empty fallback arrays for the UI to prevent crashes
                         requests: data.requests || Array(24).fill({ val: 0 }),
-                        apiCalls: data.apiCalls || Array(24).fill({ val: 0 })
+                        apiCalls: data.apiCalls || Array(24).fill({ val: 0 }),
+                        sessions: data.sessions || Array(24).fill({ val: 0 })
                     });
                 }
             } catch (err) {

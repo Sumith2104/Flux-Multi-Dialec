@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-interface Bucket { id: string; name: string; is_public: boolean; created_at: string; }
+interface Bucket { id: string; name: string; is_public: boolean; created_at: string; total_size?: number; }
 interface StorageFile {
     id: string; name: string; s3_key: string; size: number;
     mime_type: string; created_at: string;
@@ -69,8 +69,10 @@ export default function StoragePage() {
             return data.success ? data.buckets : [];
         },
         enabled: !!projectId,
-        staleTime: 60 * 1000, // Cache for 1 minute
+        staleTime: 60 * 1000,
     });
+
+    const totalProjectSize = buckets.reduce((acc, b) => acc + (Number(b.total_size) || 0), 0);
 
     // Load files in selected bucket (Smart Cached)
     const { data: files = [], isLoading: loadingFiles } = useQuery<StorageFile[]>({
@@ -108,11 +110,13 @@ export default function StoragePage() {
         }
     };
 
-    const onDrop = (e: React.DragEvent) => {
+    const onDrop = async (e: React.DragEvent) => {
         e.preventDefault();
         setDragOver(false);
-        const file = e.dataTransfer.files[0];
-        if (file) uploadFile(file);
+        const droppedFiles = Array.from(e.dataTransfer.files);
+        for (const file of droppedFiles) {
+            await uploadFile(file);
+        }
     };
 
     // Create bucket
@@ -238,6 +242,11 @@ export default function StoragePage() {
                     <p className="text-muted-foreground mt-1">
                         Secure file storage backed by AWS S3 — private by default, signed URLs on demand.
                     </p>
+                    <div className="flex items-center gap-2 mt-3">
+                        <Badge variant="outline" className="bg-primary/5 border-primary/20 text-primary font-mono text-xs px-2.5 py-1">
+                            Total Project Usage: {formatBytes(totalProjectSize)}
+                        </Badge>
+                    </div>
                 </div>
                 {selectedBucket && (
                     <Button onClick={() => fileInputRef.current?.click()} disabled={uploading}>
@@ -245,7 +254,11 @@ export default function StoragePage() {
                         Upload File
                     </Button>
                 )}
-                <input ref={fileInputRef} type="file" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f); e.target.value = ''; }} />
+                <input ref={fileInputRef} type="file" className="hidden" multiple onChange={async (e) => { 
+                    const selectedFiles = Array.from(e.target.files || []);
+                    for (const f of selectedFiles) { await uploadFile(f); }
+                    e.target.value = ''; 
+                }} />
             </div>
 
             {error && (
@@ -322,11 +335,14 @@ export default function StoragePage() {
                                         </div>
                                     ) : (
                                         <>
-                                            <div className="flex items-center gap-2.5 overflow-hidden">
+                                            <div className="flex items-center gap-2.5 overflow-hidden flex-1">
                                                 {selectedBucket?.id === bucket.id
                                                     ? <FolderOpen className="h-4 w-4 shrink-0" />
                                                     : <Folder className="h-4 w-4 shrink-0" />}
-                                                <span className="truncate font-medium">{bucket.name}</span>
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className="truncate font-medium">{bucket.name}</span>
+                                                    <span className="text-[10px] opacity-60 font-mono">{formatBytes(Number(bucket.total_size) || 0)}</span>
+                                                </div>
                                             </div>
                                             
                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

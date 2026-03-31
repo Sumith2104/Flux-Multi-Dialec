@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useState, useEffect, useCallback, useContext } from 'react';
+import { ProjectContext } from '@/contexts/project-context';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -33,8 +33,8 @@ const metricOptions = [
 ];
 
 export default function AlertsPage() {
-    const searchParams = useSearchParams();
-    const projectId = searchParams.get('projectId') || '';
+    const { project: selectedProject } = useContext(ProjectContext);
+    const projectId = selectedProject?.project_id || '';
 
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [loading, setLoading] = useState(true);
@@ -106,7 +106,16 @@ export default function AlertsPage() {
                 </Button>
             </div>
 
-            {loading ? (
+            {!selectedProject ? (
+                <Card className="border-dashed border-zinc-800">
+                    <CardContent className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
+                        <Bell className="h-12 w-12 opacity-20" />
+                        <p className="text-sm">Please select a project to configure alerts.</p>
+                    </CardContent>
+                </Card>
+            ) : (
+                <>
+                {loading ? (
                 <div className="flex items-center justify-center h-48"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
             ) : alerts.length === 0 ? (
                 <Card className="border-dashed">
@@ -159,6 +168,8 @@ export default function AlertsPage() {
                     })}
                 </div>
             )}
+            </>
+        )}
 
             {/* Add Alert Dialog */}
             <Dialog open={showAdd} onOpenChange={setShowAdd}>

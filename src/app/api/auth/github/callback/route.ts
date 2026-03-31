@@ -92,7 +92,21 @@ export async function GET(request: NextRequest) {
             sendWelcomeEmail(email, name).catch(console.error);
         }
 
-        // 5. Create active session cookie identically to native login systems
+        // 5. Check for 2FA requirement (Security Hardening)
+        const { rows: userSettings } = await pool.query(
+            'SELECT two_factor_enabled FROM fluxbase_global.users WHERE id = $1',
+            [userId]
+        );
+
+        if (userSettings[0]?.two_factor_enabled) {
+            // Redirect back to home with 2FA flags so the LoginDialog can catch it
+            const loginUrl = new URL('/', request.url);
+            loginUrl.searchParams.set('requires2FA', 'true');
+            loginUrl.searchParams.set('userId', userId);
+            return NextResponse.redirect(loginUrl);
+        }
+
+        // 6. Create active session cookie identically to native login systems
         await createSessionCookie(userId);
 
         // 6. Redirect seamlessly

@@ -7,10 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
-import { Loader2 } from "lucide-react";
+import { Github, Shield, AlertTriangle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Github } from "lucide-react";
-import { loginAction, googleAuthAction } from "@/app/actions";
+import { loginAction, googleAuthAction, verify2FALoginAction } from "@/app/actions";
 import { useGoogleLogin } from '@react-oauth/google';
 
 interface LoginDialogProps {
@@ -25,6 +24,21 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
     const { toast } = useToast();
     const [isLoading, setIsLoading] = useState(false);
     const [showForgotPass, setShowForgotPass] = useState(false);
+    const [requires2FA, setRequires2FA] = useState(false);
+    const [tempUserId, setTempUserId] = useState<string | null>(null);
+    const [twoFactorCode, setTwoFactorCode] = useState('');
+
+    // Listen for URL params in case of GitHub 2FA redirect
+    useState(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('requires2FA') === 'true' && params.get('userId')) {
+                setRequires2FA(true);
+                setTempUserId(params.get('userId'));
+                onOpenChange(true); // Ensure dialog is open
+            }
+        }
+    });
 
     const googleLoginFlow = useGoogleLogin({
         onSuccess: async (tokenResponse) => {
@@ -33,9 +47,14 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
                 const result = await googleAuthAction(tokenResponse.access_token);
 
                 if (result.success) {
-                    onOpenChange(false);
-                    router.push('/dashboard/projects');
-                    router.refresh();
+                    if (result.requires2FA && result.userId) {
+                        setRequires2FA(true);
+                        setTempUserId(result.userId);
+                    } else {
+                        onOpenChange(false);
+                        router.push('/dashboard/projects');
+                        router.refresh();
+                    }
                 } else {
                     throw new Error(result.error || 'Failed to authenticate with Google');
                 }
@@ -69,9 +88,14 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
             const result = await loginAction(formData);
 
             if (result.success) {
-                onOpenChange(false);
-                router.push('/dashboard/projects');
-                router.refresh();
+                if (result.requires2FA && result.userId) {
+                    setRequires2FA(true);
+                    setTempUserId(result.userId);
+                } else {
+                    onOpenChange(false);
+                    router.push('/dashboard/projects');
+                    router.refresh();
+                }
             } else {
                 throw new Error(result.error || 'Failed to create session');
             }
@@ -79,6 +103,32 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
             toast({
                 variant: 'destructive',
                 title: 'Login Failed',
+                description: error.message,
+            });
+        } finally {
+            setIsLoading(false);
+        }
+    }
+
+    async function handleVerify2FA(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (!tempUserId) return;
+
+        setIsLoading(true);
+        try {
+            const result = await verify2FALoginAction(tempUserId, twoFactorCode);
+
+            if (result.success) {
+                onOpenChange(false);
+                router.push('/dashboard/projects');
+                router.refresh();
+            } else {
+                throw new Error(result.error || 'Invalid 2FA code');
+            }
+        } catch (error: any) {
+            toast({
+                variant: 'destructive',
+                title: 'Verification Failed',
                 description: error.message,
             });
         } finally {
@@ -128,13 +178,53 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
             </DialogTrigger>
             <DialogContent className="sm:max-w-[400px] backdrop-blur-3xl bg-white/5 border-white/10 shadow-2xl !rounded-[40px]">
                 <DialogHeader>
-                    <DialogTitle className="text-2xl font-bold">{showForgotPass ? "Reset Password" : "Login"}</DialogTitle>
+                    <DialogTitle className="text-2xl font-bold">
+                        {requires2FA ? "Two-Factor Authentication" : showForgotPass ? "Reset Password" : "Login"}
+                    </DialogTitle>
                     <DialogDescription className="text-muted-foreground/90 text-base">
-                        {showForgotPass ? "Enter your email to reset your password" : "Enter your email below to login to your account"}
+                        {requires2FA 
+                            ? "Enter the 6-digit code from your authenticator app" 
+                            : showForgotPass 
+                                ? "Enter your email to reset your password" 
+                                : "Enter your email below to login to your account"}
                     </DialogDescription>
                 </DialogHeader>
 
-                {showForgotPass ? (
+                {requires2FA ? (
+                    <div className="space-y-4 pt-4">
+                        <div className="flex items-center gap-3 p-4 bg-primary/10 border border-primary/20 rounded-xl mb-4">
+                            <Shield className="h-5 w-5 text-primary shrink-0" />
+                            <p className="text-sm text-foreground/90">Authentication required to protect your account.</p>
+                        </div>
+                        <form onSubmit={handleVerify2FA} className="space-y-6">
+                            <div className="space-y-2">
+                                <Label htmlFor="2fa-code" className="text-center block text-muted-foreground uppercase text-xs font-bold tracking-widest">Verification Code</Label>
+                                <Input
+                                    id="2fa-code"
+                                    type="text"
+                                    placeholder="000000"
+                                    maxLength={6}
+                                    required
+                                    className="text-center text-3xl h-16 tracking-[0.5em] font-mono border-white/10 bg-black/40 focus-visible:ring-2 focus-visible:ring-primary"
+                                    value={twoFactorCode}
+                                    onChange={(e) => setTwoFactorCode(e.target.value)}
+                                    autoFocus
+                                />
+                            </div>
+                            <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-6 text-lg" disabled={isLoading || twoFactorCode.length !== 6}>
+                                {isLoading && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
+                                {isLoading ? 'Verifying...' : 'Verify & Login'}
+                            </Button>
+                            <Button variant="ghost" type="button" onClick={() => {
+                                setRequires2FA(false);
+                                setTwoFactorCode('');
+                                setTempUserId(null);
+                            }} className="w-full hover:bg-white/5" disabled={isLoading}>
+                                Cancel
+                            </Button>
+                        </form>
+                    </div>
+                ) : showForgotPass ? (
                     <div className="space-y-4 pt-4">
                         <form onSubmit={handleForgotPass} className="space-y-4">
                             <div className="space-y-2">

@@ -17,19 +17,11 @@ export async function GET(request: Request) {
             return NextResponse.json({ success: true, processed: 0 });
         }
 
-        const values = await redis.mget(...keys);
-        
-        // Secure keys from Set immediately so we don't accidentally sync twice concurrently
-        await redis.srem('analytics_keys_to_flush', ...keys);
-
         const pool = getPgPool();
         let inserted = 0;
 
         for (let i = 0; i < keys.length; i++) {
             const key = keys[i];
-            const val = parseInt(values[i] as string || '0', 10);
-            if (val === 0) continue;
-
             const parts = key.split(':');
             // Format: analytics_rollup:{projectId}:{periodStartMs}:{type}
             const projectId = parts[1];
@@ -37,20 +29,34 @@ export async function GET(request: Request) {
             const periodStartISO = new Date(periodStartMs).toISOString();
             const eventType = parts[3];
 
+            let val = 0;
+            if (eventType === 'sessions') {
+                // For sessions, we count the number of unique members in the set
+                val = await redis.scard(key);
+            } else {
+                // For counters, we just read the number
+                const rawVal = await redis.get(key);
+                val = parseInt(rawVal as string || '0', 10);
+            }
+
+            if (val === 0) continue;
+
             const query = `
                 INSERT INTO fluxbase_global.analytics_rollups (project_id, period_start, event_type, count)
                 VALUES ($1, $2, $3, $4)
                 ON CONFLICT (project_id, period_start, event_type)
-                DO UPDATE SET count = fluxbase_global.analytics_rollups.count + EXCLUDED.count;
+                DO UPDATE SET count = CASE 
+                    WHEN EXCLUDED.event_type = 'sessions' THEN EXCLUDED.count -- Sessions are unique per hour, overwrite/max is better than sum if multiple flushes
+                    ELSE fluxbase_global.analytics_rollups.count + EXCLUDED.count 
+                END;
             `;
 
             try {
                 await pool.query(query, [projectId, periodStartISO, eventType, val]);
             } catch (err: any) {
-                // Silently skip if project doesn't exist anymore, no need to spam logs
+                // Silently skip if project doesn't exist anymore
             }
             
-            // Clear the actual counter safely post-sync
             await redis.del(key);
             inserted++;
         }

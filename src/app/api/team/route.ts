@@ -15,19 +15,18 @@ export async function GET(req: NextRequest) {
     // Get project members including the owner
     const res = await pool.query(`
         SELECT u.id as "userId", u.email, u.display_name as "displayName", 
-               COALESCE(pm.role, 'admin') as role, 
-               COALESCE(pm.joined_at, p.created_at) as "joinedAt"
+               'admin' as role, 
+               p.created_at as "joinedAt"
         FROM fluxbase_global.projects p
         JOIN fluxbase_global.users u ON u.id = p.user_id
-        LEFT JOIN fluxbase_global.project_members pm ON pm.project_id = p.project_id AND pm.user_id = u.id
-        WHERE p.project_id = $1 AND p.user_id = $2
+        WHERE p.project_id = $1
         UNION
-        SELECT u.id as "userId", u.email, u.display_name as "displayName", pm.role, pm.joined_at as "joinedAt"
+        SELECT u.id as "userId", u.email, u.display_name as "displayName", pm.role, pm.created_at as "joinedAt"
         FROM fluxbase_global.project_members pm
         JOIN fluxbase_global.users u ON u.id = pm.user_id
         WHERE pm.project_id = $1
         ORDER BY "joinedAt" ASC
-    `, [projectId, auth.userId]);
+    `, [projectId]);
 
     return NextResponse.json({ members: res.rows });
 }
@@ -41,7 +40,20 @@ export async function POST(req: NextRequest) {
     try {
         const pool = getPgPool();
 
-        // Find user by email
+        // 1. Verify that the requester is an ADMIN
+        const requesterRes = await pool.query(`
+            SELECT CASE WHEN p.user_id = $2 THEN 'admin' ELSE pm.role END as role
+            FROM fluxbase_global.projects p
+            LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $2
+            WHERE p.project_id = $1 AND (p.user_id = $2 OR pm.user_id = $2)
+        `, [projectId, auth.userId]);
+
+        const requesterRole = requesterRes.rows[0]?.role;
+        if (requesterRole !== 'admin') {
+            return NextResponse.json({ success: false, error: 'Insufficient Permissions: Only Admins can manage team members.' }, { status: 403 });
+        }
+
+        // 2. Find user by email
         const userRes = await pool.query(`SELECT id FROM fluxbase_global.users WHERE email = $1`, [email]);
         if (userRes.rows.length === 0) return NextResponse.json({ success: false, error: `No user found with email "${email}". They must have a Fluxbase account.` }, { status: 404 });
 
@@ -68,6 +80,19 @@ export async function DELETE(req: NextRequest) {
     if (!auth?.userId || !projectId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const pool = getPgPool();
+
+    // Verify requester is admin
+    const requesterRes = await pool.query(`
+        SELECT CASE WHEN p.user_id = $2 THEN 'admin' ELSE pm.role END as role
+        FROM fluxbase_global.projects p
+        LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $2
+        WHERE p.project_id = $1 AND (p.user_id = $2 OR pm.user_id = $2)
+    `, [projectId, auth.userId]);
+
+    if (requesterRes.rows[0]?.role !== 'admin') {
+        return NextResponse.json({ success: false, error: 'Insufficient Permissions: Only Admins can manage team members.' }, { status: 403 });
+    }
+
     await pool.query(`DELETE FROM fluxbase_global.project_members WHERE project_id = $1 AND user_id = $2`, [projectId, userId]);
     return NextResponse.json({ success: true });
 }

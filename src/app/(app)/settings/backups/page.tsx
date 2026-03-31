@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useState, useEffect, useCallback, useContext } from 'react';
+import { ProjectContext } from '@/contexts/project-context';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,14 +28,16 @@ const formatBytes = (bytes?: number) => {
 };
 
 export default function BackupsPage() {
-    const searchParams = useSearchParams();
-    const projectId = searchParams.get('projectId') || '';
+    const { project: selectedProject } = useContext(ProjectContext);
+    const projectId = selectedProject?.project_id || '';
 
     const [backups, setBackups] = useState<Backup[]>([]);
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [restoring, setRestoring] = useState<string | null>(null);
     const [confirmRestore, setConfirmRestore] = useState<Backup | null>(null);
+    const [actionError, setActionError] = useState<string | null>(null);
+    const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
     const load = useCallback(async () => {
         if (!projectId) return;
@@ -52,29 +54,41 @@ export default function BackupsPage() {
 
     const handleCreate = async () => {
         setCreating(true);
+        setActionError(null);
+        setActionSuccess(null);
         try {
-            await fetch('/api/backups', {
+            const res = await fetch('/api/backups', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ projectId }),
             });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || 'Failed to create backup');
+            setActionSuccess('Backup created successfully. It will be ready in a few moments.');
             load();
-        } catch (e) { console.error(e); }
+        } catch (e: any) { setActionError(e.message); }
         finally { setCreating(false); }
     };
 
     const handleRestore = async (backup: Backup) => {
         setRestoring(backup.id);
+        setActionError(null);
+        setActionSuccess(null);
         try {
-            await fetch('/api/backups/restore', {
+            const res = await fetch('/api/backups/restore', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ projectId, backupId: backup.id }),
             });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || 'Restore failed. Please try again.');
             setConfirmRestore(null);
+            setActionSuccess('Restore initiated successfully. Your database will be ready shortly.');
             load();
-        } catch (e) { console.error(e); }
-        finally { setRestoring(null); }
+        } catch (e: any) {
+            setActionError(e.message);
+            setConfirmRestore(null);
+        } finally { setRestoring(null); }
     };
 
     const statusConfig = {
@@ -98,13 +112,38 @@ export default function BackupsPage() {
                         Point-in-time database snapshots with one-click restore
                     </p>
                 </div>
-                <Button onClick={handleCreate} disabled={creating} className="bg-orange-600 hover:bg-orange-500" id="create-backup">
+                <Button onClick={handleCreate} disabled={creating || !selectedProject} className="bg-orange-600 hover:bg-orange-500" id="create-backup">
                     {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
                     Create Backup
                 </Button>
             </div>
 
-            {/* Info cards */}
+            {/* Status Messages */}
+            {actionError && (
+                <div className="flex items-center gap-3 bg-destructive/10 border border-destructive/30 text-destructive rounded-lg px-4 py-3 text-sm">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span className="flex-1">{actionError}</span>
+                    <button onClick={() => setActionError(null)} className="ml-auto opacity-70 hover:opacity-100"><span>✕</span></button>
+                </div>
+            )}
+            {actionSuccess && (
+                <div className="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-lg px-4 py-3 text-sm">
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    <span className="flex-1">{actionSuccess}</span>
+                    <button onClick={() => setActionSuccess(null)} className="ml-auto opacity-70 hover:opacity-100"><span>✕</span></button>
+                </div>
+            )}
+
+            {!selectedProject ? (
+                <Card className="border-dashed border-zinc-800">
+                    <CardContent className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
+                        <Archive className="h-12 w-12 opacity-20" />
+                        <p className="text-sm">Please select a project to manage backups.</p>
+                    </CardContent>
+                </Card>
+            ) : (
+                <>
+                {/* Info cards */}
             <div className="grid grid-cols-3 gap-4">
                 {[
                     { label: 'Total Backups', value: backups.length, icon: Archive, color: 'text-orange-400', bg: 'bg-orange-500/10' },
@@ -151,6 +190,8 @@ export default function BackupsPage() {
                     )}
                 </div>
             )}
+            </>
+        )}
 
             {/* Restore Confirm Dialog */}
             <Dialog open={!!confirmRestore} onOpenChange={() => setConfirmRestore(null)}>

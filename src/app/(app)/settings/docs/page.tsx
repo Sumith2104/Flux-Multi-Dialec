@@ -291,9 +291,84 @@ curl -X POST "https://api.fluxbase.io/api/execute-sql" \\
                 </section>
 
                 <section className="space-y-6">
-                    <h2 className="text-xl font-semibold border-b pb-2">4. Real-time (SSE)</h2>
+                    <h2 className="text-xl font-semibold border-b pb-2">4. Real-time (WebSockets) <span className="ml-2 text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">Recommended</span></h2>
                     <p className="text-sm text-muted-foreground">
-                        Subscribe to live database changes directly using <strong>Server-Sent Events</strong>.
+                        Subscribe to live database changes using the persistent <strong>WebSocket server</strong>. This connection stays warm 24/7, eliminating cold-start delays. Authenticate using your <strong>API Key</strong> as a URL query parameter.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="bg-card border p-4 rounded-xl space-y-2">
+                            <h3 className="font-semibold text-sm">Connection URL</h3>
+                            <pre className="bg-muted/50 p-2 rounded text-xs font-mono break-all">{`wss://YOUR_WS_HOST:4000?token=YOUR_API_KEY`}</pre>
+                        </div>
+                        <div className="bg-card border p-4 rounded-xl space-y-2">
+                            <h3 className="font-semibold text-sm">Event Types</h3>
+                            <ul className="text-xs text-muted-foreground space-y-1">
+                                <li><code className="text-primary">subscribed</code> — confirmed subscription</li>
+                                <li><code className="text-primary">update</code> — row INSERT/UPDATE/DELETE</li>
+                                <li><code className="text-primary">live</code> — project-level analytics event</li>
+                                <li><code className="text-primary">error</code> — access denied / bad request</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-xs text-card-foreground">
+                        <code>{`// Browser / Node.js — subscribe to all changes in a project
+const ws = new WebSocket(
+  'wss://YOUR_WS_HOST:4000?token=YOUR_API_KEY'
+);
+
+ws.onopen = () => {
+  // Subscribe to all tables in a project using wildcard '*'
+  ws.send(JSON.stringify({
+    type: 'subscribe',
+    projectId: 'YOUR_PROJECT_ID',
+    tableId: '*'          // use a specific table name to narrow scope
+  }));
+};
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+  if (msg.type === 'update') {
+    console.log('Row changed:', msg.operation, msg.table, msg.data);
+  }
+  if (msg.type === 'live') {
+    console.log('Project event:', msg);
+  }
+};
+
+ws.onclose = (e) => console.log('Disconnected:', e.reason);
+ws.onerror = (e) => console.error('WS Error', e);`}</code>
+                    </pre>
+                    <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-xs text-card-foreground">
+                        <code>{`# Node.js — using the 'ws' package
+# npm install ws
+const WebSocket = require('ws');
+
+const ws = new WebSocket(
+  'wss://YOUR_WS_HOST:4000?token=YOUR_API_KEY'
+);
+
+ws.on('open', () => {
+  ws.send(JSON.stringify({
+    type: 'subscribe',
+    projectId: 'YOUR_PROJECT_ID',
+    tableId: 'users'   // listen to a specific table
+  }));
+});
+
+ws.on('message', (data) => {
+  const msg = JSON.parse(data.toString());
+  console.log('[Realtime]', msg.type, msg);
+});`}</code>
+                    </pre>
+                </section>
+
+                <section className="space-y-6 opacity-60">
+                    <h2 className="text-xl font-semibold border-b pb-2">
+                        5. Real-time (SSE) 
+                        <span className="ml-2 text-xs font-medium bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full">Deprecated</span>
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                        ⚠️ This method uses Server-Sent Events and is subject to serverless cold-start delays. <strong>Migrate to WebSockets (Section 4)</strong> for a reliable, always-on connection.
                     </p>
                     <pre className="bg-card border p-4 rounded-xl overflow-x-auto text-xs text-card-foreground">
                         <code>{`const eventSource = new EventSource('/api/realtime/subscribe?projectId=ID');
@@ -302,7 +377,7 @@ eventSource.onmessage = (e) => console.log(JSON.parse(e.data));`}</code>
                 </section>
 
                 <section className="space-y-6">
-                    <h2 className="text-xl font-semibold border-b pb-2">5. Error Codes</h2>
+                    <h2 className="text-xl font-semibold border-b pb-2">6. Error Codes</h2>
                     <div className="bg-card border rounded-xl overflow-hidden text-xs">
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-muted/50">

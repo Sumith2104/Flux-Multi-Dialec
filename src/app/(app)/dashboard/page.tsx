@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Plus, Table, Edit, Rows, Database } from "lucide-react"
 import Link from "next/link"
 import { getTablesForProject, Table as DbTable, getProjectAnalytics, ProjectAnalytics } from "@/lib/data";
+import { Badge } from "@/components/ui/badge";
 import {
     Table as ShadcnTable,
     TableBody,
@@ -116,7 +117,7 @@ export default function DashboardPage() {
                         </Link>
                     </Button>
                     <Button asChild>
-                        <Link href={`/dashboard/tables/create?projectId=${selectedProject.project_id}`}>
+                        <Link href={`/editor?projectId=${selectedProject.project_id}&newTable=true`}>
                             <Plus className="mr-2 h-4 w-4" />
                             New Table
                         </Link>
@@ -155,7 +156,7 @@ export default function DashboardPage() {
                         subtitle="Active Connections"
                         type="area"
                         color="#10b981"
-                        data={historyStats.requests}
+                        data={historyStats.sessions}
                     />
                 </div>
 
@@ -194,27 +195,36 @@ export default function DashboardPage() {
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead>Name</TableHead>
+                                            <TableHead>Rows</TableHead>
                                             <TableHead>Description</TableHead>
                                             <TableHead>Created</TableHead>
                                             <TableHead></TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {tables.map((table: DbTable) => (
-                                            <TableRow key={table.table_id}>
-                                                <TableCell className="font-medium">{table.table_name}</TableCell>
-                                                <TableCell className="text-muted-foreground">{table.description}</TableCell>
-                                                <TableCell>{new Date(table.created_at).toLocaleDateString()}</TableCell>
-                                                <TableCell>
-                                                    <Button asChild variant="outline" size="sm">
-                                                        <Link href={`/editor?projectId=${selectedProject.project_id}&tableId=${table.table_id}&tableName=${table.table_name}`}>
-                                                            <Edit className="mr-2 h-4 w-4" />
-                                                            Edit
-                                                        </Link>
-                                                    </Button>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
+                                        {tables.map((table: DbTable) => {
+                                            const tableAnalytics = analytics?.tables.find(t => t.name === table.table_name);
+                                            return (
+                                                <TableRow key={table.table_id}>
+                                                    <TableCell className="font-medium">{table.table_name}</TableCell>
+                                                    <TableCell>
+                                                        <Badge variant="outline" className="font-mono text-xs">
+                                                            {tableAnalytics?.rows?.toLocaleString() ?? '0'}
+                                                        </Badge>
+                                                    </TableCell>
+                                                    <TableCell className="text-muted-foreground">{table.description}</TableCell>
+                                                    <TableCell>{new Date(table.created_at).toLocaleDateString()}</TableCell>
+                                                    <TableCell>
+                                                        <Button asChild variant="outline" size="sm">
+                                                            <Link href={`/editor?projectId=${selectedProject.project_id}&tableId=${table.table_id}&tableName=${table.table_name}`}>
+                                                                <Edit className="mr-2 h-4 w-4" />
+                                                                Edit
+                                                            </Link>
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
                                     </TableBody>
                                 </ShadcnTable>
                             </div>
@@ -222,7 +232,7 @@ export default function DashboardPage() {
                             <div className="text-center text-muted-foreground py-10 border-2 border-dashed rounded-lg">
                                 <p>No tables yet.</p>
                                 <Button variant="link" asChild>
-                                    <Link href={`/dashboard/tables/create?projectId=${selectedProject.project_id}`}>Create your first table</Link>
+                                    <Link href={`/editor?projectId=${selectedProject.project_id}&newTable=true`}>Create your first table</Link>
                                 </Button>
                             </div>
                         )}
