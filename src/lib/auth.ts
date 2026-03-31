@@ -14,17 +14,20 @@ export interface User {
 }
 
 /**
- * Retrieves the current user's ID from the JWT session cookie.
+ * Retrieves the current user's core auth state from the JWT session cookie.
  */
 export async function getCurrentUserId(): Promise<string | null> {
+    const context = await getSessionContext();
+    return context?.uid || null;
+}
+
+export async function getSessionContext(): Promise<{ uid: string; mfa?: boolean } | null> {
     const sessionCookie = (await cookies()).get('session')?.value;
-    if (!sessionCookie) {
-        return null;
-    }
+    if (!sessionCookie) return null;
 
     try {
-        const decoded = jwt.verify(sessionCookie, JWT_SECRET) as { uid: string };
-        return decoded.uid;
+        const decoded = jwt.verify(sessionCookie, JWT_SECRET) as { uid: string; mfa?: boolean };
+        return { uid: decoded.uid, mfa: decoded.mfa };
     } catch (error) {
         console.error("Failed to verify session cookie:", error);
         return null;
@@ -33,11 +36,13 @@ export async function getCurrentUserId(): Promise<string | null> {
 
 /**
  * Creates a JWT session cookie from a raw user ID.
+ * @param uid The user ID
+ * @param isMfaVerified Whether 2FA has been completed for this session
  */
-export async function createSessionCookie(uid: string) {
+export async function createSessionCookie(uid: string, isMfaVerified: boolean = false) {
     const expiresIn = 60 * 60 * 24 * 30; // 30 days in seconds
     try {
-        const sessionCookie = jwt.sign({ uid }, JWT_SECRET, { expiresIn });
+        const sessionCookie = jwt.sign({ uid, mfa: isMfaVerified }, JWT_SECRET, { expiresIn });
         const isProduction = process.env.NODE_ENV === 'production';
         const expiresAt = new Date(Date.now() + expiresIn * 1000);
 

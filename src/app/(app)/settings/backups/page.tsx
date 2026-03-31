@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Archive, Download, RefreshCw, Clock, CheckCircle2, AlertCircle, Loader2, HardDrive, RotateCcw, Calendar } from 'lucide-react';
+import { Archive, Download, RefreshCw, Clock, CheckCircle2, AlertCircle, Loader2, HardDrive, RotateCcw, Calendar, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, formatDistanceToNow } from 'date-fns';
 
@@ -35,7 +35,9 @@ export default function BackupsPage() {
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [restoring, setRestoring] = useState<string | null>(null);
+    const [deleting, setDeleting] = useState<string | null>(null);
     const [confirmRestore, setConfirmRestore] = useState<Backup | null>(null);
+    const [confirmDelete, setConfirmDelete] = useState<Backup | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
     const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
@@ -89,6 +91,25 @@ export default function BackupsPage() {
             setActionError(e.message);
             setConfirmRestore(null);
         } finally { setRestoring(null); }
+    };
+
+    const handleDelete = async (backup: Backup) => {
+        setDeleting(backup.id);
+        setActionError(null);
+        setActionSuccess(null);
+        try {
+            const res = await fetch(`/api/backups?projectId=${projectId}&backupId=${backup.id}`, {
+                method: 'DELETE',
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || 'Delete failed.');
+            setConfirmDelete(null);
+            setActionSuccess('Backup deleted successfully.');
+            load();
+        } catch (e: any) {
+            setActionError(e.message);
+            setConfirmDelete(null);
+        } finally { setDeleting(null); }
     };
 
     const statusConfig = {
@@ -179,13 +200,13 @@ export default function BackupsPage() {
                     {manualBackups.length > 0 && (
                         <div>
                             <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1.5"><Download className="h-3.5 w-3.5" />Manual Backups</h3>
-                            <BackupList backups={manualBackups} onRestore={setConfirmRestore} restoring={restoring} statusConfig={statusConfig} />
+                            <BackupList backups={manualBackups} onRestore={setConfirmRestore} onDelete={setConfirmDelete} restoring={restoring} deleting={deleting} statusConfig={statusConfig} />
                         </div>
                     )}
                     {autoBackups.length > 0 && (
                         <div>
                             <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />Automatic Backups</h3>
-                            <BackupList backups={autoBackups} onRestore={setConfirmRestore} restoring={restoring} statusConfig={statusConfig} />
+                            <BackupList backups={autoBackups} onRestore={setConfirmRestore} onDelete={setConfirmDelete} restoring={restoring} deleting={deleting} statusConfig={statusConfig} />
                         </div>
                     )}
                 </div>
@@ -220,17 +241,45 @@ export default function BackupsPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Delete Confirm Dialog */}
+            <Dialog open={!!confirmDelete} onOpenChange={() => setConfirmDelete(null)}>
+                <DialogContent className="bg-zinc-950 border-zinc-800 max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-destructive">
+                            <Trash2 className="h-4 w-4" />Delete Backup
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="py-2 space-y-3">
+                        <p className="text-sm text-muted-foreground">
+                            Are you sure you want to delete the backup <strong className="text-foreground">{confirmDelete?.label}</strong>?
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            This will permanently remove the snapshot from our servers. You will not be able to restore from this backup again.
+                        </p>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+                        <Button onClick={() => confirmDelete && handleDelete(confirmDelete)}
+                            disabled={!!deleting}
+                            className="bg-destructive hover:bg-red-600" id="confirm-delete">
+                            {deleting === confirmDelete?.id ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
+                            Delete Permanently
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
 
-function BackupList({ backups, onRestore, restoring, statusConfig }: any) {
+function BackupList({ backups, onRestore, onDelete, restoring, deleting, statusConfig }: any) {
     return (
         <div className="space-y-2">
             {backups.map((b: Backup) => {
                 const { label, icon: Icon, className } = statusConfig[b.status];
                 return (
-                    <Card key={b.id} className="border-zinc-800">
+                    <Card key={b.id} className="border-zinc-800 group">
                         <CardContent className="flex items-center gap-4 p-4">
                             <div className="p-2 rounded-lg bg-zinc-800 shrink-0">
                                 <Archive className="h-4 w-4 text-zinc-400" />
@@ -249,12 +298,18 @@ function BackupList({ backups, onRestore, restoring, statusConfig }: any) {
                                     {b.expiresAt && <span>Expires {formatDistanceToNow(new Date(b.expiresAt), { addSuffix: true })}</span>}
                                 </div>
                             </div>
-                            {b.status === 'completed' && (
-                                <Button variant="outline" size="sm" className="h-8 text-xs border-zinc-700 hover:border-orange-500/50 hover:text-orange-400 shrink-0"
-                                    onClick={() => onRestore(b)} disabled={!!restoring} id={`restore-${b.id}`}>
-                                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" />Restore
+                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {b.status === 'completed' && (
+                                    <Button variant="outline" size="sm" className="h-8 text-xs border-zinc-700 hover:border-orange-500/50 hover:text-orange-400 shrink-0"
+                                        onClick={() => onRestore(b)} disabled={!!restoring || !!deleting} id={`restore-${b.id}`}>
+                                        <RotateCcw className="h-3.5 w-3.5 mr-1.5" />Restore
+                                    </Button>
+                                )}
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-zinc-500 hover:text-destructive hover:bg-destructive/10 shrink-0"
+                                    onClick={() => onDelete(b)} disabled={!!restoring || !!deleting} id={`delete-${b.id}`}>
+                                    {deleting === b.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                                 </Button>
-                            )}
+                            </div>
                         </CardContent>
                     </Card>
                 );

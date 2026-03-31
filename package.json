@@ -73,6 +73,7 @@
     "framer-motion": "^11.2.10",
     "genkit": "^1.14.1",
     "google-auth-library": "^10.6.1",
+    "jose": "^6.2.2",
     "js-cookie": "^3.0.5",
     "lru-cache": "^11.2.6",
     "lucide-react": "^0.475.0",

@@ -72,7 +72,7 @@ export async function googleAuthAction(accessToken: string) {
     }
 
     // 4. Create active session cookie securely
-    await createSessionCookie(userId);
+    await createSessionCookie(userId, true);
     return { success: true, isNewUser };
 
   } catch (error: any) {
@@ -168,7 +168,7 @@ export async function verifyOtpAction(formData: FormData) {
     await pool.query('DELETE FROM fluxbase_global.otp_verifications WHERE email = $1', [email]);
 
     // Securely log them in
-    await createSessionCookie(userId);
+    await createSessionCookie(userId, true);
 
     // Send uniform Welcome Email for native registration
     sendWelcomeEmail(email, pendingUser.name).catch(console.error);
@@ -218,7 +218,7 @@ export async function loginAction(formData: FormData) {
       return { success: true, requires2FA: true, userId: user.id };
     }
 
-    await createSessionCookie(user.id);
+    await createSessionCookie(user.id, true);
     return { success: true };
   } catch (error: any) {
     console.error("Native Login Error:", error);
@@ -245,7 +245,7 @@ export async function verify2FALoginAction(userId: string, code: string) {
     }
 
     if (verifyTOTPCode(user.two_factor_secret, code)) {
-      await createSessionCookie(userId);
+      await createSessionCookie(userId, true);
       return { success: true };
     } else {
       return { error: "Invalid verification code" };
@@ -308,7 +308,7 @@ export async function resetPasswordAction(formData: FormData) {
 
     // Auto-login flawlessly after the password reset
     const userId = userResult.rows[0].id;
-    await createSessionCookie(userId);
+    await createSessionCookie(userId, true);
 
     return { success: true };
   } catch (error: any) {

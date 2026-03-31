@@ -1,6 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+import { jwtVerify } from 'jose';
+
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fluxbase_dev_secret_key_123');
 
 // Only create ratelimiter if we have env vars, otherwise bypass locally to avoid breaking dev
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
@@ -17,10 +20,24 @@ if (redisUrl && redisToken) {
 
 export async function middleware(request: NextRequest) {
   const sessionCookie = request.cookies.get('session')?.value;
-  const userId = !!sessionCookie; // Simple presence check for Edge compatibility
   const { pathname } = request.nextUrl;
-
   const isAuthPage = ['/login', '/signup', '/reset-password'].includes(pathname);
+
+  let userId = null;
+  let isMfaVerified = false;
+
+  if (sessionCookie) {
+    try {
+        const { payload } = await jwtVerify(sessionCookie, JWT_SECRET);
+        userId = payload.uid;
+        isMfaVerified = !!payload.mfa;
+    } catch (error) {
+        // Invalid or expired session
+        const response = NextResponse.redirect(new URL('/', request.url));
+        response.cookies.delete('session');
+        return response;
+    }
+  }
 
   // Global API Rate Limiting for all /api/ endpoints to prevent brute-force and DDoS
   if (pathname.startsWith('/api/') && ratelimit) {
@@ -42,13 +59,19 @@ export async function middleware(request: NextRequest) {
 
   // If user is logged in...
   if (userId) {
-    // and tries to access an auth page (login/signup), redirect to dashboard.
-    // We allow /reset-password so users can reset from their email link even if they have an active session
-    if (isAuthPage && pathname !== '/reset-password') {
+    // SECURITY HARDENING: If session is present but MFA is not verified on a protected route, force login
+    if (!isMfaVerified && !isAuthPage && pathname !== '/' && !pathname.startsWith('/api/auth')) {
+        const response = NextResponse.redirect(new URL('/', request.url));
+        response.cookies.delete('session');
+        return response;
+    }
+
+    // and tries to access an auth page (login/signup), redirect to dashboard if fully verified
+    if (isAuthPage && pathname !== '/reset-password' && isMfaVerified) {
       return NextResponse.redirect(new URL('/dashboard/projects', request.url));
     }
   }
-  // If user is not logged in...
+  // If user is not logged in or session is invalid...
   else {
     // Intercept standalone /login and /signup requests and send to homepage modals
     if (pathname === '/login' || pathname === '/signup') {
