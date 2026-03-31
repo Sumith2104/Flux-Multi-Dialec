@@ -3,7 +3,7 @@
 import { useGlobalAlert } from '@/components/global-alert-provider';
 
 import { useState, useContext, useEffect, useCallback } from 'react';
-import { Play, Trash2, History as HistoryIcon, Sparkles, Layout, ChevronRight, ChevronLeft, Table2, ListRestart, Info, Database, AlertCircle, CheckCircle2, TerminalSquare, Bot, MoreHorizontal, FileJson, FileType, Copy as CopyIcon, AlignLeft } from 'lucide-react';
+import { Play, Trash2, History as HistoryIcon, Sparkles, Layout, ChevronRight, ChevronLeft, Table2, ListRestart, Info, Database, AlertCircle, CheckCircle2, TerminalSquare, Bot, MoreHorizontal, FileJson, FileType, Copy as CopyIcon, AlignLeft, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -17,6 +17,7 @@ import {
     DropdownMenuTrigger,
     DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { Separator } from "@/components/ui/separator";
 import { SqlEditor } from '@/components/sql-editor';
 import { QueryResults } from '@/components/query-results';
 import { QueryHistory, HistoryItem } from '@/components/query-history';
