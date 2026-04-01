@@ -16,6 +16,17 @@ interface ServiceStatus {
     latency?: number;
 }
 
+/** Phase 7: Read JS heap usage via Chrome/Edge Performance Memory API. Returns null on unsupported browsers (Firefox, Safari). */
+function getHeapMB(): { used: number; total: number } | null {
+    if (typeof performance === 'undefined') return null;
+    const mem = (performance as any).memory;
+    if (!mem) return null;
+    return {
+        used: Math.round(mem.usedJSHeapSize / 1024 / 1024),
+        total: Math.round(mem.jsHeapSizeLimit / 1024 / 1024),
+    };
+}
+
 export function StatusIndicator() {
     const [services, setServices] = useState<ServiceStatus[]>([
         { name: 'Database', status: 'checking' },
@@ -23,6 +34,8 @@ export function StatusIndicator() {
         { name: 'API', status: 'checking' },
     ]);
     const [overall, setOverall] = useState<HealthStatus>('checking');
+    // Phase 7: Live JS heap memory gauge
+    const [heapMB, setHeapMB] = useState<{ used: number; total: number } | null>(null);
 
     const check = async () => {
         try {
@@ -53,9 +66,17 @@ export function StatusIndicator() {
 
     useEffect(() => {
         check();
-        const interval = setInterval(check, 30000); // re-check every 30s
+        const interval = setInterval(check, 30000); // re-check services every 30s
         return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Phase 7: Sample JS heap memory every 5 seconds
+    useEffect(() => {
+        const sample = () => setHeapMB(getHeapMB());
+        sample();
+        const memInterval = setInterval(sample, 5000);
+        return () => clearInterval(memInterval);
     }, []);
 
     const colors: Record<HealthStatus, string> = {
@@ -72,6 +93,10 @@ export function StatusIndicator() {
         offline: 'Service disruption',
     };
 
+    // Memory thresholds relative to 1 GB target
+    const memWarning = heapMB && heapMB.used > 800;
+    const memPct = heapMB ? Math.min(100, Math.round((heapMB.used / 1024) * 100)) : 0;
+
     return (
         <Popover>
             <PopoverTrigger asChild>
@@ -85,13 +110,18 @@ export function StatusIndicator() {
                         )}
                         <span className={cn('relative inline-flex rounded-full h-2 w-2', colors[overall])} />
                     </span>
-                    <span className="hidden lg:block text-xs text-muted-foreground">Status</span>
+                    {/* Show orange memory warning text when over 800 MB */}
+                    {memWarning ? (
+                        <span className="hidden lg:block text-xs text-amber-400 font-medium">🧠 {heapMB!.used} MB</span>
+                    ) : (
+                        <span className="hidden lg:block text-xs text-muted-foreground">Status</span>
+                    )}
                 </button>
             </PopoverTrigger>
             <PopoverContent
                 side="bottom"
                 align="end"
-                className="bg-zinc-950 border-zinc-800 p-0 overflow-hidden min-w-[220px] shadow-2xl duration-75 animate-in fade-in-0 zoom-in-95"
+                className="bg-zinc-950 border-zinc-800 p-0 overflow-hidden min-w-[230px] shadow-2xl duration-75 animate-in fade-in-0 zoom-in-95"
             >
                 <div className="px-3 py-2 border-b border-zinc-800">
                     <p className="text-xs font-semibold text-foreground">{labels[overall]}</p>
@@ -118,6 +148,34 @@ export function StatusIndicator() {
                             </div>
                         </div>
                     ))}
+
+                    {/* Phase 7: Browser JS Heap Memory Gauge */}
+                    <div className="mt-2 pt-2 border-t border-zinc-800 px-1">
+                        <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-[10px] text-zinc-400 font-medium">🧠 Browser Memory</span>
+                            {heapMB ? (
+                                <span className={cn(
+                                    'text-[10px] font-mono font-semibold',
+                                    memWarning ? 'text-amber-400' : 'text-zinc-300'
+                                )}>
+                                    {heapMB.used} MB / 1 GB
+                                </span>
+                            ) : (
+                                <span className="text-[10px] text-zinc-600">N/A</span>
+                            )}
+                        </div>
+                        {heapMB && (
+                            <div className="w-full bg-zinc-800 rounded-full h-1.5">
+                                <div
+                                    className={cn(
+                                        'h-1.5 rounded-full transition-all duration-500',
+                                        memPct > 80 ? 'bg-red-500' : memPct > 60 ? 'bg-amber-500' : 'bg-emerald-500'
+                                    )}
+                                    style={{ width: `${memPct}%` }}
+                                />
+                            </div>
+                        )}
+                    </div>
                 </div>
             </PopoverContent>
         </Popover>

@@ -61,7 +61,20 @@ export function FluxAiAssistant({ userId }: { userId: string }) {
 
   useEffect(() => {
     if (isRestored.current) {
-        localStorage.setItem(storageKey, JSON.stringify(messages));
+        // Phase 5: Cap message history at 50 messages with 512 KB size limit.
+        // localStorage.setItem is synchronous — large payloads hurt main thread on every render.
+        const MAX_MESSAGES = 50;
+        const MAX_STORAGE_BYTES = 512 * 1024; // 512 KB
+
+        const trimmed = messages.slice(-MAX_MESSAGES);
+        const serialized = JSON.stringify(trimmed);
+
+        if (serialized.length < MAX_STORAGE_BYTES) {
+            localStorage.setItem(storageKey, serialized);
+        } else {
+            // If still too large, keep only the most recent 10 messages
+            localStorage.setItem(storageKey, JSON.stringify(messages.slice(-10)));
+        }
     }
     scrollToBottom();
   }, [messages, isTyping, storageKey]);

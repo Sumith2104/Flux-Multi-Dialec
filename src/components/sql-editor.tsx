@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Play, Save, Download, Loader2, Plus, AlignLeft, Activity, Share2, Upload } from 'lucide-react';
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
@@ -50,6 +50,18 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
                 .catch(err => console.error("Failed to load schema for autocomplete:", err));
         }
     };
+
+    // Phase 6: Monaco GC — explicitly dispose the editor model on unmount.
+    // Monaco's internal world model is NOT freed by React's GC automatically.
+    // Without this, switching to/from the SQL editor leaves ~30-150 MB in the heap.
+    useEffect(() => {
+        return () => {
+            if (editorRef.current) {
+                editorRef.current.dispose();
+                editorRef.current = null;
+            }
+        };
+    }, []);
 
     const registerSqlCompletion = (monaco: any, tables: Record<string, any[]>) => {
         monaco.languages.registerCompletionItemProvider('sql', {

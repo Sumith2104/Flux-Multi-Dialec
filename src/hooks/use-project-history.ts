@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { getProjectHistoryAction } from '@/app/(app)/dashboard/analytics-actions';
 
 export interface ProjectHistory {
@@ -10,42 +10,30 @@ export interface ProjectHistory {
     sessions: { val: number }[];
 }
 
+const FALLBACK: ProjectHistory = {
+    requests: Array(24).fill({ val: 0 }),
+    apiCalls: Array(24).fill({ val: 0 }),
+    sessions: Array(24).fill({ val: 0 }),
+};
+
 export function useProjectHistory(projectId: string | undefined): ProjectHistory {
-    const [history, setHistory] = useState<ProjectHistory>({
-        requests: Array(24).fill({ val: 0 }),
-        apiCalls: Array(24).fill({ val: 0 }),
-        sessions: Array(24).fill({ val: 0 })
+    // Phase 4: Migrated from raw setInterval to useQuery.
+    // Old: standalone timer ran outside TanStack lifecycle — data was NEVER garbage-collected.
+    // New: gcTime ensures eviction 10 min after dashboard unmounts.
+    const { data } = useQuery({
+        queryKey: ['project-history', projectId],
+        queryFn: () => getProjectHistoryAction(projectId!),
+        enabled: !!projectId,
+        staleTime: 5 * 60 * 1000,    // Fresh for 5 minutes
+        gcTime: 10 * 60 * 1000,       // Evict 10 min after unmount
+        refetchInterval: 5 * 60 * 1000,
+        select: (raw) => ({
+            ...raw,
+            requests: raw?.requests || FALLBACK.requests,
+            apiCalls: raw?.apiCalls || FALLBACK.apiCalls,
+            sessions: raw?.sessions || FALLBACK.sessions,
+        }),
     });
 
-    useEffect(() => {
-        if (!projectId) return;
-
-        let isMounted = true;
-        const fetchHistory = async () => {
-            try {
-                const data = await getProjectHistoryAction(projectId);
-                if (isMounted && data) {
-                    setHistory({
-                        ...data,
-                        // Provide empty fallback arrays for the UI to prevent crashes
-                        requests: data.requests || Array(24).fill({ val: 0 }),
-                        apiCalls: data.apiCalls || Array(24).fill({ val: 0 }),
-                        sessions: data.sessions || Array(24).fill({ val: 0 })
-                    });
-                }
-            } catch (err) {
-                console.error("Failed to load project history natively:", err);
-            }
-        };
-
-        fetchHistory();
-        const timer = setInterval(fetchHistory, 60000 * 5); // poll every 5 mins
-
-        return () => {
-            isMounted = false;
-            clearInterval(timer);
-        };
-    }, [projectId]);
-
-    return history;
+    return data ?? FALLBACK;
 }

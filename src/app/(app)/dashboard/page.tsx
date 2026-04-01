@@ -1,7 +1,8 @@
 
 'use client';
 
-import { useState, useEffect, useContext } from 'react';
+import { useContext } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Plus, Table, Edit, Rows, Database } from "lucide-react"
@@ -27,42 +28,31 @@ import { useProjectHistory } from '@/hooks/use-project-history';
 
 export default function DashboardPage() {
     const { project: selectedProject } = useContext(ProjectContext);
-    const [tables, setTables] = useState<DbTable[]>([]);
-    const [analytics, setAnalytics] = useState<ProjectAnalytics | null>(null);
-    const [loading, setLoading] = useState(true);
+
+    // --- Migrated from useState+useEffect to useQuery ---
+    // Tables: stale for 60s (structure rarely changes), evicted from heap after 10 min
+    const { data: tables = [], isLoading: tablesLoading } = useQuery({
+        queryKey: ['tables', selectedProject?.project_id],
+        queryFn: () => getTablesForProject(selectedProject!.project_id),
+        enabled: !!selectedProject,
+        staleTime: 60 * 1000,
+        gcTime: 10 * 60 * 1000,
+    });
+
+    // Analytics: stale for 30s, evicted after 5 min
+    const { data: analytics = null, isLoading: analyticsLoading } = useQuery<ProjectAnalytics | null>({
+        queryKey: ['dashboard-analytics', selectedProject?.project_id],
+        queryFn: () => getProjectAnalytics(selectedProject!.project_id),
+        enabled: !!selectedProject,
+        staleTime: 30 * 1000,
+        gcTime: 5 * 60 * 1000,
+    });
+
+    const loading = tablesLoading || analyticsLoading;
 
     const realtimeStats = useRealtimeAnalytics(selectedProject?.project_id);
     const historyStats = useProjectHistory(selectedProject?.project_id);
 
-    useEffect(() => {
-        async function loadDashboardData() {
-            if (!selectedProject) {
-                setLoading(false);
-                return;
-            };
-
-            // Don't show global loading spinner on background refreshes
-            if (!analytics) setLoading(true); // Only show loading on initial fetch
-
-            try {
-                // Fetch tables once (or less frequently) if structure doesn't change often, 
-                // but for "realtime" we can fetch everything.
-                // Optimally: Separate fetch for lightweight analytics.
-                const [tablesData, analyticsData] = await Promise.all([
-                    getTablesForProject(selectedProject.project_id),
-                    getProjectAnalytics(selectedProject.project_id),
-                ]);
-                setTables(tablesData);
-                setAnalytics(analyticsData);
-            } catch (error) {
-                console.error("Failed to load dashboard data:", error);
-            } finally {
-                setLoading(false);
-            }
-        }
-
-        loadDashboardData();
-    }, [selectedProject]);
 
 
     const formatSize = (bytes: number) => {

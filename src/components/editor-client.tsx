@@ -72,6 +72,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useRef } from 'react';
+import { idbGet, idbSet, idbDeleteByPrefix } from '@/lib/browser-cache';
 
 const DataTable = dynamic(() => import('@/components/data-table').then(mod => mod.DataTable), {
     ssr: false,
@@ -124,11 +125,22 @@ export function EditorClient({
 
     const [foreignKeyData, setForeignKeyData] = useState<Record<string, any[]>>({});
     const [constraints, setConstraints] = useState<DbConstraint[]>(initialConstraints);
-    // Local copy of columns — updated optimistically so mutations don't need router.refresh()
-    const [localColumns, setLocalColumns] = useState<DbColumn[]>(initialColumns);
-    // Local copy of tables — updated optimistically so sidebar doesn't need router.refresh() on delete
-    const [localTables, setLocalTables] = useState<DbTable[]>(allTables);
+    // Phase 3: Diff-set pattern — track only deleted IDs, not full data copies.
+    // Eliminates two full array copies of tables/columns from the JS heap.
+    const [deletedTableIds, setDeletedTableIds] = useState<Set<string>>(new Set());
+    const [deletedColumnIds, setDeletedColumnIds] = useState<Set<string>>(new Set());
     const [, startTransition] = useTransition();
+    const wsRefreshTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Derived local tables/columns — computed from props minus deletions (no copy)
+    const localTables = useMemo(
+        () => allTables.filter(t => !deletedTableIds.has(t.table_id)),
+        [allTables, deletedTableIds]
+    );
+    const localColumns = useMemo(
+        () => initialColumns.filter(c => !deletedColumnIds.has(c.column_id)),
+        [initialColumns, deletedColumnIds]
+    );
 
     useKeyboardShortcuts([
         {
@@ -193,15 +205,9 @@ export function EditorClient({
         setConstraints(initialConstraints);
     }, [initialConstraints]);
 
-    // Sync localTables when allTables changes (e.g. after creating a new table)
-    useEffect(() => {
-        setLocalTables(allTables);
-    }, [allTables]);
-
-    // Reset local column state when switching to a different table
-    useEffect(() => {
-        setLocalColumns(initialColumns);
-    }, [tableId]); // tableId change = different table → reset to server-provided columns
+    // Reset deletion trackers when allTables/tableId change
+    useEffect(() => { setDeletedTableIds(new Set()); }, [allTables]);
+    useEffect(() => { setDeletedColumnIds(new Set()); }, [tableId]);
 
     const { lastEvent } = useRealtimeSubscription(projectId);
 
@@ -217,20 +223,33 @@ export function EditorClient({
         initialPageParam: null as string | null,
         queryFn: async ({ pageParam }) => {
             if (!tableId || !tableName) return { rows: [], nextCursorId: null, hasMore: false };
+
+            // Phase 2: Check IndexedDB warm cache before hitting the network.
+            // Cache key includes projectId, tableName, and page cursor for uniqueness.
+            const cacheKey = `tbl_${projectId}_${tableName}_${pageParam ?? 'p0'}`;
+            const cachedData = await idbGet(cacheKey);
+            if (cachedData) return cachedData;
+
+            // Cache miss — fetch from network.
+            // REMOVED: &_t=${Date.now()} — was bypassing ALL caching layers every fetch.
             let url = `/api/table-data?projectId=${projectId}&tableName=${tableName}&pageSize=50`;
             if (pageParam) url += `&page=${pageParam}`;
 
-            // Append a timestamp to completely bypass Next.js and browser cache
-            url += `&_t=${Date.now()}`;
-
-            const response = await fetch(url, { headers: { 'Cache-Control': 'no-store' } });
+            const response = await fetch(url);
             if (!response.ok) throw new Error('Failed to fetch table data');
-            return response.json();
+            const data = await response.json();
+
+            // Save to IndexedDB warm cache (fire-and-forget, non-blocking)
+            idbSet(cacheKey, data);
+
+            return data;
         },
         getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.nextCursorId : null,
         enabled: !!tableId && !!tableName,
-        staleTime: 4000,
-        refetchInterval: 10000, // Reduced polling since we have WS now
+        // Phase 1: Increased staleTime — 2 min (was 4s, caused constant re-fetching)
+        staleTime: 2 * 60 * 1000,
+        // Phase 4: Reduced polling — WS handles live updates; polling is a fallback
+        refetchInterval: 30000,
         refetchOnWindowFocus: false,
     });
 
@@ -288,7 +307,9 @@ export function EditorClient({
                     const refTable = allTables.find(t => t.table_id === constraint.referenced_table_id);
                     if (refTable) {
                         try {
-                            const res = await fetch(`/api/table-data?projectId=${projectId}&tableName=${refTable.table_name}&pageSize=1000`);
+                            // Phase 3: Hard cap at 200 rows for FK dropdowns.
+                            // Old: pageSize=1000 — with 3 FK cols on 50K-row tables = 150K rows in RAM.
+                            const res = await fetch(`/api/table-data?projectId=${projectId}&tableName=${refTable.table_name}&pageSize=200`);
                             if (res.ok) {
                                 const data = await res.json();
                                 fkData[col.column_name] = data.rows;
@@ -311,13 +332,28 @@ export function EditorClient({
         refetch();
     }, [queryClient, projectId, tableId, refetch]);
 
-    // Instant refresh for table data when a WebSocket event arrives for this specific table
+    // Phase 4: Debounced WS-driven refresh.
+    // Old: immediate removeQueries + refetch on every WS event = constant heap churn.
+    // New: wait 3s of silence, then mark stale (not destroy) so cached data stays usable.
     useEffect(() => {
         if (lastEvent && lastEvent.type === 'update' && lastEvent.table === tableName) {
-            console.log('[Realtime Editor] Pushing update for table:', tableName);
-            refreshData();
+            console.log('[Realtime Editor] Debounced update queued for table:', tableName);
+            if (wsRefreshTimerRef.current) clearTimeout(wsRefreshTimerRef.current);
+            wsRefreshTimerRef.current = setTimeout(() => {
+                // Invalidate but do NOT refetchType immediately — let the component 
+                // trigger a natural refetch when the user is actively looking at the data.
+                queryClient.invalidateQueries({
+                    queryKey: ['table-data', projectId, tableId],
+                    refetchType: 'active',  // Only refetch if component is still mounted & visible
+                });
+                // Also invalidate IndexedDB warm cache for this table
+                idbDeleteByPrefix(`tbl_${projectId}_${tableName}`);
+            }, 3000);
         }
-    }, [lastEvent, tableName, refreshData]);
+        return () => {
+            if (wsRefreshTimerRef.current) clearTimeout(wsRefreshTimerRef.current);
+        };
+    }, [lastEvent, tableName, queryClient, projectId, tableId]);
 
 
 
@@ -357,11 +393,10 @@ export function EditorClient({
         if (result.success) {
             toast({ title: 'Success', description: `Table '${tableToDelete.table_name}' deleted successfully.` });
             if (tableToDelete.table_id === tableId) {
-                // Navigate away — unavoidable since the current table is gone
                 router.push(`/editor?projectId=${projectId}`);
             } else {
-                // Optimistically remove from sidebar — no server round-trip, no flicker
-                setLocalTables(prev => prev.filter(t => t.table_id !== tableToDelete.table_id));
+                // Diff-set: track deletion ID instead of copying the full array
+                setDeletedTableIds(prev => new Set([...prev, tableToDelete.table_id]));
             }
         } else {
             toast({ variant: 'destructive', title: 'Error', description: result.error || 'Failed to delete table.' });
@@ -398,9 +433,9 @@ export function EditorClient({
 
         if (result.success) {
             toast({ title: 'Success', description: `Column '${columnToDelete.column_name}' deleted successfully.` });
-            // Optimistically remove from local state — no page reload needed
-            setLocalColumns(prev => prev.filter(c => c.column_id !== columnToDelete.column_id));
-            refreshData(); // also refresh row data in case the column was used in display
+            // Diff-set: track deletion ID instead of copying the full array
+            setDeletedColumnIds(prev => new Set([...prev, columnToDelete.column_id]));
+            refreshData();
         } else {
             toast({ variant: 'destructive', title: 'Error', description: result.error, duration: 8000 });
         }

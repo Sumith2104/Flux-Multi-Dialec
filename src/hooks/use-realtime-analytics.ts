@@ -27,9 +27,13 @@ export function useRealtimeAnalytics(projectId: string | undefined): AnalyticsSt
         queryKey,
         queryFn: () => getAnalyticsStatsAction(projectId!),
         enabled: !!projectId,
-        refetchInterval: 5000,
-        staleTime: 4000,
-        gcTime: 30 * 60 * 1000, // Keep in memory for 30 minutes
+        // Reduced: 10s polling (was 5s) — 50% less re-allocation churn
+        refetchInterval: 10000,
+        staleTime: 8000,
+        // CRITICAL FIX: was 30 * 60 * 1000 (30 minutes!) — analytics objects
+        // were kept alive in the JS heap for 30 min after the dashboard unmounted.
+        // Now set to 3 minutes, aligned with other queries.
+        gcTime: 3 * 60 * 1000,
     });
 
     // Instant refresh when a WebSocket event arrives

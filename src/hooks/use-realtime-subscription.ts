@@ -70,7 +70,9 @@ export function useRealtimeSubscription(projectId: string | undefined) {
                     
                     if (data.type === 'live' || data.type === 'update') {
                         setLastEvent(data);
-                        setEvents(prev => [data, ...prev].slice(0, 50)); // Keep last 50 events
+                        // Phase 4: Buffer capped at 20 (was 50) — events array is display-only;
+                        // the lastEvent ref is what actually drives side effects.
+                        setEvents(prev => [data, ...prev].slice(0, 20));
                     }
                 } catch (e) {
                     console.error('[Realtime] Failed to parse message:', e);

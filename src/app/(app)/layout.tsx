@@ -11,6 +11,7 @@ import { findUserById } from "@/lib/auth-actions";
 import { getProjectsForCurrentUser, Project } from "@/lib/data";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { useEffect, useState, useContext } from "react";
+import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
 import { getUserPlanAction } from "@/app/(app)/settings/actions";
 import { logoutAction } from "./actions";
@@ -19,8 +20,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ProjectProvider, ProjectContext } from "@/contexts/project-context";
 import { TimezoneSelector } from "@/components/timezone-selector";
 import Dock from "@/components/dock";
-import { FluxAiAssistant } from "@/components/flux-ai-assistant";
-import { CommandPalette } from "@/components/command-palette";
+// Phase 5+6: Lazy-load heavy components — they are NOT needed on initial page render.
+// FluxAiAssistant: 555 lines, speech synthesis, complex state.
+// CommandPalette: opened only on Ctrl+K.
+const FluxAiAssistant = dynamic(
+    () => import('@/components/flux-ai-assistant').then(m => m.FluxAiAssistant),
+    { ssr: false }
+);
+const CommandPalette = dynamic(
+    () => import('@/components/command-palette').then(m => m.CommandPalette),
+    { ssr: false }
+);
 import { FeedbackWidget } from "@/components/feedback-widget";
 import { ChangelogPopover } from "@/components/changelog-popover";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";

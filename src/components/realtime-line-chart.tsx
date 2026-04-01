@@ -121,7 +121,16 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
             setPeakRPS(prevPeak => Math.max(prevPeak, deltaReq));
         }, 2000); // 2-second reliable local tick
 
-        return () => clearInterval(tickInterval);
+        // Phase 4: Reset peak RPS every 5 minutes to maintain accurate "recent peak" semantics.
+        // Without this, peakRPS only ever grows and never reflects the current activity level.
+        const peakResetInterval = setInterval(() => {
+            setPeakRPS(0);
+        }, 5 * 60 * 1000);
+
+        return () => {
+            clearInterval(tickInterval);
+            clearInterval(peakResetInterval);
+        };
     }, []);
 
     const averages = useMemo(() => {
