@@ -72,8 +72,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useRef } from 'react';
-import { idbGet, idbSet, idbDeleteByPrefix } from '@/lib/browser-cache';
-
 const DataTable = dynamic(() => import('@/components/data-table').then(mod => mod.DataTable), {
     ssr: false,
     loading: () => <Skeleton className="h-[600px] w-full" />,
@@ -224,25 +222,15 @@ export function EditorClient({
         queryFn: async ({ pageParam }) => {
             if (!tableId || !tableName) return { rows: [], nextCursorId: null, hasMore: false };
 
-            // Phase 2: Check IndexedDB warm cache before hitting the network.
-            // Cache key includes projectId, tableName, and page cursor for uniqueness.
-            const cacheKey = `tbl_${projectId}_${tableName}_${pageParam ?? 'p0'}`;
-            const cachedData = await idbGet(cacheKey);
-            if (cachedData) return cachedData;
-
-            // Cache miss — fetch from network.
-            // REMOVED: &_t=${Date.now()} — was bypassing ALL caching layers every fetch.
             let url = `/api/table-data?projectId=${projectId}&tableName=${tableName}&pageSize=50`;
             if (pageParam) url += `&page=${pageParam}`;
+            
+            // Bypass aggressive browser caching to respect realtime insertion/deletion events
+            url += `&_t=${Date.now()}`;
 
             const response = await fetch(url);
             if (!response.ok) throw new Error('Failed to fetch table data');
-            const data = await response.json();
-
-            // Save to IndexedDB warm cache (fire-and-forget, non-blocking)
-            idbSet(cacheKey, data);
-
-            return data;
+            return await response.json();
         },
         getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.nextCursorId : null,
         enabled: !!tableId && !!tableName,
@@ -334,21 +322,17 @@ export function EditorClient({
 
     // Phase 4: Debounced WS-driven refresh.
     // Old: immediate removeQueries + refetch on every WS event = constant heap churn.
-    // New: wait 3s of silence, then mark stale (not destroy) so cached data stays usable.
+    // New: wait 500ms of silence, then mark stale to fetch new data smoothly.
     useEffect(() => {
         if (lastEvent && lastEvent.type === 'update' && lastEvent.table === tableName) {
             console.log('[Realtime Editor] Debounced update queued for table:', tableName);
             if (wsRefreshTimerRef.current) clearTimeout(wsRefreshTimerRef.current);
             wsRefreshTimerRef.current = setTimeout(() => {
-                // Invalidate but do NOT refetchType immediately — let the component 
-                // trigger a natural refetch when the user is actively looking at the data.
                 queryClient.invalidateQueries({
                     queryKey: ['table-data', projectId, tableId],
                     refetchType: 'active',  // Only refetch if component is still mounted & visible
                 });
-                // Also invalidate IndexedDB warm cache for this table
-                idbDeleteByPrefix(`tbl_${projectId}_${tableName}`);
-            }, 3000);
+            }, 500);
         }
         return () => {
             if (wsRefreshTimerRef.current) clearTimeout(wsRefreshTimerRef.current);
