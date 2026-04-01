@@ -14,6 +14,15 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Health Check Route
+app.get('/', (req, res) => {
+    res.status(200).json({ 
+        status: 'healthy', 
+        service: 'Fluxbase Scraper Engine',
+        timestamp: new Date().toISOString()
+    });
+});
+
 // Database Pools
 const pgPool = new PgPool({
     connectionString: process.env.AWS_RDS_POSTGRES_URL || "",
