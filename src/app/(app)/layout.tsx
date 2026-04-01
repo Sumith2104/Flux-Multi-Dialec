@@ -55,7 +55,6 @@ import { checkDatabaseHealthAction } from "@/lib/data";
 
 const navItems = [
     { href: "/dashboard", label: "Dashboard", icon: <LayoutDashboard /> },
-    { href: "/dashboard/activity", label: "Activity", icon: <History /> },
     { href: "/editor", label: "Table Editor", icon: <Table /> },
     { href: "/database", label: "Database", icon: <Database /> },
     { href: "/query", label: "SQL Editor", icon: <BrainCircuit /> },
