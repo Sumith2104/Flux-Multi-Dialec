@@ -415,7 +415,7 @@ end`} />
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 my-6 text-sm">
                                 <div className="p-5 border border-zinc-800 rounded-2xl bg-zinc-900/30">
                                     <h4 className="font-bold text-white mb-2 flex items-center gap-2">
-                                        < zap className="h-4 w-4 text-orange-500" /> Event Types
+                                        <Zap className="h-4 w-4 text-orange-500" /> Event Types
                                     </h4>
                                     <ul className="space-y-1 text-zinc-500">
                                         <li>• <code>row.inserted</code></li>
