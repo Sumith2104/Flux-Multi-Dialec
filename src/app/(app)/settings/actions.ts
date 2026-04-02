@@ -6,7 +6,7 @@ import { deleteUserAccount } from '@/lib/auth-actions';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
-export async function getUserPlanAction(): Promise<{ success: boolean; plan?: string; error?: string }> {
+export async function getUserPlanAction(): Promise<{ success: boolean; plan?: string; status?: string; error?: string }> {
     try {
         const userId = await getCurrentUserId();
         if (!userId) return { success: false, error: 'Unauthorized' };
@@ -14,11 +14,11 @@ export async function getUserPlanAction(): Promise<{ success: boolean; plan?: st
         const { getPgPool } = await import('@/lib/pg');
         const pool = getPgPool();
         const { rows } = await pool.query(
-            'SELECT plan_type FROM fluxbase_global.users WHERE id = $1',
+            'SELECT plan_type, status FROM fluxbase_global.users WHERE id = $1',
             [userId]
         );
 
-        return { success: true, plan: rows[0]?.plan_type || 'free' };
+        return { success: true, plan: rows[0]?.plan_type || 'free', status: rows[0]?.status || 'active' };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
@@ -97,6 +97,27 @@ export async function clearOrganizationAction() {
 
     } catch (error) {
         console.error('Failed to clear organization:', error);
+        return { error: `An unexpected error occurred: ${(error as Error).message}` };
+    }
+}
+
+export async function toggleOrganizationSuspensionAction(status: 'suspended' | 'active') {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+        return { error: 'User not authenticated.' };
+    }
+
+    try {
+        const { getPgPool } = await import('@/lib/pg');
+        const pool = getPgPool();
+        await pool.query('UPDATE fluxbase_global.users SET status = $1 WHERE id = $2', [status, userId]);
+
+        revalidatePath('/settings');
+        revalidatePath('/dashboard');
+        return { success: true };
+
+    } catch (error) {
+        console.error(`Failed to ${status === 'suspended' ? 'suspend' : 'resume'} organization:`, error);
         return { error: `An unexpected error occurred: ${(error as Error).message}` };
     }
 }

@@ -81,12 +81,28 @@ export interface AuthContext {
     userId: string;
     allowedProjectId?: string; // If present, the user is restricted to this project
     scopes?: string[]; // If present (API access), these define permitted actions
+    status?: string; // Organization status
 }
 
 export async function getAuthContextFromRequest(request: Request): Promise<AuthContext | null> {
+    // Helper to fetch user status to enforce suspension
+    const fetchUserStatus = async (uid: string) => {
+        try {
+            const { getPgPool } = await import('@/lib/pg');
+            const pool = getPgPool();
+            const res = await pool.query('SELECT status FROM fluxbase_global.users WHERE id = $1', [uid]);
+            return res.rows[0]?.status || 'active';
+        } catch {
+            return 'active';
+        }
+    };
+
     // 1. Check Session Cookie (Browser Access)
     const userId = await getCurrentUserId();
-    if (userId) return { userId };
+    if (userId) {
+        const status = await fetchUserStatus(userId);
+        return { userId, status };
+    }
 
     // 2. Check Authorization Header OR URL Search Params (API Access for SSE/WebSockets)
     let apiKey = '';
@@ -109,11 +125,14 @@ export async function getAuthContextFromRequest(request: Request): Promise<AuthC
                 const { trackSession } = await import('@/lib/track-session');
                 await trackSession(result.projectId, result.userId);
             }
+            
+            const status = await fetchUserStatus(result.userId);
 
             return { 
                 userId: result.userId, 
                 allowedProjectId: result.projectId,
-                scopes: result.scopes 
+                scopes: result.scopes,
+                status
             };
         }
     }

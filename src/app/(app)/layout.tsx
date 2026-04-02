@@ -71,6 +71,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [userId, setUserId] = useState<string | null>(null);
     const [planType, setPlanType] = useState<string>('Free');
+    const [isSuspended, setIsSuspended] = useState(false);
     const [isOffline, setIsOffline] = useState(false);
     const [projects, setProjects] = useState<Project[]>([]);
     const [userLoading, setUserLoading] = useState(true);
@@ -97,6 +98,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                     const planRes = await getUserPlanAction();
                     if (planRes?.success) {
                         setPlanType(planRes.plan === 'max' ? 'Max' : (planRes.plan === 'pro' ? 'Pro' : 'Free'));
+                        setIsSuspended(planRes.status === 'suspended');
                     }
 
                     const projectsData = await getProjectsForCurrentUser();
@@ -246,6 +248,13 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
     return (
         <div className="flex min-h-screen w-full flex-col bg-background">
+            {isSuspended && (
+                <div className="bg-destructive text-destructive-foreground text-center py-1.5 px-4 text-xs font-semibold flex items-center justify-center gap-2 z-50">
+                    <AlertTriangle className="h-4 w-4" />
+                    Your organization is currently suspended. Database access and webhooks are disabled.
+                    <Link href="/settings" className="underline underline-offset-2 ml-1 opacity-90 hover:opacity-100">Resume in Settings</Link>
+                </div>
+            )}
             <header className="sticky top-0 flex h-14 items-center gap-4 border-b bg-background px-4 md:px-6 z-40">
                 <div className="flex items-center gap-2">
                     <Avatar className="h-8 w-8">

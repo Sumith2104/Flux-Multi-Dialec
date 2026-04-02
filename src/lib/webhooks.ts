@@ -91,6 +91,15 @@ export async function fireWebhooks(
     oldData?: Record<string, any>
 ) {
     try {
+        const pool = getPgPool();
+        
+        // 1. Check if the organization/user is suspended
+        const statusRes = await pool.query('SELECT status FROM fluxbase_global.users WHERE id = $1', [userId]);
+        if (statusRes.rows.length > 0 && statusRes.rows[0].status === 'suspended') {
+            console.log(`[Webhook Engine] Abandoning dispatch: Organization for user ${userId} is suspended.`);
+            return;
+        }
+
         const webhooks = await getWebhooksForProject(projectId, userId);
         console.log(`[Webhook Engine] Initialized for ${projectId}/${tableId}/${eventType}. Found ${webhooks.length} webhooks in DB.`);
 

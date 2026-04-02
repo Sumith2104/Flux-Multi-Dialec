@@ -26,6 +26,7 @@ export async function POST(request: Request) {
     try {
         const auth = await getAuthContextFromRequest(request);
         if (!auth) return NextResponse.json({ success: false, error: { message: 'User not authenticated or token expired', code: ERROR_CODES.AUTH_REQUIRED } }, { status: 401 });
+        if (auth.status === 'suspended') return NextResponse.json({ success: false, error: { message: 'Organization suspended. Please resume the organization to access data.', code: ERROR_CODES.FORBIDDEN } }, { status: 403 });
         const { userId, allowedProjectId } = auth;
 
         let { projectId, query, params } = await request.json();

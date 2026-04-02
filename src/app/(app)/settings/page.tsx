@@ -19,7 +19,7 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { deleteProjectAction, clearOrganizationAction, updateProjectSettingsAction } from './actions';
+import { deleteProjectAction, clearOrganizationAction, updateProjectSettingsAction, toggleOrganizationSuspensionAction } from './actions';
 import { 
     get2FAStatusAction, 
     setup2FAAction, 
@@ -92,9 +92,13 @@ export default function GeneralSettingsPage() {
     const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
 
     // Billing State
-    const [userPlan, setUserPlan] = useState<{ plan: string; billing_cycle_end: string | null }>({ plan: 'free', billing_cycle_end: null });
+    const [userPlan, setUserPlan] = useState<{ plan: string; billing_cycle_end: string | null; status?: string }>({ plan: 'free', billing_cycle_end: null, status: 'active' });
     const [isBillingLoading, setIsBillingLoading] = useState(true);
     const [upgradingPlan, setUpgradingPlan] = useState<string | null>(null);
+
+    // Suspension State
+    const [suspendConfirmation, setSuspendConfirmation] = useState('');
+    const [isSuspending, setIsSuspending] = useState(false);
 
     useEffect(() => {
         // Load User Plan
@@ -164,6 +168,21 @@ export default function GeneralSettingsPage() {
         } else {
             toast({ variant: 'destructive', title: 'Error', description: result.error || 'Failed to clear organization data.' });
         }
+    };
+
+    const handleToggleSuspension = async () => {
+        setIsSuspending(true);
+        const newStatus = userPlan.status === 'suspended' ? 'active' : 'suspended';
+        const result = await toggleOrganizationSuspensionAction(newStatus);
+        
+        if (result.success) {
+            toast({ title: 'Success', description: `Organization has been ${newStatus}.` });
+            setUserPlan(prev => ({ ...prev, status: newStatus }));
+            setSuspendConfirmation('');
+        } else {
+            toast({ variant: 'destructive', title: 'Error', description: result.error || `Failed to ${newStatus} organization.` });
+        }
+        setIsSuspending(false);
     };
 
     const handleSetup2FA = async () => {
@@ -617,6 +636,53 @@ export default function GeneralSettingsPage() {
                                             onClick={handleDeleteProject}
                                             disabled={deleteConfirmation !== `delete my project ${selectedProject?.display_name}`}
                                             className="bg-destructive hover:bg-destructive/90"
+                                        >
+                                            Continue
+                                        </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border bg-background p-4 gap-4">
+                            <div>
+                                <Label htmlFor="suspend-org">{userPlan.status === 'suspended' ? 'Resume Organization' : 'Suspend Organization'}</Label>
+                                <p className="text-sm text-muted-foreground">
+                                    {userPlan.status === 'suspended' 
+                                        ? 'Re-enable database access and background webhooks.' 
+                                        : 'Temporarily pause all database read/write access and disable webhook operations without deleting data.'}
+                                </p>
+                            </div>
+                            <AlertDialog onOpenChange={(open) => !open && setSuspendConfirmation('')}>
+                                <AlertDialogTrigger asChild>
+                                    <Button variant={userPlan.status === 'suspended' ? "default" : "destructive"} disabled={isSuspending}>
+                                        {userPlan.status === 'suspended' ? 'Resume Organization' : (isSuspending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Suspend Organization')}
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent className="bg-zinc-950 border-zinc-800">
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                            {userPlan.status === 'suspended' 
+                                                ? 'This will immediately re-enable your database and webhooks. You will be able to read and write data again.' 
+                                                : <span>This will temporarily halt all queries, APIs, and webhooks for all your projects. To confirm, please type <strong className="text-foreground">suspend my org</strong> in the box below.</span>}
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    {userPlan.status !== 'suspended' && (
+                                        <div className="py-2">
+                                            <Input
+                                                value={suspendConfirmation}
+                                                onChange={(e) => setSuspendConfirmation(e.target.value)}
+                                                placeholder="suspend my org"
+                                                className="font-mono bg-zinc-900 border-zinc-700"
+                                            />
+                                        </div>
+                                    )}
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel className="bg-zinc-800 border-zinc-700">Cancel</AlertDialogCancel>
+                                        <AlertDialogAction
+                                            onClick={handleToggleSuspension}
+                                            disabled={userPlan.status !== 'suspended' && suspendConfirmation !== 'suspend my org'}
+                                            className={userPlan.status === 'suspended' ? "bg-primary" : "bg-destructive hover:bg-destructive/90"}
                                         >
                                             Continue
                                         </AlertDialogAction>

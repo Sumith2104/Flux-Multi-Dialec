@@ -14,6 +14,9 @@ export async function GET(request: Request) {
     if (!auth) {
       return NextResponse.json({ error: 'User not authenticated' }, { status: 401 });
     }
+    if (auth.status === 'suspended') {
+      return NextResponse.json({ error: 'Organization suspended. Please resume the organization to access data.' }, { status: 403 });
+    }
     const { userId, allowedProjectId } = auth;
 
     const { searchParams } = new URL(request.url);

@@ -59,7 +59,8 @@ async function initDb() {
             ADD COLUMN IF NOT EXISTS razorpay_customer_id VARCHAR(255),
             ADD COLUMN IF NOT EXISTS razorpay_subscription_id VARCHAR(255),
             ADD COLUMN IF NOT EXISTS plan_type VARCHAR(50) DEFAULT 'free',
-            ADD COLUMN IF NOT EXISTS billing_cycle_end TIMESTAMP WITH TIME ZONE;
+            ADD COLUMN IF NOT EXISTS billing_cycle_end TIMESTAMP WITH TIME ZONE,
+            ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active';
         `);
 
         console.log("🔨 Creating Table: fluxbase_global.projects");
