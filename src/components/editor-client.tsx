@@ -328,10 +328,7 @@ export function EditorClient({
             console.log('[Realtime Editor] Debounced update queued for table:', tableName);
             if (wsRefreshTimerRef.current) clearTimeout(wsRefreshTimerRef.current);
             wsRefreshTimerRef.current = setTimeout(() => {
-                queryClient.invalidateQueries({
-                    queryKey: ['table-data', projectId, tableId],
-                    refetchType: 'active',  // Only refetch if component is still mounted & visible
-                });
+                refreshData();
             }, 500);
         }
         return () => {
