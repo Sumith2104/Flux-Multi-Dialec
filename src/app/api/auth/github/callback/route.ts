@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
         }
 
         // 6. Create active session cookie identically to native login systems
-        await createSessionCookie(userId);
+        await createSessionCookie(userId, true);
 
         // 6. Redirect seamlessly
         const redirectPath = isNewUser ? '/pricing?onboarding=true' : '/dashboard/projects';
