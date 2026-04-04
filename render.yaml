@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: fluxbase-app
+    env: node
+    region: singapore # Adjust based on your preferred AWS RDS region
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: NEXT_PUBLIC_APP_URL
+        value: https://fluxbase-app.onrender.com # Placeholder: Update to your exact Render URL (or custom domain)
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: NEXT_PUBLIC_GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: AWS_RDS_POSTGRES_URL
+        sync: false
+      - key: AWS_RDS_MYSQL_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: SMTP_PASS
+        sync: false
