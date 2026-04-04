@@ -9,8 +9,7 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Github, Shield, AlertTriangle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { loginAction, googleAuthAction, verify2FALoginAction } from "@/app/actions";
-import { useGoogleLogin } from '@react-oauth/google';
+import { loginAction, verify2FALoginAction } from "@/app/actions";
 
 interface LoginDialogProps {
     open: boolean;
@@ -37,43 +36,6 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
                 setTempUserId(params.get('userId'));
                 onOpenChange(true); // Ensure dialog is open
             }
-        }
-    });
-
-    const googleLoginFlow = useGoogleLogin({
-        onSuccess: async (tokenResponse) => {
-            try {
-                setIsLoading(true);
-                const result = await googleAuthAction(tokenResponse.access_token);
-
-                if (result.success) {
-                    if (result.requires2FA && result.userId) {
-                        setRequires2FA(true);
-                        setTempUserId(result.userId);
-                    } else {
-                        onOpenChange(false);
-                        router.push('/dashboard/projects');
-                        router.refresh();
-                    }
-                } else {
-                    throw new Error(result.error || 'Failed to authenticate with Google');
-                }
-            } catch (error: any) {
-                toast({
-                    variant: 'destructive',
-                    title: 'Google Login Failed',
-                    description: error.message,
-                });
-            } finally {
-                setIsLoading(false);
-            }
-        },
-        onError: (errorResponse) => {
-            toast({
-                variant: 'destructive',
-                title: 'Google Login Cancelled',
-                description: 'The popup was closed or authentication failed.',
-            });
         }
     });
 

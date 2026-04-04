@@ -11,8 +11,7 @@ import { PasswordStrength } from "@/components/auth/password-strength";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Github } from "lucide-react";
-import { signupAction, googleAuthAction, verifyOtpAction } from "@/app/actions";
-import { useGoogleLogin } from '@react-oauth/google';
+import { signupAction, verifyOtpAction } from "@/app/actions";
 
 interface SignupDialogProps {
     open: boolean;
@@ -29,43 +28,6 @@ export function SignupDialog({ open, onOpenChange, onSwitchToLogin }: SignupDial
     // OTP Flow State
     const [step, setStep] = useState<"SIGNUP" | "OTP">("SIGNUP");
     const [pendingEmail, setPendingEmail] = useState("");
-
-    const googleLoginFlow = useGoogleLogin({
-        onSuccess: async (tokenResponse) => {
-            try {
-                setIsLoading(true);
-                const result = await googleAuthAction(tokenResponse.access_token);
-
-                if (result.success) {
-                    onOpenChange(false);
-                    // Redirect new signups to the Pricing page, returning users straight to dashboard
-                    if (result.isNewUser) {
-                        router.push('/pricing?onboarding=true');
-                    } else {
-                        router.push('/dashboard/projects');
-                    }
-                    router.refresh();
-                } else {
-                    throw new Error(result.error || 'Failed to authenticate with Google');
-                }
-            } catch (error: any) {
-                toast({
-                    variant: 'destructive',
-                    title: 'Google Login Failed',
-                    description: error.message,
-                });
-            } finally {
-                setIsLoading(false);
-            }
-        },
-        onError: (errorResponse) => {
-            toast({
-                variant: 'destructive',
-                title: 'Google Login Cancelled',
-                description: 'The popup was closed or authentication failed.',
-            });
-        }
-    });
 
     async function handleEmailSignup(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
@@ -162,7 +124,7 @@ export function SignupDialog({ open, onOpenChange, onSwitchToLogin }: SignupDial
                     {step === "SIGNUP" ? (
                         <>
                             <div className="grid grid-cols-2 gap-4">
-                                <Button variant="outline" type="button" onClick={() => googleLoginFlow()} disabled={isLoading} className="border-white/10 hover:bg-white/5 hover:text-white transition-colors">
+                                <Button onClick={() => window.location.href = '/api/auth/google'} variant="outline" type="button" disabled={isLoading} className="border-white/10 hover:bg-white/5 hover:text-white transition-colors">
                                     <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
                                         <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
                                         <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
