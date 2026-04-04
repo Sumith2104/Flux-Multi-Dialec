@@ -2,16 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { createSessionCookie } from '@/lib/auth';
 import { sendWelcomeEmail } from '@/lib/email';
+import { getOAuthConfig } from '@/lib/oauth-config';
 import crypto from 'crypto';
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get('code');
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    
+    // Use dynamic configuration
+    const { clientId, clientSecret } = getOAuthConfig(request, 'google');
 
     if (!code || !clientId || !clientSecret) {
-        console.error("Missing Google OAuth variables or code in server route");
+        console.error("Missing Google Code or Environment Variables for this platform");
         return NextResponse.redirect(new URL('/?error=GoogleServerAuthFailed', request.url));
     }
 

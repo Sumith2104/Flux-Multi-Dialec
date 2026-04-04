@@ -2,16 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { createSessionCookie } from '@/lib/auth';
 import { sendWelcomeEmail } from '@/lib/email';
+import { getOAuthConfig } from '@/lib/oauth-config';
 import crypto from 'crypto';
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get('code');
-    const clientId = process.env.GITHUB_CLIENT_ID;
-    const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+    
+    // Use dynamic configuration
+    const { clientId, clientSecret } = getOAuthConfig(request, 'github');
 
     if (!code || !clientId || !clientSecret) {
-        console.error("Missing GitHub OAuth variables or code");
+        console.error("Missing GitHub Code or Environment Variables for this platform");
         return NextResponse.redirect(new URL('/?error=GithubAuthFailed', request.url));
     }
 
@@ -48,7 +50,7 @@ export async function GET(request: NextRequest) {
         
         const userData = await userResponse.json();
         
-        // 3. Fetch User Emails (GitHub sometimes hides primary email in profile)
+        // 3. Fetch User Emails
         const emailsResponse = await fetch('https://api.github.com/user/emails', {
             headers: {
                 Authorization: `Bearer ${accessToken}`,
@@ -88,28 +90,26 @@ export async function GET(request: NextRequest) {
                 [userId, email, name, photoUrl]
             );
 
-            // Send Welcome Email natively (like Google Auth)
             sendWelcomeEmail(email, name).catch(console.error);
         }
 
-        // 5. Check for 2FA requirement (Security Hardening)
+        // 5. Check for 2FA
         const { rows: userSettings } = await pool.query(
             'SELECT two_factor_enabled FROM fluxbase_global.users WHERE id = $1',
             [userId]
         );
 
         if (userSettings[0]?.two_factor_enabled) {
-            // Redirect back to home with 2FA flags so the LoginDialog can catch it
             const loginUrl = new URL('/', request.url);
             loginUrl.searchParams.set('requires2FA', 'true');
             loginUrl.searchParams.set('userId', userId);
             return NextResponse.redirect(loginUrl);
         }
 
-        // 6. Create active session cookie identically to native login systems
+        // 6. Create active session cookie 
         await createSessionCookie(userId, true);
 
-        // 6. Redirect seamlessly
+        // 7. Redirect seamlessly
         const redirectPath = isNewUser ? '/pricing?onboarding=true' : '/dashboard/projects';
         return NextResponse.redirect(new URL(redirectPath, request.url));
 
