@@ -145,12 +145,26 @@ export async function fireWebhooks(
         console.log(`[Webhook Engine] Dispatching to ${targetWebhooks.length} target(s).`);
 
         const dispatchPromises = targetWebhooks.map(async (webhook) => {
+            const start = Date.now();
+            let statusCode: number | null = null;
+            let error: string | null = null;
+            let success = false;
+
             try {
                 const headers: Record<string, string> = {
                     'Content-Type': 'application/json',
                     'User-Agent': 'Fluxbase-Webhook-Engine/1.0',
                     'X-Fluxbase-Event': eventType
                 };
+
+                // Add Signature if secret exists
+                if (webhook.secret) {
+                    const signature = crypto
+                        .createHmac('sha256', webhook.secret)
+                        .update(JSON.stringify(payload))
+                        .digest('hex');
+                    headers['X-Fluxbase-Signature'] = signature;
+                }
 
                 console.log(`[Webhook Engine] Sending POST to ${webhook.url}`);
                 const response = await fetch(webhook.url, {
@@ -161,11 +175,39 @@ export async function fireWebhooks(
                     cache: 'no-store'
                 });
 
+                statusCode = response.status;
+                success = response.ok;
+
                 if (!response.ok) {
+                    error = `HTTP ${response.status}: ${response.statusText}`;
                     console.error(`[Webhook Dispatch Error] ${webhook.url} returned status: ${response.status}`);
                 }
-            } catch (dispatchError) {
+            } catch (dispatchError: any) {
+                error = dispatchError.message || 'Network Error';
                 console.error(`[Webhook Network Error] Failed to reach ${webhook.url}:`, dispatchError);
+            } finally {
+                const duration = Date.now() - start;
+                // Log the delivery attempt to the database for the UI to display
+                try {
+                    await pool.query(`
+                        INSERT INTO fluxbase_global.webhook_delivery_logs 
+                        (project_id, webhook_id, webhook_name, event, url, status_code, response_ms, success, error, payload)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                    `, [
+                        projectId, 
+                        webhook.webhook_id, 
+                        webhook.name, 
+                        eventType, 
+                        webhook.url, 
+                        statusCode, 
+                        duration, 
+                        success, 
+                        error, 
+                        JSON.stringify(payload)
+                    ]);
+                } catch (logErr) {
+                    console.error(`[Webhook Logger Error] Failed to write delivery log:`, logErr);
+                }
             }
         });
 
