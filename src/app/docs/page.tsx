@@ -10,6 +10,7 @@ import {
     Webhook, 
     Database, 
     ShieldCheck, 
+    Shield,
     Zap, 
     Copy, 
     Check, 
@@ -17,7 +18,11 @@ import {
     Terminal,
     HardDrive,
     AlertCircle,
-    Info
+    Info,
+    Lock,
+    Users,
+    Eye,
+    KeyRound
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -91,6 +96,7 @@ export default function DocsPage() {
         { id: 'realtime', label: '6. Real-time SSE', icon: Zap },
         { id: 'error-codes', label: '7. Error Codes', icon: AlertCircle },
         { id: 'governance', label: '8. Governance', icon: ShieldCheck },
+        { id: 'rls-tutorial', label: '9. Row Level Security', icon: Shield },
     ];
 
     useEffect(() => {
@@ -514,6 +520,182 @@ const channel = flux.channel('app', 'messages')
                                 <p className="text-sm leading-relaxed text-emerald-200/70">
                                     All databases are hosted in isolated AWS RDS instances within your chosen region. Fluxbase never inspects query data unless specifically requested for debugging.
                                 </p>
+                            </div>
+                        </Section>
+
+                        {/* ============================== RLS TUTORIAL ============================== */}
+                        <Section id="rls-tutorial" title="Row Level Security" icon={Shield}>
+                            <div className="bg-amber-500/5 border border-amber-500/20 p-5 rounded-2xl flex gap-4">
+                                <Shield className="h-6 w-6 text-amber-400 shrink-0 mt-0.5" />
+                                <p className="text-sm leading-relaxed text-amber-200/80">
+                                    <strong>Row Level Security (RLS)</strong> lets you define SQL expressions that are enforced at the <em>database engine</em> level — meaning your backend API can never return data that violates a policy, regardless of what query is sent.
+                                </p>
+                            </div>
+
+                            {/* How it works */}
+                            <div className="mt-6 space-y-3">
+                                <h3 className="text-xl font-bold text-white">How RLS Works in Fluxbase</h3>
+                                <p className="text-sm leading-relaxed">When a query runs, Fluxbase automatically injects the current user&apos;s identity into the PostgreSQL session before execution. Your policy expressions can then reference <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-amber-300">auth.uid()</code> to filter rows at the engine level.</p>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-6">
+                                    {[
+                                        { icon: KeyRound, color: 'text-blue-400 bg-blue-500/10', title: 'Auth Identity', desc: 'Your logged-in user ID is automatically injected into every query session via SET LOCAL.' },
+                                        { icon: Lock, color: 'text-amber-400 bg-amber-500/10', title: 'Policy Check', desc: 'PostgreSQL evaluates your policy expression (e.g. user_id = auth.uid()) before returning any row.' },
+                                        { icon: Eye, color: 'text-emerald-400 bg-emerald-500/10', title: 'Only Allowed Rows', desc: 'Rows that fail the policy are silently filtered out. No errors — just safe, scoped results.' },
+                                    ].map((item, i) => (
+                                        <div key={i} className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40">
+                                            <div className={`w-fit p-2 rounded-lg mb-3 ${item.color}`}><item.icon className="h-5 w-5" /></div>
+                                            <h5 className="font-bold text-white text-sm mb-1">{item.title}</h5>
+                                            <p className="text-xs text-zinc-500 leading-relaxed">{item.desc}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Step-by-step */}
+                            <div className="mt-4 space-y-3">
+                                <h3 className="text-xl font-bold text-white">Step-by-Step Setup</h3>
+                                <div className="space-y-4">
+                                    {[
+                                        { step: '01', title: 'Open the RLS Dashboard', desc: 'Navigate to Database → Row Level Security in your project sidebar. You will see all your tables listed.' },
+                                        { step: '02', title: 'Click "New Policy"', desc: 'Select the table, choose a command scope (ALL / SELECT / INSERT / UPDATE / DELETE), give it a name, and write your USING expression.' },
+                                        { step: '03', title: 'Toggle the Policy ON', desc: 'Use the toggle switch next to any policy. This immediately executes ALTER TABLE ... ENABLE ROW LEVEL SECURITY and CREATE POLICY in your database.' },
+                                        { step: '04', title: 'Test in the Table Editor', desc: 'Open the Table Editor and run a SELECT from your protected table. You will only see rows your user owns.' },
+                                    ].map((item, i) => (
+                                        <div key={i} className="flex gap-5 p-4 rounded-xl border border-zinc-800 bg-zinc-900/30">
+                                            <span className="text-2xl font-black text-orange-500/30 font-mono shrink-0">{item.step}</span>
+                                            <div>
+                                                <h5 className="font-bold text-white text-sm mb-1">{item.title}</h5>
+                                                <p className="text-xs text-zinc-500 leading-relaxed">{item.desc}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Policy examples */}
+                            <div className="mt-6 space-y-6">
+                                <h3 className="text-xl font-bold text-white">Common Policy Examples</h3>
+
+                                <div>
+                                    <div className="flex items-center gap-2 mb-2"><Users className="h-4 w-4 text-blue-400" /><h4 className="font-semibold text-white text-sm">User Owns Their Rows</h4></div>
+                                    <p className="text-xs text-zinc-500 mb-2">Classic ownership pattern. Apply to tables like <code className="bg-zinc-800 px-1 rounded">posts</code>, <code className="bg-zinc-800 px-1 rounded">orders</code>, or <code className="bg-zinc-800 px-1 rounded">profiles</code>.</p>
+                                    <CodeBlock title="USING Expression" language="sql" code={`-- Only show rows that belong to the currently logged-in user\nuser_id = auth.uid()`} />
+                                </div>
+
+                                <div>
+                                    <div className="flex items-center gap-2 mb-2"><Lock className="h-4 w-4 text-purple-400" /><h4 className="font-semibold text-white text-sm">Multi-Tenant SaaS (Org-scoped)</h4></div>
+                                    <p className="text-xs text-zinc-500 mb-2">Scope access to an organisation. Set <code className="bg-zinc-800 px-1 rounded">auth.uid()</code> to the org ID at the API level.</p>
+                                    <CodeBlock title="USING Expression" language="sql" code={`-- All members of the same organization can see the rows\norg_id = auth.uid()`} />
+                                </div>
+
+                                <div>
+                                    <div className="flex items-center gap-2 mb-2"><Eye className="h-4 w-4 text-emerald-400" /><h4 className="font-semibold text-white text-sm">Public Read, Owner Write</h4></div>
+                                    <p className="text-xs text-zinc-500 mb-2">Anyone can read, but only the author can write. Create <strong>two</strong> policies on the same table.</p>
+                                    <CodeBlock title="Policy 1 — SELECT (public)" language="sql" code={`-- Anyone can read; set command to SELECT\ntrue`} />
+                                    <CodeBlock title="Policy 2 — Write Ops (owner only)" language="sql" code={`-- Only the owner can mutate; set command to INSERT / UPDATE / DELETE\nauthor_id = auth.uid()`} />
+                                </div>
+
+                                <div>
+                                    <div className="flex items-center gap-2 mb-2"><ShieldCheck className="h-4 w-4 text-red-400" /><h4 className="font-semibold text-white text-sm">Lock Down Everything</h4></div>
+                                    <p className="text-xs text-zinc-500 mb-2">Complete lockdown — useful for internal audit tables. No API caller can read this table.</p>
+                                    <CodeBlock title="USING Expression" language="sql" code={`-- Nobody gets access via the API\nfalse`} />
+                                </div>
+                            </div>
+
+                            {/* Code examples */}
+                            <div className="mt-6 space-y-4">
+                                <h3 className="text-xl font-bold text-white">Using RLS from Your Backend</h3>
+                                <p className="text-sm">RLS is completely transparent. Your existing API calls work as before — Fluxbase silently filters results based on the authenticated user. No changes to your query code needed.</p>
+
+                                <Tabs defaultValue="js-rls" className="w-full mt-4">
+                                    <TabsList className="flex flex-wrap h-auto gap-2 bg-zinc-900 border border-zinc-800 p-1.5 rounded-2xl">
+                                        {[['JavaScript', 'js-rls'], ['Python', 'python-rls'], ['cURL', 'curl-rls']].map(([lang, val]) => (
+                                            <TabsTrigger key={val} value={val} className="data-[state=active]:bg-orange-500 data-[state=active]:text-white rounded-xl px-4 py-2 transition-all">{lang}</TabsTrigger>
+                                        ))}
+                                    </TabsList>
+                                    <div className="mt-6">
+                                        <TabsContent value="js-rls">
+                                            <CodeBlock language="typescript" title="rls-query.js" code={`// No special code needed — the API key identifies the user.
+// RLS automatically filters rows based on auth.uid() policies.
+
+async function getMyPosts() {
+  const res = await fetch('https://fluxbase.vercel.app/api/execute-sql', {
+    method: 'POST',
+    headers: {
+      'Authorization': \`Bearer \${process.env.FLUXBASE_API_KEY}\`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      projectId: process.env.PROJECT_ID,
+      // SELECT * — but RLS filters to ONLY rows where user_id = auth.uid()
+      query: 'SELECT * FROM posts',
+    }),
+  });
+  const json = await res.json();
+  return json.result.rows; // Only YOUR posts — enforced at DB level
+}`} />
+                                        </TabsContent>
+                                        <TabsContent value="python-rls">
+                                            <CodeBlock language="python" title="rls_query.py" code={`import os, requests
+
+URL = 'https://fluxbase.vercel.app/api/execute-sql'
+HEADERS = {'Authorization': f'Bearer {os.getenv("FLUXBASE_API_KEY")}'}
+
+def get_my_posts():
+    # SELECT * — RLS enforces user_id = auth.uid() automatically.
+    payload = {'projectId': os.getenv('PROJECT_ID'), 'query': 'SELECT * FROM posts'}
+    resp = requests.post(URL, json=payload, headers=HEADERS)
+    data = resp.json()
+    if not data.get('success'):
+        raise Exception(data['error']['message'])
+    return data['result']['rows']  # Only rows owned by this user
+
+print(get_my_posts())`} />
+                                        </TabsContent>
+                                        <TabsContent value="curl-rls">
+                                            <CodeBlock language="bash" title="Terminal" code={`# Your API key determines who auth.uid() resolves to.
+# RLS silently filters rows at the database level.
+curl -X POST "https://fluxbase.vercel.app/api/execute-sql" \\
+  -H "Authorization: Bearer $FLUXBASE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "projectId": "YOUR_PROJECT_ID",
+    "query": "SELECT * FROM posts"
+  }'
+# Response only contains rows matching the RLS policy.`} />
+                                        </TabsContent>
+                                    </div>
+                                </Tabs>
+                            </div>
+
+                            {/* Troubleshooting */}
+                            <div className="mt-6 space-y-4">
+                                <h3 className="text-xl font-bold text-white">Troubleshooting</h3>
+                                <div className="rounded-2xl border border-zinc-800 overflow-hidden text-sm">
+                                    <table className="w-full text-left border-collapse bg-zinc-950">
+                                        <thead>
+                                            <tr className="bg-zinc-900 border-b border-zinc-800">
+                                                <th className="p-4 font-semibold text-white">Problem</th>
+                                                <th className="p-4 font-semibold text-white">Cause</th>
+                                                <th className="p-4 font-semibold text-white">Fix</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-zinc-900">
+                                            {[
+                                                { prob: 'Query returns 0 rows', cause: 'Policy expression never matches', fix: 'Try setting expression to true temporarily to confirm RLS is the cause.' },
+                                                { prob: 'Policy toggle fails', cause: 'Column in expression does not exist', fix: 'Ensure the column (e.g. user_id) exists in your table schema.' },
+                                                { prob: 'Owner cannot see own rows', cause: 'Type mismatch (INT vs TEXT)', fix: 'Cast: user_id::text = auth.uid()' },
+                                                { prob: 'Admin locked out', cause: 'FORCE ROW LEVEL SECURITY is active', fix: 'Run ALTER TABLE ... NO FORCE ROW LEVEL SECURITY from the SQL Editor.' },
+                                            ].map((row, i) => (
+                                                <tr key={i} className="hover:bg-zinc-900/50 transition-colors">
+                                                    <td className="p-4 font-mono text-red-400 text-xs">{row.prob}</td>
+                                                    <td className="p-4 text-zinc-500 text-xs">{row.cause}</td>
+                                                    <td className="p-4 text-zinc-300 text-xs">{row.fix}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </Section>
 

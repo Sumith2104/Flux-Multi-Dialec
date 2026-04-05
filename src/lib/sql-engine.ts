@@ -191,6 +191,17 @@ export class SqlEngine {
                 try {
                     // 1. Lock the session securely to this tenant's isolated schema
                     await client.query(`SET search_path TO "project_${this.projectId}"`);
+                    
+                    // 2. Identity Mapping: Tell Postgres who the current user is for RLS enforcement
+                    if (this.userId) {
+                        try {
+                            // We use SET LOCAL so it only persists for the duration of this specific request/transaction
+                            await client.query(`SELECT set_config('fluxbase.auth_uid', $1, true)`, [this.userId]);
+                        } catch (rlsErr) {
+                            console.warn('[RLS Session Error] Failed to set auth context:', rlsErr);
+                        }
+                    }
+
                     if (this.projectTimezone) {
                         try {
                             await client.query(`SELECT set_config('timezone', $1, false)`, [this.projectTimezone]);
@@ -199,7 +210,7 @@ export class SqlEngine {
                         }
                     }
 
-                    // 2. Execute the raw SQL directly on the Postgres engine
+                    // 3. Execute the raw SQL directly on the Postgres engine
                     const result = await client.query(queryCleaned, params || []);
 
                     const executionTime = (performance.now() - startTime).toFixed(2);

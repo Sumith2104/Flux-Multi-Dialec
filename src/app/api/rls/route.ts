@@ -52,15 +52,37 @@ export async function POST(req: NextRequest) {
     const auth = await getAuthContextFromRequest(req);
     if (!auth?.userId || !projectId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+    const pool = getPgPool();
+    const schemaName = `project_${projectId}`;
+
     try {
-        const pool = getPgPool();
+        // 1. Save to catalog
         await pool.query(
             `INSERT INTO fluxbase_global.rls_policies (project_id, table_name, policy_name, command, expression)
              VALUES ($1, $2, $3, $4, $5) ON CONFLICT (project_id, table_name, policy_name) DO UPDATE SET expression = EXCLUDED.expression, command = EXCLUDED.command`,
             [projectId, tableName, policyName, command, expression]
         );
+
+        // 2. Deploy to actual Database
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            await client.query(`ALTER TABLE "${schemaName}"."${tableName}" ENABLE ROW LEVEL SECURITY`);
+            await client.query(`ALTER TABLE "${schemaName}"."${tableName}" FORCE ROW LEVEL SECURITY`);
+            await client.query(`DROP POLICY IF EXISTS "${policyName}" ON "${schemaName}"."${tableName}"`);
+            const sqlCommand = command === 'ALL' ? 'ALL' : command;
+            await client.query(`CREATE POLICY "${policyName}" ON "${schemaName}"."${tableName}" FOR ${sqlCommand} TO PUBLIC USING (${expression})`);
+            await client.query('COMMIT');
+        } catch (dbErr) {
+            await client.query('ROLLBACK');
+            throw dbErr;
+        } finally {
+            client.release();
+        }
+
         return NextResponse.json({ success: true });
     } catch (e: any) {
+        console.error('[RLS Save Error]', e);
         return NextResponse.json({ success: false, error: e.message }, { status: 400 });
     }
 }
@@ -74,9 +96,41 @@ export async function DELETE(req: NextRequest) {
     if (!auth?.userId || !projectId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const pool = getPgPool();
-    await pool.query(
-        `DELETE FROM fluxbase_global.rls_policies WHERE project_id = $1 AND table_name = $2 AND policy_name = $3`,
-        [projectId, tableName, policyName]
-    );
-    return NextResponse.json({ success: true });
+    const schemaName = `project_${projectId}`;
+
+    try {
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            
+            // 1. Drop from Database
+            await client.query(`DROP POLICY IF EXISTS "${policyName}" ON "${schemaName}"."${tableName}"`);
+            
+            // 2. Delete from Catalog
+            await client.query(
+                `DELETE FROM fluxbase_global.rls_policies WHERE project_id = $1 AND table_name = $2 AND policy_name = $3`,
+                [projectId, tableName, policyName]
+            );
+
+            // 3. Check if table should keep RLS enabled
+            const others = await client.query(
+                `SELECT id FROM fluxbase_global.rls_policies WHERE project_id = $1 AND table_name = $2 AND enabled = true`,
+                [projectId, tableName]
+            );
+            if (others.rows.length === 0) {
+                await client.query(`ALTER TABLE "${schemaName}"."${tableName}" DISABLE ROW LEVEL SECURITY`);
+            }
+
+            await client.query('COMMIT');
+            return NextResponse.json({ success: true });
+        } catch (dbErr) {
+            await client.query('ROLLBACK');
+            throw dbErr;
+        } finally {
+            client.release();
+        }
+    } catch (e: any) {
+        return NextResponse.json({ success: false, error: e.message }, { status: 400 });
+    }
 }
+

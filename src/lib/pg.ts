@@ -14,18 +14,42 @@ export function getPgPool(): Pool {
             ssl: {
                 rejectUnauthorized: false
             },
-            // Connection pool settings — tuned for long-running serverless + small RDS
             max: 10,
-            idleTimeoutMillis: 60000,        // Close idle connections after 60s
-            connectionTimeoutMillis: 10000,  // Wait up to 10s for a free connection
-            keepAlive: true,                 // Send TCP keepalive packets to detect dead connections
-            keepAliveInitialDelayMillis: 10000, // Start keepalive after 10s idle
+            idleTimeoutMillis: 60000,
+            connectionTimeoutMillis: 10000,
+            keepAlive: true,
+            keepAliveInitialDelayMillis: 10000,
         });
 
-        // Prevent unhandled pool errors from crashing the process
         globalForPg.pgPool.on('error', (err) => {
             console.error('[pg pool] Unexpected error on idle client:', err.message);
+        });
+
+        // Initialize RLS support (auth schema and auth.uid function)
+        setupRlsSupport(globalForPg.pgPool).catch(err => {
+            console.error('[pg pool] Failed to initialize RLS support:', err.message);
         });
     }
     return globalForPg.pgPool;
 }
+
+/**
+ * Ensures the 'auth' schema and 'auth.uid()' convenience function exist in the target database.
+ * This function allows RLS policies to use auth.uid() just like Supabase.
+ */
+async function setupRlsSupport(pool: Pool) {
+    const client = await pool.connect();
+    try {
+        await client.query('CREATE SCHEMA IF NOT EXISTS auth');
+        await client.query(`
+            CREATE OR REPLACE FUNCTION auth.uid() RETURNS text AS $$
+                BEGIN
+                    RETURN current_setting('fluxbase.auth_uid', true)::text;
+                END;
+            $$ LANGUAGE plpgsql STABLE;
+        `);
+    } finally {
+        client.release();
+    }
+}
+
