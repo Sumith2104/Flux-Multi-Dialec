@@ -35,3 +35,22 @@ services:
         sync: false
       - key: SMTP_PASS
         sync: false
+
+  - type: web
+    name: fluxbase-scraper-engine
+    env: node
+    region: singapore
+    plan: starter
+    buildCommand: cd fluxbase-scraper-engine && npm install && npm run build
+    startCommand: cd fluxbase-scraper-engine && npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: AWS_RDS_POSTGRES_URL
+        fromService:
+          name: fluxbase-app
+          envVar: AWS_RDS_POSTGRES_URL
+      - key: AWS_RDS_MYSQL_URL
+        fromService:
+          name: fluxbase-app
+          envVar: AWS_RDS_MYSQL_URL

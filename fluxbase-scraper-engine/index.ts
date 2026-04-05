@@ -135,13 +135,11 @@ async function runScraper(job: any) {
     const runId = uuidv4();
 
     await pgPool.query(`
-        INSERT INTO fluxbase_global.fluxbase_scraper_runs (run_id, scraper_id, status)
+        INSERT INTO fluxbase_global.fluxbase_scraper_runs (id, scraper_id, status)
         VALUES ($1, $2, 'running')
-    `, [runId, job.scraper_id]);
+    `, [runId, job.id]);
 
     try {
-        console.log(`[Eng] Starting scraper job ${job.scraper_id} => ${job.url}`);
-
         // Fetch Project to determine dialect natively via PG pool.
         const { rows: projectRows } = await pgPool.query(`SELECT project_id, dialect FROM fluxbase_global.projects WHERE project_id = $1`, [job.project_id]);
         if (projectRows.length === 0) throw new Error(`Project ${job.project_id} not found.`);
@@ -171,16 +169,16 @@ async function runScraper(job: any) {
         const rowsInserted = await insertRows(projectPool, schemaPath, job.table_name, rows, dialect);
 
         // Success Log
-        await pgPool.query(`UPDATE fluxbase_global.fluxbase_scraper_runs SET status = 'success', rows_inserted = $1, run_time = NOW() WHERE run_id = $2`, [rowsInserted, runId]);
-        await pgPool.query(`UPDATE fluxbase_global.fluxbase_scrapers SET last_run = NOW(), status = 'idle' WHERE scraper_id = $1`, [job.scraper_id]);
+        await pgPool.query(`UPDATE fluxbase_global.fluxbase_scraper_runs SET status = 'success', rows_inserted = $1, created_at = NOW() WHERE id = $2`, [rowsInserted, runId]);
+        await pgPool.query(`UPDATE fluxbase_global.fluxbase_scrapers SET last_run = NOW(), status = 'idle' WHERE id = $1`, [job.id]);
 
-        console.log(`[Eng] Job ${job.scraper_id} success. Inserted ${rowsInserted} rows.`);
+        console.log(`[Eng] Job ${job.id} success. Inserted ${rowsInserted} rows.`);
         return rowsInserted;
 
     } catch (error: any) {
-        console.error(`[Eng] Job ${job.scraper_id} failed:`, error.message);
-        await pgPool.query(`UPDATE fluxbase_global.fluxbase_scraper_runs SET status = 'failed', error_message = $1, run_time = NOW() WHERE run_id = $2`, [error.message || 'Unknown Error', runId]);
-        await pgPool.query(`UPDATE fluxbase_global.fluxbase_scrapers SET status = 'failed' WHERE scraper_id = $1`, [job.scraper_id]);
+        console.error(`[Eng] Job ${job.id} failed:`, error.message);
+        await pgPool.query(`UPDATE fluxbase_global.fluxbase_scraper_runs SET status = 'failed', error_message = $1, created_at = NOW() WHERE id = $2`, [error.message || 'Unknown Error', runId]);
+        await pgPool.query(`UPDATE fluxbase_global.fluxbase_scrapers SET status = 'failed' WHERE id = $1`, [job.id]);
         throw error;
     }
 }
@@ -231,7 +229,7 @@ function startScraperDaemon() {
                     else if (job.schedule === 'every 6 hours' || job.schedule === '6h') interval = '6 HOURS';
                     else if (job.schedule === 'daily' || job.schedule === '24h') interval = '1 DAY';
 
-                    await pgPool.query(`UPDATE fluxbase_global.fluxbase_scrapers SET next_run = NOW() + INTERVAL '${interval}' WHERE scraper_id = $1`, [job.scraper_id]);
+                    await pgPool.query(`UPDATE fluxbase_global.fluxbase_scrapers SET next_run = NOW() + INTERVAL '${interval}' WHERE id = $1`, [job.id]);
                 }
             }
         } catch (error) {

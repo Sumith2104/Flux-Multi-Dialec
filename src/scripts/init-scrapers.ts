@@ -50,15 +50,14 @@ async function initScrapers() {
                 selectors JSONB NOT NULL,
                 table_name TEXT NOT NULL,
                 schedule TEXT DEFAULT 'manual',
-                created_at TIMESTAMP DEFAULT NOW(),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                 status TEXT DEFAULT 'idle',
-                last_run TIMESTAMP,
-                next_run TIMESTAMP
+                last_run TIMESTAMP WITH TIME ZONE,
+                next_run TIMESTAMP WITH TIME ZONE
             );
         `);
 
         console.log("🔨 Creating Table: fluxbase_global.fluxbase_scraper_runs");
-        // We drop and re-create for safety on a fresh feature
         await client.query(`
             CREATE TABLE IF NOT EXISTS fluxbase_global.fluxbase_scraper_runs (
                 id UUID PRIMARY KEY,
@@ -67,7 +66,7 @@ async function initScrapers() {
                 status TEXT NOT NULL,
                 duration_ms INT,
                 error_message TEXT,
-                created_at TIMESTAMP DEFAULT NOW()
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
         `);
 
