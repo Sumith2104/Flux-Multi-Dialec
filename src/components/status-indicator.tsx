@@ -93,9 +93,9 @@ export function StatusIndicator() {
         offline: 'Service disruption',
     };
 
-    // Memory thresholds relative to 1 GB target
-    const memWarning = heapMB && heapMB.used > 800;
-    const memPct = heapMB ? Math.min(100, Math.round((heapMB.used / 1024) * 100)) : 0;
+    // Memory thresholds relative to the actual JS heap limit (not hardcoded 1GB)
+    const memWarning = heapMB && ((heapMB.used / heapMB.total) > 0.8);
+    const memPct = heapMB && heapMB.total > 0 ? Math.min(100, Math.round((heapMB.used / heapMB.total) * 100)) : 0;
 
     return (
         <Popover>
@@ -110,7 +110,7 @@ export function StatusIndicator() {
                         )}
                         <span className={cn('relative inline-flex rounded-full h-2 w-2', colors[overall])} />
                     </span>
-                    {/* Show orange memory warning text when over 800 MB */}
+                    {/* Show orange memory warning text when over 80% capacity */}
                     {memWarning ? (
                         <span className="hidden lg:block text-xs text-amber-400 font-medium">🧠 {heapMB!.used} MB</span>
                     ) : (
@@ -158,7 +158,7 @@ export function StatusIndicator() {
                                     'text-[10px] font-mono font-semibold',
                                     memWarning ? 'text-amber-400' : 'text-zinc-300'
                                 )}>
-                                    {heapMB.used} MB / 1 GB
+                                    {heapMB.used} MB / {(heapMB.total >= 1024) ? (heapMB.total / 1024).toFixed(1) + ' GB' : heapMB.total + ' MB'}
                                 </span>
                             ) : (
                                 <span className="text-[10px] text-zinc-600">N/A</span>
