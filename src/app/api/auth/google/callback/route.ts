@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { createSessionCookie } from '@/lib/auth';
 import { sendWelcomeEmail } from '@/lib/email';
-import { getOAuthConfig } from '@/lib/oauth-config';
+import { getOAuthConfig, getBaseOrigin } from '@/lib/oauth-config';
 import crypto from 'crypto';
 
 export async function GET(request: NextRequest) {
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 
     if (!code || !clientId || !clientSecret) {
         console.error("Missing Google Code or Environment Variables for this platform");
-        return NextResponse.redirect(new URL('/?error=GoogleServerAuthFailed', request.url));
+        return NextResponse.redirect(new URL('/?error=GoogleServerAuthFailed', getBaseOrigin(request)));
     }
 
     try {
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
         
         if (!accessToken) {
             console.error("Google OAuth token exchange failed:", tokenData);
-            return NextResponse.redirect(new URL('/?error=GoogleTokenFailed', request.url));
+            return NextResponse.redirect(new URL('/?error=GoogleTokenFailed', getBaseOrigin(request)));
         }
 
         // 2. Fetch User Profile
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
         const email = userData.email;
         
         if (!email) {
-            return NextResponse.redirect(new URL('/?error=GoogleEmailMissing', request.url));
+            return NextResponse.redirect(new URL('/?error=GoogleEmailMissing', getBaseOrigin(request)));
         }
 
         const name = userData.name || "Google User";
@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
 
         if (userSettings[0]?.two_factor_enabled) {
             // Redirect back to home with 2FA flags so the LoginDialog can catch it
-            const loginUrl = new URL('/', request.url);
+            const loginUrl = new URL('/', getBaseOrigin(request));
             loginUrl.searchParams.set('requires2FA', 'true');
             loginUrl.searchParams.set('userId', userId);
             return NextResponse.redirect(loginUrl);
@@ -102,10 +102,11 @@ export async function GET(request: NextRequest) {
 
         // 6. Redirect seamlessly
         const redirectPath = isNewUser ? '/pricing?onboarding=true' : '/dashboard/projects';
-        return NextResponse.redirect(new URL(redirectPath, request.url));
+        const finalOrigin = getBaseOrigin(request);
+        return NextResponse.redirect(new URL(redirectPath, finalOrigin));
 
     } catch (error) {
         console.error("Google Auth Exception:", error);
-        return NextResponse.redirect(new URL('/?error=GoogleServerException', request.url));
+        return NextResponse.redirect(new URL('/?error=GoogleServerException', getBaseOrigin(request)));
     }
 }

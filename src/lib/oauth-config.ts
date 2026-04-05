@@ -5,13 +5,33 @@ interface OAuthConfig {
     clientSecret: string | undefined;
 }
 
-export function getOAuthConfig(request: NextRequest, provider: 'github' | 'google'): OAuthConfig & { redirectUri: string } {
-    // Standard industry pattern for detecting the public URL behind a proxy (Render/Vercel/Local)
+export function getBaseOrigin(request: NextRequest): string {
+    // 1. Priority 1: Render's platform-provided public URL (Guaranteed correct on Render)
+    if (process.env.RENDER_EXTERNAL_URL) {
+        return process.env.RENDER_EXTERNAL_URL.replace(/\/$/, "");
+    }
+
+    // 2. Priority 2: Standard header detection (standard for proxies/local)
     const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
     const proto = request.headers.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https');
-    const baseOrigin = `${proto}://${host}`;
+    
+    let origin = `${proto}://${host}`;
 
-    // 2. Determine Environment Prefix based on the detected host
+    // 3. Fallback/Sync: Ensure protocol matches the environment strictly
+    if (!host.includes('localhost') && !host.includes('127.0.0.1')) {
+        origin = origin.replace('http://', 'https://');
+    } else {
+        origin = origin.replace('https://', 'http://');
+    }
+
+    return origin;
+}
+
+export function getOAuthConfig(request: NextRequest, provider: 'github' | 'google'): OAuthConfig & { redirectUri: string } {
+    const baseOrigin = getBaseOrigin(request);
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
+
+    // Determine Environment Prefix based on the detected host
     let envPrefix = 'LOCAL';
     if (host.includes('vercel.app')) {
         envPrefix = 'VERCEL';
@@ -20,9 +40,6 @@ export function getOAuthConfig(request: NextRequest, provider: 'github' | 'googl
     }
 
     const redirectUri = `${baseOrigin}/api/auth/${provider}/callback`.replace('//api', '/api');
-
-    // DEBUG LOG: This will show up in your Render Logs to see exactly what URI is being sent
-    // console.log(`[OAuth Debug] Provider: ${provider}, Env: ${envPrefix}, Origin: ${baseOrigin}, RedirectURI: ${redirectUri}`);
 
     if (provider === 'github') {
         return {

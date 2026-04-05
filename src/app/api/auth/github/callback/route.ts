@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { createSessionCookie } from '@/lib/auth';
 import { sendWelcomeEmail } from '@/lib/email';
-import { getOAuthConfig } from '@/lib/oauth-config';
+import { getOAuthConfig, getBaseOrigin } from '@/lib/oauth-config';
 import crypto from 'crypto';
 
 export async function GET(request: NextRequest) {
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 
     if (!code || !clientId || !clientSecret) {
         console.error("Missing GitHub Code or Environment Variables for this platform");
-        return NextResponse.redirect(new URL('/?error=GithubAuthFailed', request.url));
+        return NextResponse.redirect(new URL('/?error=GithubAuthFailed', getBaseOrigin(request)));
     }
 
     try {
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
         
         if (!accessToken) {
             console.error("GitHub OAuth Error:", tokenData);
-            return NextResponse.redirect(new URL('/?error=GithubTokenFailed', request.url));
+            return NextResponse.redirect(new URL('/?error=GithubTokenFailed', getBaseOrigin(request)));
         }
 
         // 2. Fetch User Profile
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
         const email = userData.email || (primaryEmailObj ? primaryEmailObj.email : null);
         
         if (!email) {
-            return NextResponse.redirect(new URL('/?error=GithubEmailMissing', request.url));
+            return NextResponse.redirect(new URL('/?error=GithubEmailMissing', getBaseOrigin(request)));
         }
 
         const name = userData.name || userData.login || "GitHub User";
@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
         );
 
         if (userSettings[0]?.two_factor_enabled) {
-            const loginUrl = new URL('/', request.url);
+            const loginUrl = new URL('/', getBaseOrigin(request));
             loginUrl.searchParams.set('requires2FA', 'true');
             loginUrl.searchParams.set('userId', userId);
             return NextResponse.redirect(loginUrl);
@@ -111,10 +111,11 @@ export async function GET(request: NextRequest) {
 
         // 7. Redirect seamlessly
         const redirectPath = isNewUser ? '/pricing?onboarding=true' : '/dashboard/projects';
-        return NextResponse.redirect(new URL(redirectPath, request.url));
+        const baseOrigin = getBaseOrigin(request);
+        return NextResponse.redirect(new URL(redirectPath, baseOrigin));
 
     } catch (error) {
         console.error("GitHub Auth Exception:", error);
-        return NextResponse.redirect(new URL('/?error=GithubServerException', request.url));
+        return NextResponse.redirect(new URL('/?error=GithubServerException', getBaseOrigin(request)));
     }
 }
