@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     const code = searchParams.get('code');
     
     // Use dynamic configuration
-    const { clientId, clientSecret } = getOAuthConfig(request, 'google');
+    const { clientId, clientSecret, redirectUri } = getOAuthConfig(request, 'google');
 
     if (!code || !clientId || !clientSecret) {
         console.error("Missing Google Code or Environment Variables for this platform");
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
                 code,
                 client_id: clientId,
                 client_secret: clientSecret,
-                redirect_uri: `${request.nextUrl.origin}/api/auth/google/callback`,
+                redirect_uri: redirectUri,
                 grant_type: 'authorization_code',
             })
         });
