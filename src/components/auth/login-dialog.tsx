@@ -26,6 +26,19 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
     const [requires2FA, setRequires2FA] = useState(false);
     const [tempUserId, setTempUserId] = useState<string | null>(null);
     const [twoFactorCode, setTwoFactorCode] = useState('');
+    const [lastMethod, setLastMethod] = useState<string | null>(null);
+
+    // Hydrate last login method from localStorage on mount
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            setLastMethod(localStorage.getItem('lastLoginMethod'));
+        }
+    }, [open]);
+
+    const handleSocialLogin = (provider: 'google' | 'github') => {
+        localStorage.setItem('lastLoginMethod', provider);
+        window.location.href = `/api/auth/${provider}`;
+    };
 
     // Listen for URL params in case of GitHub 2FA redirect
     useState(() => {
@@ -42,6 +55,7 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
     async function handleEmailLogin(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
         setIsLoading(true);
+        localStorage.setItem('lastLoginMethod', 'email');
         const formData = new FormData(event.currentTarget);
         const email = formData.get('email') as string;
         const password = formData.get('password') as string;
@@ -205,7 +219,8 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
                 ) : (
                     <div className="space-y-4 pt-4">
                         <div className="grid grid-cols-2 gap-4">
-                            <Button onClick={() => window.location.href = '/api/auth/google'} variant="outline" type="button" disabled={isLoading} className="border-white/10 hover:bg-white/5 hover:text-white transition-colors">
+                            <Button onClick={() => handleSocialLogin('google')} variant="outline" type="button" disabled={isLoading} className={cn("border-white/10 relative hover:bg-white/5 hover:text-white transition-colors", lastMethod === 'google' && "border-primary/50 bg-primary/5")}>
+                                {lastMethod === 'google' && <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg whitespace-nowrap z-10">Last Used</span>}
                                 <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
                                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
                                     <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
@@ -214,7 +229,8 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
                                 </svg>
                                 Google
                             </Button>
-                            <Button onClick={() => window.location.href = '/api/auth/github'} variant="outline" type="button" disabled={isLoading} className="border-white/10 hover:bg-white/5 hover:text-white transition-colors">
+                            <Button onClick={() => handleSocialLogin('github')} variant="outline" type="button" disabled={isLoading} className={cn("border-white/10 relative hover:bg-white/5 hover:text-white transition-colors", lastMethod === 'github' && "border-primary/50 bg-primary/5")}>
+                                {lastMethod === 'github' && <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg whitespace-nowrap z-10">Last Used</span>}
                                 <Github className="mr-2 h-4 w-4" />
                                 GitHub
                             </Button>
@@ -251,12 +267,12 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
                                     className="border-white/10 bg-black/40 focus-visible:ring-2 focus-visible:ring-orange-500"
                                 />
                             </div>
-                            <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-5" disabled={isLoading}>
+                            <Button type="submit" className={cn("w-full transition-all duration-300", lastMethod === 'email' && "ring-2 ring-primary ring-offset-2 ring-offset-zinc-950")} disabled={isLoading}>
                                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                {isLoading ? 'Logging in...' : 'Login'}
+                                {isLoading ? 'Logging In...' : 'Continue with Email'}
                             </Button>
                         </form>
-                        <div className="text-center text-sm text-muted-foreground">
+                        <div className="text-center text-sm text-muted-foreground mt-4 flex items-center justify-center gap-1.5 flex-col xs:flex-row">
                             Don't have an account?{' '}
                             <span onClick={onSwitchToSignup} className="cursor-pointer text-primary hover:underline">
                                 Sign up
