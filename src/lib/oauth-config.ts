@@ -6,26 +6,16 @@ interface OAuthConfig {
 }
 
 export function getOAuthConfig(request: NextRequest, provider: 'github' | 'google'): OAuthConfig & { redirectUri: string } {
-    // 1. Determine the Origin with priority:
-    //    A. Render/Vercel platform-provided external URL (Best for proxies)
-    //    B. NEXT_PUBLIC_APP_URL (User's manually specified base)
-    //    C. request.nextUrl (Fallback mechanism)
-    
-    let baseOrigin = process.env.RENDER_EXTERNAL_URL || process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
+    // Standard industry pattern for detecting the public URL behind a proxy (Render/Vercel/Local)
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
+    const proto = request.headers.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https');
+    const baseOrigin = `${proto}://${host}`;
 
-    // Clean up protocol for local development (MUST be http for localhost)
-    if (baseOrigin.includes('localhost') || baseOrigin.includes('127.0.0.1')) {
-        baseOrigin = baseOrigin.replace('https://', 'http://');
-    } else {
-        // Force HTTPS for everything else to match Google/GitHub configuration on production
-        baseOrigin = baseOrigin.replace('http://', 'https://');
-    }
-
-    // 2. Determine Environment Prefix
+    // 2. Determine Environment Prefix based on the detected host
     let envPrefix = 'LOCAL';
-    if (baseOrigin.includes('vercel.app') || process.env.VERCEL) {
+    if (host.includes('vercel.app')) {
         envPrefix = 'VERCEL';
-    } else if (baseOrigin.includes('render.com') || process.env.RENDER) {
+    } else if (host.includes('render.com')) {
         envPrefix = 'RENDER';
     }
 
