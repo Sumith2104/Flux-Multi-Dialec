@@ -20,6 +20,7 @@ export interface RealtimeEvent {
 
 export function useRealtimeSubscription(projectId: string | undefined) {
     const abortRef = useRef<AbortController | null>(null);
+    const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
     const [status, setStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
     const [events, setEvents] = useState<RealtimeEvent[]>([]);
     const [lastEvent, setLastEvent] = useState<RealtimeEvent | null>(null);
@@ -27,11 +28,22 @@ export function useRealtimeSubscription(projectId: string | undefined) {
     const retryRef = useRef(0);
     const mountedRef = useRef(true);
 
+    const cleanup = useCallback(() => {
+        if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+        if (readerRef.current) {
+            readerRef.current.cancel().catch(() => {});
+            readerRef.current = null;
+        }
+        if (abortRef.current) {
+            abortRef.current.abort();
+            abortRef.current = null;
+        }
+    }, []);
+
     const connect = useCallback(async () => {
         if (!projectId || !mountedRef.current) return;
 
-        // Cancel any existing stream
-        if (abortRef.current) abortRef.current.abort();
+        cleanup();
         abortRef.current = new AbortController();
 
         setStatus('connecting');
@@ -44,6 +56,11 @@ export function useRealtimeSubscription(projectId: string | undefined) {
             );
 
             if (!response.ok) {
+                if (response.status === 401) {
+                    console.error('[Realtime] Unauthorized. Please log in.');
+                    setStatus('closed');
+                    return;
+                }
                 throw new Error(`SSE ${response.status}: ${response.statusText}`);
             }
 
@@ -52,49 +69,65 @@ export function useRealtimeSubscription(projectId: string | undefined) {
             retryRef.current = 0;
             console.log('[Realtime] SSE connected ✅');
 
-            const reader = response.body!.getReader();
+            if (!response.body) return;
+            readerRef.current = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
 
-            while (mountedRef.current) {
-                const { done, value } = await reader.read();
-                if (done) break;
+            try {
+                while (mountedRef.current) {
+                    const { done, value } = await readerRef.current.read();
+                    if (done) break;
 
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() ?? ''; // keep trailing incomplete line
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() ?? ''; // keep trailing incomplete line
 
-                for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue;
-                    const raw = line.slice(6).trim();
-                    if (!raw) continue;
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) {
+                            if (line.includes('heartbeat')) {
+                                // console.debug('[Realtime] Heartbeat received');
+                            }
+                            continue;
+                        }
+                        const raw = line.slice(6).trim();
+                        if (!raw) continue;
 
-                    try {
-                        const payload = JSON.parse(raw) as RealtimeEvent;
-                        if (payload.type === 'connected') continue; // heartbeat
+                        try {
+                            const payload = JSON.parse(raw) as RealtimeEvent;
+                            if (payload.type === 'connected') continue;
 
-                        // Normalize: support both 'table_id'/'table_name' and 'table'
-                        const tableRef = payload.table || payload.table_id || payload.table_name;
-                        const normalized: RealtimeEvent = {
-                            ...payload,
-                            type: (payload.event_type === 'row.inserted' || payload.event_type === 'INSERT') ? 'update'
-                                : (payload.event_type === 'row.updated' || payload.event_type === 'UPDATE') ? 'update'
-                                    : (payload.event_type === 'row.deleted' || payload.event_type === 'DELETE') ? 'update'
-                                        : payload.type || 'live',
-                            table: tableRef,
-                        };
+                            // Normalize: support both 'table_id'/'table_name' and 'table'
+                            const tableRef = payload.table || payload.table_id || payload.table_name;
+                            const normalized: RealtimeEvent = {
+                                ...payload,
+                                type: (payload.event_type === 'row.inserted' || payload.event_type === 'INSERT' || payload.operation === 'INSERT') ? 'update'
+                                    : (payload.event_type === 'row.updated' || payload.event_type === 'UPDATE' || payload.operation === 'UPDATE') ? 'update'
+                                        : (payload.event_type === 'row.deleted' || payload.event_type === 'DELETE' || payload.operation === 'DELETE') ? 'update'
+                                            : payload.type || 'live',
+                                table: tableRef,
+                            };
 
-                        if (!mountedRef.current) break;
-                        setLastEvent(normalized);
-                        setEvents(prev => [normalized, ...prev].slice(0, 20));
-                    } catch (e) {
-                        console.warn('[Realtime] Parse error:', e);
+                            if (!mountedRef.current) break;
+                            setLastEvent(normalized);
+                            setEvents(prev => [normalized, ...prev].slice(0, 20));
+                        } catch (e) {
+                            console.warn('[Realtime] Parse error:', e);
+                        }
                     }
+                }
+            } finally {
+                if (readerRef.current) {
+                    readerRef.current.releaseLock();
+                    readerRef.current = null;
                 }
             }
         } catch (err: any) {
-            if (err.name === 'AbortError') return; // intentional close
-            console.warn('[Realtime] SSE error:', err.message);
+            if (err.name === 'AbortError') {
+                console.log('[Realtime] Connection closed intentionally.');
+                return;
+            }
+            console.warn('[Realtime] SSE stream error:', err.message);
         }
 
         if (!mountedRef.current) return;
@@ -108,23 +141,35 @@ export function useRealtimeSubscription(projectId: string | undefined) {
             if (mountedRef.current) connect();
         }, delay);
 
-    }, [projectId]);
+    }, [projectId, cleanup]);
 
     useEffect(() => {
         mountedRef.current = true;
         retryRef.current = 0;
+        
+        // Initial connect
         connect();
 
-        return () => {
-            mountedRef.current = false;
-            if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-            if (abortRef.current) abortRef.current.abort();
+        // Handle page visibility for tab switching
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible' && status === 'closed') {
+                console.log('[Realtime] Tab visible, refreshing connection…');
+                retryRef.current = 0;
+                connect();
+            }
         };
-    }, [connect, projectId]);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            console.log('[Realtime] Hook unmounting, cleaning up…');
+            mountedRef.current = false;
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            cleanup();
+        };
+    }, [connect, projectId, cleanup, status]);
 
     const sendMessage = useCallback((_message: any) => {
-        // No-op for SSE (read-only); kept for API compatibility.
-        console.warn('[Realtime] sendMessage is a no-op in SSE mode.');
+        console.warn('[Realtime] sendMessage is a no-op in SSE mode (read-only).');
     }, []);
 
     return {

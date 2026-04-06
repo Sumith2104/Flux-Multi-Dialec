@@ -189,12 +189,13 @@ function connectSSE() {
     if (sseAbort) sseAbort.abort();
     sseAbort = new AbortController();
 
-    const url = `${config.fluxUrl}/api/realtime/subscribe?projectId=${config.projectId}`;
+    // Use the test app's internal proxy (/api/stream) instead of direct Fluxbase URL.
+    // This avoids CORS issues and provides a more stable connection locally.
+    const url = `/api/stream`;
 
     (async () => {
         try {
             const response = await fetch(url, {
-                headers: { 'Authorization': `Bearer ${config.apiKey}` },
                 signal: sseAbort.signal,
             });
 
@@ -226,8 +227,10 @@ function connectSSE() {
 
                             const tbl = payload.table_id || payload.table_name;
                             if (tbl === config.table) {
+                                // Extract row from payload.data.new (normalized by backend)
                                 const newRow = payload.data?.new;
-                                const ev = payload.event_type || '';
+                                const ev = payload.event_type || payload.operation || '';
+
                                 if (newRow && (ev === 'row.inserted' || ev === 'INSERT')) {
                                     const banner = msgList.querySelector('.welcome-banner');
                                     if (banner) banner.remove();

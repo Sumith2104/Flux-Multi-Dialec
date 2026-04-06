@@ -214,7 +214,9 @@ export async function POST(request: Request) {
                         operation: uppercaseQuery.startsWith('INSERT') ? 'INSERT' : uppercaseQuery.startsWith('UPDATE') ? 'UPDATE' : 'DELETE',
                         timestamp: new Date().toISOString(),
                         project_id: projectId,
-                        data: {}
+                        data: {
+                            new: newDataParsed || (uppercaseQuery.startsWith('INSERT') && Array.isArray(params) ? { raw_params: params } : undefined)
+                        }
                     };
                     const payloadString = JSON.stringify(payload).replace(/'/g, "''");
                     await pool.query(`NOTIFY fluxbase_live, '${payloadString}'`).catch(err => {
