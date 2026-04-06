@@ -14,7 +14,7 @@ export function getPgPool(): Pool {
             ssl: {
                 rejectUnauthorized: false
             },
-            max: 5, // Reduced for safety on shared RDS instances
+            max: 20, // Now safe as real-time uses exactly 1 shared connection
             idleTimeoutMillis: 1000, // Close idle connections after 1s to free up the pool faster
             connectionTimeoutMillis: 15000, // Wait up to 15s for a free connection
             keepAlive: true,
