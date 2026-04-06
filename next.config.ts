@@ -4,9 +4,7 @@ import createNextIntlPlugin from 'next-intl/plugin';
 const withNextIntl = createNextIntlPlugin();
 
 const nextConfig: NextConfig = {
-  experimental: {
-    serverComponentsExternalPackages: ['@genkit-ai/ai', '@genkit-ai/core', '@genkit-ai/googleai'],
-  },
+  serverExternalPackages: ['@genkit-ai/ai', '@genkit-ai/core', '@genkit-ai/googleai'],
   // ... existing config ...
   async headers() {
     return [

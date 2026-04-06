@@ -56,59 +56,71 @@ export async function GET(req: NextRequest) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
         async start(controller) {
-            try {
-                const client = await pool.connect();
-                const { redis } = await import('@/lib/redis');
-                
-                // Increment live sessions count for this project
-                await redis.incr(`live_sessions:${projectId}`).catch(() => {});
-                
-                // Send initial heartbeat
-                controller.enqueue(encoder.encode('retry: 10000\n\n'));
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'connected', timestamp: new Date().toISOString() })}\n\n`));
-
-                const handleNotification = (msg: any) => {
-                    if (msg.channel === 'fluxbase_live') {
-                        try {
-                            const payload = JSON.parse(msg.payload);
-                            // Only send if it belongs to this project
-                            if (payload.project_id === projectId) {
-                                controller.enqueue(encoder.encode(`data: ${msg.payload}\n\n`));
-                            }
-                        } catch (e) {
-                            console.error('SSE payload parse error:', e);
-                        }
-                    }
-                };
-
-                client.on('notification', handleNotification);
-                await client.query('LISTEN fluxbase_live');
-
-                // Keep-alive heartbeat every 15s to prevent timeouts
-                const interval = setInterval(() => {
-                    try {
-                        controller.enqueue(encoder.encode(': heartbeat\n\n'));
-                    } catch (e) {
-                        clearInterval(interval);
-                    }
-                }, 15000);
-
-                req.signal.addEventListener('abort', async () => {
-                    clearInterval(interval);
-                    client.off('notification', handleNotification);
-                    await client.query('UNLISTEN fluxbase_live').catch(() => {});
-                    client.release();
-                    
-                    // Decrement live sessions count for this project
+                let client: any = null;
+                let interval: NodeJS.Timeout | null = null;
+                try {
+                    client = await pool.connect();
                     const { redis } = await import('@/lib/redis');
-                    await redis.decr(`live_sessions:${projectId}`).catch(() => {});
                     
-                    try { controller.close(); } catch(e) {}
-                });
-            } catch (err) {
-                console.error("Realtime Stream Error:", err);
-                try { controller.error(err); } catch(e) {}
-            }
+                    // Cleanup function to ensure client is released exactly once
+                    let isReleased = false;
+                    const releaseClient = async () => {
+                        if (isReleased || !client) return;
+                        isReleased = true;
+                        
+                        if (interval) clearInterval(interval);
+                        client.off('notification', handleNotification);
+                        await client.query('UNLISTEN fluxbase_live').catch(() => {});
+                        client.release();
+                        
+                        // Decrement live sessions count for this project
+                        const { redis: r } = await import('@/lib/redis');
+                        await r.decr(`live_sessions:${projectId}`).catch(() => {});
+                    };
+
+                    // Handle premature aborts
+                    req.signal.addEventListener('abort', releaseClient);
+
+                    // Increment live sessions count for this project
+                    await redis.incr(`live_sessions:${projectId}`).catch(() => {});
+                    
+                    // Send initial heartbeat
+                    controller.enqueue(encoder.encode('retry: 10000\n\n'));
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'connected', timestamp: new Date().toISOString() })}\n\n`));
+
+                    const handleNotification = (msg: any) => {
+                        if (msg.channel === 'fluxbase_live') {
+                            try {
+                                const payload = JSON.parse(msg.payload);
+                                if (payload.project_id === projectId) {
+                                    controller.enqueue(encoder.encode(`data: ${msg.payload}\n\n`));
+                                }
+                            } catch (e) {
+                                console.error('SSE payload parse error:', e);
+                            }
+                        }
+                    };
+
+                    client.on('notification', handleNotification);
+                    await client.query('LISTEN fluxbase_live');
+
+                    // Keep-alive heartbeat every 15s to prevent timeouts
+                    const interval = setInterval(() => {
+                        try {
+                            controller.enqueue(encoder.encode(': heartbeat\n\n'));
+                        } catch (e) {
+                            clearInterval(interval);
+                            releaseClient();
+                        }
+                    }, 15000);
+
+                } catch (err) {
+                    console.error("Realtime Stream Error:", err);
+                    if (client) {
+                        client.release();
+                    }
+                    try { controller.error(err); } catch(e) {}
+                }
         }
     });
 
