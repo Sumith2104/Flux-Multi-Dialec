@@ -2,139 +2,136 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-// Use environment variable or fallback to localhost for development
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:4000';
-
-const MAX_RETRIES = 5;
-const BASE_BACKOFF_MS = 2000; // Start at 2s, doubles each time (2s, 4s, 8s, 16s, 32s)
+// Native SSE-based realtime subscription.
+// Connects directly to /api/realtime/subscribe (same origin, no WS needed).
 
 export interface RealtimeEvent {
-    type: 'live' | 'update' | 'subscribed' | 'error';
+    type: 'live' | 'update' | 'subscribed' | 'error' | 'connected';
     project_id?: string;
     table?: string;
+    table_id?: string;
+    table_name?: string;
     operation?: string;
+    event_type?: string;
     data?: any;
     timestamp?: string;
     [key: string]: any;
 }
 
 export function useRealtimeSubscription(projectId: string | undefined) {
-    const wsRef = useRef<WebSocket | null>(null);
+    const abortRef = useRef<AbortController | null>(null);
     const [status, setStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
     const [events, setEvents] = useState<RealtimeEvent[]>([]);
     const [lastEvent, setLastEvent] = useState<RealtimeEvent | null>(null);
-    const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-    const retryCountRef = useRef(0);
-    const shouldReconnectRef = useRef(true);
+    const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const retryRef = useRef(0);
+    const mountedRef = useRef(true);
 
     const connect = useCallback(async () => {
-        if (!projectId || !shouldReconnectRef.current) return;
+        if (!projectId || !mountedRef.current) return;
 
-        // Clean up previous connection if it exists
-        if (wsRef.current) {
-            wsRef.current.onclose = null; // Prevent recursive reconnect trigger
-            wsRef.current.close();
-        }
+        // Cancel any existing stream
+        if (abortRef.current) abortRef.current.abort();
+        abortRef.current = new AbortController();
+
+        setStatus('connecting');
+        console.log(`[Realtime] Connecting via SSE for project ${projectId}…`);
 
         try {
-            console.log(`[Realtime] Acquiring token... (attempt ${retryCountRef.current + 1}/${MAX_RETRIES})`);
-            const tokenRes = await fetch('/api/realtime/token');
-            const { token, error } = await tokenRes.json();
-            
-            if (error || !token) {
-                console.error('[Realtime] Failed to get token:', error);
-                setStatus('closed');
-                return;
+            const response = await fetch(
+                `/api/realtime/subscribe?projectId=${projectId}`,
+                { signal: abortRef.current.signal }
+            );
+
+            if (!response.ok) {
+                throw new Error(`SSE ${response.status}: ${response.statusText}`);
             }
 
-            const url = `${WS_URL}?token=${token}`;
-            console.log(`[Realtime] Connecting to WebSocket...`);
-            const ws = new WebSocket(url);
-            wsRef.current = ws;
+            if (!mountedRef.current) return;
+            setStatus('open');
+            retryRef.current = 0;
+            console.log('[Realtime] SSE connected ✅');
 
-            ws.onopen = () => {
-                console.log('[Realtime] WebSocket connected');
-                setStatus('open');
-                retryCountRef.current = 0; // Reset retry counter on successful connection
-                // Subscribe to project-wide events using the wildcard '*'
-                ws.send(JSON.stringify({ 
-                    type: 'subscribe', 
-                    projectId: projectId, 
-                    tableId: '*' 
-                }));
-            };
+            const reader = response.body!.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
 
-            ws.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data) as RealtimeEvent;
-                    
-                    if (data.type === 'live' || data.type === 'update') {
-                        setLastEvent(data);
-                        // Phase 4: Buffer capped at 20 (was 50) — events array is display-only;
-                        // the lastEvent ref is what actually drives side effects.
-                        setEvents(prev => [data, ...prev].slice(0, 20));
+            while (mountedRef.current) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() ?? ''; // keep trailing incomplete line
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    const raw = line.slice(6).trim();
+                    if (!raw) continue;
+
+                    try {
+                        const payload = JSON.parse(raw) as RealtimeEvent;
+                        if (payload.type === 'connected') continue; // heartbeat
+
+                        // Normalize: support both 'table_id'/'table_name' and 'table'
+                        const tableRef = payload.table || payload.table_id || payload.table_name;
+                        const normalized: RealtimeEvent = {
+                            ...payload,
+                            type: (payload.event_type === 'row.inserted' || payload.event_type === 'INSERT') ? 'update'
+                                : (payload.event_type === 'row.updated' || payload.event_type === 'UPDATE') ? 'update'
+                                    : (payload.event_type === 'row.deleted' || payload.event_type === 'DELETE') ? 'update'
+                                        : payload.type || 'live',
+                            table: tableRef,
+                        };
+
+                        if (!mountedRef.current) break;
+                        setLastEvent(normalized);
+                        setEvents(prev => [normalized, ...prev].slice(0, 20));
+                    } catch (e) {
+                        console.warn('[Realtime] Parse error:', e);
                     }
-                } catch (e) {
-                    console.error('[Realtime] Failed to parse message:', e);
                 }
-            };
-
-            ws.onclose = () => {
-                if (!shouldReconnectRef.current) return;
-
-                setStatus('closed');
-                retryCountRef.current += 1;
-
-                if (retryCountRef.current > MAX_RETRIES) {
-                    console.warn(`[Realtime] Max retries (${MAX_RETRIES}) reached. Stopping reconnection.`);
-                    return;
-                }
-
-                // Exponential backoff: 2s, 4s, 8s, 16s, 32s
-                const delay = Math.min(BASE_BACKOFF_MS * Math.pow(2, retryCountRef.current - 1), 30000);
-                console.log(`[Realtime] Connection closed. Retrying in ${delay / 1000}s... (${retryCountRef.current}/${MAX_RETRIES})`);
-
-                if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-                reconnectTimeoutRef.current = setTimeout(connect, delay);
-            };
-
-            ws.onerror = (err) => {
-                // onerror always fires before onclose, so we let onclose handle reconnecting
-                console.warn('[Realtime] WebSocket error — will retry via onclose handler.');
-                ws.close();
-            };
-        } catch (e) {
-            console.error('[Realtime] Connection failed:', e);
-            setStatus('closed');
+            }
+        } catch (err: any) {
+            if (err.name === 'AbortError') return; // intentional close
+            console.warn('[Realtime] SSE error:', err.message);
         }
+
+        if (!mountedRef.current) return;
+
+        // Exponential backoff: 1s → 2s → 4s → 8s → max 15s
+        setStatus('closed');
+        retryRef.current += 1;
+        const delay = Math.min(1000 * Math.pow(2, retryRef.current - 1), 15000);
+        console.log(`[Realtime] Reconnecting in ${delay}ms…`);
+        reconnectTimerRef.current = setTimeout(() => {
+            if (mountedRef.current) connect();
+        }, delay);
+
     }, [projectId]);
 
     useEffect(() => {
-        shouldReconnectRef.current = true;
-        retryCountRef.current = 0;
+        mountedRef.current = true;
+        retryRef.current = 0;
         connect();
 
         return () => {
-            shouldReconnectRef.current = false; // Prevent any pending reconnects from firing
-            if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-            if (wsRef.current) {
-                wsRef.current.onclose = null; // Prevent reconnect on intentional close
-                wsRef.current.close();
-            }
+            mountedRef.current = false;
+            if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+            if (abortRef.current) abortRef.current.abort();
         };
     }, [connect, projectId]);
 
-    const sendMessage = useCallback((message: any) => {
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify(message));
-        }
+    const sendMessage = useCallback((_message: any) => {
+        // No-op for SSE (read-only); kept for API compatibility.
+        console.warn('[Realtime] sendMessage is a no-op in SSE mode.');
     }, []);
 
-    return { 
-        status, 
-        lastEvent, 
-        events, 
+    return {
+        status,
+        lastEvent,
+        events,
         sendMessage,
-        isConnected: status === 'open'
+        isConnected: status === 'open',
     };
 }

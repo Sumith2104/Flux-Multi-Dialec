@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FluxChat — Fluxbase Webhook Tester</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <!-- Background gradient orbs -->
+    <div class="bg-orb orb-1"></div>
+    <div class="bg-orb orb-2"></div>
+    <div class="bg-orb orb-3"></div>
+
+    <div class="app-shell">
+
+        <!-- ====== SIDEBAR ====== -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <div class="logo-icon">⚡</div>
+                    <div>
+                        <div class="logo-title">FluxChat</div>
+                        <div class="logo-sub">Webhook Tester</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="section-label">YOUR PROFILE</div>
+                <div class="profile-card">
+                    <div class="avatar" id="js-avatar">S</div>
+                    <div class="profile-info">
+                        <input type="text" id="js-username" class="username-input" value="Sumit" maxlength="20" placeholder="Your name…" />
+                        <div class="color-row">
+                            <span class="color-label">Color</span>
+                            <div class="color-swatches" id="js-swatches"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-section flex-1">
+                <div class="section-label">ONLINE NOW</div>
+                <div class="online-list" id="js-online-list">
+                    <div class="online-item self-item">
+                        <div class="online-dot"></div>
+                        <span id="js-self-label">You</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="section-label">STATUS</div>
+                <div class="status-panel">
+                    <div class="status-row">
+                        <span class="status-key">Fluxbase</span>
+                        <span class="badge badge-ok" id="js-flux-status">Connecting…</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-key">Real-time</span>
+                        <span class="badge badge-ok" id="js-rt-status">—</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-key">Webhooks</span>
+                        <span class="badge" id="js-wh-status">0 received</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="section-label">WEBHOOK LOG</div>
+                <div class="wh-log" id="js-wh-log">
+                    <div class="wh-empty">No webhook events yet.</div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ====== MAIN CHAT ====== -->
+        <main class="chat-main">
+
+            <header class="chat-header">
+                <div class="channel-info">
+                    <div class="channel-hash">#</div>
+                    <div>
+                        <div class="channel-name">general</div>
+                        <div class="channel-desc" id="js-channel-desc">Loading…</div>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button class="action-btn" id="js-init-btn" title="Create table if missing">🛠 Init Table</button>
+                    <button class="action-btn" id="js-clear-btn" title="Clear local view">🗑 Clear View</button>
+                </div>
+            </header>
+
+            <div class="messages-wrapper">
+                <div class="messages" id="js-messages">
+                    <div class="welcome-banner">
+                        <div class="welcome-icon">⚡</div>
+                        <h2>Welcome to FluxChat</h2>
+                        <p>This app connects to your <strong>Fluxbase</strong> project.<br/>Messages are stored in real-time and trigger webhooks automatically.</p>
+                    </div>
+                    <!-- Messages injected here -->
+                </div>
+            </div>
+
+            <footer class="chat-footer">
+                <div class="composer">
+                    <div class="composer-inner">
+                        <textarea 
+                            id="js-input" 
+                            class="msg-input" 
+                            rows="1"
+                            placeholder="Message #general… (Enter to send, Shift+Enter for newline)"
+                        ></textarea>
+                        <button class="send-btn" id="js-send-btn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                        </button>
+                    </div>
+                    <div class="footer-meta">
+                        <span id="js-typing-indicator"></span>
+                        <span class="char-count" id="js-char-count">0 / 500</span>
+                    </div>
+                </div>
+            </footer>
+        </main>
+
+    </div>
+
+    <!-- Toast container -->
+    <div id="js-toast-container" class="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

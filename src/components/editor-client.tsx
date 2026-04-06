@@ -329,7 +329,7 @@ export function EditorClient({
             if (wsRefreshTimerRef.current) clearTimeout(wsRefreshTimerRef.current);
             wsRefreshTimerRef.current = setTimeout(() => {
                 refreshData();
-            }, 500);
+            }, 50);
         }
         return () => {
             if (wsRefreshTimerRef.current) clearTimeout(wsRefreshTimerRef.current);
