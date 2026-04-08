@@ -100,7 +100,7 @@ export default function StoragePage() {
             formData.append('projectId', projectId);
             const res = await fetch('/api/storage/upload', { method: 'POST', body: formData });
             const data = await res.json();
-            if (!data.success) { setError(data.error || 'Upload failed'); return; }
+            if (!data.success) { setError(typeof data.error === 'object' ? data.error.message : (data.error || 'Upload failed')); return; }
             queryClient.invalidateQueries({ queryKey: ['storage-files', projectId, selectedBucket.id] });
         } catch (e: any) {
             setError(e.message);
@@ -131,7 +131,7 @@ export default function StoragePage() {
                 body: JSON.stringify({ projectId, name: newBucketName.trim().toLowerCase() })
             });
             const data = await res.json();
-            if (!data.success) { setError(data.error || 'Failed to create bucket'); return; }
+            if (!data.success) { setError(typeof data.error === 'object' ? data.error.message : (data.error || 'Failed to create bucket')); return; }
             setNewBucketName('');
             setShowNewBucket(false);
             queryClient.invalidateQueries({ queryKey: ['storage-buckets', projectId] });
@@ -176,7 +176,7 @@ export default function StoragePage() {
                 body: JSON.stringify({ bucketId: bucket.id, projectId, name: editBucketName.trim().toLowerCase() })
             });
             const data = await res.json();
-            if (!data.success) { setError(data.error || 'Failed to rename bucket'); return; }
+            if (!data.success) { setError(typeof data.error === 'object' ? data.error.message : (data.error || 'Failed to rename bucket')); return; }
             setEditingBucketId(null);
             queryClient.invalidateQueries({ queryKey: ['storage-buckets', projectId] });
             if (selectedBucket?.id === bucket.id) setSelectedBucket(data.bucket);
@@ -197,7 +197,7 @@ export default function StoragePage() {
                 body: JSON.stringify({ bucketId: bucket.id, projectId })
             });
             const data = await res.json();
-            if (!data.success) { setError(data.error || 'Failed to delete bucket'); return; }
+            if (!data.success) { setError(typeof data.error === 'object' ? data.error.message : (data.error || 'Failed to delete bucket')); return; }
             if (selectedBucket?.id === bucket.id) setSelectedBucket(null);
             queryClient.invalidateQueries({ queryKey: ['storage-buckets', projectId] });
         } catch (e: any) {
@@ -263,7 +263,7 @@ export default function StoragePage() {
 
             {error && (
                 <div className="flex items-center gap-3 bg-destructive/15 border border-destructive/30 text-destructive rounded-lg px-4 py-3 text-sm">
-                    <X className="h-4 w-4 shrink-0" /> {error}
+                    <X className="h-4 w-4 shrink-0" /> {typeof error === 'object' ? (error as any).message || JSON.stringify(error) : error}
                     <button onClick={() => setError(null)} className="ml-auto"><X className="h-3 w-3" /></button>
                 </div>
             )}

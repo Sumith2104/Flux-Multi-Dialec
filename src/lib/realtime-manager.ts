@@ -16,6 +16,7 @@ class RealtimeManager extends EventEmitter {
 
     constructor() {
         super();
+        this.setMaxListeners(0); // Allow infinite subscribers to prevent memory leak crashes
         this.init();
     }
 
@@ -32,8 +33,13 @@ class RealtimeManager extends EventEmitter {
             this.client.on('notification', (msg: any) => {
                 try {
                     const payload = JSON.parse(msg.payload);
-                    const projectId = payload.project_id;
+                    let projectId = payload.project_id;
                     if (projectId) {
+                        // Normalize database triggers which append 'project_' prefix to internal schema events
+                        if (projectId.startsWith('project_')) {
+                            projectId = projectId.substring(8);
+                        }
+                        
                         // Broadcast to everyone listening for this specific project
                         this.emit(`project:${projectId}`, msg.payload);
                     }
@@ -86,7 +92,15 @@ class RealtimeManager extends EventEmitter {
     public subscribe(projectId: string, callback: (payload: string) => void) {
         const eventName = `project:${projectId}`;
         this.on(eventName, callback);
-        return () => this.off(eventName, callback);
+
+        const count = this.listenerCount(eventName);
+        console.log(`[Realtime] ⚡ +1 Subscriber. Total for ${projectId}: ${count}`);
+
+        return () => {
+            this.off(eventName, callback);
+            const remaining = this.listenerCount(eventName);
+            console.log(`[Realtime] ☁️ -1 Subscriber. Remaining for ${projectId}: ${remaining}`);
+        };
     }
 }
 
