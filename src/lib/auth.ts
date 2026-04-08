@@ -117,11 +117,15 @@ export async function getAuthContextFromRequest(request: Request): Promise<AuthC
         } catch (e) {}
     }
 
+    const headerProjectId = request.headers.get('x-project-id');
+
     if (apiKey) {
         const result = await validateApiKey(apiKey);
         if (result) {
             // Track session for API key users (they have a specific project context)
-            if (result.projectId) {
+            // Efficiency-Fix: Only track sessions for meaningful requests, not every SSE hit or heartbeat
+            const isNoisyRoute = request.url.includes('/api/realtime/subscribe');
+            if (result.projectId && !isNoisyRoute) {
                 const { trackSession } = await import('@/lib/track-session');
                 await trackSession(result.projectId, result.userId);
             }
@@ -130,7 +134,7 @@ export async function getAuthContextFromRequest(request: Request): Promise<AuthC
 
             return { 
                 userId: result.userId, 
-                allowedProjectId: result.projectId,
+                allowedProjectId: result.projectId || headerProjectId || undefined,
                 scopes: result.scopes,
                 status
             };

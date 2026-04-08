@@ -29,7 +29,13 @@ export async function POST(request: Request) {
         if (auth.status === 'suspended') return NextResponse.json({ success: false, error: { message: 'Organization suspended. Please resume the organization to access data.', code: ERROR_CODES.FORBIDDEN } }, { status: 403 });
         const { userId, allowedProjectId } = auth;
 
-        let { projectId, query, params } = await request.json();
+        const body = await request.json().catch(() => ({}));
+        let { projectId, query, params } = body;
+
+        // Support Legacy apps sending projectId in headers instead of body
+        if (!projectId) {
+            projectId = request.headers.get('x-project-id');
+        }
 
         // Enforce Scope
         if (allowedProjectId) {
