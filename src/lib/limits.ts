@@ -41,6 +41,11 @@ export class LimitExceededError extends Error {
     }
 }
 
+// In-memory cache for traffic limit results to avoid slamming Redis/DB on every SQL request
+// Key: projectId, Value: { timestamp, error? }
+const trafficLimitCache = new Map<string, { timestamp: number; error: string | null }>();
+const CACHE_TTL_MS = 60 * 1000; // 60 seconds
+
 export async function getUserPlan(userId: string): Promise<PlanType> {
     const pool = getPgPool();
     const res = await pool.query('SELECT plan_type FROM fluxbase_global.users WHERE id = $1', [userId]);
@@ -140,47 +145,75 @@ export async function checkRowLimit(projectId: string, userId: string, tableName
 }
 
 export async function checkProjectTrafficLimits(projectId: string): Promise<void> {
-    const pool = getPgPool();
-    const pRes = await pool.query(`
-        SELECT display_name, custom_api_limit, custom_request_limit, alert_email, alert_threshold_percent, last_api_alert_at 
-        FROM fluxbase_global.projects WHERE project_id = $1
-    `, [projectId]);
-    
-    if (pRes.rows.length === 0) return;
-    const pConfig = pRes.rows[0];
-
-    // Read cached traffic stats (assuming it tracks current period)
-    const { getAnalyticsStatsAction } = await import('@/app/(app)/dashboard/analytics-actions');
-    const stats = await getAnalyticsStatsAction(projectId);
-    if (!stats) return;
-
-    // Check Total Requests
-    if (pConfig.custom_request_limit && stats.total_requests > pConfig.custom_request_limit) {
-        throw new LimitExceededError(`Rate limit exceeded. Project has exceeded its custom total request limit of ${pConfig.custom_request_limit}.`);
+    // 1. Check in-memory cache first
+    const now = Date.now();
+    const cached = trafficLimitCache.get(projectId);
+    if (cached && (now - cached.timestamp < CACHE_TTL_MS)) {
+        if (cached.error) throw new LimitExceededError(cached.error);
+        return; // Success is cached
     }
 
-    // Check API / DB usage
-    const totalApi = stats.type_api_call + stats.type_sql_execution;
-    if (pConfig.custom_api_limit && totalApi > pConfig.custom_api_limit) {
-        throw new LimitExceededError(`Rate limit exceeded. Project has exceeded its custom API/Query limit of ${pConfig.custom_api_limit}.`);
-    }
+    try {
+        const pool = getPgPool();
+        const pRes = await pool.query(`
+            SELECT display_name, custom_api_limit, custom_request_limit, alert_email, alert_threshold_percent, last_api_alert_at 
+            FROM fluxbase_global.projects WHERE project_id = $1
+        `, [projectId]);
+        
+        if (pRes.rows.length === 0) {
+            trafficLimitCache.set(projectId, { timestamp: now, error: null });
+            return;
+        }
+        const pConfig = pRes.rows[0];
 
-    // Threshold alerts
-    if (pConfig.alert_email) {
-        const checkAlert = (current: number, limit: number, resourceName: string) => {
-            if (!limit) return;
-            const threshold = limit * ((pConfig.alert_threshold_percent || 80) / 100);
-            if (current >= threshold) {
-                const lastAlert = pConfig.last_api_alert_at ? new Date(pConfig.last_api_alert_at).getTime() : 0;
-                if (Date.now() - lastAlert > 24 * 60 * 60 * 1000) {
-                    sendLimitAlertEmail(pConfig.alert_email, pConfig.display_name, resourceName, limit, current >= limit).catch(console.error);
-                    pool.query('UPDATE fluxbase_global.projects SET last_api_alert_at = NOW() WHERE project_id = $1', [projectId]).catch(console.error);
+        // Read cached traffic stats (assuming it tracks current period)
+        const { getAnalyticsStatsAction } = await import('@/app/(app)/dashboard/analytics-actions');
+        const stats = await getAnalyticsStatsAction(projectId);
+        if (!stats) {
+            trafficLimitCache.set(projectId, { timestamp: now, error: null });
+            return;
+        }
+
+        // Check Total Requests
+        if (pConfig.custom_request_limit && stats.total_requests > pConfig.custom_request_limit) {
+            const err = `Rate limit exceeded. Project has exceeded its custom total request limit of ${pConfig.custom_request_limit}.`;
+            trafficLimitCache.set(projectId, { timestamp: now, error: err });
+            throw new LimitExceededError(err);
+        }
+
+        // Check API / DB usage
+        const totalApi = stats.type_api_call + stats.type_sql_execution;
+        if (pConfig.custom_api_limit && totalApi > pConfig.custom_api_limit) {
+            const err = `Rate limit exceeded. Project has exceeded its custom API/Query limit of ${pConfig.custom_api_limit}.`;
+            trafficLimitCache.set(projectId, { timestamp: now, error: err });
+            throw new LimitExceededError(err);
+        }
+
+        // Threshold alerts
+        if (pConfig.alert_email) {
+            const checkAlert = (current: number, limit: number, resourceName: string) => {
+                if (!limit) return;
+                const threshold = limit * ((pConfig.alert_threshold_percent || 80) / 100);
+                if (current >= threshold) {
+                    const lastAlert = pConfig.last_api_alert_at ? new Date(pConfig.last_api_alert_at).getTime() : 0;
+                    if (Date.now() - lastAlert > 24 * 60 * 60 * 1000) {
+                        sendLimitAlertEmail(pConfig.alert_email, pConfig.display_name, resourceName, limit, current >= limit).catch(console.error);
+                        pool.query('UPDATE fluxbase_global.projects SET last_api_alert_at = NOW() WHERE project_id = $1', [projectId]).catch(console.error);
+                    }
                 }
-            }
-        };
+            };
 
-        checkAlert(stats.total_requests, pConfig.custom_request_limit, "Total Requests");
-        checkAlert(totalApi, pConfig.custom_api_limit, "API/SQL Operations");
+            checkAlert(stats.total_requests, pConfig.custom_request_limit, "Total Requests");
+            checkAlert(totalApi, pConfig.custom_api_limit, "API/SQL Operations");
+        }
+
+        // Cache the successful check
+        trafficLimitCache.set(projectId, { timestamp: now, error: null });
+
+    } catch (error) {
+        if (error instanceof LimitExceededError) throw error;
+        console.error("Critical error in checkProjectTrafficLimits:", error);
+        // On other errors (DB down etc), fail safe and don't block
     }
 }
 

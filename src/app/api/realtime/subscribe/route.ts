@@ -36,39 +36,62 @@ export async function GET(req: NextRequest) {
         }), { status: 404 });
     }
 
+    const ip = req.headers.get('x-forwarded-for') || '127.0.0.1';
+    
+    // In-memory connection guard (Shared across requests in this instance)
+    const MAX_CONNS_PER_IP = 5;
+    const globalConns = (global as any)._sse_conns || new Map<string, number>();
+    (global as any)._sse_conns = globalConns;
+    
+    const currentConns = globalConns.get(ip) || 0;
+    if (currentConns >= MAX_CONNS_PER_IP) {
+        return new Response(JSON.stringify({ 
+            success: false, 
+            error: { message: 'Too many concurrent subscriptions from this address', code: ERROR_CODES.RATE_LIMIT_EXCEEDED } 
+        }), { status: 429 });
+    }
+
     const encoder = new TextEncoder();
+    let releaseHandler: () => Promise<void>;
+
     const stream = new ReadableStream({
         async start(controller) {
             let unsubscribe: (() => void) | null = null;
             let interval: NodeJS.Timeout | null = null;
-            
+            let isReleased = false;
+
+            releaseHandler = async () => {
+                if (isReleased) return;
+                isReleased = true;
+                
+                if (interval) clearInterval(interval);
+                if (unsubscribe) unsubscribe();
+                
+                const { redis: r } = await import('@/lib/redis');
+                await r.decr(`live_sessions:${projectId}`).catch(() => {});
+                
+                // Decrement global IP tracker
+                const c = globalConns.get(ip) || 1;
+                if (c <= 1) globalConns.delete(ip);
+                else globalConns.set(ip, c - 1);
+            };
+
             try {
                 const { redis } = await import('@/lib/redis');
                 
+                globalConns.set(ip, currentConns + 1);
+
                 // 1. Subscribe to the Global Multiplexer (0 Connection cost)
                 unsubscribe = realtimeManager.subscribe(projectId, (payload: string) => {
                     try {
                         controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
                     } catch (e) {
-                         // Controller might be closed
+                         releaseHandler(); // Connection likely broken
                     }
                 });
 
-                // 2. Lifecycle Cleanup
-                let isReleased = false;
-                const releaseHandler = async () => {
-                    if (isReleased) return;
-                    isReleased = true;
-                    
-                    if (interval) clearInterval(interval);
-                    if (unsubscribe) unsubscribe();
-                    
-                    const { redis: r } = await import('@/lib/redis');
-                    await r.decr(`live_sessions:${projectId}`).catch(() => {});
-                };
-
                 // Abort listener for browser disconnect
-                req.signal.addEventListener('abort', releaseHandler);
+                req.signal.addEventListener('abort', () => releaseHandler());
 
                 await redis.incr(`live_sessions:${projectId}`).catch(() => {});
                 
@@ -85,13 +108,12 @@ export async function GET(req: NextRequest) {
 
             } catch (err) {
                 console.error("[SSE Route Error]", err);
-                if (unsubscribe) unsubscribe();
+                if (releaseHandler) releaseHandler();
                 try { controller.error(err); } catch(e) {}
             }
         },
         cancel() {
-            // This is naturally called when the stream is closed by the browser/Next.js
-            // console.log('[SSE] Stream cancelled by client');
+            if (releaseHandler) releaseHandler();
         }
     });
 

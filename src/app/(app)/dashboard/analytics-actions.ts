@@ -60,11 +60,14 @@ export async function getAnalyticsStatsAction(projectId: string) {
 
         // --- PHASE 2: Merge "In-Flight" data from Redis (Unsynced) ---
         try {
-            const keys = await redis.keys(`analytics_rollup:${projectId}:*`);
-            if (keys && keys.length > 0) {
-                const values = await redis.mget(...keys);
-                for (let i = 0; i < keys.length; i++) {
-                    const key = keys[i];
+            // Efficiency-Fix: Replace expensive O(N) 'redis.keys' with O(K) 'smembers' lookup from our dedicated flush set.
+            const allFlushKeys = await redis.smembers('analytics_keys_to_flush');
+            const projectKeys = (allFlushKeys || []).filter(k => k.startsWith(`analytics_rollup:${projectId}:`));
+            
+            if (projectKeys.length > 0) {
+                const values = await redis.mget(...projectKeys);
+                for (let i = 0; i < projectKeys.length; i++) {
+                    const key = projectKeys[i];
                     const val = parseInt(values[i] as string || '0', 10);
                     const type = key.split(':')[3];
 
@@ -92,7 +95,8 @@ export async function getAnalyticsStatsAction(projectId: string) {
         }
 
         try {
-            await redis.set(cacheKey, stats, { ex: 5 }); // 5 seconds cache to match frontend polling
+            // Increase cache TTL to 30s to match throttle window and reduce Redis writes
+            await redis.set(cacheKey, stats, { ex: 30 }); 
         } catch (e) {
             console.warn('Redis write error for analytics stats:', e);
         }
@@ -189,13 +193,6 @@ export async function getProjectHistoryAction(projectId: string) {
     }
 
     try {
-        if (process.env.NODE_ENV !== 'production') {
-            try {
-                // Auto-flush in development since Vercel Cron doesn't run locally
-                await fetch('http://localhost:3000/api/cron/flush-analytics').catch(() => {});
-            } catch (e) {}
-        }
-
         const pool = getPgPool();
         const stats = await getAnalyticsStatsAction(projectId);
 

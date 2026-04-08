@@ -94,12 +94,16 @@ class RealtimeManager extends EventEmitter {
         this.on(eventName, callback);
 
         const count = this.listenerCount(eventName);
-        console.log(`[Realtime] ⚡ +1 Subscriber. Total for ${projectId}: ${count}`);
+        if (count === 1 || count % 5 === 0) {
+            console.log(`[Realtime] ⚡ +1 Subscriber. Total for ${projectId}: ${count}`);
+        }
 
         return () => {
             this.off(eventName, callback);
             const remaining = this.listenerCount(eventName);
-            console.log(`[Realtime] ☁️ -1 Subscriber. Remaining for ${projectId}: ${remaining}`);
+            if (remaining === 0 || remaining % 5 === 0) {
+                console.log(`[Realtime] ☁️ -1 Subscriber. Remaining for ${projectId}: ${remaining}`);
+            }
         };
     }
 }
