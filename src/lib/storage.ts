@@ -86,6 +86,7 @@ export const ALLOWED_MIME_TYPES = new Set([
     'image/gif',
     'image/webp',
     'image/svg+xml',
+    'image/x-icon',
     'application/pdf',
     'text/plain',
     'text/csv',
