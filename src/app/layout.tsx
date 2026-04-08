@@ -6,6 +6,9 @@ import { QueryProvider } from "@/components/query-provider";
 export const metadata: Metadata = {
   title: 'Fluxbase',
   description: 'The modern, AI-powered spreadsheet and data analysis tool.',
+  icons: {
+    icon: '/favicon.ico',
+  },
 };
 
 export default function RootLayout({
