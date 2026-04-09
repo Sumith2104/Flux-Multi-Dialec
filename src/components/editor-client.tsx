@@ -781,7 +781,7 @@ export function EditorClient({
 
                             <div className="flex-grow flex flex-col overflow-hidden">
                                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col min-h-0">
-                                    <div className="flex items-center justify-between w-full border-b pb-2 mb-2">
+                                    <div className="flex items-center justify-between w-full border-b py-2 mb-2">
                                         <TabsList>
                                             <TabsTrigger value="data">Data</TabsTrigger>
                                             <TabsTrigger value="structure">Structure</TabsTrigger>

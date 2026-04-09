@@ -75,13 +75,16 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     const [isOffline, setIsOffline] = useState(false);
     const [projects, setProjects] = useState<Project[]>([]);
     const [userLoading, setUserLoading] = useState(true);
+    const [loadingProgress, setLoadingProgress] = useState(0);
     const { project: selectedProject, setProject, loading: projectContextLoading } = useContext(ProjectContext);
 
     useEffect(() => {
         async function fetchData() {
             setUserLoading(true);
+            setLoadingProgress(5); // started
             try {
                 const isHealthy = await checkDatabaseHealthAction();
+                setLoadingProgress(20); // DB health checked
                 if (!isHealthy) {
                     setIsOffline(true);
                     setUserLoading(false);
@@ -89,13 +92,16 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                 }
 
                 const id = await getCurrentUserId();
+                setLoadingProgress(40); // auth resolved
                 setUserId(id);
 
                 if (id) {
                     const userData = await findUserById(id);
                     setUser(userData);
+                    setLoadingProgress(60); // user profile loaded
 
                     const planRes = await getUserPlanAction();
+                    setLoadingProgress(80); // plan loaded
                     if (planRes?.success) {
                         setPlanType(planRes.plan === 'max' ? 'Max' : (planRes.plan === 'pro' ? 'Pro' : 'Free'));
                         setIsSuspended(planRes.status === 'suspended');
@@ -103,14 +109,17 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
                     const projectsData = await getProjectsForCurrentUser();
                     setProjects(projectsData);
-
+                    setLoadingProgress(100); // projects loaded
 
                     if (selectedProject && !projectsData.some(p => p.project_id === selectedProject.project_id)) {
                         setProject(null);
                     }
+                } else {
+                    setLoadingProgress(100);
                 }
             } catch (error) {
                 console.error("Failed to fetch layout data:", error);
+                setLoadingProgress(100);
             } finally {
                 setUserLoading(false);
             }
@@ -214,7 +223,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
 
     if (isLoading) {
-        return <PremiumLoader text="Initializing Fluxbase..."/>;
+        return <PremiumLoader text="Initializing Fluxbase..." progress={loadingProgress} />;
     }
 
     if (isOffline) {
