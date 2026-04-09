@@ -39,7 +39,8 @@ export async function GET(req: NextRequest) {
     const ip = req.headers.get('x-forwarded-for') || '127.0.0.1';
     
     // In-memory connection guard (Shared across requests in this instance)
-    const MAX_CONNS_PER_IP = 5;
+    // Relaxed in dev to prevent 429 lockouts during React hot-reloading
+    const MAX_CONNS_PER_IP = process.env.NODE_ENV === 'production' ? 10 : 1000;
     const globalConns = (global as any)._sse_conns || new Map<string, number>();
     (global as any)._sse_conns = globalConns;
     
@@ -67,9 +68,6 @@ export async function GET(req: NextRequest) {
                 if (interval) clearInterval(interval);
                 if (unsubscribe) unsubscribe();
                 
-                const { redis: r } = await import('@/lib/redis');
-                await r.decr(`live_sessions:${projectId}`).catch(() => {});
-                
                 // Decrement global IP tracker
                 const c = globalConns.get(ip) || 1;
                 if (c <= 1) globalConns.delete(ip);
@@ -77,8 +75,6 @@ export async function GET(req: NextRequest) {
             };
 
             try {
-                const { redis } = await import('@/lib/redis');
-                
                 globalConns.set(ip, currentConns + 1);
 
                 // 1. Subscribe to the Global Multiplexer (0 Connection cost)
@@ -92,8 +88,6 @@ export async function GET(req: NextRequest) {
 
                 // Abort listener for browser disconnect
                 req.signal.addEventListener('abort', () => releaseHandler());
-
-                await redis.incr(`live_sessions:${projectId}`).catch(() => {});
                 
                 controller.enqueue(encoder.encode('retry: 10000\n\n'));
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'connected', timestamp: new Date().toISOString() })}\n\n`));

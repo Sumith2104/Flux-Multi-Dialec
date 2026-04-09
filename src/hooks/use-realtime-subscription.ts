@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 // Native SSE-based realtime subscription.
-// Connects directly to /api/realtime/subscribe (same origin, no WS needed).
+// MODULE-LEVEL SINGLETON: All consumers of this hook share ONE SSE connection per projectId.
+// This prevents the thundering herd of N connections when N hooks call useRealtimeSubscription.
 
 export interface RealtimeEvent {
     type: 'live' | 'update' | 'subscribed' | 'error' | 'connected';
@@ -18,164 +19,226 @@ export interface RealtimeEvent {
     [key: string]: any;
 }
 
-export function useRealtimeSubscription(projectId: string | undefined) {
-    const abortRef = useRef<AbortController | null>(null);
-    const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
-    const [status, setStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
-    const [events, setEvents] = useState<RealtimeEvent[]>([]);
-    const [lastEvent, setLastEvent] = useState<RealtimeEvent | null>(null);
-    const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
-    const retryRef = useRef(0);
-    const mountedRef = useRef(true);
+// --- Singleton state per projectId ---
 
-    const cleanup = useCallback(() => {
-        if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-        if (readerRef.current) {
-            readerRef.current.cancel().catch(() => {});
-            readerRef.current = null;
+type Listener = (event: RealtimeEvent) => void;
+
+interface ConnectionState {
+    status: 'connecting' | 'open' | 'closed';
+    lastEvent: RealtimeEvent | null;
+    listeners: Set<Listener>;
+    abortController: AbortController | null;
+    retryTimer: ReturnType<typeof setTimeout> | null;
+    retryCount: number;
+}
+
+const connections = new Map<string, ConnectionState>();
+
+function getOrCreateState(projectId: string): ConnectionState {
+    if (!connections.has(projectId)) {
+        connections.set(projectId, {
+            status: 'connecting',
+            lastEvent: null,
+            listeners: new Set(),
+            abortController: null,
+            retryTimer: null,
+            retryCount: 0,
+        });
+    }
+    return connections.get(projectId)!;
+}
+
+function notifyListeners(projectId: string, event: RealtimeEvent) {
+    const state = connections.get(projectId);
+    if (!state) return;
+    state.lastEvent = event;
+    state.listeners.forEach(fn => fn(event));
+}
+
+function scheduleReconnect(projectId: string) {
+    const state = connections.get(projectId);
+    if (!state) return;
+    state.status = 'closed';
+    state.retryCount += 1;
+    const delay = Math.min(1000 * Math.pow(2, state.retryCount - 1), 15000);
+    console.log(`[Realtime:${projectId}] Reconnecting in ${delay}ms…`);
+    state.retryTimer = setTimeout(() => {
+        if (connections.has(projectId) && connections.get(projectId)!.listeners.size > 0) {
+            startConnection(projectId);
         }
-        if (abortRef.current) {
-            abortRef.current.abort();
-            abortRef.current = null;
-        }
-    }, []);
+    }, delay);
+}
 
-    const connect = useCallback(async () => {
-        if (!projectId || !mountedRef.current) return;
+async function startConnection(projectId: string) {
+    const state = getOrCreateState(projectId);
 
-        cleanup();
-        abortRef.current = new AbortController();
+    // Already connecting or open — don't double-connect
+    if (state.status === 'connecting' || state.status === 'open') return;
 
-        setStatus('connecting');
-        console.log(`[Realtime] Connecting via SSE for project ${projectId}…`);
+    if (state.retryTimer) {
+        clearTimeout(state.retryTimer);
+        state.retryTimer = null;
+    }
+    if (state.abortController) {
+        state.abortController.abort();
+    }
 
-        try {
-            const response = await fetch(
-                `/api/realtime/subscribe?projectId=${projectId}`,
-                { signal: abortRef.current.signal }
-            );
+    state.status = 'connecting';
+    state.abortController = new AbortController();
+    console.log(`[Realtime] Connecting singleton SSE for project ${projectId}…`);
 
-            if (!response.ok) {
-                if (response.status === 401) {
-                    console.error('[Realtime] Unauthorized. Please log in.');
-                    setStatus('closed');
-                    return;
-                }
-                throw new Error(`SSE ${response.status}: ${response.statusText}`);
-            }
+    try {
+        const response = await fetch(
+            `/api/realtime/subscribe?projectId=${projectId}`,
+            { signal: state.abortController.signal }
+        );
 
-            if (!mountedRef.current) return;
-            setStatus('open');
-            retryRef.current = 0;
-            console.log('[Realtime] SSE connected ✅');
-
-            if (!response.body) return;
-            readerRef.current = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            try {
-                while (mountedRef.current) {
-                    const { done, value } = await readerRef.current.read();
-                    if (done) break;
-
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop() ?? ''; // keep trailing incomplete line
-
-                    for (const line of lines) {
-                        if (!line.startsWith('data: ')) {
-                            if (line.includes('heartbeat')) {
-                                // console.debug('[Realtime] Heartbeat received');
-                            }
-                            continue;
-                        }
-                        const raw = line.slice(6).trim();
-                        if (!raw) continue;
-
-                        try {
-                            const payload = JSON.parse(raw) as RealtimeEvent;
-                            if (payload.type === 'connected') continue;
-
-                            // Normalize: support both 'table_id'/'table_name' and 'table'
-                            const tableRef = payload.table || payload.table_id || payload.table_name;
-                            const normalized: RealtimeEvent = {
-                                ...payload,
-                                type: (payload.event_type === 'row.inserted' || payload.event_type === 'INSERT' || payload.operation === 'INSERT') ? 'update'
-                                    : (payload.event_type === 'row.updated' || payload.event_type === 'UPDATE' || payload.operation === 'UPDATE') ? 'update'
-                                        : (payload.event_type === 'row.deleted' || payload.event_type === 'DELETE' || payload.operation === 'DELETE') ? 'update'
-                                            : payload.type || 'live',
-                                table: tableRef,
-                            };
-
-                            if (!mountedRef.current) break;
-                            setLastEvent(normalized);
-                            setEvents(prev => [normalized, ...prev].slice(0, 20));
-                        } catch (e) {
-                            console.warn('[Realtime] Parse error:', e);
-                        }
-                    }
-                }
-            } finally {
-                if (readerRef.current) {
-                    readerRef.current.releaseLock();
-                    readerRef.current = null;
-                }
-            }
-        } catch (err: any) {
-            if (err.name === 'AbortError') {
-                console.log('[Realtime] Connection closed intentionally.');
+        if (!response.ok) {
+            if (response.status === 401) {
+                console.error('[Realtime] Unauthorized. Connection closed.');
+                state.status = 'closed';
                 return;
             }
-            console.warn('[Realtime] SSE stream error:', err.message);
+            throw new Error(`SSE ${response.status}: ${response.statusText}`);
         }
 
-        if (!mountedRef.current) return;
+        state.status = 'open';
+        state.retryCount = 0;
+        console.log('[Realtime] SSE singleton connected ✅');
 
-        // Exponential backoff: 1s → 2s → 4s → 8s → max 15s
-        setStatus('closed');
-        retryRef.current += 1;
-        const delay = Math.min(1000 * Math.pow(2, retryRef.current - 1), 15000);
-        console.log(`[Realtime] Reconnecting in ${delay}ms…`);
-        reconnectTimerRef.current = setTimeout(() => {
-            if (mountedRef.current) connect();
-        }, delay);
+        if (!response.body) return;
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
 
-    }, [projectId, cleanup]);
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                // Stop if no-one is listening anymore
+                if (!connections.has(projectId) || connections.get(projectId)!.listeners.size === 0) {
+                    reader.cancel().catch(() => {});
+                    break;
+                }
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() ?? '';
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    const raw = line.slice(6).trim();
+                    if (!raw) continue;
+
+                    try {
+                        const payload = JSON.parse(raw) as RealtimeEvent;
+                        if (payload.type === 'connected') continue;
+
+                        const tableRef = payload.table || payload.table_id || payload.table_name || '';
+                        const cleanTable = typeof tableRef === 'string' ? tableRef.split('.').pop() || tableRef : tableRef;
+
+                        const normalized: RealtimeEvent = {
+                            ...payload,
+                            type: (['INSERT', 'UPDATE', 'DELETE', 'row.inserted', 'row.updated', 'row.deleted'].some(t =>
+                                payload.event_type === t || payload.operation === t || payload.type === t
+                            )) ? 'update' : payload.type || 'live',
+                            table: cleanTable,
+                        };
+
+                        notifyListeners(projectId, normalized);
+                    } catch (e) {
+                        console.warn('[Realtime] Parse error:', e);
+                    }
+                }
+            }
+        } finally {
+            reader.releaseLock();
+        }
+    } catch (err: any) {
+        if (err.name === 'AbortError') {
+            console.log('[Realtime] Connection intentionally closed.');
+            return;
+        }
+        console.warn('[Realtime] SSE error:', err.message);
+    }
+
+    const state2 = connections.get(projectId);
+    if (state2 && state2.listeners.size > 0) {
+        scheduleReconnect(projectId);
+    } else {
+        // No listeners left — clean up
+        connections.delete(projectId);
+    }
+}
+
+function subscribe(projectId: string, listener: Listener): () => void {
+    const state = getOrCreateState(projectId);
+    state.listeners.add(listener);
+
+    // Start the connection if not already running
+    if (state.status === 'closed' || state.status === 'connecting') {
+        // Only start if not already looping (abortController signals the loop is running)
+        if (!state.abortController || state.abortController.signal.aborted) {
+            startConnection(projectId);
+        }
+    }
+
+    return () => {
+        const s = connections.get(projectId);
+        if (!s) return;
+        s.listeners.delete(listener);
+        if (s.listeners.size === 0) {
+            // Last subscriber left — tear down
+            console.log(`[Realtime] No more subscribers for ${projectId}. Closing.`);
+            if (s.retryTimer) clearTimeout(s.retryTimer);
+            if (s.abortController) s.abortController.abort();
+            connections.delete(projectId);
+        }
+    };
+}
+
+// --- React Hook (thin wrapper around singleton) ---
+
+export function useRealtimeSubscription(projectId: string | undefined) {
+    const [lastEvent, setLastEvent] = useState<RealtimeEvent | null>(null);
+    const [status, setStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
+    const projectIdRef = useRef(projectId);
+    projectIdRef.current = projectId;
 
     useEffect(() => {
-        mountedRef.current = true;
-        retryRef.current = 0;
-        
-        // Initial connect
-        connect();
+        if (!projectId) return;
 
-        // Handle page visibility for tab switching
-        const handleVisibilityChange = () => {
-            if (document.visibilityState === 'visible' && status === 'closed') {
-                console.log('[Realtime] Tab visible, refreshing connection…');
-                retryRef.current = 0;
-                connect();
-            }
+        const listener: Listener = (event) => {
+            setLastEvent(event);
         };
-        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        const unsubscribe = subscribe(projectId, listener);
+
+        // Sync status from singleton
+        const state = connections.get(projectId);
+        if (state) setStatus(state.status);
+
+        // Poll status so UI indicator stays correct (light-weight, 1-per-hook not 1-per-project)
+        const statusInterval = setInterval(() => {
+            const s = connections.get(projectId);
+            setStatus(s ? s.status : 'closed');
+        }, 2000);
 
         return () => {
-            console.log('[Realtime] Hook unmounting, cleaning up…');
-            mountedRef.current = false;
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-            cleanup();
+            unsubscribe();
+            clearInterval(statusInterval);
         };
-    }, [connect, projectId, cleanup, status]);
+    }, [projectId]);
 
-    const sendMessage = useCallback((_message: any) => {
-        console.warn('[Realtime] sendMessage is a no-op in SSE mode (read-only).');
-    }, []);
+    const sendMessage = () => {
+        console.warn('[Realtime] sendMessage is a no-op in SSE mode.');
+    };
 
     return {
         status,
         lastEvent,
-        events,
+        events: lastEvent ? [lastEvent] : [],
         sendMessage,
         isConnected: status === 'open',
     };
