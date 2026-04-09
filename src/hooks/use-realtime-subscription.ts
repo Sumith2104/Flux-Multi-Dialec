@@ -24,7 +24,7 @@ export interface RealtimeEvent {
 type Listener = (event: RealtimeEvent) => void;
 
 interface ConnectionState {
-    status: 'connecting' | 'open' | 'closed';
+    status: 'idle' | 'connecting' | 'open' | 'closed';
     lastEvent: RealtimeEvent | null;
     listeners: Set<Listener>;
     abortController: AbortController | null;
@@ -37,7 +37,7 @@ const connections = new Map<string, ConnectionState>();
 function getOrCreateState(projectId: string): ConnectionState {
     if (!connections.has(projectId)) {
         connections.set(projectId, {
-            status: 'connecting',
+            status: 'idle',  // 'idle' = not started yet, distinct from 'connecting'
             lastEvent: null,
             listeners: new Set(),
             abortController: null,
@@ -72,8 +72,8 @@ function scheduleReconnect(projectId: string) {
 async function startConnection(projectId: string) {
     const state = getOrCreateState(projectId);
 
-    // Already connecting or open — don't double-connect
-    if (state.status === 'connecting' || state.status === 'open') return;
+    // Guard: skip if a real active connection is in-flight or established
+    if ((state.status === 'connecting' || state.status === 'open') && state.abortController && !state.abortController.signal.aborted) return;
 
     if (state.retryTimer) {
         clearTimeout(state.retryTimer);
@@ -176,12 +176,9 @@ function subscribe(projectId: string, listener: Listener): () => void {
     const state = getOrCreateState(projectId);
     state.listeners.add(listener);
 
-    // Start the connection if not already running
-    if (state.status === 'closed' || state.status === 'connecting') {
-        // Only start if not already looping (abortController signals the loop is running)
-        if (!state.abortController || state.abortController.signal.aborted) {
-            startConnection(projectId);
-        }
+    // Start the connection if not yet started or previously closed
+    if (state.status === 'idle' || state.status === 'closed') {
+        startConnection(projectId);
     }
 
     return () => {

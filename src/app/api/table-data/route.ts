@@ -45,17 +45,15 @@ export async function GET(request: Request) {
     }
 
     const data = await getTableData(projectId, tableName, page, pageSize, userId, cursorId);
-    if (data.rows.length > 0) {
-      console.error(`[DEBUG] /api/table-data keys for ${tableName}:`, Object.keys(data.rows[0]));
-      console.error(`[DEBUG] /api/table-data sample for ${tableName}:`, JSON.stringify(data.rows[0]));
-    } else {
-      console.error(`[DEBUG] /api/table-data No rows found for ${tableName}`);
-    }
 
-    // Track Analytics (Mainly for read operations)
-    await trackApiRequest(projectId, 'storage_read');
-    await trackApiRequest(projectId, 'api_call');
-    await trackApiRequest(projectId, 'sql_select');
+
+    // Track analytics in the background — do NOT await, we don't want
+    // these sequential DB writes blocking the HTTP response.
+    Promise.all([
+      trackApiRequest(projectId, 'storage_read'),
+      trackApiRequest(projectId, 'api_call'),
+      trackApiRequest(projectId, 'sql_select'),
+    ]).catch(() => {});
 
     return NextResponse.json(data);
 
