@@ -13,6 +13,12 @@ import crypto from 'crypto';
 import { validateRow } from '@/lib/validation';
 import { fireWebhooks } from '@/lib/webhooks';
 import { unstable_cache, revalidateTag } from 'next/cache';
+import { LRUCache } from 'lru-cache';
+
+// Short-lived cache: eliminates the duplicate getProjectById DB query that fires
+// on EVERY table-data, execute-sql, and schema API call. 60s TTL is safe because
+// project metadata (display_name, dialect, role) almost never changes mid-session.
+const _projectCache = new LRUCache<string, Project | null>({ max: 200, ttl: 60_000 });
 
 export async function checkDatabaseHealthAction(): Promise<boolean> {
     try {
@@ -127,6 +133,11 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
     const userId = explicitUserId || await getCurrentUserId();
     if (!userId) return null;
 
+    // Cache key includes userId so role (admin/developer/member) is correctly scoped per user.
+    const cacheKey = `${projectId}:${userId}`;
+    const cached = _projectCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+
     try {
         const pool = getPgPool();
         const result = await pool.query(`
@@ -136,12 +147,15 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
             LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $2::text
             WHERE p.project_id = $1 AND (p.user_id = $2::text OR pm.user_id = $2::text)
         `, [projectId, userId]);
-        if (result.rows.length === 0) return null;
+        if (result.rows.length === 0) {
+            _projectCache.set(cacheKey, null);
+            return null;
+        }
 
         const row = result.rows[0];
-        return {
+        const project: Project = {
             project_id: row.project_id,
-            user_id: row.owner_id, // preserve original owner identification
+            user_id: row.owner_id,
             display_name: row.display_name,
             created_at: row.created_at.toISOString(),
             dialect: row.dialect,
@@ -150,6 +164,8 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
             ai_allow_destructive: row.ai_allow_destructive ?? false,
             ai_schema_inference: row.ai_schema_inference ?? true
         };
+        _projectCache.set(cacheKey, project);
+        return project;
     } catch (error) {
         console.error("Error fetching project:", error);
         return null;

@@ -215,18 +215,16 @@ export function EditorClient({
         hasNextPage,
         isFetchingNextPage,
         isLoading: isTableLoading,
-        refetch
     } = useInfiniteQuery({
         queryKey: ['table-data', projectId, tableId],
         initialPageParam: null as string | null,
         queryFn: async ({ pageParam }) => {
             if (!tableId || !tableName) return { rows: [], nextCursorId: null, hasMore: false };
 
+            // No _t cache-buster — SSE + invalidateQueries handles freshness.
+            // The buster was bypassing Redis on every single request.
             let url = `/api/table-data?projectId=${projectId}&tableName=${tableName}&pageSize=50`;
             if (pageParam) url += `&page=${pageParam}`;
-            
-            // Bypass aggressive browser caching to respect realtime insertion/deletion events
-            url += `&_t=${Date.now()}`;
 
             const response = await fetch(url);
             if (!response.ok) throw new Error('Failed to fetch table data');
@@ -234,9 +232,8 @@ export function EditorClient({
         },
         getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.nextCursorId : null,
         enabled: !!tableId && !!tableName,
-        // Phase 1: Increased staleTime — 2 min (was 4s, caused constant re-fetching)
         staleTime: 2 * 60 * 1000,
-        // Phase 4: Reduced polling — WS handles live updates; polling is a fallback
+        // SSE handles live updates; 30s poll is a fallback only
         refetchInterval: 30000,
         refetchOnWindowFocus: false,
     });
@@ -314,18 +311,16 @@ export function EditorClient({
     }, [initialColumns, constraints, allTables, projectId]);
 
     const refreshData = useCallback(() => {
-        // Drop the entire cached pages so infinite query resets to page 1,
-        // then immediately re-fetch fresh data (invalidate alone won't re-fetch empty-state tables)
-        queryClient.removeQueries({ queryKey: ['table-data', projectId, tableId] });
-        refetch();
-    }, [queryClient, projectId, tableId, refetch]);
+        // invalidateQueries marks data as stale and re-fetches in the background.
+        // The old rows stay visible until new data arrives — no blank flash.
+        // Previously used removeQueries which deleted the cache and caused a loading spinner.
+        queryClient.invalidateQueries({ queryKey: ['table-data', projectId, tableId] });
+    }, [queryClient, projectId, tableId]);
 
-    // Phase 4: Debounced WS-driven refresh.
-    // Old: immediate removeQueries + refetch on every WS event = constant heap churn.
-    // New: wait 500ms of silence, then mark stale to fetch new data smoothly.
+    // SSE-driven refresh: debounced to avoid rapid re-fetches on burst events.
     useEffect(() => {
         if (lastEvent && lastEvent.type === 'update' && lastEvent.table === tableName) {
-            console.log('[Realtime Editor] Debounced update queued for table:', tableName);
+            console.log('[Realtime Editor] SSE update received for table:', tableName);
             if (wsRefreshTimerRef.current) clearTimeout(wsRefreshTimerRef.current);
             wsRefreshTimerRef.current = setTimeout(() => {
                 refreshData();

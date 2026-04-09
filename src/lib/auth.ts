@@ -2,8 +2,20 @@
 import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
 import { validateApiKey } from '@/lib/api-keys';
+import { LRUCache } from 'lru-cache';
+import crypto from 'crypto';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fluxbase_dev_secret_key_123';
+
+// Cache user suspension status for 30s — avoids a DB query on every API request.
+// If a user is suspended it takes at most 30s to take effect, which is acceptable.
+const _userStatusCache = new LRUCache<string, string>({ max: 1000, ttl: 30_000 });
+
+// Cache the full AuthContext for cookie-based sessions for 30s.
+// Keyed on a SHA-256 hash of the JWT so we never store the raw token in memory.
+// AuthContext is declared below in this same file — TS hoists interface declarations.
+// eslint-disable-next-line @typescript-eslint/no-use-before-define
+const _authContextCache = new LRUCache<string, AuthContext | null>({ max: 1000, ttl: 30_000 });
 
 export interface User {
     id: string;
@@ -85,13 +97,17 @@ export interface AuthContext {
 }
 
 export async function getAuthContextFromRequest(request: Request): Promise<AuthContext | null> {
-    // Helper to fetch user status to enforce suspension
-    const fetchUserStatus = async (uid: string) => {
+    // Cached helper — avoids 1 DB query per request just to check suspension status.
+    const fetchUserStatus = async (uid: string): Promise<string> => {
+        const cached = _userStatusCache.get(uid);
+        if (cached !== undefined) return cached;
         try {
             const { getPgPool } = await import('@/lib/pg');
             const pool = getPgPool();
             const res = await pool.query('SELECT status FROM fluxbase_global.users WHERE id = $1', [uid]);
-            return res.rows[0]?.status || 'active';
+            const status = res.rows[0]?.status || 'active';
+            _userStatusCache.set(uid, status);
+            return status;
         } catch {
             return 'active';
         }
@@ -100,11 +116,18 @@ export async function getAuthContextFromRequest(request: Request): Promise<AuthC
     // 1. Check Session Cookie (Browser Access)
     const userId = await getCurrentUserId();
     if (userId) {
+        // Cache the full context keyed on userId for cookie sessions.
+        // This eliminates the fetchUserStatus DB hit on every API request.
+        const cached = _authContextCache.get(`cookie:${userId}`);
+        if (cached !== undefined) return cached;
+
         const status = await fetchUserStatus(userId);
-        return { userId, status };
+        const ctx: AuthContext = { userId, status };
+        _authContextCache.set(`cookie:${userId}`, ctx);
+        return ctx;
     }
 
-    // 2. Check Authorization Header OR URL Search Params (API Access for SSE/WebSockets)
+    // 2. Check Authorization Header OR URL Search Params (API Access)
     let apiKey = '';
     const authHeader = request.headers.get('Authorization');
     if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -120,24 +143,29 @@ export async function getAuthContextFromRequest(request: Request): Promise<AuthC
     const headerProjectId = request.headers.get('x-project-id');
 
     if (apiKey) {
+        // Cache API key auth context keyed on hash of key (never raw key in memory).
+        const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex').slice(0, 16);
+        const cacheKey = `apikey:${keyHash}`;
+        const cached = _authContextCache.get(cacheKey);
+        if (cached !== undefined) return cached;
+
         const result = await validateApiKey(apiKey);
         if (result) {
-            // Track session for API key users (they have a specific project context)
-            // Efficiency-Fix: Only track sessions for meaningful requests, not every SSE hit or heartbeat
             const isNoisyRoute = request.url.includes('/api/realtime/subscribe');
             if (result.projectId && !isNoisyRoute) {
                 const { trackSession } = await import('@/lib/track-session');
                 await trackSession(result.projectId, result.userId);
             }
-            
-            const status = await fetchUserStatus(result.userId);
 
-            return { 
-                userId: result.userId, 
+            const status = await fetchUserStatus(result.userId);
+            const ctx: AuthContext = {
+                userId: result.userId,
                 allowedProjectId: result.projectId || headerProjectId || undefined,
                 scopes: result.scopes,
                 status
             };
+            _authContextCache.set(cacheKey, ctx);
+            return ctx;
         }
     }
 
