@@ -12,6 +12,14 @@ import { fireWebhooks, WebhookEvent } from '@/lib/webhooks';
 
 export const maxDuration = 60; // 1 minute
 
+// Module-level singleton: instantiated ONCE, reused for all requests.
+// Previously this was inside POST() which created a new instance per request, burning 2-3 extra Redis commands each time.
+const sqlRatelimit = new Ratelimit({
+    redis: redis,
+    limiter: Ratelimit.slidingWindow(30, '10 s'), // 30 requests per 10 seconds per user-project pairing
+    analytics: false, // analytics: true adds extra writes to Upstash on every check — disabled to reduce command volume
+});
+
 // Upstash Burst cache for frequent identical queries (e.g. from external dashboards)
 interface CacheEntry {
     result: any;
@@ -52,14 +60,8 @@ export async function POST(request: Request) {
             return NextResponse.json({ success: false, error: { message: 'Missing projectId or query', code: ERROR_CODES.BAD_REQUEST } }, { status: 400 });
         }
 
-        // Global API Rate Limiting Setup
-        const ratelimit = new Ratelimit({
-            redis: redis,
-            limiter: Ratelimit.slidingWindow(30, '10 s'), // 30 requests per 10 seconds per user-project pairing
-            analytics: true,
-        });
-
-        const { success: rlSuccess } = await ratelimit.limit(`ratelimit_flux_query_${projectId}_${userId}`);
+        // Global API Rate Limiting (uses module-level singleton — no instantiation overhead per request)
+        const { success: rlSuccess } = await sqlRatelimit.limit(`ratelimit_flux_query_${projectId}_${userId}`);
         if (!rlSuccess) {
             return NextResponse.json({
                 success: false,

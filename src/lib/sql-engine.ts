@@ -1,7 +1,7 @@
 import { Parser } from 'node-sql-parser';
 import { getColumnsForTable, getProjectById } from '@/lib/data';
 import { getCurrentUserId } from '@/lib/auth';
-import { trackApiRequest } from '@/lib/analytics';
+import { redis } from '@/lib/redis';
 import { Semaphore } from 'async-mutex';
 import { LRUCache } from 'lru-cache';
 import { performance } from 'perf_hooks';
@@ -107,9 +107,33 @@ export class SqlEngine {
         ]);
 
         try {
+            // Batch all analytics tracking into ONE pipeline round-trip to Redis
+            // Previously 3x separate trackApiRequest calls = 6 Redis commands; now = 2
             if (!options.skipTracking) {
-                await trackApiRequest(this.projectId, 'api_call');
-                await trackApiRequest(this.projectId, 'sql_execution');
+                const d = new Date();
+                d.setMinutes(0, 0, 0);
+                const period = d.getTime();
+                const keys = [
+                    `analytics_rollup:${this.projectId}:${period}:api_call`,
+                    `analytics_rollup:${this.projectId}:${period}:sql_execution`,
+                ];
+                const sqlType = `sql_${firstWord.toLowerCase()}`;
+                const validSqlTypes = ['sql_select', 'sql_insert', 'sql_update', 'sql_delete', 'sql_alter', 'sql_create', 'sql_drop'];
+                if (validSqlTypes.includes(sqlType)) {
+                    keys.push(`analytics_rollup:${this.projectId}:${period}:${sqlType}`);
+                }
+                
+                const pipe = redis.pipeline();
+                for (const key of keys) {
+                    pipe.incr(key);
+                }
+                // Probabilistic registration: only 10% chance to avoid redundant SADD on every request
+                if (Math.random() < 0.10) {
+                    for (const key of keys) {
+                        pipe.sadd('analytics_keys_to_flush', key);
+                    }
+                }
+                pipe.exec().catch(e => console.warn('[SqlEngine] Analytics batch failed:', e));
             }
 
             if (this.projectDialect?.toLowerCase() === 'mysql') {
@@ -248,15 +272,11 @@ export class SqlEngine {
                 ).catch(err => console.error('[SqlEngine] Audit log failed:', err));
             }
 
-            // Quick Telemetry Inference
-            if (!options.skipTracking && ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'ALTER', 'CREATE', 'DROP'].includes(firstWord)) {
-                await trackApiRequest(this.projectId, `sql_${firstWord.toLowerCase()}` as any);
-            }
+            // SQL type tracking is already included in the batch pipeline above (no redundant call needed)
             
             // Invalidate AI Schema Cache on structural changes
             if (['ALTER', 'CREATE', 'DROP'].includes(firstWord)) {
                 try {
-                    const { redis } = await import('@/lib/redis');
                     await redis.del(`schema_inference_${this.projectId}`);
                 } catch (e) {
                     console.warn('Failed to invalidate AI schema cache:', e);
