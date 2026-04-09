@@ -622,6 +622,19 @@ export function EditorClient({
 
                                                     try {
                                                         const res = await fetch('/api/import-csv', { method: 'POST', body: fd });
+
+                                                        // Guard: non-JSON error responses (e.g. 413 "Request Entity Too Large"
+                                                        // from the Next.js body-size limit) must be handled before .json().
+                                                        const contentType = res.headers.get('content-type') || '';
+                                                        if (!res.ok && !contentType.includes('application/json')) {
+                                                            const statusText =
+                                                                res.status === 413
+                                                                    ? 'File is too large. Maximum upload size is 200 MB.'
+                                                                    : `Server error ${res.status}: ${res.statusText}`;
+                                                            toast({ variant: 'destructive', title: 'Import Failed', description: statusText, duration: 8000 });
+                                                            return;
+                                                        }
+
                                                         const json = await res.json();
                                                         if (!res.ok) {
                                                             toast({

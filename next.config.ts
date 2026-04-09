@@ -5,6 +5,12 @@ const withNextIntl = createNextIntlPlugin();
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ['@genkit-ai/ai', '@genkit-ai/core', '@genkit-ai/googleai'],
+  // Large CSV uploads: allow up to 200 MB request bodies for the import-csv route.
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '200mb',
+    },
+  },
   // ... existing config ...
   async headers() {
     return [

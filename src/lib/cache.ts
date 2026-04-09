@@ -44,12 +44,12 @@ export async function setCachedTableRows(projectId: string, tableId: string, pag
 }
 
 export async function invalidateTableCache(projectId: string, tableId: string): Promise<void> {
-    // We only realistically need to invalidate page 0, as higher pages flow.
-    // If we wanted to be strictly correct, we should invalidate all pages or use a pattern.
-    // Upstash REST API `del` supports multiple keys but not pattern scanning natively without iterators.
-    // Let's manually delete the first 5 pages which covers 99% of UI cache hits.
+    // Invalidate enough pages to cover what the UI would request after a large import.
+    // Each page = 50 rows; 20 pages = first 1000 rows — enough for most initial infinite-scroll
+    // views. Beyond that, stale pages expire via their 60s TTL.
+    // (Full pattern-delete would require Redis SCAN which Upstash REST doesn't support inline.)
     try {
-        const keys = [0, 1, 2, 3, 4].map(p => `fluxTable_${projectId}_${tableId}_p${p}`);
+        const keys = Array.from({ length: 20 }, (_, p) => `fluxTable_${projectId}_${tableId}_p${p}`);
         await redis.del(...keys);
     } catch (e) {
         console.warn(`[Redis Cache Error] invalidate: fluxTable_${projectId}_${tableId}`, e);

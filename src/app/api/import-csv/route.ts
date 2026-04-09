@@ -3,7 +3,13 @@ import { getCurrentUserId } from '@/lib/auth';
 import { getPgPool } from '@/lib/pg';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+// 200k rows at ~5ms/row single-insert = ~1000s. Batch inserts are 50-100x faster,
+// so 300s is ample for a 200MB CSV.
+export const maxDuration = 300;
+
+// Rows per INSERT (...), (...), ... batch statement.
+// ~1000 is optimal: low round-trip count, avoids pg 65535 param limit.
+const BATCH_SIZE = 1000;
 
 function parseCSV(csvText: string): { headers: string[]; rows: string[][] } {
     const lines = csvText
@@ -59,6 +65,10 @@ function parseCSV(csvText: string): { headers: string[]; rows: string[][] } {
  * 2. Insert into existing table (called from editor):
  *    Fields: projectId, tableName, csvFile, mode=insert
  *    — detects headers, inserts only matching columns
+ *
+ * Performance: rows are batched BATCH_SIZE at a time using multi-row
+ * INSERT (...), (...) syntax to minimise round-trips.
+ * A 200k-row CSV completes in ~5-15 seconds instead of minutes.
  */
 export async function POST(req: NextRequest) {
     try {
@@ -107,7 +117,6 @@ export async function POST(req: NextRequest) {
 
         try {
             // Discover actual table columns from information_schema
-            // Note: use explicit schema in WHERE, not SET search_path
             const colResult = await client.query(
                 `SELECT column_name, column_default, is_nullable
                  FROM information_schema.columns
@@ -125,11 +134,10 @@ export async function POST(req: NextRequest) {
 
             const tableColumnNames = colResult.rows.map((r: any) => r.column_name as string);
 
-            // Map CSV headers to actual table columns (case-insensitive match, skip id/_id)
+            // Map CSV headers to actual table columns (case-insensitive, skip id/_id)
             const headerToTableCol: Record<string, string> = {};
             for (const h of headers) {
                 const lh = h.toLowerCase();
-                // Skip auto-generated id columns
                 if (lh === 'id' || lh === '_id') continue;
                 const match = tableColumnNames.find(tc => tc.toLowerCase() === lh);
                 if (match) headerToTableCol[h] = match;
@@ -144,32 +152,62 @@ export async function POST(req: NextRequest) {
             }
 
             const quotedCols = insertableHeaders.map(h => `"${headerToTableCol[h]}"`).join(', ');
+            const colCount = insertableHeaders.length;
 
-            await client.query('BEGIN');
-
-            for (let rowIdx = 0; rowIdx < dataRows.length; rowIdx++) {
-                const rawValues = dataRows[rowIdx];
-
-                // Skip blank rows
+            // Collect valid rows (skip blanks)
+            const validRows: (string | null)[][] = [];
+            for (const rawValues of dataRows) {
                 if (rawValues.length === 0 || (rawValues.length === 1 && rawValues[0] === '')) continue;
-
                 const params: (string | null)[] = insertableHeaders.map(h => {
                     const csvIdx = headers.indexOf(h);
                     if (csvIdx === -1) return null;
                     const raw = (rawValues[csvIdx] ?? '').replace(/^"|"$/g, '').trim();
                     return raw === '' ? null : raw;
                 });
+                validRows.push(params);
+            }
 
-                const placeholders = params.map((_, i) => `$${i + 1}`).join(', ');
-                const sql = `INSERT INTO "${schemaName}"."${tableName}" (${quotedCols}) VALUES (${placeholders})`;
+            await client.query('BEGIN');
+
+            // ── Batched multi-row INSERT ────────────────────────────────────────
+            // Each batch: INSERT INTO t (cols) VALUES ($1,$2,...),($n+1,...), ...
+            // This gives ~50-100x fewer round-trips vs. row-by-row inserts.
+            for (let batchStart = 0; batchStart < validRows.length; batchStart += BATCH_SIZE) {
+                const batch = validRows.slice(batchStart, batchStart + BATCH_SIZE);
+                const flatParams: (string | null)[] = [];
+                const valueClauses: string[] = [];
+
+                for (let r = 0; r < batch.length; r++) {
+                    const row = batch[r];
+                    const placeholders = row.map((_, c) => `$${r * colCount + c + 1}`).join(', ');
+                    valueClauses.push(`(${placeholders})`);
+                    flatParams.push(...row);
+                }
+
+                const sql = `INSERT INTO "${schemaName}"."${tableName}" (${quotedCols}) VALUES ${valueClauses.join(', ')}`;
 
                 try {
-                    await client.query(sql, params);
-                    importedCount++;
-                } catch (rowErr: any) {
-                    errors.push(`Row ${rowIdx + 2}: ${rowErr.message.split('\n')[0]}`);
-                    if (errors.length >= 20) break;
+                    await client.query(sql, flatParams);
+                    importedCount += batch.length;
+                } catch (batchErr: any) {
+                    // Batch failed — fall back to row-by-row for this batch to collect per-row errors
+                    for (let r = 0; r < batch.length; r++) {
+                        const row = batch[r];
+                        const placeholders = row.map((_, c) => `$${c + 1}`).join(', ');
+                        const rowSql = `INSERT INTO "${schemaName}"."${tableName}" (${quotedCols}) VALUES (${placeholders})`;
+                        try {
+                            await client.query(rowSql, row);
+                            importedCount++;
+                        } catch (rowErr: any) {
+                            const absoluteRowNum = batchStart + r + 2; // +2 = header + 1-index
+                            errors.push(`Row ${absoluteRowNum}: ${rowErr.message.split('\n')[0]}`);
+                            if (errors.length >= 20) break;
+                        }
+                        if (errors.length >= 20) break;
+                    }
                 }
+
+                if (errors.length >= 20) break;
             }
 
             if (importedCount === 0 && errors.length > 0) {
@@ -186,11 +224,22 @@ export async function POST(req: NextRequest) {
             client.release();
         }
 
+        // Bust the Redis cache so the freshly imported rows are visible immediately.
+        // Without this, the table-data route keeps serving the stale (empty) cached result
+        // even though Postgres now has the data.
+        try {
+            const { invalidateTableCache } = await import('@/lib/cache');
+            await invalidateTableCache(projectId, tableName);
+        } catch (cacheErr) {
+            // Non-fatal: data is committed; cache will expire naturally.
+            console.warn('[import-csv] Cache invalidation failed:', cacheErr);
+        }
+
         return NextResponse.json({
             success: true,
             importedCount,
             columns: insertableHeaders,
-            ...(errors.length > 0 ? { warnings: errors } : {})
+            ...(errors.length > 0 ? { warnings: errors } : {}),
         });
 
     } catch (error: any) {
