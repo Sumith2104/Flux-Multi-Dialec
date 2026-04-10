@@ -5,6 +5,7 @@ import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 
 const OutputSchema = z.object({
+    schema_analysis: z.string().describe("CRITICAL FIRST STEP: Explain step-by-step how you analyzed the schema to select valid tables, relations, and columns for this specific chart. You MUST write this before configuring widgets to ensure no hallucination."),
     widgets: z.array(z.object({
         title: z.string().describe("A short, descriptive title for the chart"),
         query: z.string().describe("The raw SQL query to execute (must be read-only SELECT)"),

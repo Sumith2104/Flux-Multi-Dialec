@@ -42,7 +42,8 @@ export async function GET(request: Request) {
         try {
             const cachedSchema = await redis.get(cacheKey) as any;
             if (cachedSchema) {
-                return NextResponse.json(cachedSchema);
+                // FORCE BYPASS for debugging the visibility issue
+                // return NextResponse.json(cachedSchema);
             }
         } catch (e) {
             console.warn('Redis schema cache read error:', e);

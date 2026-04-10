@@ -104,6 +104,40 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
     }, [initialWidgets]);
 
     const [aiOpen, setAiOpen] = useState(false);
+    const [suggestions, setSuggestions] = useState<string[]>([]);
+    const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+    const [suggestionsError, setSuggestionsError] = useState(false);
+
+    // Fetch Suggestions whenever modal opens
+    useEffect(() => {
+        if (!aiOpen) return;
+        
+        async function fetchSuggestions() {
+            setLoadingSuggestions(true);
+            setSuggestionsError(false);
+            try {
+                const res = await fetch('/api/analytics/suggestions', {
+                    method: 'POST',
+                    body: JSON.stringify({ projectId }),
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await res.json();
+                if (data.success) {
+                    let s = data.suggestions;
+                    if (typeof s === 'string') s = JSON.parse(s);
+                    setSuggestions(s || []);
+                } else {
+                    setSuggestionsError(true);
+                }
+            } catch (error) {
+                setSuggestionsError(true);
+            } finally {
+                setLoadingSuggestions(false);
+            }
+        }
+        
+        fetchSuggestions();
+    }, [aiOpen, projectId]);
     const [aiPrompt, setAiPrompt] = useState('');
     const [generating, setGenerating] = useState(false);
 
@@ -202,16 +236,44 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
                                 <DialogDescription>Describe the data you want to see. AI will write the SQL and pick the best chart.</DialogDescription>
                             </DialogHeader>
                             <div className="grid gap-4 py-4">
+
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-2">
+                                        <Sparkles className="w-4 h-4 text-orange-500" />
+                                        <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Data-Driven Suggestions</span>
+                                    </div>
+                                    <div className="flex flex-col gap-2">
+                                        {loadingSuggestions ? (
+                                            Array(3).fill(0).map((_, i) => (
+                                                <div key={i} className="h-10 border border-white/5 bg-white/5 rounded-lg animate-pulse" />
+                                            ))
+                                        ) : suggestionsError ? (
+                                            <div className="p-3 rounded-lg border border-red-500/20 bg-red-500/10 text-red-400 text-sm">
+                                                Unable to load schema suggestions.
+                                            </div>
+                                        ) : (
+                                            suggestions.map((s, i) => (
+                                                <button
+                                                    key={i}
+                                                    onClick={() => setAiPrompt(s)}
+                                                    className="text-left px-4 py-2.5 rounded-lg border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 hover:border-zinc-700 transition-all text-sm text-zinc-300"
+                                                >
+                                                    {s}
+                                                </button>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
                                 <Input 
                                     placeholder="e.g. Show me the number of users created per day" 
-                                    className="col-span-3 bg-white/5" 
+                                    className="col-span-3 bg-zinc-900 border-zinc-800" 
                                     value={aiPrompt}
                                     onChange={e => setAiPrompt(e.target.value)}
                                     autoFocus
                                     onKeyDown={e => { if (e.key === 'Enter') handleGenerate() }}
                                 />
                             </div>
-                            <Button onClick={handleGenerate} disabled={generating} className="w-full">
+                            <Button onClick={handleGenerate} disabled={generating || !aiPrompt.trim()} className="w-full bg-orange-500 hover:bg-orange-600 text-white">
                                 {generating ? <><Loader2 className="w-4 h-4 mr-2 animate-spin"/> Generating...</> : 'Generate Chart'}
                             </Button>
                         </DialogContent>

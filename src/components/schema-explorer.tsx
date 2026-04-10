@@ -15,7 +15,8 @@ interface IndexDef {
     table: string;
 }
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRealtimeSubscription } from '@/hooks/use-realtime-subscription';
 
 interface SchemaData {
     tables: Record<string, ColumnDef[]>;
@@ -38,12 +39,27 @@ export function SchemaExplorer({ projectId, onInsertQuery }: { projectId?: strin
     // Core structural folders
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['tables']));
 
+    const queryClient = useQueryClient();
+    const { lastEvent } = useRealtimeSubscription(projectId);
+
+    useEffect(() => {
+        if (lastEvent?.event_type === 'schema_update') {
+            queryClient.invalidateQueries({ queryKey: ['schema', projectId] });
+        }
+    }, [lastEvent, queryClient, projectId]);
+
     const { data: schema, isLoading: loading } = useQuery({
         queryKey: ['schema', projectId],
-        queryFn: () => fetchSchema(projectId!),
+        queryFn: async () => {
+            // Bust browser cache
+            const res = await fetch(`/api/schema?projectId=${projectId}&_t=${Date.now()}`);
+            const data = await res.json();
+            if (!data.success || !data.tables) return null;
+            return data as SchemaData;
+        },
         enabled: !!projectId,
         refetchInterval: 5000, // Poll every 5s silently
-        staleTime: 5 * 60 * 1000, // 5 minutes
+        staleTime: 0, // Never stale locally, always ping API
         gcTime: 30 * 60 * 1000, // Keep in memory for 30 minutes even if unmounted
     });
 

@@ -239,6 +239,9 @@ export async function POST(request: Request) {
             const isSchemaChange = uppercaseQuery.includes('CREATE ') || uppercaseQuery.includes('DROP ') || uppercaseQuery.includes('ALTER ') || uppercaseQuery.includes('RENAME ');
             if (isSchemaChange) {
                 try {
+                    // Flush the schema inference cache so the Database Explorer immediately reflects new tables
+                    await redis.del(`schema_inference_${projectId}`).catch(err => console.warn('Cache del error:', err));
+                    
                     const pool = getPgPool();
                     const payload = {
                         event_type: 'schema_update',
