@@ -13,6 +13,9 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'Fluxbase',
   description: 'The modern, AI-powered spreadsheet and data analysis tool.',
+  verification: {
+    google: 'JhrAGACmQgsrw96rM9LhMCQBNnDm2AhDLtE6NtVHEfw',
+  },
 };
 
 export default function RootLayout({
