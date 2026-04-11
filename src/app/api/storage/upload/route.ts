@@ -42,11 +42,8 @@ export async function POST(req: NextRequest) {
     // IMPORTANT: use the canonical UUID from the database for consistency in S3 keys and metadata
     const actualBucketId = bucketRes.rows[0].id;
 
-    // Validate file type
+    // Automatically accept any file type
     const mimeType = file.type || 'application/octet-stream';
-    if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-        return NextResponse.json({ success: false, error: { message: `File type ${mimeType} not allowed`, code: ERROR_CODES.MIME_TYPE_NOT_ALLOWED } }, { status: 400 });
-    }
 
     // Validate file size against plan
     const pool2 = getPgPool();
