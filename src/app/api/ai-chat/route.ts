@@ -62,8 +62,15 @@ Provide your response in Markdown formatting. Do NOT use HTML. Keep code snippet
         }
         fullPrompt += "ASSISTANT: ";
 
+        // Import our real physical constraints tools
+        const { fluxTools } = await import('@/ai/tools');
+
         const response = await ai.generate({
             prompt: fullPrompt,
+            tools: fluxTools,
+            config: {
+                temperature: 0.2, // Be precise when executing tools
+            }
         });
 
         return NextResponse.json({ success: true, text: response.text });

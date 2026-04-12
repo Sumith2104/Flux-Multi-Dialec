@@ -1,0 +1,95 @@
+import WebSocket, { WebSocketServer } from 'ws';
+import { Client } from 'pg';
+import http from 'http';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const port = process.env.PORT || 8080;
+const server = http.createServer((req, res) => res.end('Fluxbase Realtime WS Server Active'));
+const wss = new WebSocketServer({ server });
+
+// Room System: Mapping roomId (e.g., 'table_123', 'chat_456') to a Set of active WS connections
+const rooms = new Map<string, Set<WebSocket>>();
+
+async function setupDatabaseListener() {
+  const pgClient = new Client({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+  });
+
+  try {
+    await pgClient.connect();
+    console.log('Postgres connection established.');
+    
+    // Listen to the channel defined in our PG Trigger
+    await pgClient.query('LISTEN flux_realtime');
+
+    pgClient.on('notification', (msg) => {
+      if (!msg.payload) return;
+      const data = JSON.parse(msg.payload);
+      
+      const routingId = data.record.chat_id || data.record.project_id || data.record.room_id || 'global';
+      const roomId = `${data.table}_${routingId}`;
+      
+      const clientsInRoom = rooms.get(roomId);
+      if (clientsInRoom) {
+        const outboundMessage = JSON.stringify({ type: 'db_event', payload: data });
+        clientsInRoom.forEach(client => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(outboundMessage);
+          }
+        });
+      }
+    });
+
+    pgClient.on('error', async (err) => {
+      console.error('PG Client Error, reconnecting...', err);
+      try { await pgClient.end(); } catch (e) {}
+      setTimeout(setupDatabaseListener, 5000); // Safely retry with a fresh client
+    });
+  } catch (err) {
+    console.error('Initial PG connection failed, retrying...', err);
+    setTimeout(setupDatabaseListener, 5000);
+  }
+}
+
+setupDatabaseListener();
+
+wss.on('connection', (ws) => {
+  ws.on('message', (message) => {
+    try {
+      const data = JSON.parse(message.toString());
+      
+      if (data.type === 'subscribe' && data.roomId) {
+        if (!rooms.has(data.roomId)) {
+          rooms.set(data.roomId, new Set());
+        }
+        rooms.get(data.roomId)!.add(ws);
+        ws.send(JSON.stringify({ type: 'subscribed', roomId: data.roomId }));
+      }
+      
+      if (data.type === 'unsubscribe' && data.roomId) {
+        const cls = rooms.get(data.roomId);
+        if (cls) {
+          cls.delete(ws);
+          if (cls.size === 0) rooms.delete(data.roomId);
+        }
+      }
+    } catch(e) {
+      console.error("Invalid message format", e);
+    }
+  });
+
+  // O(1) Memory Cleanup on Disconnect
+  ws.on('close', () => {
+    rooms.forEach((clients, roomId) => {
+      if (clients.has(ws)) {
+        clients.delete(ws);
+        if (clients.size === 0) rooms.delete(roomId);
+      }
+    });
+  });
+});
+
+server.listen(port, () => console.log(`WebSocket router active on port ${port}`));

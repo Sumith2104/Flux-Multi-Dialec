@@ -1,0 +1,23 @@
+{
+  "name": "fluxbase-realtime-server",
+  "version": "1.0.0",
+  "description": "Dedicated Edge WebSocket Server for Fluxbase",
+  "main": "server.js",
+  "scripts": {
+    "start": "ts-node server.ts",
+    "build": "tsc",
+    "serve": "node dist/server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "pg": "^8.11.5",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "@types/pg": "^8.11.6",
+    "@types/ws": "^8.5.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}
