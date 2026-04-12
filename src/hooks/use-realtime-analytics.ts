@@ -27,8 +27,6 @@ export function useRealtimeAnalytics(projectId: string | undefined): AnalyticsSt
         queryKey,
         queryFn: () => getAnalyticsStatsAction(projectId!),
         enabled: !!projectId,
-        // Reduced: 10s polling (was 5s) — 50% less re-allocation churn
-        refetchInterval: 10000,
         staleTime: 8000,
         // CRITICAL FIX: was 30 * 60 * 1000 (30 minutes!) — analytics objects
         // were kept alive in the JS heap for 30 min after the dashboard unmounted.

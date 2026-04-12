@@ -62,12 +62,24 @@ BEGIN
             );
         END IF;
     END LOOP;
+
+    -- BROADCAST SCHEMA CHANGE: Tell the WebSocket app that the schema has evolved.
+    -- We try to extract the specific project_id from the schema name of the LAST modified object.
+    PERFORM pg_notify('flux_realtime', json_build_object(
+        'type', 'schema_update',
+        'project_id', (
+            SELECT COALESCE(REPLACE(schema_name, 'project_', ''), 'global')
+            FROM pg_event_trigger_ddl_commands()
+            WHERE schema_name LIKE 'project_%' OR schema_name = 'fluxbase_global'
+            LIMIT 1
+        )
+    )::text);
 END;
 $$ LANGUAGE plpgsql;
 
--- 3. Register the event trigger
+-- 3. Register the event trigger (Expanded to handle Drop and Alter)
 DROP EVENT TRIGGER IF EXISTS register_realtime_watchdog;
 CREATE EVENT TRIGGER register_realtime_watchdog
 ON ddl_command_end
-WHEN TAG IN ('CREATE TABLE')
+WHEN TAG IN ('CREATE TABLE', 'DROP TABLE', 'ALTER TABLE')
 EXECUTE FUNCTION public.auto_retrofit_realtime();

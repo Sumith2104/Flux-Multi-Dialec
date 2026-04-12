@@ -233,8 +233,6 @@ export function EditorClient({
         getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.nextCursorId : null,
         enabled: !!tableId && !!tableName,
         staleTime: 2 * 60 * 1000,
-        // SSE handles live updates; 30s poll is a fallback only
-        refetchInterval: 30000,
         refetchOnWindowFocus: false,
     });
 
@@ -311,25 +309,17 @@ export function EditorClient({
     }, [initialColumns, constraints, allTables, projectId]);
 
     const refreshData = useCallback(() => {
-        // invalidateQueries marks data as stale and re-fetches in the background.
-        // The old rows stay visible until new data arrives — no blank flash.
-        // Previously used removeQueries which deleted the cache and caused a loading spinner.
-        queryClient.invalidateQueries({ queryKey: ['table-data', projectId, tableId] });
+        // refetchQueries forces an immediate network request, bypassing the staleTime.
+        // This ensures the UI remains snappy during manual operations.
+        queryClient.refetchQueries({ 
+            queryKey: ['table-data', projectId, tableId],
+            type: 'active',
+            exact: true
+        });
     }, [queryClient, projectId, tableId]);
 
-    // SSE-driven refresh: debounced to avoid rapid re-fetches on burst events.
-    useEffect(() => {
-        if (lastEvent && lastEvent.type === 'update' && lastEvent.table === tableName) {
-            console.log('[Realtime Editor] SSE update received for table:', tableName);
-            if (wsRefreshTimerRef.current) clearTimeout(wsRefreshTimerRef.current);
-            wsRefreshTimerRef.current = setTimeout(() => {
-                refreshData();
-            }, 50);
-        }
-        return () => {
-            if (wsRefreshTimerRef.current) clearTimeout(wsRefreshTimerRef.current);
-        };
-    }, [lastEvent, tableName, queryClient, projectId, tableId]);
+    // Cache refetching is now ALSO handled globally in useRealtimeSubscription.ts
+    // to ensure consistency across the sidebar, analytics, and editor.
 
 
 
@@ -368,6 +358,10 @@ export function EditorClient({
         const result = await deleteTableAction(projectId, tableToDelete.table_id, tableToDelete.table_name);
         if (result.success) {
             toast({ title: 'Success', description: `Table '${tableToDelete.table_name}' deleted successfully.` });
+            
+            // The sidebar will be updated via WebSocket 'schema_update'
+            refreshData();
+
             if (tableToDelete.table_id === tableId) {
                 router.push(`/editor?projectId=${projectId}`);
             } else {
@@ -411,6 +405,8 @@ export function EditorClient({
             toast({ title: 'Success', description: `Column '${columnToDelete.column_name}' deleted successfully.` });
             // Diff-set: track deletion ID instead of copying the full array
             setDeletedColumnIds(prev => new Set([...prev, columnToDelete.column_id]));
+            
+            // The sidebar will be updated via WebSocket 'schema_update'
             refreshData();
         } else {
             toast({ variant: 'destructive', title: 'Error', description: result.error, duration: 8000 });
@@ -484,6 +480,10 @@ export function EditorClient({
             if (!res.ok) throw new Error('Failed to reset');
 
             toast({ title: 'Success', description: 'Database has been reset.' });
+            
+            // The sidebar will be updated via WebSocket 'schema_update'
+            refreshData();
+
             router.refresh();
             router.push(`/editor?projectId=${projectId}`);
         } catch (e) {
@@ -601,7 +601,7 @@ export function EditorClient({
                                                 projectId={projectId}
                                                 tableId={tableId}
                                                 tableName={tableName}
-                                                onColumnAdded={refreshData}
+                                                onColumnAdded={() => refreshData(true)}
                                             />
                                             {/* Import CSV — hidden file input triggered by button */}
                                             <input
@@ -975,6 +975,7 @@ export function EditorClient({
                     tableId={tableId!}
                     tableName={tableName!}
                     column={columnToEdit}
+                    onColumnUpdated={() => refreshData(true)}
                 />
             )}
 

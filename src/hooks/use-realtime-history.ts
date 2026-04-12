@@ -21,7 +21,6 @@ export function useRealtimeHistory(projectId: string | undefined): RealtimeDataP
         queryKey: ['analytics_history', projectId],
         queryFn: () => getRealtimeHistoryAction(projectId!),
         enabled: !!projectId,
-        refetchInterval: 10000, // Reduced polling since we have WS now
         staleTime: 4000,
         gcTime: 30 * 60 * 1000, // Keep in memory for 30 minutes
     });

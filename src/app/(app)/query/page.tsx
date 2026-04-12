@@ -3,6 +3,7 @@
 import { useGlobalAlert } from '@/components/global-alert-provider';
 
 import { useState, useContext, useEffect, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Play, Trash2, History as HistoryIcon, Sparkles, Layout, ChevronRight, ChevronLeft, Table2, ListRestart, Info, Database, AlertCircle, CheckCircle2, TerminalSquare, Bot, MoreHorizontal, FileJson, FileType, Copy as CopyIcon, AlignLeft, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -26,8 +27,10 @@ import { ProjectContext } from '@/contexts/project-context';
 import { useToast } from '@/hooks/use-toast';
 import { generateSQLAction } from '@/actions/ai-sql-actions';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
+import { useRealtimeSubscription } from '@/hooks/use-realtime-subscription';
 
 export default function QueryPage() {
+  const queryClient = useQueryClient();
 
   const [query, setQuery] = useState('SELECT * FROM your_table_name LIMIT 100;');
   const [isQueryLoaded, setIsQueryLoaded] = useState(false);
@@ -149,6 +152,12 @@ export default function QueryPage() {
 
       if (!data.success) {
         setActiveResultsTab('messages');
+      } else {
+        // PROACTIVE REFRESH: If this was a structural command, trigger an invisible refresh
+        // We strip comments and whitespace to ensure detection is robust
+        const normalized = queryToExecute.trim().replace(/^(\/\*[\s\S]*?\*\/|--.*?\n)*/g, '');
+        // The sidebar and table views are now automatically synchronized via the global WebSocket listener 
+        // in `useRealtimeSubscription`, which reacts to the 'schema_update' event emitted by the server.
       }
 
     } catch (e: any) {
@@ -163,6 +172,25 @@ export default function QueryPage() {
     setIsExecuting(false);
 
   }, [query, project, toast]);
+
+  const { lastEvent } = useRealtimeSubscription();
+
+  // Reactive SQL: Auto-refresh results when data in the affected table changes elsewhere
+  useEffect(() => {
+    if (!lastEvent || lastEvent.type !== 'db_event' || !queryResponse?.success) return;
+
+    const affectedTable = lastEvent.payload.table;
+    if (!affectedTable) return;
+
+    // Smart Refresh: Check if the affected table name exists in the current query string
+    // This prevents unnecessary refreshes for unrelated background tasks.
+    const isRelevant = new RegExp(`\\b${affectedTable}\\b`, 'i').test(query);
+
+    if (isRelevant) {
+      console.log(`[Realtime SQL] Detected change in '${affectedTable}'. Refreshing results...`);
+      handleRunQuery();
+    }
+  }, [lastEvent, query, queryResponse?.success, handleRunQuery]);
 
   const handleGenerateSQL = async () => {
     if (!aiInput.trim()) return;

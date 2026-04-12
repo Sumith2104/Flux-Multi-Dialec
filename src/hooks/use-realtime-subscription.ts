@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 // Native SSE-based realtime subscription.
 // MODULE-LEVEL SINGLETON: All consumers of this hook share ONE SSE connection per projectId.
@@ -111,7 +112,7 @@ async function startConnection(projectId: string) {
 
                 const normalized: RealtimeEvent = {
                     ...payload,
-                    type: 'update',
+                    type: payload.type || 'update',
                     table: cleanTable,
                     data: payload.record
                 };
@@ -167,8 +168,57 @@ function subscribe(projectId: string, listener: Listener): () => void {
 export function useRealtimeSubscription(projectId: string | undefined) {
     const [lastEvent, setLastEvent] = useState<RealtimeEvent | null>(null);
     const [status, setStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
+    const queryClient = useQueryClient();
     const projectIdRef = useRef(projectId);
     projectIdRef.current = projectId;
+
+    // --- GLOBAL CACHE SYNC LAYER ---
+    // This effect ensures that deletions/updates in ONE part of the app 
+    // immediately refresh the cache for ALL other components.
+    useEffect(() => {
+        if (!lastEvent || !projectId) return;
+
+        // 1. Handle Schema Changes (Tables created/dropped/altered)
+        // GLOBAL AUTO-REFRESH: When any user makes a structural change, the server broadcasts 'schema_update'.
+        // We handle this with a 'Triple-Pass' (1s, 4s, 10s) strategy to guarantee consistency across all clients.
+        if (lastEvent.type === 'schema_update' || lastEvent.event_type === 'schema_update') {
+            const pid = lastEvent.project_id || projectId;
+            console.log(`[Realtime Sync] Schema changed in project ${pid}. Starting Triple-Pass refresh...`);
+            
+            // Pass 1: Immediate Responsiveness (1000ms)
+            setTimeout(() => {
+                queryClient.invalidateQueries({ queryKey: ['schema', pid] });
+            }, 1000);
+
+            // Pass 2: Standard Propagation (4000ms)
+            setTimeout(() => {
+                queryClient.invalidateQueries({ queryKey: ['schema', pid] });
+            }, 4000);
+
+            // Pass 3: Hyper-Consistency Safety Net (10000ms)
+            // Catch extremely delayed database catalog updates
+            setTimeout(() => {
+                queryClient.invalidateQueries({ queryKey: ['schema', pid] });
+            }, 10000);
+        }
+
+        // 2. Handle Data Changes (Rows deleted/inserted/updated)
+        // We broadly invalidate 'table-data' to ensure consistency across views.
+        if (lastEvent.type === 'update' || lastEvent.action || lastEvent.operation) {
+            const table = lastEvent.table;
+            console.log(`[Realtime Sync] Data changed in ${table}. Synchronizing views...`);
+            
+            // Refetch current active table data (Turbo style)
+            queryClient.refetchQueries({ 
+                queryKey: ['table-data', projectId, table],
+                type: 'active'
+            });
+
+            // Invalidate analytics and history globally
+            queryClient.invalidateQueries({ queryKey: ['analytics_stats', projectId] });
+            queryClient.invalidateQueries({ queryKey: ['analytics_history', projectId] });
+        }
+    }, [lastEvent, projectId, queryClient]);
 
     useEffect(() => {
         if (!projectId) return;

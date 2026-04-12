@@ -30,20 +30,30 @@ async function setupDatabaseListener() {
       try {
         const data = JSON.parse(msg.payload);
         
-        // Priority Routing: Use explicit project_id if provided by trigger, else fallback
-        const routingId = data.project_id || data.record.chat_id || data.record.project_id || data.record.room_id || 'global';
-        const roomId = `project_${routingId}`;
-        
-        console.log(`Broadcasting to room: ${roomId} (Table: ${data.table})`);
+        const routingId = data.project_id || data.record?.chat_id || data.record?.project_id || data.record?.room_id || 'global';
+        const outboundMessage = JSON.stringify({ type: 'db_event', payload: data });
 
-        const clientsInRoom = rooms.get(roomId);
-        if (clientsInRoom) {
-          const outboundMessage = JSON.stringify({ type: 'db_event', payload: data });
-          clientsInRoom.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
-              client.send(outboundMessage);
-            }
+        if (routingId === 'global') {
+          console.log(`[Global Broadcast] Schema evolved. Notifying ALL active rooms...`);
+          rooms.forEach((clients, roomId) => {
+            clients.forEach(client => {
+              if (client.readyState === WebSocket.OPEN) {
+                client.send(outboundMessage);
+              }
+            });
           });
+        } else {
+          const roomId = `project_${routingId}`;
+          console.log(`Broadcasting to room: ${roomId} (Table: ${data.table})`);
+          
+          const clientsInRoom = rooms.get(roomId);
+          if (clientsInRoom) {
+            clientsInRoom.forEach(client => {
+              if (client.readyState === WebSocket.OPEN) {
+                client.send(outboundMessage);
+              }
+            });
+          }
         }
       } catch (e) {
         console.error('Error parsing notification:', e);

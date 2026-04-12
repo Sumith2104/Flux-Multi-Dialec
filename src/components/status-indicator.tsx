@@ -66,7 +66,7 @@ export function StatusIndicator() {
 
     useEffect(() => {
         check();
-        const interval = setInterval(check, 30000); // re-check services every 30s
+        const interval = setInterval(check, 300000); // re-check services every 5 mins (slow heartbeat)
         return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);

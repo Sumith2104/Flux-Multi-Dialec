@@ -470,16 +470,156 @@ end`} />
                             </div>
                         </Section>
 
-                        <Section id="realtime" title="Real-time SSE" icon={Zap}>
-                            <p>Persistent Server-Sent Events for instant browser updates. Note that this requires the high-performance <strong>Render Sidecar</strong> URL.</p>
-                            <CodeBlock language="javascript" code={`// Use the @fluxbaseteam/fluxbase SDK for automatic management
-const flux = createClient(VERCEL_URL, PROJECT_ID, API_KEY, {
-  realtimeUrl: 'https://fluxbase-realtime.onrender.com'
-});
+                        <Section id="realtime" title="Real-time (WebSocket)" icon={Zap}>
+                            <p>
+                                Fluxbase uses a <strong>persistent WebSocket connection</strong> for all real-time events. 
+                                Connect once and receive live row changes, schema updates, and custom broadcasts — 
+                                automatically reconnecting with exponential backoff if the connection drops.
+                            </p>
 
-const channel = flux.channel('app', 'messages')
-  .on('row.inserted', (payload) => console.log('Live New:', payload.data.new))
-  .subscribe();`} />
+                            {/* How it works */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-6">
+                                {[
+                                    { icon: Zap, color: 'text-orange-400 bg-orange-500/10', title: 'Connect & Subscribe', desc: 'Open a single WebSocket connection and join a project room. All events for that project are multiplexed over one socket.' },
+                                    { icon: Database, color: 'text-blue-400 bg-blue-500/10', title: 'Receive Events', desc: 'The server pushes db_event messages for row changes (INSERT/UPDATE/DELETE) and schema_update for DDL changes.' },
+                                    { icon: ShieldCheck, color: 'text-emerald-400 bg-emerald-500/10', title: 'Auto-Reconnect', desc: 'Built-in exponential backoff (1s, 2s, 4s … up to 15s). Your listeners are re-registered automatically after reconnect.' },
+                                ].map((item, i) => (
+                                    <div key={i} className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40">
+                                        <div className={`w-fit p-2 rounded-lg mb-3 ${item.color}`}><item.icon className="h-5 w-5" /></div>
+                                        <h5 className="font-bold text-white text-sm mb-1">{item.title}</h5>
+                                        <p className="text-xs text-zinc-500 leading-relaxed">{item.desc}</p>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Connection Setup */}
+                            <h3 className="text-xl font-bold text-white mt-8 mb-2">Connection Setup</h3>
+                            <p className="text-sm mb-2">Set <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-orange-300">NEXT_PUBLIC_WS_URL</code> in your environment to point to the realtime server.</p>
+                            <CodeBlock language="bash" title=".env.local" code={`NEXT_PUBLIC_WS_URL=wss://fluxbase-realtime.onrender.com`} />
+
+                            <Tabs defaultValue="js-rt" className="w-full mt-6">
+                                <TabsList className="flex flex-wrap h-auto gap-2 bg-zinc-900 border border-zinc-800 p-1.5 rounded-2xl">
+                                    {[['JavaScript', 'js-rt'], ['Python', 'python-rt'], ['cURL / wscat', 'curl-rt']].map(([lang, val]) => (
+                                        <TabsTrigger key={val} value={val} className="data-[state=active]:bg-orange-500 data-[state=active]:text-white rounded-xl px-4 py-2 transition-all">{lang}</TabsTrigger>
+                                    ))}
+                                </TabsList>
+                                <div className="mt-6">
+                                    <TabsContent value="js-rt">
+                                        <CodeBlock language="typescript" title="realtime.js" code={`const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'wss://fluxbase-realtime.onrender.com';
+const PROJECT_ID = 'YOUR_PROJECT_ID';
+
+const socket = new WebSocket(WS_URL);
+
+socket.onopen = () => {
+  // Join the project room to receive all events for this project
+  socket.send(JSON.stringify({
+    type: 'subscribe',
+    roomId: \`project_\${PROJECT_ID}\`
+  }));
+};
+
+socket.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+
+  // Row-level data change
+  if (msg.type === 'db_event' && msg.payload) {
+    const { table, operation, record } = msg.payload;
+    console.log(\`[\${operation}] on \${table}:\`, record);
+  }
+
+  // Schema structural change (CREATE / DROP / ALTER)
+  if (msg.payload?.event_type === 'schema_update') {
+    console.log('Schema changed — refreshing explorer...');
+    // e.g. trigger a re-fetch of your table list
+  }
+};
+
+socket.onclose = () => console.log('WS closed. Will reconnect...');
+socket.onerror = (err) => console.error('WS error:', err);`} />
+                                    </TabsContent>
+                                    <TabsContent value="python-rt">
+                                        <CodeBlock language="python" title="realtime.py" code={`import json, asyncio, websockets
+
+WS_URL = "wss://fluxbase-realtime.onrender.com"
+PROJECT_ID = "YOUR_PROJECT_ID"
+
+async def listen():
+    async with websockets.connect(WS_URL) as ws:
+        # Subscribe to the project room
+        await ws.send(json.dumps({
+            "type": "subscribe",
+            "roomId": f"project_{PROJECT_ID}"
+        }))
+        print("Subscribed. Listening for events...")
+
+        async for raw in ws:
+            msg = json.loads(raw)
+            if msg.get("type") == "db_event":
+                payload = msg.get("payload", {})
+                print(f"[{payload.get('operation')}] {payload.get('table')}: {payload.get('record')}")
+            elif msg.get("payload", {}).get("event_type") == "schema_update":
+                print("Schema changed — trigger a schema refresh.")
+
+asyncio.run(listen())`} />
+                                    </TabsContent>
+                                    <TabsContent value="curl-rt">
+                                        <CodeBlock language="bash" title="Terminal (wscat)" code={`# Install wscat globally
+npm install -g wscat
+
+# Connect to the realtime server
+wscat -c wss://fluxbase-realtime.onrender.com
+
+# Then send this JSON to subscribe:
+{"type":"subscribe","roomId":"project_YOUR_PROJECT_ID"}
+
+# You will start receiving events like:
+# {"type":"db_event","payload":{"operation":"INSERT","table":"orders","record":{...}}}`} />
+                                    </TabsContent>
+                                </div>
+                            </Tabs>
+
+                            {/* Event Types */}
+                            <h3 className="text-xl font-bold text-white mt-10 mb-4">Event Reference</h3>
+                            <div className="rounded-2xl border border-zinc-800 overflow-hidden text-sm">
+                                <table className="w-full text-left border-collapse bg-zinc-950">
+                                    <thead>
+                                        <tr className="bg-zinc-900 border-b border-zinc-800">
+                                            <th className="p-4 font-semibold text-white">msg.type</th>
+                                            <th className="p-4 font-semibold text-white">payload.event_type / operation</th>
+                                            <th className="p-4 font-semibold text-white">When it fires</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-zinc-900">
+                                        {[
+                                            { type: 'db_event', event: 'operation: INSERT', when: 'A row was inserted via execute-sql or the Table Editor.' },
+                                            { type: 'db_event', event: 'operation: UPDATE', when: 'A row was updated.' },
+                                            { type: 'db_event', event: 'operation: DELETE', when: 'A row was deleted.' },
+                                            { type: 'db_event', event: 'event_type: schema_update', when: 'A CREATE, DROP, ALTER, TRUNCATE or RENAME was executed — triggers a sidebar refresh for all clients.' },
+                                            { type: 'subscribed', event: '—', when: 'Confirmation that you have joined the project room.' },
+                                        ].map((row, i) => (
+                                            <tr key={i} className="hover:bg-zinc-900/50 transition-colors">
+                                                <td className="p-4 font-mono font-bold text-orange-500">{row.type}</td>
+                                                <td className="p-4 font-mono text-blue-300 text-xs">{row.event}</td>
+                                                <td className="p-4 text-zinc-400 text-xs">{row.when}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Schema sync callout */}
+                            <div className="bg-blue-500/5 border border-blue-500/20 p-5 rounded-2xl flex gap-4 mt-6">
+                                <Info className="h-6 w-6 text-blue-400 shrink-0 mt-0.5" />
+                                <div className="space-y-1">
+                                    <p className="text-sm font-bold text-blue-300">Automatic Schema Sync</p>
+                                    <p className="text-sm leading-relaxed text-blue-200/70">
+                                        The Fluxbase Dashboard uses a <strong>Triple-Pass (1s → 4s → 10s)</strong> invalidation 
+                                        strategy whenever a <code>schema_update</code> event is received. This guarantees the 
+                                        Database Explorer sidebar reflects DDL changes across all connected sessions, even under 
+                                        high-latency PostgreSQL catalog propagation.
+                                    </p>
+                                </div>
+                            </div>
                         </Section>
 
                         <Section id="error-codes" title="Error Codes" icon={AlertCircle}>

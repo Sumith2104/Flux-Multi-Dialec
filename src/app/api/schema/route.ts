@@ -12,6 +12,7 @@ export async function GET(request: Request) {
 
         const { searchParams } = new URL(request.url);
         let projectId = searchParams.get('projectId');
+        const refresh = searchParams.get('refresh') === 'true';
 
         if (auth.allowedProjectId && projectId !== auth.allowedProjectId) {
             projectId = auth.allowedProjectId;
@@ -39,13 +40,15 @@ export async function GET(request: Request) {
         }
 
         const cacheKey = `schema_inference_${projectId}`;
-        try {
-            const cachedSchema = await redis.get(cacheKey) as any;
-            if (cachedSchema) {
-                return NextResponse.json(cachedSchema);
+        if (!refresh) {
+            try {
+                const cachedSchema = await redis.get(cacheKey) as any;
+                if (cachedSchema) {
+                    return NextResponse.json(cachedSchema);
+                }
+            } catch (e) {
+                console.warn('Redis schema cache read error:', e);
             }
-        } catch (e) {
-            console.warn('Redis schema cache read error:', e);
         }
 
         const engine = new SqlEngine(projectId, auth.userId);

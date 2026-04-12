@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Play, Save, Download, Loader2, Plus, AlignLeft, Activity, Share2, Upload } from 'lucide-react';
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
@@ -19,10 +20,23 @@ interface SqlEditorProps {
 
 export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, results }: SqlEditorProps) {
     const editorRef = useRef<any>(null);
+    const [monacoInstance, setMonacoInstance] = useState<any>(null);
+    const completionProviderRef = useRef<any>(null);
     const { toast } = useToast();
+
+    const { data: schema } = useQuery({
+        queryKey: ['schema', projectId],
+        queryFn: async () => {
+            const res = await fetch(`/api/schema?projectId=${projectId}&_t=${Date.now()}`);
+            const data = await res.json();
+            return (data.success && data.tables) ? data.tables : null;
+        },
+        enabled: !!projectId,
+    });
 
     const handleEditorMount = (editor: any, monaco: any) => {
         editorRef.current = editor;
+        setMonacoInstance(monaco);
 
         // Run Shortcut (Ctrl + Enter)
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
@@ -38,18 +52,27 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () => {
             handleFormatSql();
         });
-
-        if (projectId) {
-            fetch(`/api/schema?projectId=${projectId}`)
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success && data.tables) {
-                        registerSqlCompletion(monaco, data.tables);
-                    }
-                })
-                .catch(err => console.error("Failed to load schema for autocomplete:", err));
-        }
     };
+
+    // Reactively register autocomplete when schema changes
+    useEffect(() => {
+        if (!monacoInstance || !schema) return;
+
+        // Dispose existing provider if it exists
+        if (completionProviderRef.current) {
+            completionProviderRef.current.dispose();
+        }
+
+        console.log('[Realtime SQL] Registering autocomplete suggestions for updated schema...');
+        completionProviderRef.current = registerSqlCompletion(monacoInstance, schema);
+
+        return () => {
+            if (completionProviderRef.current) {
+                completionProviderRef.current.dispose();
+                completionProviderRef.current = null;
+            }
+        };
+    }, [monacoInstance, schema]);
 
     // Phase 6: Monaco GC — explicitly dispose the editor model on unmount.
     // Monaco's internal world model is NOT freed by React's GC automatically.

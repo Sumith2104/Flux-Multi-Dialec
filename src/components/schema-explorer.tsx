@@ -40,27 +40,22 @@ export function SchemaExplorer({ projectId, onInsertQuery }: { projectId?: strin
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['tables']));
 
     const queryClient = useQueryClient();
-    const { lastEvent } = useRealtimeSubscription(projectId);
 
-    useEffect(() => {
-        if (lastEvent?.event_type === 'schema_update') {
-            queryClient.invalidateQueries({ queryKey: ['schema', projectId] });
-        }
-    }, [lastEvent, queryClient, projectId]);
+    // Register with the global sync layer to catch CREATE/DROP/ALTER events
+    useRealtimeSubscription(projectId);
 
-    const { data: schema, isLoading: loading } = useQuery({
+    const { data: schema, isLoading: loading, isFetching } = useQuery({
         queryKey: ['schema', projectId],
         queryFn: async () => {
-            // Bust browser cache
-            const res = await fetch(`/api/schema?projectId=${projectId}&_t=${Date.now()}`);
+            // Bust both browser and server-side Redis cache
+            const res = await fetch(`/api/schema?projectId=${projectId}&refresh=true&_t=${Date.now()}`);
             const data = await res.json();
             if (!data.success || !data.tables) return null;
             return data as SchemaData;
         },
         enabled: !!projectId,
-        refetchInterval: 5000, // Poll every 5s silently
-        staleTime: 0, // Never stale locally, always ping API
-        gcTime: 30 * 60 * 1000, // Keep in memory for 30 minutes even if unmounted
+        staleTime: 5 * 60 * 1000, // 5 minute stale time, rely on RT invalidation
+        gcTime: 30 * 60 * 1000, 
     });
 
     const toggleFolder = (folder: string) => {
@@ -100,9 +95,12 @@ export function SchemaExplorer({ projectId, onInsertQuery }: { projectId?: strin
 
     return (
         <div className="flex flex-col h-full overflow-y-auto w-full text-sm font-mono pb-8">
-            <div className="px-3 py-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 sticky top-0 z-10 flex items-center gap-2">
-                <Database className="h-3.5 w-3.5 text-primary" />
-                <span className="font-semibold text-xs tracking-tight">Database Explorer</span>
+            <div className="px-3 py-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 sticky top-0 z-10 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <Database className="h-3.5 w-3.5 text-primary" />
+                    <span className="font-semibold text-xs tracking-tight">Database Explorer</span>
+                </div>
+                {/* Manual refresh button removed in favor of global WebSocket auto-sync */}
             </div>
 
             <div className="p-2 select-none">

@@ -26,6 +26,7 @@ type EditColumnDialogProps = {
   tableId: string;
   tableName: string;
   column: Column;
+  onColumnUpdated?: () => void;
 };
 
 export function EditColumnDialog({
@@ -35,6 +36,7 @@ export function EditColumnDialog({
   tableId,
   tableName,
   column,
+  onColumnUpdated,
 }: EditColumnDialogProps) {
   const { toast } = useToast();
   const router = useRouter();
@@ -48,6 +50,7 @@ export function EditColumnDialog({
         description: 'Column updated successfully.',
       });
       setIsOpen(false);
+      onColumnUpdated?.();
       router.refresh();
     } else {
       toast({
