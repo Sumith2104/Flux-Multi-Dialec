@@ -15,21 +15,23 @@ async function retrofitTriggers() {
     try {
         const client = await pool.connect();
 
-        // 1. Get all project schemas
-        console.log('Fetching all project schemas...');
+        // 1. Get all relevant schemas (all project schemas + global AI schema)
+        console.log('Fetching target schemas...');
         const schemasRes = await client.query(`
             SELECT schema_name 
             FROM information_schema.schemata 
-            WHERE schema_name LIKE 'project_%'
+            WHERE schema_name LIKE 'project_%' OR schema_name = 'fluxbase_global'
         `);
 
         for (const { schema_name } of schemasRes.rows) {
             console.log(`\nProcessing schema: ${schema_name}`);
-            const projectId = schema_name.replace('project_', '');
+            
+            // Extract project_id or default to 'global'
+            const projectId = schema_name === 'fluxbase_global' ? 'global' : schema_name.replace('project_', '');
 
-            // 2. Create the unified notify_table_change function in the schema
+            // 2. Create the unified notify_realtime_event function in the schema
             const triggerFunctionSql = `
-                CREATE OR REPLACE FUNCTION "${schema_name}".notify_table_change()
+                CREATE OR REPLACE FUNCTION "${schema_name}".notify_realtime_event()
                 RETURNS trigger AS $$
                 DECLARE
                   payload JSON;
@@ -43,12 +45,12 @@ async function retrofitTriggers() {
 
                   payload := json_build_object(
                     'table', TG_TABLE_NAME,
-                    'project_id', '${projectId}',
-                    'operation', TG_OP,
-                    'data', row_to_json(row_data)
+                    'action', TG_OP,
+                    'record', row_to_json(row_data)
                   );
 
-                  PERFORM pg_notify('fluxbase_changes', payload::text);
+                  -- Broadcast to the new Render WS channel
+                  PERFORM pg_notify('flux_realtime', payload::text);
                   RETURN row_data;
                 END;
                 $$ LANGUAGE plpgsql;
@@ -56,7 +58,7 @@ async function retrofitTriggers() {
 
             try {
                 await client.query(triggerFunctionSql);
-                console.log(`  ✓ Created RT function for ${schema_name}`);
+                console.log(`  ✓ Created New RT function for ${schema_name}`);
             } catch (e) {
                 console.error(`  ✗ Failed to create RT function for ${schema_name}:`, e);
                 continue;
@@ -77,7 +79,7 @@ async function retrofitTriggers() {
                     AFTER INSERT OR UPDATE OR DELETE
                     ON "${schema_name}"."${table_name}"
                     FOR EACH ROW
-                    EXECUTE FUNCTION "${schema_name}".notify_table_change();
+                    EXECUTE FUNCTION "${schema_name}".notify_realtime_event();
                 `;
 
                 try {
