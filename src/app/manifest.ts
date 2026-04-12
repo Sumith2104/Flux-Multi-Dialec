@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'Fluxbase',
     short_name: 'Fluxbase',
     description: 'Fluxbase Application',
-    start_url: '/',
+    start_url: '/dashboard/projects',
     display: 'standalone',
     background_color: '#ffffff',
     theme_color: '#000000',
