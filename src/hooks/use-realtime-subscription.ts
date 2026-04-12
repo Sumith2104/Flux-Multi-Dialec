@@ -73,103 +73,70 @@ async function startConnection(projectId: string) {
     const state = getOrCreateState(projectId);
 
     // Guard: skip if a real active connection is in-flight or established
-    if ((state.status === 'connecting' || state.status === 'open') && state.abortController && !state.abortController.signal.aborted) return;
+    if (state.status === 'connecting' || state.status === 'open') return;
 
     if (state.retryTimer) {
         clearTimeout(state.retryTimer);
         state.retryTimer = null;
     }
-    if (state.abortController) {
-        state.abortController.abort();
-    }
 
     state.status = 'connecting';
-    state.abortController = new AbortController();
-    console.log(`[Realtime] Connecting singleton SSE for project ${projectId}…`);
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080';
+    console.log(`[Realtime] Connecting WebSocket for project ${projectId} to ${wsUrl}…`);
 
-    try {
-        const response = await fetch(
-            `/api/realtime/subscribe?projectId=${projectId}`,
-            { signal: state.abortController.signal }
-        );
+    const socket = new WebSocket(wsUrl);
+    (state as any).socket = socket;
 
-        if (!response.ok) {
-            if (response.status === 401) {
-                console.error('[Realtime] Unauthorized. Connection closed.');
-                state.status = 'closed';
-                return;
-            }
-            throw new Error(`SSE ${response.status}: ${response.statusText}`);
-        }
-
+    socket.onopen = () => {
         state.status = 'open';
         state.retryCount = 0;
-        console.log('[Realtime] SSE singleton connected ✅');
+        console.log('[Realtime] WebSocket connected ✅');
+        
+        // Subscribe to the project room
+        socket.send(JSON.stringify({
+            type: 'subscribe',
+            roomId: `project_${projectId}`
+        }));
+    };
 
-        if (!response.body) return;
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
+    socket.onmessage = (event) => {
         try {
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
+            const data = JSON.parse(event.data);
+            
+            // Handle standard DB events from our new server
+            if (data.type === 'db_event' && data.payload) {
+                const payload = data.payload;
+                const tableRef = payload.table || '';
+                const cleanTable = typeof tableRef === 'string' ? tableRef.split('.').pop() || tableRef : tableRef;
 
-                // Stop if no-one is listening anymore
-                if (!connections.has(projectId) || connections.get(projectId)!.listeners.size === 0) {
-                    reader.cancel().catch(() => {});
-                    break;
-                }
+                const normalized: RealtimeEvent = {
+                    ...payload,
+                    type: 'update',
+                    table: cleanTable,
+                    data: payload.record
+                };
 
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() ?? '';
-
-                for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue;
-                    const raw = line.slice(6).trim();
-                    if (!raw) continue;
-
-                    try {
-                        const payload = JSON.parse(raw) as RealtimeEvent;
-                        if (payload.type === 'connected') continue;
-
-                        const tableRef = payload.table || payload.table_id || payload.table_name || '';
-                        const cleanTable = typeof tableRef === 'string' ? tableRef.split('.').pop() || tableRef : tableRef;
-
-                        const normalized: RealtimeEvent = {
-                            ...payload,
-                            type: (['INSERT', 'UPDATE', 'DELETE', 'row.inserted', 'row.updated', 'row.deleted'].some(t =>
-                                payload.event_type === t || payload.operation === t || payload.type === t
-                            )) ? 'update' : payload.type || 'live',
-                            table: cleanTable,
-                        };
-
-                        notifyListeners(projectId, normalized);
-                    } catch (e) {
-                        console.warn('[Realtime] Parse error:', e);
-                    }
-                }
+                notifyListeners(projectId, normalized);
             }
-        } finally {
-            reader.releaseLock();
+        } catch (e) {
+            console.warn('[Realtime] WS Parse error:', e);
         }
-    } catch (err: any) {
-        if (err.name === 'AbortError') {
-            console.log('[Realtime] Connection intentionally closed.');
-            return;
-        }
-        console.warn('[Realtime] SSE error:', err.message);
-    }
+    };
 
-    const state2 = connections.get(projectId);
-    if (state2 && state2.listeners.size > 0) {
-        scheduleReconnect(projectId);
-    } else {
-        // No listeners left — clean up
-        connections.delete(projectId);
-    }
+    socket.onclose = () => {
+        console.log(`[Realtime] WebSocket closed for ${projectId}.`);
+        state.status = 'closed';
+        (state as any).socket = null;
+        
+        if (state.listeners.size > 0) {
+            scheduleReconnect(projectId);
+        }
+    };
+
+    socket.onerror = (err) => {
+        console.error('[Realtime] WebSocket error:', err);
+        socket.close();
+    };
 }
 
 function subscribe(projectId: string, listener: Listener): () => void {
