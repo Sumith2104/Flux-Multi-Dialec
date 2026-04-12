@@ -19,10 +19,17 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Attach the trigger to your primary targets where Realtime matters
-DROP TRIGGER IF EXISTS trigger_agent_memories_notify ON agent_memories;
+DROP TRIGGER IF EXISTS trigger_agent_memories_notify ON fluxbase_global.agent_memories;
 CREATE TRIGGER trigger_agent_memories_notify
-AFTER INSERT OR UPDATE ON agent_memories
+AFTER INSERT OR UPDATE ON fluxbase_global.agent_memories
 FOR EACH ROW EXECUTE FUNCTION notify_realtime_event();
 
--- Expand to whatever other tables fluxbase relies on for realtime functionality
--- CREATE TRIGGER ... ON projects ...
+DROP TRIGGER IF EXISTS trigger_agent_sessions_notify ON fluxbase_global.agent_sessions;
+CREATE TRIGGER trigger_agent_sessions_notify
+AFTER INSERT OR UPDATE ON fluxbase_global.agent_sessions
+FOR EACH ROW EXECUTE FUNCTION notify_realtime_event();
+
+DROP TRIGGER IF EXISTS trigger_agent_plans_notify ON fluxbase_global.agent_plans;
+CREATE TRIGGER trigger_agent_plans_notify
+AFTER INSERT OR UPDATE ON fluxbase_global.agent_plans
+FOR EACH ROW EXECUTE FUNCTION notify_realtime_event();
