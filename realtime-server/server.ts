@@ -14,7 +14,7 @@ const rooms = new Map<string, Set<WebSocket>>();
 
 async function setupDatabaseListener() {
   const pgClient = new Client({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: process.env.DATABASE_URL || process.env.AWS_RDS_POSTGRES_URL,
     ssl: { rejectUnauthorized: false }
   });
 
