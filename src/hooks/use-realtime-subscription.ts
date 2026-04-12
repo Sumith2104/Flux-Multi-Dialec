@@ -82,7 +82,13 @@ async function startConnection(projectId: string) {
     }
 
     state.status = 'connecting';
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080';
+    let wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080';
+
+    // SECURITY: Auto-upgrade to WSS if served over HTTPS to avoid Mixed Content errors on Vercel
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && wsUrl.startsWith('ws://')) {
+        wsUrl = wsUrl.replace('ws://', 'wss://');
+    }
+    
     console.log(`[Realtime] Connecting WebSocket for project ${projectId} to ${wsUrl}…`);
 
     const socket = new WebSocket(wsUrl);
@@ -112,7 +118,8 @@ async function startConnection(projectId: string) {
 
                 const normalized: RealtimeEvent = {
                     ...payload,
-                    type: payload.type || 'update',
+                    // Fix: Correctly map API 'event_type' to internal hook 'type' for Triple-Pass sync
+                    type: payload.event_type === 'schema_update' ? 'schema_update' : (payload.type || 'update'),
                     table: cleanTable,
                     data: payload.record
                 };

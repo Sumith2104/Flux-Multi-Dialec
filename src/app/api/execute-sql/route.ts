@@ -227,7 +227,7 @@ export async function POST(request: Request) {
                         }
                     };
                     const payloadString = JSON.stringify(payload).replace(/'/g, "''");
-                    await pool.query(`NOTIFY fluxbase_live, '${payloadString}'`).catch(err => {
+                    await pool.query(`NOTIFY flux_realtime, '${payloadString}'`).catch(err => {
                         console.warn(`[SSE Broadcast Error] Failed to fire NOTIFY for ${mutatedTable}:`, err);
                     });
                 } catch (e) {
@@ -249,7 +249,7 @@ export async function POST(request: Request) {
                         project_id: projectId
                     };
                     const payloadString = JSON.stringify(payload).replace(/'/g, "''");
-                    await pool.query(`NOTIFY fluxbase_live, '${payloadString}'`).catch(err => {
+                    await pool.query(`NOTIFY flux_realtime, '${payloadString}'`).catch(err => {
                         console.warn(`[SSE Broadcast Error] Failed to fire schema_update NOTIFY:`, err);
                     });
                 } catch (e) {}
