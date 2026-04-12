@@ -17,6 +17,7 @@ BEGIN
 
           payload := json_build_object(
             ''table'', TG_TABLE_NAME,
+            ''project_id'', (CASE WHEN %L = ''fluxbase_global'' THEN ''global'' ELSE REPLACE(%L, ''project_'', '''') END),
             ''action'', TG_OP,
             ''record'', row_to_json(row_data)
           );
@@ -24,7 +25,7 @@ BEGIN
           PERFORM pg_notify(''flux_realtime'', payload::text);
           RETURN row_data;
         END;
-        $inner$ LANGUAGE plpgsql;', target_schema);
+        $inner$ LANGUAGE plpgsql;', target_schema, target_schema, target_schema);
 END;
 $$ LANGUAGE plpgsql;
 

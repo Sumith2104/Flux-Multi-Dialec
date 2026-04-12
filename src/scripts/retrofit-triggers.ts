@@ -45,6 +45,7 @@ async function retrofitTriggers() {
 
                   payload := json_build_object(
                     'table', TG_TABLE_NAME,
+                    'project_id', '${projectId}',
                     'action', TG_OP,
                     'record', row_to_json(row_data)
                   );

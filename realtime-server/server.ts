@@ -27,19 +27,26 @@ async function setupDatabaseListener() {
 
     pgClient.on('notification', (msg) => {
       if (!msg.payload) return;
-      const data = JSON.parse(msg.payload);
-      
-      const routingId = data.record.chat_id || data.record.project_id || data.record.room_id || 'global';
-      const roomId = `${data.table}_${routingId}`;
-      
-      const clientsInRoom = rooms.get(roomId);
-      if (clientsInRoom) {
-        const outboundMessage = JSON.stringify({ type: 'db_event', payload: data });
-        clientsInRoom.forEach(client => {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(outboundMessage);
-          }
-        });
+      try {
+        const data = JSON.parse(msg.payload);
+        
+        // Priority Routing: Use explicit project_id if provided by trigger, else fallback
+        const routingId = data.project_id || data.record.chat_id || data.record.project_id || data.record.room_id || 'global';
+        const roomId = `project_${routingId}`;
+        
+        console.log(`Broadcasting to room: ${roomId} (Table: ${data.table})`);
+
+        const clientsInRoom = rooms.get(roomId);
+        if (clientsInRoom) {
+          const outboundMessage = JSON.stringify({ type: 'db_event', payload: data });
+          clientsInRoom.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(outboundMessage);
+            }
+          });
+        }
+      } catch (e) {
+        console.error('Error parsing notification:', e);
       }
     });
 
