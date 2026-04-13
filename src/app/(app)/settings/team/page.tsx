@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useContext } from 'react';
 import { ProjectContext } from '@/contexts/project-context';
+import { useToast } from '@/hooks/use-toast';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,6 +25,14 @@ interface Member {
     joinedAt: string;
 }
 
+interface PendingInvite {
+    id: string;
+    email: string;
+    displayName: string;
+    role: string;
+    invitedAt: string;
+}
+
 interface AuditLog {
     id: string;
     userId: string;
@@ -41,9 +51,12 @@ const roleColors = {
 
 export default function TeamPage() {
     const { project: selectedProject } = useContext(ProjectContext);
+    const { toast } = useToast();
+    const router = useRouter();
     const projectId = selectedProject?.project_id || '';
 
     const [members, setMembers] = useState<Member[]>([]);
+    const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
     const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [showInvite, setShowInvite] = useState(false);
@@ -61,6 +74,7 @@ export default function TeamPage() {
             const res = await fetch(`/api/team?projectId=${projectId}`);
             const data = await res.json();
             setMembers(data.members || []);
+            setPendingInvites(data.invites || []);
         } catch (e) { console.error(e); }
         finally { setLoading(false); }
     }, [projectId]);
@@ -90,6 +104,14 @@ export default function TeamPage() {
             });
             const data = await res.json();
             if (!data.success) throw new Error(data.error);
+            
+            if (data.invited) {
+                toast({
+                    title: "Invite Sent",
+                    description: `Invitation sent to ${inviteEmail}.`
+                });
+            }
+
             setShowInvite(false);
             setInviteEmail('');
             loadMembers();
@@ -131,14 +153,23 @@ export default function TeamPage() {
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
                         <Users className="h-6 w-6 text-blue-400" />
-                        Team & Audit Log
+                        Team & Collaboration
                     </h1>
-                    <p className="text-muted-foreground text-sm mt-1">Manage team members and view a full history of all database operations</p>
+                    <p className="text-muted-foreground text-sm mt-1">Manage team members and invitations across your projects</p>
                 </div>
-                <Card className="mt-4 border-dashed border-zinc-800">
-                    <CardContent className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
-                        <Users className="h-10 w-10 opacity-20" />
-                        <p className="text-sm">Please select a project to manage team members.</p>
+                
+                <Card className="mt-4 border-dashed border-zinc-800 bg-zinc-950/50">
+                    <CardContent className="flex flex-col items-center justify-center py-16 gap-4 text-muted-foreground text-center">
+                        <div className="p-4 rounded-full bg-zinc-900 border border-zinc-800">
+                            <Users className="h-10 w-10 opacity-40" />
+                        </div>
+                        <div className="space-y-1">
+                            <p className="text-zinc-200 font-medium">No Project Selected</p>
+                            <p className="text-sm max-w-xs mx-auto">Please select a project from the switcher above to manage its team members and view audit logs.</p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => router.push('/dashboard/projects')} className="mt-2">
+                            Go to Project Selection
+                        </Button>
                     </CardContent>
                 </Card>
             </div>
@@ -179,6 +210,7 @@ export default function TeamPage() {
                         <div className="space-y-2">
                             {members.map(member => (
                                 <Card key={member.userId} className="border-zinc-800">
+                                    {/* ... member card content ... */}
                                     <CardContent className="flex items-center gap-4 p-4">
                                         <Avatar className="h-9 w-9 shrink-0">
                                             <AvatarFallback className="bg-zinc-800 text-sm">
@@ -214,6 +246,37 @@ export default function TeamPage() {
                                     </CardContent>
                                 </Card>
                             ))}
+                        </div>
+                    )}
+
+                    {/* Pending Invites Section */}
+                    {!loading && pendingInvites.length > 0 && (
+                        <div className="space-y-3 pt-6">
+                            <div className="flex items-center gap-2 px-1">
+                                <Clock className="h-4 w-4 text-orange-400" />
+                                <h3 className="text-sm font-semibold text-zinc-300">Pending Invitations</h3>
+                            </div>
+                            <div className="space-y-2">
+                                {pendingInvites.map(invite => (
+                                    <Card key={invite.id} className="border-zinc-800 bg-zinc-900/40">
+                                        <CardContent className="flex items-center gap-4 p-4">
+                                            <div className="h-9 w-9 rounded-full bg-zinc-800 flex items-center justify-center shrink-0">
+                                                <Clock className="h-4 w-4 text-zinc-500" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-medium text-sm truncate">{invite.displayName || invite.email}</p>
+                                                <p className="text-xs text-muted-foreground truncate">Invited as {invite.role} • {format(new Date(invite.invitedAt), 'MMM d')}</p>
+                                            </div>
+                                            {selectedProject.role === 'admin' && (
+                                                <Button variant="ghost" size="sm" className="h-8 text-xs text-red-400 hover:text-red-300 hover:bg-red-400/10"
+                                                    onClick={() => {/* Cancel Invite Logic */}}>
+                                                    Cancel Invite
+                                                </Button>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
                         </div>
                     )}
                 </TabsContent>

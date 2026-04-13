@@ -31,6 +31,10 @@ const CommandPalette = dynamic(
     () => import('@/components/command-palette').then(m => m.CommandPalette),
     { ssr: false }
 );
+const InvitationAlerts = dynamic(
+    () => import('@/components/team/invitation-alerts').then(m => m.InvitationAlerts),
+    { ssr: false }
+);
 import { FeedbackWidget } from "@/components/feedback-widget";
 import { ChangelogPopover } from "@/components/changelog-popover";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
@@ -151,9 +155,11 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         }
 
         const isProjectSelectionPage = pathname.startsWith('/dashboard/projects');
+        const isSettingsPage = pathname.startsWith('/settings');
 
         // If user is logged-in but no project is selected, redirect to project selection page
-        if (!selectedProject && !isProjectSelectionPage) {
+        // [Requirement 4] Allow settings page access even without a project
+        if (!selectedProject && !isProjectSelectionPage && !isSettingsPage) {
             router.push('/dashboard/projects');
         }
 
@@ -164,7 +170,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
     const dockItems = navItems.map(item => {
         // Reduced list of project-specific pages
-        const isProjectSpecific = ["/editor", "/storage", "/query", "/database", "/analytics", "/scraper", "/settings"].includes(item.href);
+        const isProjectSpecific = ["/editor", "/storage", "/query", "/database", "/analytics", "/scraper"].includes(item.href);
         const isDisabled = isProjectSpecific && !selectedProject?.project_id;
         let finalHref = item.href;
 
@@ -329,6 +335,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                     "p-0": isEditorOrDbPage,
                     "p-4 md:p-6": !isEditorOrDbPage,
                 })}>
+                    {userId && <InvitationAlerts />}
                     {children}
                     {shouldShowDock && (
                         <div className="fixed bottom-4 left-0 right-0 flex justify-center z-50 pointer-events-none">

@@ -50,6 +50,18 @@ async function retrofitTriggers() {
                     'record', row_to_json(row_data)
                   );
 
+                  -- Postgres NOTIFY has a hard limit of 8000 bytes.
+                  -- If exceeded, we send a truncated payload to avoid failing the transaction.
+                  IF octet_length(payload::text) > 8000 THEN
+                    payload := json_build_object(
+                      'table', TG_TABLE_NAME,
+                      'project_id', '${projectId}',
+                      'action', TG_OP,
+                      'record', json_build_object('id', row_to_json(row_data)->'id'),
+                      'truncated', true
+                    );
+                  END IF;
+
                   -- Broadcast to the new Render WS channel
                   PERFORM pg_notify('flux_realtime', payload::text);
                   RETURN row_data;

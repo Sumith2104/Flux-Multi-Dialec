@@ -91,6 +91,7 @@ export async function getUserIdFromRequest(request: Request): Promise<string | n
 
 export interface AuthContext {
     userId: string;
+    email: string;
     allowedProjectId?: string; // If present, the user is restricted to this project
     scopes?: string[]; // If present (API access), these define permitted actions
     status?: string; // Organization status
@@ -98,18 +99,22 @@ export interface AuthContext {
 
 export async function getAuthContextFromRequest(request: Request): Promise<AuthContext | null> {
     // Cached helper — avoids 1 DB query per request just to check suspension status.
-    const fetchUserStatus = async (uid: string): Promise<string> => {
+    const fetchUserStatus = async (uid: string): Promise<{ status: string; email: string }> => {
         const cached = _userStatusCache.get(uid);
-        if (cached !== undefined) return cached;
+        if (cached !== undefined) {
+             const [status, email] = cached.split(':');
+             return { status, email };
+        }
         try {
             const { getPgPool } = await import('@/lib/pg');
             const pool = getPgPool();
-            const res = await pool.query('SELECT status FROM fluxbase_global.users WHERE id = $1', [uid]);
+            const res = await pool.query('SELECT status, email FROM fluxbase_global.users WHERE id = $1', [uid]);
             const status = res.rows[0]?.status || 'active';
-            _userStatusCache.set(uid, status);
-            return status;
+            const email = res.rows[0]?.email || '';
+            _userStatusCache.set(uid, `${status}:${email}`);
+            return { status, email };
         } catch {
-            return 'active';
+            return { status: 'active', email: '' };
         }
     };
 
@@ -121,8 +126,8 @@ export async function getAuthContextFromRequest(request: Request): Promise<AuthC
         const cached = _authContextCache.get(`cookie:${userId}`);
         if (cached !== undefined) return cached;
 
-        const status = await fetchUserStatus(userId);
-        const ctx: AuthContext = { userId, status };
+        const { status, email } = await fetchUserStatus(userId);
+        const ctx: AuthContext = { userId, email, status };
         _authContextCache.set(`cookie:${userId}`, ctx);
         return ctx;
     }
@@ -157,9 +162,10 @@ export async function getAuthContextFromRequest(request: Request): Promise<AuthC
                 await trackSession(result.projectId, result.userId);
             }
 
-            const status = await fetchUserStatus(result.userId);
+            const { status, email } = await fetchUserStatus(result.userId);
             const ctx: AuthContext = {
                 userId: result.userId,
+                email,
                 allowedProjectId: result.projectId || headerProjectId || undefined,
                 scopes: result.scopes,
                 status

@@ -271,3 +271,20 @@ export async function sendFeedbackEmail(to: string, mood: number | null, message
 
     return sendEmail(to, `[Fluxbase Feedback] New response from ${userId}`, html, getBrandAttachments());
 }
+
+export async function sendTeamInviteEmail(to: string, inviterName: string, projectName: string, role: string) {
+    const url = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const html = buildEmailHtml({
+        title: "You've been invited! 🤝",
+        greeting: "Hello,",
+        instruction: `<b>${inviterName}</b> has invited you to join the team for project <b>${projectName}</b> as a <b>${role}</b>.`,
+        contentHtml: `
+            <div style="margin-bottom: 24px;">
+                <p style="color: #e4e4e7; font-size: 16px; margin: 0 0 24px 0;">Accept the invitation to start collaborating on Fluxbase.</p>
+                <a href="${url}/settings/team" class="btn">View Invitation</a>
+            </div>
+        `
+    });
+
+    return sendEmail(to, `${inviterName} invited you to join ${projectName} on Fluxbase`, html, getBrandAttachments());
+}
