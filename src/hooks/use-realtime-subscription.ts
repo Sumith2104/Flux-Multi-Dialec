@@ -213,59 +213,55 @@ export function useRealtimeSubscription(projectId: string | undefined) {
     const projectIdRef = useRef(projectId);
     projectIdRef.current = projectId;
 
-    // --- GLOBAL CACHE SYNC LAYER ---
-    // This effect ensures that deletions/updates in ONE part of the app 
-    // immediately refresh the cache for ALL other components.
-    useEffect(() => {
-        if (!lastEvent || !projectId) return;
+    // --- INSTANT CACHE SYNC LAYER ---
+    const syncDatabase = useCallback((event: RealtimeEvent) => {
+        if (!projectId) return;
 
         // 1. Handle Schema Changes (Tables created/dropped/altered)
-        // GLOBAL AUTO-REFRESH: When any user makes a structural change, the server broadcasts 'schema_update'.
-        // We handle this with a 'Triple-Pass' (1s, 4s, 10s) strategy to guarantee consistency across all clients.
-        if (lastEvent.type === 'schema_update' || lastEvent.event_type === 'schema_update') {
-            const pid = lastEvent.project_id || projectId;
-            console.log(`[Realtime Sync] Schema changed in project ${pid}. Starting Triple-Pass refresh...`);
+        if (event.type === 'schema_update' || event.event_type === 'schema_update') {
+            const pid = event.project_id || projectId;
+            console.log(`[Realtime Sync] Schema changed. Instant Triple-Pass Pass 1...`);
             
-            // Pass 1: Immediate Responsiveness (1000ms)
-            setTimeout(() => {
-                queryClient.invalidateQueries({ queryKey: ['schema', pid] });
-            }, 1000);
+            // Pass 1: IMMEDIATE (0ms)
+            queryClient.invalidateQueries({ queryKey: ['schema', pid] });
 
-            // Pass 2: Standard Propagation (4000ms)
+            // Pass 2: Propagation Safety (4000ms)
             setTimeout(() => {
                 queryClient.invalidateQueries({ queryKey: ['schema', pid] });
             }, 4000);
 
-            // Pass 3: Hyper-Consistency Safety Net (10000ms)
-            // Catch extremely delayed database catalog updates
+            // Pass 3: Consistency Check (10000ms)
             setTimeout(() => {
                 queryClient.invalidateQueries({ queryKey: ['schema', pid] });
             }, 10000);
         }
 
         // 2. Handle Data Changes (Rows deleted/inserted/updated)
-        // We broadly invalidate 'table-data' to ensure consistency across views.
-        if (lastEvent.type === 'update' || lastEvent.action || lastEvent.operation) {
-            const table = lastEvent.table;
-            console.log(`[Realtime Sync] Data changed in ${table}. Synchronizing views...`);
+        if (event.type === 'update' || event.action || event.operation) {
+            const table = event.table;
+            console.log(`[Realtime Sync] Data changed in ${table}. Instant refresh.`);
             
-            // Refetch current active table data (Turbo style)
+            // Directly refetch active queries for this table
             queryClient.refetchQueries({ 
                 queryKey: ['table-data', projectId, table],
                 type: 'active'
             });
 
-            // Invalidate analytics and history globally
+            // Invalidate analytics
             queryClient.invalidateQueries({ queryKey: ['analytics_stats', projectId] });
             queryClient.invalidateQueries({ queryKey: ['analytics_history', projectId] });
         }
-    }, [lastEvent, projectId, queryClient]);
+    }, [projectId, queryClient]);
 
     useEffect(() => {
         if (!projectId) return;
 
         const listener: Listener = (event) => {
+            // 1. Update UI-facing state (Batched by React)
             setLastEvent(event);
+            
+            // 2. Trigger Database Sync (Instant, Event-driven)
+            syncDatabase(event);
         };
 
         const unsubscribe = subscribe(projectId, listener);
