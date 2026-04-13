@@ -77,13 +77,13 @@ interface ExtWebSocket extends WebSocket {
   isAlive: boolean;
 }
 
-function heartbeat(this: ExtWebSocket) {
-  this.isAlive = true;
-}
+wss.on('connection', (ws: WebSocket) => {
+  const extWs = ws as ExtWebSocket;
+  extWs.isAlive = true;
 
-wss.on('connection', (ws: ExtWebSocket) => {
-  ws.isAlive = true;
-  ws.on('pong', heartbeat);
+  ws.on('pong', () => {
+    extWs.isAlive = true;
+  });
 
   ws.on('message', (message) => {
     try {
