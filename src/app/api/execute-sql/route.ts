@@ -150,76 +150,72 @@ export async function POST(request: Request) {
                 status: 'success'
             }).catch(e => console.error(e));
 
-            // Aggressive Cache Invalidation (Extracted from Regex)
+            // --- ABSOLUTE TABLE DETECTION (AST-BASED) ---
             const uppercaseQuery = typeof query === 'string' ? query.trim().toUpperCase() : '';
-            let mutatedTable = null;
+            let mutatedTable: string | null = null;
+            let newDataParsed: Record<string, any> | undefined = undefined;
 
-            const optSchema = `(?:["'\`]?[a-zA-Z0-9_]+["'\`]?\\.)?`;
-            const tblName = `["'\`]?([a-zA-Z0-9_]+)["'\`]?`;
+            try {
+                const { Parser } = require('node-sql-parser');
+                const parser = new Parser();
+                const ast: any = parser.astify(query);
+                const sqlAst = Array.isArray(ast) ? ast[0] : ast;
 
-            const insertMatch = query.match(new RegExp(`INTO\\s+${optSchema}${tblName}`, 'i'));
-            const updateMatch = query.match(new RegExp(`UPDATE\\s+${optSchema}${tblName}`, 'i'));
-            const deleteMatch = query.match(new RegExp(`FROM\\s+${optSchema}${tblName}`, 'i')); // Simple heuristic for DELETE FROM
+                if (sqlAst) {
+                    // Extract table name based on mutation type
+                    if (sqlAst.type === 'insert' || sqlAst.type === 'update' || sqlAst.type === 'delete') {
+                        const tableObj = sqlAst.table ? sqlAst.table[0] : (sqlAst.from ? sqlAst.from[0] : null);
+                        if (tableObj) {
+                            mutatedTable = typeof tableObj === 'string' ? tableObj : (tableObj.table || tableObj.expr?.value);
+                        }
+                    }
 
-            if (insertMatch && insertMatch[1]) mutatedTable = insertMatch[1];
-            else if (updateMatch && updateMatch[1]) mutatedTable = updateMatch[1];
-            else if (uppercaseQuery.startsWith('DELETE') && deleteMatch && deleteMatch[1]) mutatedTable = deleteMatch[1];
-
-            if (mutatedTable) {
-                await invalidateTableCache(projectId, mutatedTable.toLowerCase()).catch(err => {
-                    console.warn(`[Upstash Invalidation Error] Failed to invalidate cache for ${mutatedTable}:`, err);
-                });
-
-                // Fire Outbound Webhooks and Real-Time SSE
-                const webhookEvent = uppercaseQuery.startsWith('INSERT') 
-                    ? 'row.inserted' 
-                    : uppercaseQuery.startsWith('UPDATE') 
-                        ? 'row.updated' 
-                        : 'row.deleted';
-
-                let newDataParsed: Record<string, any> | undefined = undefined;
-
-                if (webhookEvent === 'row.inserted') {
-                    try {
-                        const { Parser } = require('node-sql-parser');
-                        const parser = new Parser();
-                        const ast: any = parser.astify(query);
-                        const insertAst = Array.isArray(ast) ? ast[0] : ast;
-                        
-                        if (insertAst && insertAst.type === 'insert' && Array.isArray(insertAst.columns)) {
-                            const cols = insertAst.columns;
-                            const valsNode = Array.isArray(insertAst.values) ? insertAst.values : insertAst.values?.values;
-                            
-                            if (Array.isArray(valsNode) && valsNode.length > 0) {
-                                const rowVals = valsNode[0].value;
-                                newDataParsed = {};
-                                for (let i = 0; i < cols.length; i++) {
-                                    newDataParsed[cols[i]] = rowVals[i]?.value ?? null;
-                                }
+                    // Extract row data for INSERT webhooks
+                    if (sqlAst.type === 'insert' && Array.isArray(sqlAst.columns)) {
+                        const cols = sqlAst.columns;
+                        const valsNode = Array.isArray(sqlAst.values) ? sqlAst.values : sqlAst.values?.values;
+                        if (Array.isArray(valsNode) && valsNode.length > 0) {
+                            const rowVals = valsNode[0].value;
+                            newDataParsed = {};
+                            for (let i = 0; i < cols.length; i++) {
+                                newDataParsed[cols[i]] = rowVals[i]?.value ?? null;
                             }
                         }
-                    } catch (parserErr) {
-                        console.error('[AST Webhook Parser] Failed to parse INSERT row data:', parserErr);
                     }
                 }
+            } catch (err) {
+                console.warn('[AST Parser Fallback] Falling back to regex for mutation detection:', err);
+                // Fallback to simple regex if parser fails (rare)
+                const tblMatch = query.match(/(?:INTO|UPDATE|FROM)\s+["'\`]?(?:[a-zA-Z0-9_]+\.)?["'\`]?([a-zA-Z0-9_]+)["'\`]?/i);
+                if (tblMatch) mutatedTable = tblMatch[1];
+            }
 
-                // We await fireWebhooks so Vercel does not terminate the lambda before outbound POSTs complete
+            if (mutatedTable) {
+                const cleanMutatedTable = mutatedTable.toLowerCase();
+                
+                await invalidateTableCache(projectId, cleanMutatedTable).catch(err => {
+                    console.warn(`[Upstash Invalidation Error] Failed to invalidate cache for ${cleanMutatedTable}:`, err);
+                });
+
+                // Fire Outbound Webhooks
+                const webhookEvent = uppercaseQuery.startsWith('INSERT') ? 'row.inserted' : uppercaseQuery.startsWith('UPDATE') ? 'row.updated' : 'row.deleted';
+
                 await fireWebhooks(
                     projectId, 
                     userId, 
-                    mutatedTable.toLowerCase(), 
+                    cleanMutatedTable, 
                     webhookEvent as WebhookEvent,
                     newDataParsed || (uppercaseQuery.startsWith('INSERT') && Array.isArray(params) ? { raw_params: params } : undefined)
                 ).catch(err => console.error(`[Webhook Dispatch Error]`, err));
 
-                // Fire SSE Live Broadcast for Vercel
+                // Fire SSE Live Broadcast for Vercel -> Render
                 try {
                     const pool = getPgPool();
                     const payload = {
                         event_type: 'raw_sql_mutation',
-                        table_id: mutatedTable.toLowerCase(),
-                        table_name: mutatedTable.toLowerCase(),
-                        operation: uppercaseQuery.startsWith('INSERT') ? 'INSERT' : uppercaseQuery.startsWith('UPDATE') ? 'UPDATE' : 'DELETE',
+                        table_id: cleanMutatedTable,
+                        table_name: cleanMutatedTable,
+                        operation: cleanMutatedTable ? (uppercaseQuery.startsWith('INSERT') ? 'INSERT' : uppercaseQuery.startsWith('UPDATE') ? 'UPDATE' : 'DELETE') : 'UNKNOWN',
                         timestamp: new Date().toISOString(),
                         project_id: projectId,
                         data: {
@@ -228,7 +224,7 @@ export async function POST(request: Request) {
                     };
                     const payloadString = JSON.stringify(payload).replace(/'/g, "''");
                     await pool.query(`NOTIFY flux_realtime, '${payloadString}'`).catch(err => {
-                        console.warn(`[SSE Broadcast Error] Failed to fire NOTIFY for ${mutatedTable}:`, err);
+                        console.warn(`[SSE Broadcast Error] Failed to fire NOTIFY for ${cleanMutatedTable}:`, err);
                     });
                 } catch (e) {
                     // Ignore broadcast errors

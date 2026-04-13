@@ -239,11 +239,21 @@ export function useRealtimeSubscription(projectId: string | undefined) {
         // 2. Handle Data Changes (Rows deleted/inserted/updated)
         if (event.type === 'update' || event.action || event.operation) {
             const table = event.table;
-            console.log(`[Realtime Sync] Data changed in ${table}. Instant refresh.`);
+            console.log(`[Realtime Sync] Data mutation in project ${projectId}. Invalidator: ${table || 'generic'}`);
             
-            // Directly refetch active queries for this table
+            // Surgical Refetch: Immediate targeted refresh if table is identified
+            if (table) {
+                queryClient.refetchQueries({ 
+                    queryKey: ['table-data', projectId, table],
+                    type: 'active'
+                });
+            }
+
+            // GLOBAL SAFETY NET: Refetch ANY active table data for this project.
+            // This ensures that even if table detection is slightly off (casing, schema prefixes),
+            // the user's current screen ALWAYS stays in sync.
             queryClient.refetchQueries({ 
-                queryKey: ['table-data', projectId, table],
+                queryKey: ['table-data', projectId],
                 type: 'active'
             });
 
