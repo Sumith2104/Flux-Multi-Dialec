@@ -91,7 +91,7 @@ wss.on('connection', (ws: WebSocket) => {
       
       // Handle Pong from browser clients (message-level)
       if (data.type === 'pong') {
-        ws.isAlive = true;
+        extWs.isAlive = true;
         return;
       }
 
