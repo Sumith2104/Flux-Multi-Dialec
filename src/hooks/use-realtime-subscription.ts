@@ -31,6 +31,7 @@ interface ConnectionState {
     abortController: AbortController | null;
     retryTimer: ReturnType<typeof setTimeout> | null;
     retryCount: number;
+    watchdogTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const connections = new Map<string, ConnectionState>();
@@ -44,6 +45,7 @@ function getOrCreateState(projectId: string): ConnectionState {
             abortController: null,
             retryTimer: null,
             retryCount: 0,
+            watchdogTimer: null,
         });
     }
     return connections.get(projectId)!;
@@ -68,6 +70,22 @@ function scheduleReconnect(projectId: string) {
             startConnection(projectId);
         }
     }, delay);
+}
+
+function resetWatchdog(projectId: string) {
+    const state = connections.get(projectId);
+    if (!state) return;
+
+    if (state.watchdogTimer) {
+        clearTimeout(state.watchdogTimer);
+    }
+
+    // 45s threshold (server pings every 30s)
+    state.watchdogTimer = setTimeout(() => {
+        console.warn(`[Realtime:${projectId}] Watchdog timeout — connection stale. Reconnecting…`);
+        const s = (state as any).socket;
+        if (s) s.close();
+    }, 45000);
 }
 
 async function startConnection(projectId: string) {
@@ -98,6 +116,7 @@ async function startConnection(projectId: string) {
         state.status = 'open';
         state.retryCount = 0;
         console.log('[Realtime] WebSocket connected ✅');
+        resetWatchdog(projectId);
         
         // Subscribe to the project room
         socket.send(JSON.stringify({
@@ -110,6 +129,16 @@ async function startConnection(projectId: string) {
         try {
             const data = JSON.parse(event.data);
             
+            // Handle Heartbeat (Ping)
+            if (data.type === 'ping') {
+                resetWatchdog(projectId);
+                const s = (state as any).socket;
+                if (s && s.readyState === WebSocket.OPEN) {
+                    s.send(JSON.stringify({ type: 'pong' }));
+                }
+                return;
+            }
+
             // Handle standard DB events from our new server
             if (data.type === 'db_event' && data.payload) {
                 const payload = data.payload;
@@ -136,6 +165,11 @@ async function startConnection(projectId: string) {
         state.status = 'closed';
         (state as any).socket = null;
         
+        if (state.watchdogTimer) {
+            clearTimeout(state.watchdogTimer);
+            state.watchdogTimer = null;
+        }
+
         if (state.listeners.size > 0) {
             scheduleReconnect(projectId);
         }

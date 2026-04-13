@@ -73,11 +73,28 @@ async function setupDatabaseListener() {
 
 setupDatabaseListener();
 
-wss.on('connection', (ws) => {
+interface ExtWebSocket extends WebSocket {
+  isAlive: boolean;
+}
+
+function heartbeat(this: ExtWebSocket) {
+  this.isAlive = true;
+}
+
+wss.on('connection', (ws: ExtWebSocket) => {
+  ws.isAlive = true;
+  ws.on('pong', heartbeat);
+
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message.toString());
       
+      // Handle Pong from browser clients (message-level)
+      if (data.type === 'pong') {
+        ws.isAlive = true;
+        return;
+      }
+
       if (data.type === 'subscribe' && data.roomId) {
         if (!rooms.has(data.roomId)) {
           rooms.set(data.roomId, new Set());
@@ -107,6 +124,27 @@ wss.on('connection', (ws) => {
       }
     });
   });
+});
+
+// Heartbeat Interval: Run every 30 seconds
+const interval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    const extWs = ws as ExtWebSocket;
+    if (extWs.isAlive === false) {
+      console.log('[Heartbeat] Terminating inactive connection.');
+      return ws.terminate();
+    }
+
+    extWs.isAlive = false;
+    // Native ping for non-browser clients
+    ws.ping();
+    // Message-level ping for browser hooks
+    ws.send(JSON.stringify({ type: 'ping' }));
+  });
+}, 30000);
+
+wss.on('close', () => {
+  clearInterval(interval);
 });
 
 server.listen(port, () => console.log(`WebSocket router active on port ${port}`));
