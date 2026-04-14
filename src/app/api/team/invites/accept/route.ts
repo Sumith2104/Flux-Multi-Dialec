@@ -32,19 +32,6 @@ export async function POST(req: NextRequest) {
         const { project_id: projectId, role } = inviteRes.rows[0];
 
         if (status === 'accepted') {
-            // [Requirement 5] Check if the member has a project
-            const projectsRes = await pool.query(
-                `SELECT COUNT(*) FROM fluxbase_global.projects WHERE user_id = $1`,
-                [auth.userId]
-            );
-            if (parseInt(projectsRes.rows[0].count) === 0) {
-                return NextResponse.json({ 
-                    success: false, 
-                    error: 'You must create a project to accept the invitation.',
-                    code: 'PROJECT_REQUIRED'
-                }, { status: 400 });
-            }
-
             // Move to members
             await pool.query(
                 `INSERT INTO fluxbase_global.project_members (project_id, user_id, role)

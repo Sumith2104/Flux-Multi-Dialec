@@ -91,7 +91,6 @@ function resetWatchdog(projectId: string) {
 async function startConnection(projectId: string) {
     const state = getOrCreateState(projectId);
 
-    // Guard: skip if a real active connection is in-flight or established
     if (state.status === 'connecting' || state.status === 'open') return;
 
     if (state.retryTimer) {
@@ -100,85 +99,87 @@ async function startConnection(projectId: string) {
     }
 
     state.status = 'connecting';
-    let wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080';
+    const abortController = new AbortController();
+    state.abortController = abortController;
 
-    // SECURITY: Auto-upgrade to WSS if served over HTTPS to avoid Mixed Content errors on Vercel
-    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && wsUrl.startsWith('ws://')) {
-        wsUrl = wsUrl.replace('ws://', 'wss://');
-    }
-    
-    console.log(`[Realtime] Connecting WebSocket for project ${projectId} to ${wsUrl}…`);
+    console.log(`[Realtime] Connecting SSE for project ${projectId}…`);
 
-    const socket = new WebSocket(wsUrl);
-    (state as any).socket = socket;
+    try {
+        const response = await fetch(`/api/realtime/subscribe?projectId=${projectId}`, {
+            signal: abortController.signal,
+            headers: { 'Accept': 'text/event-stream' },
+            cache: 'no-store',
+        });
 
-    socket.onopen = () => {
+        if (!response.ok || !response.body) {
+            throw new Error(`SSE connect failed: ${response.status}`);
+        }
+
         state.status = 'open';
         state.retryCount = 0;
-        console.log('[Realtime] WebSocket connected ✅');
+        console.log(`[Realtime] ✅ SSE connected for ${projectId}`);
         resetWatchdog(projectId);
-        
-        // Subscribe to the project room
-        socket.send(JSON.stringify({
-            type: 'subscribe',
-            roomId: `project_${projectId}`
-        }));
-    };
 
-    socket.onmessage = (event) => {
-        try {
-            const data = JSON.parse(event.data);
-            
-            // Handle Heartbeat (Ping)
-            if (data.type === 'ping') {
-                resetWatchdog(projectId);
-                const s = (state as any).socket;
-                if (s && s.readyState === WebSocket.OPEN) {
-                    s.send(JSON.stringify({ type: 'pong' }));
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const chunks = buffer.split('\n\n');
+            buffer = chunks.pop() ?? '';
+
+            for (const chunk of chunks) {
+                if (chunk.startsWith(': ')) {
+                    // heartbeat — reset watchdog
+                    resetWatchdog(projectId);
+                    continue;
                 }
-                return;
+                const dataLine = chunk.split('\n').find(l => l.startsWith('data:'));
+                if (!dataLine) continue;
+
+                try {
+                    const raw = dataLine.slice(5).trim();
+                    const data = JSON.parse(raw);
+                    resetWatchdog(projectId);
+
+                    if (data.type === 'connected') continue;
+
+                    // Normalize payload from DB trigger format
+                    const tableRef = data.table || '';
+                    const cleanTable = typeof tableRef === 'string' ? tableRef.split('.').pop() || tableRef : tableRef;
+                    const normalized: RealtimeEvent = {
+                        ...data,
+                        type: data.action ? 'update' : (data.type || 'update'),
+                        table: cleanTable,
+                        action: data.action,
+                        data: data.record,
+                    };
+                    notifyListeners(projectId, normalized);
+                } catch (e) {
+                    console.warn('[Realtime] SSE parse error:', e);
+                }
             }
-
-            // Handle standard DB events from our new server
-            if (data.type === 'db_event' && data.payload) {
-                const payload = data.payload;
-                const tableRef = payload.table || '';
-                const cleanTable = typeof tableRef === 'string' ? tableRef.split('.').pop() || tableRef : tableRef;
-
-                const normalized: RealtimeEvent = {
-                    ...payload,
-                    // Fix: Correctly map API 'event_type' to internal hook 'type' for Triple-Pass sync
-                    type: payload.event_type === 'schema_update' ? 'schema_update' : (payload.type || 'update'),
-                    table: cleanTable,
-                    data: payload.record
-                };
-
-                notifyListeners(projectId, normalized);
-            }
-        } catch (e) {
-            console.warn('[Realtime] WS Parse error:', e);
         }
-    };
-
-    socket.onclose = () => {
-        console.log(`[Realtime] WebSocket closed for ${projectId}.`);
-        state.status = 'closed';
-        (state as any).socket = null;
-        
-        if (state.watchdogTimer) {
-            clearTimeout(state.watchdogTimer);
-            state.watchdogTimer = null;
+    } catch (err: any) {
+        if (err?.name === 'AbortError') {
+            console.log(`[Realtime] SSE intentionally closed for ${projectId}.`);
+            return;
         }
+        console.error(`[Realtime] SSE error for ${projectId}:`, err);
+    }
 
-        if (state.listeners.size > 0) {
-            scheduleReconnect(projectId);
-        }
-    };
+    // Connection ended — schedule reconnect if still needed
+    state.status = 'closed';
+    (state as any).socket = null;
+    if (state.watchdogTimer) clearTimeout(state.watchdogTimer);
 
-    socket.onerror = (err) => {
-        console.error('[Realtime] WebSocket error:', err);
-        socket.close();
-    };
+    if (connections.has(projectId) && connections.get(projectId)!.listeners.size > 0) {
+        scheduleReconnect(projectId);
+    }
 }
 
 function subscribe(projectId: string, listener: Listener): () => void {
@@ -239,23 +240,21 @@ export function useRealtimeSubscription(projectId: string | undefined) {
         // 2. Handle Data Changes (Rows deleted/inserted/updated)
         if (event.type === 'update' || event.action || event.operation) {
             const table = event.table;
-            console.log(`[Realtime Sync] Data mutation in project ${projectId}. Invalidator: ${table || 'generic'}`);
+            console.log(`[Realtime Sync] Data mutation in project ${projectId}. Table: ${table || 'generic'}`);
             
-            // Surgical Refetch: Immediate targeted refresh if table is identified
+            // Surgical Refetch: targeted table refresh
             if (table) {
                 queryClient.refetchQueries({ 
                     queryKey: ['table-data', projectId, table],
                     type: 'active'
                 });
+            } else {
+                // No table info — refetch all active tables for this project
+                queryClient.refetchQueries({ 
+                    queryKey: ['table-data', projectId],
+                    type: 'active'
+                });
             }
-
-            // GLOBAL SAFETY NET: Refetch ANY active table data for this project.
-            // This ensures that even if table detection is slightly off (casing, schema prefixes),
-            // the user's current screen ALWAYS stays in sync.
-            queryClient.refetchQueries({ 
-                queryKey: ['table-data', projectId],
-                type: 'active'
-            });
 
             // Invalidate analytics
             queryClient.invalidateQueries({ queryKey: ['analytics_stats', projectId] });

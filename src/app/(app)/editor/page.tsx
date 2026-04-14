@@ -73,7 +73,12 @@ export default async function EditorPage({
 }) {
     const cookieStore = await cookies();
     const selectedProjectCookie = cookieStore.get('selectedProject');
-    const selectedProject = selectedProjectCookie ? JSON.parse(selectedProjectCookie.value) : null;
+    let selectedProject = null;
+    try {
+        selectedProject = selectedProjectCookie ? JSON.parse(selectedProjectCookie.value) : null;
+    } catch (e) {
+        console.warn("Failed to parse selectedProject cookie:", e);
+    }
 
     const resolvedParams = await searchParams;
     const projectId = resolvedParams?.projectId as string || selectedProject?.project_id;

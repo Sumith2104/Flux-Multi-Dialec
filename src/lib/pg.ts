@@ -1,36 +1,32 @@
 import { Pool } from 'pg';
+import { FluxbaseError, ERROR_CODES } from './error-codes';
+import { NextResponse } from 'next/server';
 
-const globalForPg = globalThis as unknown as {
-    pgPool: Pool | undefined;
-};
+// --- GLOBAL POOL SINGLETON (Serverless Optimization) ---
+declare global {
+    var _pool: Pool | undefined;
+}
 
+export const pool = global._pool || new Pool({
+    connectionString: process.env.AWS_RDS_POSTGRES_URL,
+    // [STABILITY FIX]: Enable SSL automatically if connecting to RDS, even in local dev.
+    // RDS rejects unencrypted connections with "no pg_hba.conf entry... no encryption".
+    ssl: process.env.AWS_RDS_POSTGRES_URL?.includes('rds.amazonaws.com') 
+        ? { rejectUnauthorized: false } 
+        : (process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false),
+    max: 3, // Increased slightly for stability
+    idleTimeoutMillis: 60000,
+    connectionTimeoutMillis: 5000, // Increased timeout for cross-region stability
+    keepAlive: true,
+});
+
+if (!global._pool) {
+    global._pool = pool;
+}
+
+// Keep backward compatibility for existing routes
 export function getPgPool(): Pool {
-    if (!globalForPg.pgPool) {
-        if (!process.env.AWS_RDS_POSTGRES_URL) {
-            throw new Error("Missing AWS_RDS_POSTGRES_URL environment variable");
-        }
-        globalForPg.pgPool = new Pool({
-            connectionString: process.env.AWS_RDS_POSTGRES_URL,
-            ssl: {
-                rejectUnauthorized: false
-            },
-            max: 20, // Now safe as real-time uses exactly 1 shared connection
-            idleTimeoutMillis: 1000, // Close idle connections after 1s to free up the pool faster
-            connectionTimeoutMillis: 15000, // Wait up to 15s for a free connection
-            keepAlive: true,
-            keepAliveInitialDelayMillis: 10000,
-        });
-
-        globalForPg.pgPool.on('error', (err) => {
-            console.error('[pg pool] Unexpected error on idle client:', err.message);
-        });
-
-        // Initialize RLS support (auth schema and auth.uid function)
-        setupRlsSupport(globalForPg.pgPool).catch(err => {
-            console.error('[pg pool] Failed to initialize RLS support:', err.message);
-        });
-    }
-    return globalForPg.pgPool;
+    return pool;
 }
 
 /**
@@ -51,5 +47,42 @@ async function setupRlsSupport(pool: Pool) {
     } finally {
         client.release();
     }
+}
+
+/**
+ * Standard utility to handle database connectivity errors and return 503 instead of 500.
+ */
+export function handleDatabaseError(e: any) {
+    console.error('[Database Error Details]:', {
+        message: e.message,
+        code: e.code,
+        syscall: e.syscall,
+        hostname: e.hostname
+    });
+
+    const isConnectivityError = 
+        e.code === 'ENOTFOUND' || 
+        e.code === 'ECONNRESET' || 
+        e.code === 'ETIMEDOUT' ||
+        e.message?.includes('Connection terminated');
+
+    if (isConnectivityError) {
+        return NextResponse.json({
+            success: false,
+            error: {
+                message: "Database host unreachable. Our infrastructure is currently experiencing a DNS or connectivity spike. Please try again in a few moments.",
+                code: ERROR_CODES.DATABASE_CONNECTION_ERROR
+            }
+        }, { status: 503 });
+    }
+
+    // Default error response
+    return NextResponse.json({
+        success: false,
+        error: {
+            message: e.message || "An unexpected database error occurred.",
+            code: ERROR_CODES.INTERNAL_ERROR
+        }
+    }, { status: 500 });
 }
 

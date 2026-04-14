@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation';
 import { ProjectContext } from '@/contexts/project-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { InvitationAlerts } from '@/components/team/invitation-alerts';
 
 export default function SelectProjectPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -74,7 +75,7 @@ export default function SelectProjectPage() {
               Choose a project to continue or create a new one.
             </p>
           </CardHeader>
-          <CardContent>
+            <CardContent>
             {error ? (
               <div className="flex flex-col items-center justify-center text-center text-destructive-foreground bg-destructive/20 border border-destructive/50 rounded-lg p-8 col-span-full">
                 <AlertTriangle className="h-10 w-10 mb-4" />

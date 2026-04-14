@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { getProjectById } from '@/lib/data';
-import { uploadToS3, buildS3Key, ALLOWED_MIME_TYPES, PLAN_STORAGE_LIMITS } from '@/lib/storage';
+import { uploadToS3, buildS3Key, PLAN_STORAGE_LIMITS } from '@/lib/storage';
 import { ERROR_CODES } from '@/lib/error-codes';
 import crypto from 'crypto';
 

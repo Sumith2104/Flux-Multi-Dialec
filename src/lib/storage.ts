@@ -79,27 +79,6 @@ export async function getPresignedUrl(
     return getSignedUrl(client, command, { expiresIn });
 }
 
-// Allowed MIME types for upload
-export const ALLOWED_MIME_TYPES = new Set([
-    'image/jpeg',
-    'image/png',
-    'image/gif',
-    'image/webp',
-    'image/svg+xml',
-    'image/x-icon',
-    'application/pdf',
-    'text/plain',
-    'text/csv',
-    'application/json',
-    'application/zip',
-    'application/x-zip-compressed',
-    'application/octet-stream',
-    'video/mp4',
-    'video/webm',
-    'audio/mpeg',
-    'audio/wav',
-]);
-
 // Plan-based size limits (in bytes)
 export const PLAN_STORAGE_LIMITS = {
     free: 50 * 1024 * 1024,   // 50 MB per file

@@ -1,10 +1,9 @@
 import { Parser } from 'node-sql-parser';
-import { getColumnsForTable, getProjectById } from '@/lib/data';
+import { type Project, getColumnsForTable, getProjectById } from '@/lib/data';
 import { getCurrentUserId } from '@/lib/auth';
 import { redis } from '@/lib/redis';
 import { Semaphore } from 'async-mutex';
 import { LRUCache } from 'lru-cache';
-import { performance } from 'perf_hooks';
 import { getPgPool } from '@/lib/pg';
 import { ERROR_CODES, FluxbaseError, FluxbaseErrorCode } from '@/lib/error-codes';
 
@@ -49,13 +48,15 @@ export class SqlEngine {
     private parser: Parser;
     private scopes: string[] | null = null;
     private role: string | null = null;
+    private projectObj?: Project | null;
 
-    constructor(projectId: string, userId?: string, scopes?: string[], role?: string) {
+    constructor(projectId: string, userId?: string, scopes?: string[], role?: string, project?: Project) {
         this.projectId = projectId;
         this.userId = userId || null;
         this.parser = new Parser();
         this.scopes = scopes || null;
         this.role = role || null;
+        this.projectObj = project;
     }
 
     private async init() {
@@ -65,7 +66,7 @@ export class SqlEngine {
         if (!this.userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
         if (!this.projectTimezone || !this.projectDialect) {
-            const project = await getProjectById(this.projectId, this.userId);
+            const project = this.projectObj || await getProjectById(this.projectId, this.userId);
             if (project?.timezone) {
                 this.projectTimezone = project.timezone;
             }
@@ -97,7 +98,7 @@ export class SqlEngine {
         }
 
         let lastResult: SqlResult = { rows: [], columns: [], explanation: [] };
-        const startTime = performance.now();
+        const startTime = Date.now();
 
         // Gateway Concurrency Queuing
         const tenantSem = getTenantSemaphore(this.projectId);
@@ -108,7 +109,6 @@ export class SqlEngine {
 
         try {
             // Batch all analytics tracking into ONE pipeline round-trip to Redis
-            // Previously 3x separate trackApiRequest calls = 6 Redis commands; now = 2
             if (!options.skipTracking) {
                 const d = new Date();
                 d.setMinutes(0, 0, 0);
@@ -127,7 +127,7 @@ export class SqlEngine {
                 for (const key of keys) {
                     pipe.incr(key);
                 }
-                // Probabilistic registration: only 10% chance to avoid redundant SADD on every request
+                // Probabilistic registration
                 if (Math.random() < 0.10) {
                     for (const key of keys) {
                         pipe.sadd('analytics_keys_to_flush', key);
@@ -142,23 +142,17 @@ export class SqlEngine {
                 const connection = await mysqlPool.getConnection();
 
                 try {
-                    // 1. Lock session to this tenant's isolated DB
                     await connection.query(`USE \`project_${this.projectId}\``);
+                    
                     if (this.projectTimezone) {
-                        try {
-                            await connection.query(`SET time_zone = ?`, [this.projectTimezone]);
-                        } catch (tzErr) {
-                            console.warn(`Failed to set MySQL timezone to ${this.projectTimezone}:`, tzErr);
-                        }
+                        connection.query(`SET time_zone = ?`, [this.projectTimezone]).catch(e => {});
                     }
 
-                    // 2. Execute raw SQL natively on MySQL engine
                     const [queryResult, fields]: any = await connection.query(queryCleaned, params || []);
 
-                    const executionTime = (performance.now() - startTime).toFixed(2);
+                    const executionTime = Date.now() - startTime;
                     let explanation = [`Executed via Native AWS MySQL in ${executionTime}ms`];
 
-                    // 3. Format Native Result
                     let formattedRows = [];
                     let formattedColumns: string[] = [];
                     let rowCount = 0;
@@ -213,34 +207,21 @@ export class SqlEngine {
                 const client = await pool.connect();
 
                 try {
-                    // 1. Lock the session securely to this tenant's isolated schema
-                    await client.query(`SET search_path TO "project_${this.projectId}"`);
+                    const sessionSetupSql = `
+                        SELECT set_config('search_path', $1, false), 
+                               set_config('fluxbase.auth_uid', $2, true), 
+                               set_config('timezone', $3, false);
+                    `;
+                    const sessionParams = [`project_${this.projectId}`, this.userId || '', this.projectTimezone || 'UTC'];
                     
-                    // 2. Identity Mapping: Tell Postgres who the current user is for RLS enforcement
-                    if (this.userId) {
-                        try {
-                            // We use SET LOCAL so it only persists for the duration of this specific request/transaction
-                            await client.query(`SELECT set_config('fluxbase.auth_uid', $1, true)`, [this.userId]);
-                        } catch (rlsErr) {
-                            console.warn('[RLS Session Error] Failed to set auth context:', rlsErr);
-                        }
-                    }
+                    const [ sessionResult, result ] = await Promise.all([
+                        client.query(sessionSetupSql, sessionParams),
+                        client.query(queryCleaned, params || [])
+                    ]);
 
-                    if (this.projectTimezone) {
-                        try {
-                            await client.query(`SELECT set_config('timezone', $1, false)`, [this.projectTimezone]);
-                        } catch (tzErr) {
-                            console.warn(`Failed to set Postgres timezone to ${this.projectTimezone}:`, tzErr);
-                        }
-                    }
+                    const executionTime = Date.now() - startTime;
+                    let explanation = [`Executed via Batch-Initialized AWS PostgreSQL in ${executionTime}ms`];
 
-                    // 3. Execute the raw SQL directly on the Postgres engine
-                    const result = await client.query(queryCleaned, params || []);
-
-                    const executionTime = (performance.now() - startTime).toFixed(2);
-                    let explanation = [`Executed via Native AWS PostgreSQL in ${executionTime}ms`];
-
-                    // 3. Format Native Result to Fluxbase SqlResult
                     if (Array.isArray(result)) {
                         const finalRes = result[result.length - 1];
                         lastResult = {
@@ -262,7 +243,7 @@ export class SqlEngine {
                 }
             }
 
-            const durationMs = performance.now() - startTime;
+            const durationMs = Date.now() - startTime;
             if (!options.skipTracking) {
                 const pool = getPgPool();
                 pool.query(
@@ -272,9 +253,6 @@ export class SqlEngine {
                 ).catch(err => console.error('[SqlEngine] Audit log failed:', err));
             }
 
-            // SQL type tracking is already included in the batch pipeline above (no redundant call needed)
-            
-            // Invalidate AI Schema Cache on structural changes
             if (['ALTER', 'CREATE', 'DROP'].includes(firstWord)) {
                 try {
                     await redis.del(`schema_inference_${this.projectId}`);
@@ -286,18 +264,20 @@ export class SqlEngine {
         } catch (e: any) {
             console.error("[AWS Native Proxy Error]", e);
             
-            // Detect Syntax Error
             const errorMessage = e.message || '';
             let code: FluxbaseErrorCode = ERROR_CODES.SQL_EXECUTION_ERROR;
             
             if (errorMessage.toLowerCase().includes('syntax error') || 
-                errorMessage.toLowerCase().includes('check the manual that corresponds to your mysql server version')) {
+                errorMessage.toLowerCase().includes('check the manual that corresponds to your mysql server version') ||
+                errorMessage.toLowerCase().includes('invalid input syntax')) {
                 code = ERROR_CODES.SQL_SYNTAX;
+                status = 400;
             } else if (errorMessage.toLowerCase().includes('connection') || errorMessage.toLowerCase().includes('econnrefused')) {
                 code = ERROR_CODES.DATABASE_CONNECTION_ERROR;
+                status = 503;
             }
 
-            const durationMs = performance.now() - startTime;
+            const durationMs = Date.now() - startTime;
             if (!options.skipTracking) {
                 const pool = getPgPool();
                 pool.query(
@@ -307,7 +287,7 @@ export class SqlEngine {
                 ).catch(err => console.error('[SqlEngine] Audit log failure track failed:', err));
             }
 
-            throw new FluxbaseError(`AWS Database Error: ${errorMessage}`, code, 400);
+            throw new FluxbaseError(`AWS Database Error: ${errorMessage}`, code, status);
         } finally {
             tenantRelease();
             globalRelease();
@@ -346,7 +326,7 @@ export class SqlEngine {
                         } else if (type.includes('BOOL') || type.includes('TINYINT')) {
                             val = Math.random() > 0.5 ? 1 : 0;
                         } else if (type.includes('DATE') || type.includes('TIME')) {
-                            val = new Date().toISOString().slice(0, 19).replace('T', ' '); // MySQL format
+                            val = new Date().toISOString().slice(0, 19).replace('T', ' '); 
                         }
 
                         if (val !== null || col.is_nullable) {
@@ -428,15 +408,13 @@ export class SqlEngine {
         const writeOps = ['INSERT', 'UPDATE', 'DELETE', 'CALL'];
         const adminOps = ['CREATE', 'DROP', 'ALTER', 'TRUNCATE', 'RENAME', 'GRANT', 'REVOKE'];
 
-        // 1. Enforce Built-in Roles (UI Sessions)
         if (this.role === 'viewer') {
             if (!readOps.includes(firstWord)) {
                 throw new FluxbaseError(`Insufficient Permissions: Your role (Viewer) is restricted to read-only operations. You cannot execute ${firstWord} commands.`, ERROR_CODES.FORBIDDEN, 403);
             }
         }
 
-        // 2. Enforce API Scopes (External Clients)
-        if (!this.scopes) return; // UI sessions use the role check above
+        if (!this.scopes) return; 
 
         if (readOps.includes(firstWord)) {
             if (!this.scopes.includes('read') && !this.scopes.includes('write') && !this.scopes.includes('admin')) {
@@ -451,7 +429,6 @@ export class SqlEngine {
                 throw new FluxbaseError(`Insufficient Permissions: Scope 'admin' is required for ${firstWord} operations. Please update your API key in the Fluxbase settings.`, ERROR_CODES.FORBIDDEN, 403);
             }
         } else {
-            // Default to requiring admin for unknown ops (safety first)
             if (!this.scopes.includes('admin')) {
                 throw new FluxbaseError(`Insufficient Permissions: Scope 'admin' is required for the unknown operation: ${firstWord}. Please update your API key in the Fluxbase settings.`, ERROR_CODES.FORBIDDEN, 403);
             }

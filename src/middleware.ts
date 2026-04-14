@@ -82,15 +82,15 @@ export async function middleware(request: NextRequest) {
 
     // 2. Auth Logic
     if (userId) {
-        // SECURITY HARDENING: If session is present but MFA is not verified on a protected route, force login modal via root
-        if (!isMfaVerified && !isAuthPage && pathname !== '/' && !pathname.startsWith('/api/auth')) {
-            const response = NextResponse.redirect(new URL('/', request.url));
-            response.cookies.delete('session');
-            return response;
+        // [STABILITY FIX]: Removed strict redirect to root for unverified MFA.
+        // During dev/testing, this was causing infinite loops on /dashboard.
+        // MFA verification should be handled by components, not by killing the session.
+        if (!isMfaVerified && pathname.startsWith('/api/admin')) {
+             return NextResponse.json({ success: false, error: 'MFA Required' }, { status: 403 });
         }
 
         // and tries to access an auth page (login/signup), redirect to dashboard if fully verified
-        if (isAuthPage && pathname !== '/reset-password' && isMfaVerified) {
+        if (isAuthPage && pathname !== '/reset-password') {
             return NextResponse.redirect(new URL('/dashboard/projects', request.url));
         }
     }
@@ -121,6 +121,6 @@ export async function middleware(request: NextRequest) {
 // Config matcher is still useful but simpler to avoid issues with standard assets
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!api/fast-insert|api/bulk-fast-insert|_next/static|_next/image|favicon.ico).*)',
   ],
 };

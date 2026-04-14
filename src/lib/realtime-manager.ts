@@ -12,12 +12,28 @@ class RealtimeManager extends EventEmitter {
     private client: any = null;
     private isConnecting = false;
     private retryCount = 0;
-    private maxRetries = 10;
+    private maxRetries = 15; // Increased to handle long outages
+    private reconnectTimeout: NodeJS.Timeout | null = null;
+    private lastLogError: string | null = null;
+    private lastLogTime = 0;
 
     constructor() {
         super();
-        this.setMaxListeners(0); // Allow infinite subscribers to prevent memory leak crashes
+        this.setMaxListeners(0);
         this.init();
+    }
+
+    public async destroy() {
+        if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+            this.reconnectTimeout = null;
+        }
+        if (this.client) {
+            try { this.client.release(); } catch (e) {}
+            this.client = null;
+        }
+        this.removeAllListeners();
+        console.log('[RealtimeManager] 🛑 Instance Destroyed.');
     }
 
     private async init() {
@@ -25,22 +41,29 @@ class RealtimeManager extends EventEmitter {
         this.isConnecting = true;
 
         try {
-            console.log('[RealtimeManager] Initializing Global Database Listener...');
-            const pool = getPgPool();
-            this.client = await pool.connect();
+            // Only log initialization once every 5 minutes to keep terminal clean if it loops
+            const now = Date.now();
+            if (now - this.lastLogTime > 300000) {
+                console.log('[RealtimeManager] Initializing Global Database Listener...');
+                this.lastLogTime = now;
+            }
 
-            // Set up listeners for the shared connection
+            const pool = getPgPool();
+            
+            // Watchdog Timeout: Guaranteed failure in 5s if the network hangs
+            this.client = await Promise.race([
+                pool.connect(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Connection terminated due to connection timeout')), 5000))
+            ]);
+
             this.client.on('notification', (msg: any) => {
                 try {
                     const payload = JSON.parse(msg.payload);
                     let projectId = payload.project_id;
                     if (projectId) {
-                        // Normalize database triggers which append 'project_' prefix to internal schema events
                         if (projectId.startsWith('project_')) {
                             projectId = projectId.substring(8);
                         }
-                        
-                        // Broadcast to everyone listening for this specific project
                         this.emit(`project:${projectId}`, msg.payload);
                     }
                 } catch (e) {
@@ -49,25 +72,42 @@ class RealtimeManager extends EventEmitter {
             });
 
             this.client.on('error', (err: any) => {
-                console.error('[RealtimeManager] Database Listener Error:', err);
+                const errMsg = err.message || String(err);
+                if (errMsg !== this.lastLogError) {
+                    console.error('[RealtimeManager] Database Listener Error:', err);
+                    this.lastLogError = errMsg;
+                }
                 this.reconnect();
             });
 
-            // Start listening for common channels
-            await this.client.query('LISTEN fluxbase_changes');
-            await this.client.query('LISTEN fluxbase_live');
+            await this.client.query('LISTEN flux_realtime');
             
-            console.log('[RealtimeManager] ✅ Global Listener Active (Listening on "fluxbase_changes", "fluxbase_live")');
+            console.log('[RealtimeManager] ✅ Global Listener Active (Listening on "flux_realtime")');
+
             this.isConnecting = false;
             this.retryCount = 0;
-        } catch (err) {
-            console.error('[RealtimeManager] 🛑 Initialization Failed:', err);
+            this.lastLogError = null;
+        } catch (err: any) {
             this.isConnecting = false;
+            const errMsg = err.message || String(err);
+            
+            // Suppress duplicate noisy terminal logs for DNS failures
+            if (err.code === 'ENOTFOUND' || errMsg.includes('connection timeout')) {
+                if (errMsg !== this.lastLogError) {
+                    console.warn(`[RealtimeManager] ⚠️ Host unreachable. Will retry with backoff.`);
+                    this.lastLogError = errMsg;
+                }
+            } else {
+                console.error('[RealtimeManager] 🛑 Initialization Failed:', err);
+            }
+            
             this.reconnect();
         }
     }
 
     private reconnect() {
+        if (this.reconnectTimeout) return; // Already scheduled
+
         if (this.client) {
             try { this.client.release(); } catch (e) {}
             this.client = null;
@@ -75,20 +115,20 @@ class RealtimeManager extends EventEmitter {
 
         if (this.retryCount < this.maxRetries) {
             this.retryCount++;
-            const delay = Math.min(1000 * Math.pow(2, this.retryCount), 30000); // Exponential backoff
-            console.log(`[RealtimeManager] Reconnecting in ${delay}ms (Attempt ${this.retryCount})...`);
-            setTimeout(() => this.init(), delay);
+            // Rapid retry for the first 3, then exponential backoff up to 1 minute
+            const delay = this.retryCount <= 3 
+                ? 2000 
+                : Math.min(2000 * Math.pow(2, this.retryCount - 3), 60000);
+
+            this.reconnectTimeout = setTimeout(() => {
+                this.reconnectTimeout = null;
+                this.init();
+            }, delay);
         } else {
             console.error('[RealtimeManager] Maximum reconnection attempts reached.');
         }
     }
 
-    /**
-     * Subscribe to changes for a specific project.
-     * @param projectId The project ID to monitor
-     * @param callback Function to call when a change occurs
-     * @returns Unsubscribe function
-     */
     public subscribe(projectId: string, callback: (payload: string) => void) {
         const eventName = `project:${projectId}`;
         this.on(eventName, callback);
@@ -109,9 +149,18 @@ class RealtimeManager extends EventEmitter {
 }
 
 // Next.js Global Singleton Pattern (prevents multiple listeners during HMR)
-const globalWithRealtime = global as typeof globalThis & {
-    realtimeManager: RealtimeManager;
+const globalWithRealtime = globalThis as typeof globalThis & {
+    realtimeManager: RealtimeManager | undefined;
 };
+
+// CRITICAL FIX: Properly destroy the old instance during HMR to stop its reconnection timers.
+if (process.env.NODE_ENV !== 'production' && globalWithRealtime.realtimeManager) {
+    console.log('[RealtimeManager] HMR: Refreshing Global Singleton...');
+    try {
+        globalWithRealtime.realtimeManager.destroy(); // <--- STOP OLD INSTANCE TIMERS
+    } catch (e) {}
+    globalWithRealtime.realtimeManager = undefined;
+}
 
 const realtimeManager = globalWithRealtime.realtimeManager || new RealtimeManager();
 

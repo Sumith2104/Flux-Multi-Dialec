@@ -28,7 +28,12 @@ export async function GET(req: NextRequest) {
     }
 
     const pool = getPgPool();
-    const projectRes = await pool.query('SELECT project_id FROM fluxbase_global.projects WHERE project_id = $1 AND user_id = $2', [projectId, auth.userId]);
+    const projectRes = await pool.query(`
+        SELECT p.project_id 
+        FROM fluxbase_global.projects p
+        LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $2
+        WHERE p.project_id = $1 AND (p.user_id = $2 OR pm.user_id = $2)
+    `, [projectId, auth.userId]);
     if (projectRes.rows.length === 0) {
         return new Response(JSON.stringify({ 
             success: false, 

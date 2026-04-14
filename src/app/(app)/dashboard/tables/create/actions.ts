@@ -1,6 +1,6 @@
 'use server';
 
-import { createTable, Column, getTablesForProject } from '@/lib/data';
+import { createTable, getTablesForProject, getProjectById, ensureRole, Column } from '@/lib/data';
 
 export async function createTableAction(formData: FormData) {
   const tableName = formData.get('tableName') as string;
@@ -12,11 +12,12 @@ export async function createTableAction(formData: FormData) {
     return { error: 'Missing required fields.' };
   }
 
-  if (!/^[a-zA-Z0-9_]+$/.test(tableName)) {
-    return { error: 'Table name can only contain letters, numbers, and underscores.' };
-  }
-
   try {
+    // 1. HARDEN SECURITY: Explicitly verify that the user has permission to create tables in this project.
+    // This prevents IDOR attacks where a user provides a projectId they don't own.
+    const project = await getProjectById(projectId);
+    await ensureRole(project, ['admin', 'developer']);
+
     // Check for duplicate table name
     const existingTables = await getTablesForProject(projectId);
     if (existingTables.some(t => t.table_name.toLowerCase() === tableName.toLowerCase())) {
@@ -134,5 +135,14 @@ export async function createTableAction(formData: FormData) {
   } catch (error) {
     console.error('Table creation failed:', error);
     return { error: `An unexpected error occurred: ${(error as Error).message}` };
+  }
+}
+
+export async function getProjectRoleAction(projectId: string) {
+  try {
+    const project = await getProjectById(projectId);
+    return { success: true, role: project?.role || null };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
   }
 }

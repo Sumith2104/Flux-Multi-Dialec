@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPgPool } from '@/lib/pg';
+import { getPgPool, handleDatabaseError } from '@/lib/pg';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { getProjectById } from '@/lib/data';
 import { ERROR_CODES } from '@/lib/error-codes';
@@ -18,19 +18,23 @@ export async function GET(req: NextRequest) {
     const project = await getProjectById(projectId, auth.userId);
     if (!project) return NextResponse.json({ success: false, error: { message: 'Project not found', code: ERROR_CODES.PROJECT_NOT_FOUND } }, { status: 404 });
 
-    const pool = getPgPool();
-    const result = await pool.query(
-        `SELECT 
-            b.id, b.name, b.is_public, b.created_at,
-            COALESCE(SUM(o.size), 0) as total_size
-         FROM fluxbase_global.storage_buckets b
-         LEFT JOIN fluxbase_global.storage_objects o ON b.id = o.bucket_id
-         WHERE b.project_id = $1 
-         GROUP BY b.id, b.name, b.is_public, b.created_at
-         ORDER BY b.created_at ASC`,
-        [projectId]
-    );
-    return NextResponse.json({ success: true, buckets: result.rows });
+    try {
+        const pool = getPgPool();
+        const result = await pool.query(
+            `SELECT 
+                b.id, b.name, b.is_public, b.created_at,
+                COALESCE(SUM(o.size), 0) as total_size
+             FROM fluxbase_global.storage_buckets b
+             LEFT JOIN fluxbase_global.storage_objects o ON b.id = o.bucket_id
+             WHERE b.project_id = $1 
+             GROUP BY b.id, b.name, b.is_public, b.created_at
+             ORDER BY b.created_at ASC`,
+            [projectId]
+        );
+        return NextResponse.json({ success: true, buckets: result.rows });
+    } catch (e) {
+        return handleDatabaseError(e);
+    }
 }
 
 export async function POST(req: NextRequest) {
@@ -111,16 +115,20 @@ export async function DELETE(req: NextRequest) {
     // Since we don't have bulk S3 delete easily accessible here and keeping API fast,
     // we just delete bucket from DB. 'storage_objects' cascades,
     // S3 cleanup can be a cron job later, or if bucket is empty.
-    const pool = getPgPool();
-    
-    // Optional: Only allow deleting empty buckets for now to prevent S3 orphans
-    const countRes = await pool.query(`SELECT COUNT(*) as count FROM fluxbase_global.storage_objects WHERE bucket_id = $1`, [bucketId]);
-    if (parseInt(countRes.rows[0].count) > 0) {
-        return NextResponse.json({ success: false, error: { message: 'Bucket is not empty. Delete all files inside first.', code: ERROR_CODES.BUCKET_NOT_EMPTY } }, { status: 400 });
+    try {
+        const pool = getPgPool();
+        
+        // Optional: Only allow deleting empty buckets for now to prevent S3 orphans
+        const countRes = await pool.query(`SELECT COUNT(*) as count FROM fluxbase_global.storage_objects WHERE bucket_id = $1`, [bucketId]);
+        if (parseInt(countRes.rows[0].count) > 0) {
+            return NextResponse.json({ success: false, error: { message: 'Bucket is not empty. Delete all files inside first.', code: ERROR_CODES.BUCKET_NOT_EMPTY } }, { status: 400 });
+        }
+
+        const result = await pool.query(`DELETE FROM fluxbase_global.storage_buckets WHERE id = $1 AND project_id = $2 RETURNING id`, [bucketId, projectId]);
+        if (result.rows.length === 0) return NextResponse.json({ success: false, error: { message: 'Bucket not found', code: ERROR_CODES.BUCKET_NOT_FOUND } }, { status: 404 });
+
+        return NextResponse.json({ success: true });
+    } catch (e) {
+        return handleDatabaseError(e);
     }
-
-    const result = await pool.query(`DELETE FROM fluxbase_global.storage_buckets WHERE id = $1 AND project_id = $2 RETURNING id`, [bucketId, projectId]);
-    if (result.rows.length === 0) return NextResponse.json({ success: false, error: { message: 'Bucket not found', code: ERROR_CODES.BUCKET_NOT_FOUND } }, { status: 404 });
-
-    return NextResponse.json({ success: true });
 }

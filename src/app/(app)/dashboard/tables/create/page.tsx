@@ -3,15 +3,15 @@
 
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useState, useRef, ChangeEvent } from 'react';
+import { useState, useRef, useEffect, ChangeEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { createTableAction } from './actions';
+import { createTableAction, getProjectRoleAction } from './actions';
 import { SubmitButton } from '@/components/submit-button';
-import { ArrowLeft, Plus, Trash2, Upload } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Upload, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { v4 as uuidv4 } from 'uuid';
 import { Switch } from '@/components/ui/switch';
@@ -76,6 +76,29 @@ export default function CreateTablePage() {
     const [csvFileName, setCsvFileName] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState('manual');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isAuthorizing, setIsAuthorizing] = useState(true);
+
+    useEffect(() => {
+        async function checkPermission() {
+            if (!projectId) {
+                router.push('/dashboard/projects');
+                return;
+            }
+
+            const result = await getProjectRoleAction(projectId);
+            if (!result.success || !['admin', 'developer'].includes(result.role || '')) {
+                toast({
+                    variant: "destructive",
+                    title: "Access Denied",
+                    description: "You do not have permission to create tables in this project."
+                });
+                router.push('/dashboard/projects');
+                return;
+            }
+            setIsAuthorizing(false);
+        }
+        checkPermission();
+    }, [projectId, router, toast]);
 
 
     const addColumn = () => {
@@ -131,6 +154,17 @@ export default function CreateTablePage() {
         setTableName('');
         setDescription('');
     };
+
+    if (isAuthorizing) {
+        return (
+            <div className="flex items-center justify-center min-h-[60vh]">
+                <div className="flex flex-col items-center gap-4">
+                    <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                    <p className="text-zinc-400 font-medium">Verifying project permissions...</p>
+                </div>
+            </div>
+        );
+    }
 
     async function handleCreateTable(formData: FormData) {
         if (!projectId) {
@@ -285,7 +319,7 @@ export default function CreateTablePage() {
                                                 name="description"
                                                 placeholder="e.g., A table to store customer information."
                                                 value={description}
-                                                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
+                                                onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
                                                 className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                             />
                                         </div>

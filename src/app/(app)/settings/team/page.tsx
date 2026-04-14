@@ -11,6 +11,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { 
+    AlertDialog, 
+    AlertDialogAction, 
+    AlertDialogCancel, 
+    AlertDialogContent, 
+    AlertDialogDescription, 
+    AlertDialogFooter, 
+    AlertDialogHeader, 
+    AlertDialogTitle, 
+    AlertDialogTrigger 
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Users, Plus, Trash2, Loader2, Shield, Terminal, Clock, Filter, Search } from 'lucide-react';
@@ -164,12 +175,14 @@ export default function TeamPage() {
                             <Users className="h-10 w-10 opacity-40" />
                         </div>
                         <div className="space-y-1">
-                            <p className="text-zinc-200 font-medium">No Project Selected</p>
-                            <p className="text-sm max-w-xs mx-auto">Please select a project from the switcher above to manage its team members and view audit logs.</p>
+                            <p className="text-zinc-200 font-medium">No Project Active</p>
+                            <p className="text-sm max-w-xs mx-auto">Select a project from the switcher above to manage its team members. If you've just been invited, check your dashboard for pending requests.</p>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => router.push('/dashboard/projects')} className="mt-2">
-                            Go to Project Selection
-                        </Button>
+                        <div className="flex gap-3 mt-2">
+                             <Button variant="outline" size="sm" onClick={() => router.push('/dashboard/projects')} className="border-zinc-800 hover:bg-zinc-900">
+                                Go to Project Selection
+                            </Button>
+                        </div>
                     </CardContent>
                 </Card>
             </div>
@@ -360,9 +373,28 @@ export default function TeamPage() {
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setShowInvite(false)}>Cancel</Button>
-                        <Button onClick={handleInvite} disabled={saving} className="bg-orange-600 hover:bg-orange-500" id="invite-submit">
-                            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send Invite'}
-                        </Button>
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button disabled={!inviteEmail || saving} className="bg-orange-600 hover:bg-orange-500 min-w-[100px]" id="invite-submit">
+                                    {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                                    Send Invite
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent className="bg-zinc-950 border-zinc-800">
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Confirm Invitation</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        You are about to invite <span className="text-foreground font-bold">{inviteEmail}</span> as a <span className="text-foreground font-bold">{inviteRole}</span> to this project. They will receive an email to join.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel className="bg-zinc-800">Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={handleInvite} className="bg-orange-600 hover:bg-orange-500">
+                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm & Send"}
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

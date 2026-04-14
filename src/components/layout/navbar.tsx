@@ -55,9 +55,11 @@ export default function Navbar({ children }: { children: React.ReactNode }) {
                         </Link>
 
                         <Link
-                            href="https://github.com"
-                            target="_blank"
-                            className="text-muted-foreground hover:text-primary transition-colors"
+                            href="/docs"
+                            className={`transition-colors ${pathname === "/docs"
+                                ? "text-primary"
+                                : "text-muted-foreground hover:text-primary"
+                                }`}
                         >
                             Docs
                         </Link>

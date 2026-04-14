@@ -9,6 +9,10 @@ const transporter = nodemailer.createTransport({
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
     },
+    // Prevent 18s+ hangs on slow SMTP relays
+    connectionTimeout: 5000, 
+    greetingTimeout: 5000,
+    socketTimeout: 5000,
 });
 
 export async function sendEmail(to: string, subject: string, html: string, attachments?: any[]) {
@@ -281,7 +285,7 @@ export async function sendTeamInviteEmail(to: string, inviterName: string, proje
         contentHtml: `
             <div style="margin-bottom: 24px;">
                 <p style="color: #e4e4e7; font-size: 16px; margin: 0 0 24px 0;">Accept the invitation to start collaborating on Fluxbase.</p>
-                <a href="${url}/settings/team" class="btn">View Invitation</a>
+                <a href="${url}/dashboard/projects" class="btn">View Invitation</a>
             </div>
         `
     });

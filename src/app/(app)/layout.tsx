@@ -13,8 +13,7 @@ import { ProjectSwitcher } from "@/components/project-switcher";
 import { useEffect, useState, useContext } from "react";
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
-import { getUserPlanAction } from "@/app/(app)/settings/actions";
-import { logoutAction } from "./actions";
+import { getAppLayoutBootstrapData, logoutAction } from "./actions";
 import { LogoutButton } from "@/components/logout-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProjectProvider, ProjectContext } from "@/contexts/project-context";
@@ -78,6 +77,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     const [isSuspended, setIsSuspended] = useState(false);
     const [isOffline, setIsOffline] = useState(false);
     const [projects, setProjects] = useState<Project[]>([]);
+    const [invitations, setInvitations] = useState<any[]>([]);
     const [userLoading, setUserLoading] = useState(true);
     const [loadingProgress, setLoadingProgress] = useState(0);
     const { project: selectedProject, setProject, loading: projectContextLoading } = useContext(ProjectContext);
@@ -85,42 +85,44 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         async function fetchData() {
             setUserLoading(true);
-            setLoadingProgress(5); // started
+            setLoadingProgress(10); // Initialization started
             try {
-                const isHealthy = await checkDatabaseHealthAction();
-                setLoadingProgress(20); // DB health checked
-                if (!isHealthy) {
+                // SINGLE ROUND TRIP Consolidating:
+                // checkDatabaseHealth, getCurrentUserId, findUserById, getUserPlan, getProjects
+                const data = await getAppLayoutBootstrapData();
+                setLoadingProgress(70); // Server processing complete
+
+                if ('error' in data) {
+                    console.error("Bootstrap error:", data.error);
+                    setLoadingProgress(100);
+                    return;
+                }
+
+                if (data.isOffline) {
                     setIsOffline(true);
                     setUserLoading(false);
                     return;
                 }
 
-                const id = await getCurrentUserId();
-                setLoadingProgress(40); // auth resolved
-                setUserId(id);
+                setUserId(data.userId || null);
 
-                if (id) {
-                    const userData = await findUserById(id);
-                    setUser(userData);
-                    setLoadingProgress(60); // user profile loaded
-
-                    const planRes = await getUserPlanAction();
-                    setLoadingProgress(80); // plan loaded
-                    if (planRes?.success) {
-                        setPlanType(planRes.plan === 'max' ? 'Max' : (planRes.plan === 'pro' ? 'Pro' : 'Free'));
-                        setIsSuspended(planRes.status === 'suspended');
+                if (data.userId) {
+                    setUser(data.user || null);
+                    
+                    if (data.plan) {
+                        setPlanType(data.plan.type === 'max' ? 'Max' : (data.plan.type === 'pro' ? 'Pro' : 'Free'));
+                        setIsSuspended(data.plan.status === 'suspended');
                     }
 
-                    const projectsData = await getProjectsForCurrentUser();
-                    setProjects(projectsData);
-                    setLoadingProgress(100); // projects loaded
+                    setProjects(data.projects || []);
+                    setInvitations(data.invitations || []);
 
-                    if (selectedProject && !projectsData.some(p => p.project_id === selectedProject.project_id)) {
+                    if (selectedProject && !data.projects?.some(p => p.project_id === selectedProject.project_id)) {
                         setProject(null);
                     }
-                } else {
-                    setLoadingProgress(100);
                 }
+                
+                setLoadingProgress(100);
             } catch (error) {
                 console.error("Failed to fetch layout data:", error);
                 setLoadingProgress(100);
@@ -130,7 +132,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         }
         fetchData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [setProject]);
+    }, []);
 
     // Real-time Session Tracking
     useEffect(() => {
@@ -143,14 +145,15 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
     // Redirect logic
     useEffect(() => {
-        // Wait for both user data and project context to be loaded
-        if (userLoading || projectContextLoading) return;
+        // [STABILITY FIX]: If the app is in Offline Mode (DB Down), do not redirect to login.
+        // This prevents an infinite loop where DB failure -> assumes logged out -> redirects to home -> home redirects to app.
+        if (isOffline) return;
 
-        // If there's no logged-in user, redirect to login (unless already on an auth page)
-        if (!userId) {
-            if (!pathname.startsWith('/login') && !pathname.startsWith('/signup')) {
-                router.push('/');
-            }
+        // [STABILITY FIX]: Removed client-side redirect to root.
+        // Middleware handles this before page load. Removing this prevents the infinite "ping-pong" redirect loop
+        // that occurs when the client state is briefly null during hydration.
+        if (!userId && !isOffline) {
+            // We just wait for auth to resolve or for middleware to catch us.
             return;
         }
 
@@ -163,7 +166,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
             router.push('/dashboard/projects');
         }
 
-    }, [userLoading, projectContextLoading, userId, selectedProject, pathname, router]);
+    }, [userLoading, projectContextLoading, userId, selectedProject, pathname, router, isOffline]);
 
     const isEditorOrDbPage = pathname.startsWith('/editor') || pathname.startsWith('/database');
     const isLoading = userLoading || projectContextLoading;
@@ -335,7 +338,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                     "p-0": isEditorOrDbPage,
                     "p-4 md:p-6": !isEditorOrDbPage,
                 })}>
-                    {userId && <InvitationAlerts />}
+                    {userId && <InvitationAlerts initialInvites={invitations} />}
                     {children}
                     {shouldShowDock && (
                         <div className="fixed bottom-4 left-0 right-0 flex justify-center z-50 pointer-events-none">

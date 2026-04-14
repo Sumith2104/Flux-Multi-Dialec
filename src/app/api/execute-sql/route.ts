@@ -1,154 +1,157 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPgPool } from '@/lib/pg';
-import { getCurrentUserId, getAuthContextFromRequest } from '@/lib/auth';
+import { getAuthContextFromRequest } from '@/lib/auth';
 import { SqlEngine } from '@/lib/sql-engine';
 import { getProjectById, logAuditAction } from '@/lib/data';
-import { createHash } from 'crypto';
-import { redis } from '@/lib/redis';
 import { invalidateTableCache } from '@/lib/cache';
-import { Ratelimit } from '@upstash/ratelimit';
+import { fireWebhooks } from '@/lib/webhooks';
 import { ERROR_CODES, FluxbaseError } from '@/lib/error-codes';
-import { fireWebhooks, WebhookEvent } from '@/lib/webhooks';
+import { redis } from '@/lib/redis';
+import { getPgPool, handleDatabaseError } from '@/lib/pg';
+import { type WebhookEvent } from '@/lib/webhooks';
+import { Parser } from 'node-sql-parser';
 
-export const maxDuration = 60; // 1 minute
+export const dynamic = 'force-dynamic';
 
-// Module-level singleton: instantiated ONCE, reused for all requests.
-// Previously this was inside POST() which created a new instance per request, burning 2-3 extra Redis commands each time.
-const sqlRatelimit = new Ratelimit({
-    redis: redis,
-    limiter: Ratelimit.slidingWindow(30, '10 s'), // 30 requests per 10 seconds per user-project pairing
-    analytics: false, // analytics: true adds extra writes to Upstash on every check — disabled to reduce command volume
-});
+const CACHE_TTL_SECONDS = 30; // 30s burst cache for identical SELECTs
 
-// Upstash Burst cache for frequent identical queries (e.g. from external dashboards)
 interface CacheEntry {
     result: any;
-    explanation: any;
+    explanation: string[];
     executionInfo: any;
     expiresAt: number;
 }
-const CACHE_TTL_SECONDS = 15; // 15 seconds to catch duplicate concurrent loads while maintaining freshness
 
-export async function POST(request: Request) {
-    const startTime = Date.now();
+export async function POST(req: NextRequest) {
     try {
-        const auth = await getAuthContextFromRequest(request);
-        if (!auth) return NextResponse.json({ success: false, error: { message: 'User not authenticated or token expired', code: ERROR_CODES.AUTH_REQUIRED } }, { status: 401 });
-        if (auth.status === 'suspended') return NextResponse.json({ success: false, error: { message: 'Organization suspended. Please resume the organization to access data.', code: ERROR_CODES.FORBIDDEN } }, { status: 403 });
-        const { userId, allowedProjectId } = auth;
-
-        const body = await request.json().catch(() => ({}));
-        let { projectId, query, params } = body;
-
-        // Support Legacy apps sending projectId in headers instead of body
-        if (!projectId) {
-            projectId = request.headers.get('x-project-id');
+        // --- 1. Robust JSON Parsing ---
+        let body;
+        try {
+            body = await req.json();
+        } catch (e) {
+            console.error('[API JSON Error] Malformed body received:', e);
+            throw new FluxbaseError(
+                "Malformed JSON. Ensure your client is sending valid, completed JSON bodies.", 
+                ERROR_CODES.BAD_REQUEST, 
+                400
+            );
         }
 
-        // Enforce Scope
-        if (allowedProjectId) {
-            if (projectId && projectId !== allowedProjectId) {
-                return NextResponse.json({ success: false, error: { message: `API Key is scoped to project ${allowedProjectId}, but request specified ${projectId}`, code: ERROR_CODES.SCOPE_MISMATCH } }, { status: 403 });
-            }
-            // Auto-inject if missing
-            if (!projectId) {
-                projectId = allowedProjectId;
-            }
+        if (!body || typeof body !== 'object') {
+            throw new FluxbaseError("Invalid request body. Expected a JSON object.", ERROR_CODES.BAD_REQUEST, 400);
         }
 
-        if (!projectId || !query) {
-            return NextResponse.json({ success: false, error: { message: 'Missing projectId or query', code: ERROR_CODES.BAD_REQUEST } }, { status: 400 });
+        const { query, params, projectId: bodyProjectId } = body;
+        const { searchParams } = new URL(req.url);
+        const projectId = bodyProjectId || searchParams.get('projectId');
+
+        // --- 2. Strict Field Validation ---
+        if (!query || typeof query !== 'string') {
+            throw new FluxbaseError("The 'query' field is required and must be a string.", ERROR_CODES.MISSING_FIELD, 400);
+        }
+        if (!projectId || typeof projectId !== 'string') {
+            throw new FluxbaseError("The 'projectId' field is required (either in body or as query param).", ERROR_CODES.MISSING_FIELD, 400);
+        }
+        if (params !== undefined && params !== null && !Array.isArray(params)) {
+             throw new FluxbaseError("The 'params' field must be an array.", ERROR_CODES.BAD_REQUEST, 400);
         }
 
-        // Global API Rate Limiting (uses module-level singleton — no instantiation overhead per request)
-        const { success: rlSuccess } = await sqlRatelimit.limit(`ratelimit_flux_query_${projectId}_${userId}`);
-        if (!rlSuccess) {
-            return NextResponse.json({
-                success: false,
-                error: { message: 'Too many simultaneous queries executing. Rate limit exceeded.', code: ERROR_CODES.RATE_LIMIT_EXCEEDED }
-            }, { status: 429 });
-        }
-
-        // Burst Caching Logic
-        const isSelect = typeof query === 'string' && query.trim().toUpperCase().startsWith('SELECT');
-        let cacheKey = '';
-
-        if (isSelect) {
-            const paramsString = params ? JSON.stringify(params) : '';
-            cacheKey = createHash('sha256').update(`fluxQuery_${projectId}_${userId}_${query}_${paramsString}`).digest('hex');
-
+        // --- 3. Intelligent Bulk Insert Validation & Transformation ---
+        let finalParams = params;
+        if (query.toLowerCase().includes('jsonb_to_recordset')) {
             try {
-                const cached = await redis.get<CacheEntry>(cacheKey);
-                if (cached && cached.expiresAt > Date.now()) {
-                    return NextResponse.json({
-                        success: true,
-                        result: cached.result,
-                        explanation: cached.explanation,
-                        executionInfo: {
-                            ...cached.executionInfo,
-                            time: '0ms (Global Cache)'
+                // Extract column names from the 'AS x(col1 type, col2 type)' clause
+                const columnMatch = query.match(/AS\s+[a-zA-Z0-9_]+\s*\(([^)]+)\)/i);
+                if (columnMatch && params && Array.isArray(params[0])) {
+                    const columnsRaw = columnMatch[1];
+                    const expectedKeys = columnsRaw.split(',').map(c => c.trim().split(/\s+/)[0].replace(/["`]/g, ''));
+                    const rawData = params[0];
+
+                    if (Array.isArray(rawData) && rawData.length > 0) {
+                        // Case: Client sent Array of Arrays (Matrix), e.g. [[1, '..'], [2, '..']]
+                        if (Array.isArray(rawData[0])) {
+                            console.log(`[SqlEngine] Auto-Transforming Matrix to Objects for ${expectedKeys.join(', ')}`);
+                            finalParams = [
+                                rawData.map((row: any[]) => {
+                                    const obj: Record<string, any> = {};
+                                    expectedKeys.forEach((key, idx) => {
+                                        obj[key] = row[idx] !== undefined ? row[idx] : null;
+                                    });
+                                    return obj;
+                                })
+                            ];
+                        } 
+                        // Case: Client sent Array of Objects (Correct, but validate keys)
+                        else if (typeof rawData[0] === 'object' && rawData[0] !== null) {
+                            const firstRow = rawData[0];
+                            const missingKeys = expectedKeys.filter(k => !(k in firstRow));
+                            if (missingKeys.length > 0) {
+                                throw new FluxbaseError(
+                                    `Invalid bulk insert payload. Expected objects with keys: ${expectedKeys.join(', ')}. Missing: ${missingKeys.join(', ')}`,
+                                    ERROR_CODES.BAD_REQUEST,
+                                    400
+                                );
+                            }
                         }
-                    });
+                    }
                 }
-            } catch (redisErr) {
-                console.warn('[Redis Error] Cache read failed, falling back to DB:', redisErr);
+            } catch (err: any) {
+                if (err instanceof FluxbaseError) throw err;
+                console.warn('[Validation Error] Failed to parse bulk insert metadata:', err);
+                // Continue to DB if it's an unknown parsing error, let DB handle it
             }
         }
 
-        const project = await getProjectById(projectId, userId);
 
-        if (!project) {
-            return NextResponse.json({ success: false, error: { message: 'Project not found', code: ERROR_CODES.PROJECT_NOT_FOUND } }, { status: 404 });
+        const auth = await getAuthContextFromRequest(req);
+        if (!auth?.userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
+        
+        if (auth.status === 'suspended') {
+            throw new FluxbaseError("Organization suspended. Please resume in Settings.", ERROR_CODES.FORBIDDEN, 403);
         }
 
-        try {
-            const { checkProjectTrafficLimits } = await import('@/lib/limits');
-            await checkProjectTrafficLimits(projectId);
-        } catch (limitErr: any) {
-             return NextResponse.json({
-                success: false,
-                error: { message: limitErr.message || 'Limit Exceeded', code: ERROR_CODES.RATE_LIMIT_EXCEEDED }
-            }, { status: 403 });
-        }
+        const userId = auth.userId;
 
-        // Use the new SQL Engine
-        const engine = new SqlEngine(projectId, userId, auth.scopes, project.role);
+        // Optimization: Burst Cache (Reads only)
+        const isSelect = query.trim().toUpperCase().startsWith('SELECT');
+        const cacheKey = isSelect ? `sql_cache:${projectId}:${Buffer.from(query + JSON.stringify(params || [])).toString('base64').substring(0, 100)}` : null;
 
-        // Split multiple queries if any (semicolon) - basic support
-        // The parser handles one statement at a time mostly, so we might need a loop if the UI sends multiple.
-        // For now, assume single query or let parser handle first one.
-        // If we want multiple statements, we'd need to split by ; not in quotes. 
-        // Let's rely on the engine executing the single blob. The engine uses `astify` which returns array if multiple.
-        // But our `execute` method currently handles the first AST. 
-        // That is acceptable for now.
+        // Pre-Flight Optimization: Parallelize Auth, Burst Cache, and Traffic Limits
+        const { checkProjectTrafficLimits } = await import('@/lib/limits');
+        
+        const [cachedResult, project, trafficLimitResult] = await Promise.all([
+            isSelect ? redis.get<CacheEntry>(cacheKey!) : Promise.resolve(null),
+            getProjectById(projectId, userId),
+            checkProjectTrafficLimits(projectId).then(() => ({ success: true })).catch(e => ({ success: false, error: e }))
+        ]);
 
-        let result;
-        try {
-            result = await engine.execute(query, params);
-        } catch (e: any) {
-            // Check if it's a FluxbaseError
-            if (e instanceof FluxbaseError) {
-                return NextResponse.json(e.toJSON(), { status: e.status });
-            }
+        if (!trafficLimitResult.success) throw new FluxbaseError(`Infrastructure limit: ${trafficLimitResult.error.message}`, ERROR_CODES.RATE_LIMIT_EXCEEDED, 429);
+        if (!project) throw new FluxbaseError("Project not found", ERROR_CODES.PROJECT_NOT_FOUND, 404);
+
+        if (cachedResult && cachedResult.expiresAt > Date.now()) {
             return NextResponse.json({
-                success: false,
-                error: {
-                    message: e.message || 'SQL Execution Error',
-                    code: ERROR_CODES.SQL_EXECUTION_ERROR,
-                    hint: 'Check syntax and table names.'
-                }
-            }, { status: 200 });
+                success: true,
+                result: cachedResult.result,
+                explanation: [...cachedResult.explanation, 'Served via Upstash Global Edge Cache'],
+                executionInfo: { ...cachedResult.executionInfo, cached: true }
+            });
         }
 
+        const startTime = Date.now();
+        const engine = new SqlEngine(projectId, userId, auth.scopes, auth.role, project);
+        const result = await engine.execute(query, finalParams);
         const duration = Date.now() - startTime;
 
-        if (!isSelect) {
-            // Synchronously await audit logging to prevent Next.js serverless early termination
-            await logAuditAction(projectId, userId, 'SQL_EXECUTION', query, {
-                duration_ms: duration,
-                rows_affected: result.rows?.length || 0,
-                status: 'success'
-            }).catch(e => console.error(e));
+        const backgroundTasks: Promise<any>[] = [];
+
+        // 1. Post-Execution Pipeline Optimization: Do NOT await side-effects
+        if (result) {
+            backgroundTasks.push(
+                logAuditAction(projectId, userId, 'SQL_EXECUTION', query, {
+                    duration_ms: duration,
+                    rows_affected: result.rows?.length || 0,
+                    status: 'success'
+                }).catch(e => console.error('[Audit Error]', e))
+            );
 
             // --- ABSOLUTE TABLE DETECTION (AST-BASED) ---
             const uppercaseQuery = typeof query === 'string' ? query.trim().toUpperCase() : '';
@@ -156,13 +159,11 @@ export async function POST(request: Request) {
             let newDataParsed: Record<string, any> | undefined = undefined;
 
             try {
-                const { Parser } = require('node-sql-parser');
                 const parser = new Parser();
                 const ast: any = parser.astify(query);
                 const sqlAst = Array.isArray(ast) ? ast[0] : ast;
 
                 if (sqlAst) {
-                    // Extract table name based on mutation type
                     if (sqlAst.type === 'insert' || sqlAst.type === 'update' || sqlAst.type === 'delete') {
                         const tableObj = sqlAst.table ? sqlAst.table[0] : (sqlAst.from ? sqlAst.from[0] : null);
                         if (tableObj) {
@@ -170,7 +171,6 @@ export async function POST(request: Request) {
                         }
                     }
 
-                    // Extract row data for INSERT webhooks
                     if (sqlAst.type === 'insert' && Array.isArray(sqlAst.columns)) {
                         const cols = sqlAst.columns;
                         const valsNode = Array.isArray(sqlAst.values) ? sqlAst.values : sqlAst.values?.values;
@@ -185,7 +185,6 @@ export async function POST(request: Request) {
                 }
             } catch (err) {
                 console.warn('[AST Parser Fallback] Falling back to regex for mutation detection:', err);
-                // Fallback to simple regex if parser fails (rare)
                 const tblMatch = query.match(/(?:INTO|UPDATE|FROM)\s+["'\`]?(?:[a-zA-Z0-9_]+\.)?["'\`]?([a-zA-Z0-9_]+)["'\`]?/i);
                 if (tblMatch) mutatedTable = tblMatch[1];
             }
@@ -193,23 +192,21 @@ export async function POST(request: Request) {
             if (mutatedTable) {
                 const cleanMutatedTable = mutatedTable.toLowerCase();
                 
-                await invalidateTableCache(projectId, cleanMutatedTable).catch(err => {
-                    console.warn(`[Upstash Invalidation Error] Failed to invalidate cache for ${cleanMutatedTable}:`, err);
-                });
+                backgroundTasks.push((async () => {
+                    await invalidateTableCache(projectId, cleanMutatedTable).catch(err => {
+                        console.warn(`[Upstash Invalidation Error] Failed to invalidate cache for ${cleanMutatedTable}:`, err);
+                    });
 
-                // Fire Outbound Webhooks
-                const webhookEvent = uppercaseQuery.startsWith('INSERT') ? 'row.inserted' : uppercaseQuery.startsWith('UPDATE') ? 'row.updated' : 'row.deleted';
+                    const webhookEvent = uppercaseQuery.startsWith('INSERT') ? 'row.inserted' : uppercaseQuery.startsWith('UPDATE') ? 'row.updated' : 'row.deleted';
 
-                await fireWebhooks(
-                    projectId, 
-                    userId, 
-                    cleanMutatedTable, 
-                    webhookEvent as WebhookEvent,
-                    newDataParsed || (uppercaseQuery.startsWith('INSERT') && Array.isArray(params) ? { raw_params: params } : undefined)
-                ).catch(err => console.error(`[Webhook Dispatch Error]`, err));
+                    await fireWebhooks(
+                        projectId, 
+                        userId, 
+                        cleanMutatedTable, 
+                        webhookEvent as WebhookEvent,
+                        newDataParsed || (uppercaseQuery.startsWith('INSERT') && Array.isArray(params) ? { raw_params: params } : undefined)
+                    ).catch(err => console.error(`[Webhook Dispatch Error]`, err));
 
-                // Fire SSE Live Broadcast for Vercel -> Render
-                try {
                     const pool = getPgPool();
                     const payload = {
                         event_type: 'raw_sql_mutation',
@@ -224,18 +221,14 @@ export async function POST(request: Request) {
                     };
                     const payloadString = JSON.stringify(payload).replace(/'/g, "''");
                     await pool.query(`NOTIFY flux_realtime, '${payloadString}'`).catch(err => {
-                        console.warn(`[SSE Broadcast Error] Failed to fire NOTIFY for ${cleanMutatedTable}:`, err);
+                        console.warn(`[SSE Broadcast Error] Failed to fire NOTIFY:`, err);
                     });
-                } catch (e) {
-                    // Ignore broadcast errors
-                }
+                })());
             }
 
-            // Detect Structural DDL Changes
             const isSchemaChange = uppercaseQuery.includes('CREATE ') || uppercaseQuery.includes('DROP ') || uppercaseQuery.includes('ALTER ') || uppercaseQuery.includes('RENAME ');
             if (isSchemaChange) {
-                try {
-                    // Flush the schema inference cache so the Database Explorer immediately reflects new tables
+                backgroundTasks.push((async () => {
                     await redis.del(`schema_inference_${projectId}`).catch(err => console.warn('Cache del error:', err));
                     
                     const pool = getPgPool();
@@ -248,15 +241,15 @@ export async function POST(request: Request) {
                     await pool.query(`NOTIFY flux_realtime, '${payloadString}'`).catch(err => {
                         console.warn(`[SSE Broadcast Error] Failed to fire schema_update NOTIFY:`, err);
                     });
-                } catch (e) {}
+                })());
             }
         }
 
         const responseData = {
             success: true,
             result: {
-                rows: result.rows || [],     // Ensure array
-                columns: result.columns || [], // Ensure array
+                rows: result.rows || [],
+                columns: result.columns || [],
                 message: result.message
             },
             explanation: result.explanation || [],
@@ -267,17 +260,20 @@ export async function POST(request: Request) {
         };
 
         if (isSelect && cacheKey) {
-            try {
-                await redis.set(cacheKey, {
+            backgroundTasks.push(
+                redis.set(cacheKey, {
                     result: responseData.result,
                     explanation: responseData.explanation,
                     executionInfo: responseData.executionInfo,
                     expiresAt: Date.now() + (CACHE_TTL_SECONDS * 1000)
-                }, { ex: CACHE_TTL_SECONDS });
-            } catch (redisErr) {
-                console.warn('[Redis Error] Failed to write to global cache:', redisErr);
-            }
+                }, { ex: CACHE_TTL_SECONDS }).catch(redisErr => {
+                    console.warn('[Redis Error] Failed to write to global cache:', redisErr);
+                })
+            );
         }
+
+        // Fire background tasks
+        Promise.all(backgroundTasks).catch(e => console.error('[Background Task Group Error]', e));
 
         return NextResponse.json(responseData, {
             headers: {
@@ -292,17 +288,10 @@ export async function POST(request: Request) {
         if (error instanceof FluxbaseError) {
             return NextResponse.json(error.toJSON(), { status: error.status });
         }
-        return NextResponse.json({
-            success: false,
-            error: {
-                message: error.message || 'An unexpected error occurred',
-                code: ERROR_CODES.INTERNAL_ERROR
-            }
-        }, { status: 500 });
+        return handleDatabaseError(error);
     }
 }
 
-// Explicit CORS Preflight Support for Next.js App Router
 export async function OPTIONS() {
     return new Response(null, {
         status: 204,

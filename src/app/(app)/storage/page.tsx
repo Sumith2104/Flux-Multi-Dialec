@@ -429,7 +429,7 @@ export default function StoragePage() {
                                         >
                                             <Upload className="h-14 w-14 opacity-15" />
                                             <p className="font-medium text-muted-foreground">Drop files here or click Upload</p>
-                                            <p className="text-xs text-muted-foreground/60">Images, PDFs, CSVs, JSON, ZIP supported</p>
+                                            <p className="text-xs text-muted-foreground/60">All file types supported (Images, PDFs, CSVs, JSON, ZIP, etc.)</p>
                                         </div>
                                     ) : (
                                         <div className="overflow-auto">

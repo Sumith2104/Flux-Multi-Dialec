@@ -17,9 +17,9 @@ interface Invite {
     inviterName: string;
 }
 
-export function InvitationAlerts() {
-    const [invites, setInvites] = useState<Invite[]>([]);
-    const [loading, setLoading] = useState(true);
+export function InvitationAlerts({ initialInvites }: { initialInvites?: Invite[] }) {
+    const [invites, setInvites] = useState<Invite[]>(initialInvites || []);
+    const [loading, setLoading] = useState(!initialInvites);
     const [processingId, setProcessingId] = useState<string | null>(null);
     const { toast } = useToast();
     const router = useRouter();
@@ -37,11 +37,17 @@ export function InvitationAlerts() {
     }, []);
 
     useEffect(() => {
-        fetchInvites();
+        if (initialInvites) {
+            setInvites(initialInvites);
+            setLoading(false);
+        } else {
+            fetchInvites();
+        }
+        
         // Poll every 60 seconds for new invites
         const interval = setInterval(fetchInvites, 60000);
         return () => clearInterval(interval);
-    }, [fetchInvites]);
+    }, [fetchInvites, initialInvites]);
 
     const handleAction = async (inviteId: string, status: 'accepted' | 'rejected') => {
         setProcessingId(inviteId);
@@ -54,15 +60,6 @@ export function InvitationAlerts() {
             const data = await res.json();
 
             if (!res.ok) {
-                if (data.code === 'PROJECT_REQUIRED') {
-                    toast({
-                        title: "Project Required",
-                        description: "You must create a project before you can join a team. Redirecting you now...",
-                        variant: "destructive"
-                    });
-                    router.push('/dashboard/projects');
-                    return;
-                }
                 throw new Error(data.error || "Failed to process invitation");
             }
 
