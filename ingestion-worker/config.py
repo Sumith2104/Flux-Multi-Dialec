@@ -9,10 +9,13 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Config:
-    # ── Upstash Redis ────────────────────────────────────────────────────────
-    redis_url: str = field(default_factory=lambda: os.environ["UPSTASH_REDIS_URL"])
-    # Format: rediss://:password@host:port
-    # Or use UPSTASH_REDIS_REST_URL + TOKEN for REST-based client
+    # ── Upstash Redis (REST API — works on all platforms) ────────────────────
+    upstash_rest_url: str = field(
+        default_factory=lambda: os.environ["UPSTASH_REDIS_REST_URL"]
+    )
+    upstash_rest_token: str = field(
+        default_factory=lambda: os.environ["UPSTASH_REDIS_REST_TOKEN"]
+    )
 
     queue_key: str    = "orders_queue"
     queue_key_high: str = "orders_queue:high"

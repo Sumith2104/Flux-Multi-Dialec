@@ -1,14 +1,11 @@
 """
-queue_client.py — Async Redis queue wrapper using redis-py (asyncio).
+queue_client.py — Upstash Redis queue via REST API (HTTPS).
 
-Supports:
-  - LPUSH (enqueue)
-  - BRPOP  (blocking dequeue with timeout)
-  - LLEN   (depth probe)
-  - DLQ push
-  - Pause/resume via control key
+Uses Upstash REST API instead of TCP redis:// protocol.
+This works on ALL platforms (Render, Fly.io, Railway, Vercel)
+since it's plain HTTPS — no firewall issues, no port 6380 needed.
 
-Uses a connection pool for efficiency across many concurrent workers.
+REST API docs: https://upstash.com/docs/redis/features/restapi
 """
 
 import asyncio
@@ -16,7 +13,7 @@ import json
 import logging
 from typing import Optional
 
-import redis.asyncio as aioredis
+import httpx
 
 from config import cfg
 
@@ -25,125 +22,132 @@ logger = logging.getLogger(__name__)
 
 class QueueClient:
     """
-    Async wrapper around Redis lists for the ingestion queue.
-
-    Queue model (FIFO):
-      Producer:  LPUSH queue_key  message
-      Consumer:  BRPOP queue_key  (pops from right → FIFO)
-
-    High-priority queue is checked first.
+    Upstash REST-based queue client.
+    All operations use HTTPS POST to https://<host>/<COMMAND>/args
+    Authorization: Bearer <token>
     """
 
     def __init__(self):
-        self._pool: Optional[aioredis.Redis] = None
+        self._client: Optional[httpx.AsyncClient] = None
 
     async def connect(self):
-        self._pool = await aioredis.from_url(
-            cfg.redis_url,
-            encoding="utf-8",
-            decode_responses=True,
-            max_connections=cfg.num_workers * 2 + 4,
-            socket_keepalive=True,
-            socket_connect_timeout=5,
-            retry_on_timeout=True,
+        self._client = httpx.AsyncClient(
+            base_url=cfg.upstash_rest_url,
+            headers={
+                "Authorization": f"Bearer {cfg.upstash_rest_token}",
+                "Content-Type": "application/json",
+            },
+            timeout=httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=5.0),
         )
-        # Ping to verify connectivity at startup
-        await self._pool.ping()
-        logger.info("[Queue] Redis connection pool established")
+        # Verify connectivity
+        await self._cmd("PING")
+        logger.info("[Queue] Upstash REST connection established (%s)", cfg.upstash_rest_url)
 
     async def close(self):
-        if self._pool:
-            await self._pool.aclose()
+        if self._client:
+            await self._client.aclose()
 
-    # ── Enqueue ──────────────────────────────────────────────────────────────
+    # ── Raw command ───────────────────────────────────────────────────────────
+    async def _cmd(self, *args) -> any:
+        """
+        Execute any Redis command via Upstash REST.
+        POST /  body: ["COMMAND", "arg1", "arg2", ...]
+        Returns the result field.
+        """
+        r = await self._client.post("/", json=list(args))
+        r.raise_for_status()
+        data = r.json()
+        if "error" in data:
+            raise RuntimeError(f"Upstash error: {data['error']}")
+        return data.get("result")
+
+    # ── Enqueue (LPUSH) ───────────────────────────────────────────────────────
     async def enqueue(self, message: dict, high_priority: bool = False) -> int:
         key = cfg.queue_key_high if high_priority else cfg.queue_key
-        return await self._pool.lpush(key, json.dumps(message))
+        return await self._cmd("LPUSH", key, json.dumps(message))
 
-    # ── Dequeue (blocking) ───────────────────────────────────────────────────
-    async def dequeue(self) -> Optional[dict]:
-        """
-        Pops one message. Checks high-priority queue first.
-        Returns None on timeout (no messages within dequeue_timeout).
-        """
-        result = await self._pool.brpop(
-            [cfg.queue_key_high, cfg.queue_key],
-            timeout=cfg.dequeue_timeout,
-        )
-        if result is None:
+    # ── Dequeue (RPOP — non-blocking) ────────────────────────────────────────
+    async def _rpop(self, key: str) -> Optional[dict]:
+        raw = await self._cmd("RPOP", key)
+        if raw is None:
             return None
-        _key, raw = result
         try:
             return json.loads(raw)
         except json.JSONDecodeError:
-            logger.error("[Queue] Malformed message (not JSON): %s", raw[:200])
+            logger.error("[Queue] Malformed message: %s", str(raw)[:100])
             return None
 
-    # ── Batch dequeue ────────────────────────────────────────────────────────
+    async def dequeue(self) -> Optional[dict]:
+        """Check high priority queue first, then normal."""
+        msg = await self._rpop(cfg.queue_key_high)
+        if msg is not None:
+            return msg
+        return await self._rpop(cfg.queue_key)
+
+    # ── Batch dequeue ─────────────────────────────────────────────────────────
     async def dequeue_batch(self, target_size: int) -> list[dict]:
         """
-        Tries to fill a batch of up to target_size messages without blocking
-        for each individually. Uses pipeline for efficiency.
-        Blocks on the first item, then greedily pops the rest.
+        Polls for up to target_size messages without blocking.
+        Waits up to dequeue_timeout seconds for at least one message.
         """
         messages = []
+        deadline = asyncio.get_event_loop().time() + cfg.dequeue_timeout
 
-        # Block for first message (up to dequeue_timeout seconds)
-        first = await self.dequeue()
-        if first is None:
+        # Wait for first message
+        while asyncio.get_event_loop().time() < deadline:
+            first = await self.dequeue()
+            if first is not None:
+                messages.append(first)
+                break
+            await asyncio.sleep(0.2)
+
+        if not messages:
             return []
-        messages.append(first)
 
-        # Greedily collect remaining without blocking
-        remaining = target_size - 1
-        if remaining > 0:
-            # Pipeline RPOP calls to minimise round trips
-            pipe = self._pool.pipeline(transaction=False)
-            for _ in range(remaining):
-                pipe.rpop(cfg.queue_key)
-            results = await pipe.execute()
-            for raw in results:
-                if raw is None:
-                    break
-                try:
-                    messages.append(json.loads(raw))
-                except json.JSONDecodeError:
-                    pass
+        # Greedily collect the rest (non-blocking)
+        for _ in range(target_size - 1):
+            msg = await self.dequeue()
+            if msg is None:
+                break
+            messages.append(msg)
 
         return messages
 
-    # ── Dead Letter Queue ────────────────────────────────────────────────────
+    # ── Dead Letter Queue ─────────────────────────────────────────────────────
     async def push_dlq(self, message: dict, reason: str):
-        dlq_entry = {**message, "_dlq_reason": reason, "_dlq_at": asyncio.get_event_loop().time()}
-        await self._pool.lpush(cfg.dlq_key, json.dumps(dlq_entry))
-        logger.warning("[Queue] Pushed to DLQ (reason=%s) batchId=%s", reason, message.get("batchId"))
+        dlq_entry = {**message, "_dlq_reason": reason}
+        await self._cmd("LPUSH", cfg.dlq_key, json.dumps(dlq_entry))
+        logger.warning("[Queue] → DLQ reason=%s batchId=%s", reason, message.get("batchId", "?"))
 
-    # ── Depth probe ──────────────────────────────────────────────────────────
+    # ── Queue depth ───────────────────────────────────────────────────────────
     async def queue_depth(self) -> dict:
-        pipe = self._pool.pipeline(transaction=False)
-        pipe.llen(cfg.queue_key)
-        pipe.llen(cfg.queue_key_high)
-        pipe.llen(cfg.dlq_key)
-        normal, high, dlq = await pipe.execute()
-        return {"normal": normal, "high": high, "dlq": dlq, "total": normal + high}
+        normal = await self._cmd("LLEN", cfg.queue_key)
+        high   = await self._cmd("LLEN", cfg.queue_key_high)
+        dlq    = await self._cmd("LLEN", cfg.dlq_key)
+        return {"normal": normal or 0, "high": high or 0, "dlq": dlq or 0,
+                "total": (normal or 0) + (high or 0)}
 
     # ── Pause / Resume ────────────────────────────────────────────────────────
     async def is_paused(self) -> bool:
-        val = await self._pool.get(cfg.pause_key)
+        val = await self._cmd("GET", cfg.pause_key)
         return val == "1"
 
     async def pause(self):
-        await self._pool.set(cfg.pause_key, "1")
+        await self._cmd("SET", cfg.pause_key, "1")
 
     async def resume(self):
-        await self._pool.delete(cfg.pause_key)
+        await self._cmd("DEL", cfg.pause_key)
 
     # ── Stats ─────────────────────────────────────────────────────────────────
     async def increment_stats(self, field: str, amount: int = 1):
-        await self._pool.hincrby(cfg.stats_key, field, amount)
+        await self._cmd("HINCRBY", cfg.stats_key, field, amount)
 
     async def get_stats(self) -> dict:
-        return await self._pool.hgetall(cfg.stats_key) or {}
+        result = await self._cmd("HGETALL", cfg.stats_key)
+        # HGETALL returns flat list [key, val, key, val, ...]
+        if isinstance(result, list):
+            return dict(zip(result[::2], result[1::2]))
+        return {}
 
 
 # Shared singleton
