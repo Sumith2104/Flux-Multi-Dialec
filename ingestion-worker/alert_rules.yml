@@ -1,0 +1,125 @@
+## AlertManager / Prometheus Alerting Rules
+## File: alert_rules.yml
+##
+## Add to your prometheus.yml:
+##   rule_files:
+##     - alert_rules.yml
+##
+## Or paste into Grafana Alerting → Alert Rules → Import
+
+groups:
+  - name: ingestion.critical
+    interval: 30s
+    rules:
+
+      # ── DLQ growing — data is being lost ─────────────────────────────────
+      - alert: IngestionDLQNonZero
+        expr: ingestion_queue_depth{queue="dlq"} > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Dead Letter Queue has {{ $value }} messages"
+          description: |
+            Batches are failing all retries and being sent to the DLQ.
+            Check worker logs for FluxbaseError details.
+            Action: Review DLQ contents and replay or escalate.
+
+      # ── Failure rate spike ────────────────────────────────────────────────
+      - alert: IngestionHighFailureRate
+        expr: ingestion_failure_rate > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Failure rate is {{ $value | humanizePercentage }}"
+          description: |
+            More than 5% of batches are failing.
+            The adaptive throttle will reduce batch size automatically,
+            but sustained failures indicate a Fluxbase or network issue.
+
+      # ── All workers down ─────────────────────────────────────────────────
+      - alert: IngestionNoWorkers
+        expr: ingestion_worker_count == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No active ingestion workers"
+          description: "The worker process may have crashed. Check Railway/Render logs."
+
+  - name: ingestion.warning
+    interval: 30s
+    rules:
+
+      # ── Latency spike ─────────────────────────────────────────────────────
+      - alert: IngestionHighLatency
+        expr: |
+          histogram_quantile(0.99,
+            rate(ingestion_insert_latency_ms_bucket[5m])
+          ) > 2000
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P99 insert latency is {{ $value | humanize }}ms"
+          description: |
+            Fluxbase insert latency p99 exceeds 2 seconds for 3+ minutes.
+            The adaptive throttle will reduce concurrency.
+            Check Fluxbase dashboard for backend load.
+
+      # ── Queue building fast ───────────────────────────────────────────────
+      - alert: IngestionQueueDepthHigh
+        expr: ingestion_queue_depth{queue="normal"} > 5000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Queue depth is {{ $value }} messages"
+          description: |
+            The Redis queue has more than 5,000 pending messages.
+            Auto-scaler will add workers if SCALER_MODE=process or flyio.
+            If not scaling, consider increasing NUM_WORKERS.
+
+      # ── Queue depth rising faster than insert rate ────────────────────────
+      - alert: IngestionQueueGrowthRate
+        expr: |
+          deriv(ingestion_queue_depth{queue="normal"}[5m]) > 50
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Queue growing at {{ $value | humanize }} msg/sec"
+          description: |
+            Queue depth is increasing (producers outpacing consumers).
+            Workers will auto-scale up. If problem persists, check Fluxbase health.
+
+      # ── Throughput dropped significantly ──────────────────────────────────
+      - alert: IngestionThroughputDrop
+        expr: |
+          ingestion_rows_per_second < 10
+          and ingestion_queue_depth{queue="normal"} > 100
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Throughput dropped to {{ $value }} rows/sec despite queue backlog"
+          description: |
+            Workers appear stalled — queue has messages but throughput is near zero.
+            Check for network issues, Redis connectivity, or Fluxbase outage.
+
+  - name: ingestion.info
+    interval: 60s
+    rules:
+
+      # ── Scaler hit max workers ────────────────────────────────────────────
+      - alert: IngestionScalerAtMax
+        expr: ingestion_worker_count >= 20
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "Auto-scaler at MAX_WORKERS ({{ $value }})"
+          description: |
+            The auto-scaler has reached the maximum worker count.
+            Consider raising MAX_WORKERS or reducing producer rate.
