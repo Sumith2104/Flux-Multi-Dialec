@@ -99,7 +99,7 @@ class QueueClient:
             if first is not None:
                 messages.append(first)
                 break
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(1.0)   # 1s poll when idle — saves Upstash quota
 
         if not messages:
             return []
