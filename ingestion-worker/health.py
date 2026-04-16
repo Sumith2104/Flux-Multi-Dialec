@@ -26,7 +26,7 @@ from metrics import metrics
 from prometheus_metrics import (
     prom,
     queue_depth as prom_queue_depth,
-    rows_per_sec as prom_rows_ps,
+    rows_per_second as prom_rows_ps,
     failure_rate as prom_failure_rate,
     batch_size_current as prom_batch_size,
     concurrency_current as prom_concurrency,
