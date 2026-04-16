@@ -225,6 +225,20 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
 }
 
 /**
+ * Invalidates the project cache for a specific project.
+ * Useful when status or metadata changes.
+ */
+export function invalidateProjectCache(projectId: string) {
+    // Since cache keys are composite (projectId:userId), we iterate and clear all for this projectId.
+    const keys = _projectCache.keys();
+    for (const key of keys) {
+        if (key.startsWith(`${projectId}:`)) {
+            _projectCache.delete(key);
+        }
+    }
+}
+
+/**
  * Checks if a project or its owner (organization) is suspended.
  * Throws a FluxbaseError if access should be blocked.
  */

@@ -1,7 +1,7 @@
 'use server';
 
-import { getCurrentUserId } from '@/lib/auth';
-import { deleteProject } from '@/lib/data';
+import { getCurrentUserId, invalidateAuthCache } from '@/lib/auth';
+import { deleteProject, invalidateProjectCache } from '@/lib/data';
 import { deleteUserAccount } from '@/lib/auth-actions';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -112,6 +112,8 @@ export async function toggleOrganizationSuspensionAction(status: 'suspended' | '
         const pool = getPgPool();
         await pool.query('UPDATE fluxbase_global.users SET status = $1 WHERE id = $2', [status, userId]);
 
+        invalidateAuthCache(userId);
+
         revalidatePath('/settings');
         revalidatePath('/dashboard');
         return { success: true };
@@ -190,6 +192,8 @@ export async function toggleProjectSuspensionAction(projectId: string, status: '
             'UPDATE fluxbase_global.projects SET status = $1 WHERE project_id = $2',
             [status, projectId]
         );
+
+        invalidateProjectCache(projectId);
 
         revalidatePath('/settings');
         revalidatePath('/dashboard');

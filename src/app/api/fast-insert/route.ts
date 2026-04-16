@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { pool } from "@/lib/pg";
+import { getAuthContextFromRequest } from "@/lib/auth";
+import { getProjectById, ensureNotSuspended } from "@/lib/data";
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +16,26 @@ export async function POST(req: NextRequest) {
         return new Response("Invalid JSON", { status: 400 });
     }
 
-    const { customer_id, order_date, status } = body;
+    const { customer_id, order_date, status, projectId: bodyProjectId } = body;
+    const headerProjectId = req.headers.get('x-project-id');
+    const projectId = bodyProjectId || headerProjectId;
+
+    if (!projectId) {
+        return new Response("projectId is required", { status: 400 });
+    }
+
+    // Security Check
+    try {
+        const auth = await getAuthContextFromRequest(req);
+        if (!auth?.userId) return new Response("Unauthorized", { status: 401 });
+
+        const project = await getProjectById(projectId, auth.userId);
+        if (!project) return new Response("Project not found", { status: 404 });
+
+        await ensureNotSuspended(project);
+    } catch (err: any) {
+        return new Response(err.message || "Forbidden", { status: err.status || 403 });
+    }
 
     // Fast-fail validation
     if (

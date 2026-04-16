@@ -1,5 +1,7 @@
-import { NextRequest } from 'next/server';
-import { pool } from '@/lib/pg';
+import { NextRequest } from "next/server";
+import { getAuthContextFromRequest } from "@/lib/auth";
+import { getProjectById, ensureNotSuspended } from "@/lib/data";
+import { pool } from "@/lib/pg";
 
 /**
  * HIGH-THROUGHPUT BULK INSERT ENDPOINT
@@ -14,17 +16,33 @@ import { pool } from '@/lib/pg';
 export const runtime = 'nodejs'; // Use Node.js for persistent pool support
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s watchdog
 
     try {
         // 1. Fast JSON Extraction (No heavy validation)
-        const data = await request.json();
+        const data = await req.json();
         
         if (!Array.isArray(data)) {
             return new Response('Payload must be a JSON array', { status: 400 });
         }
+
+        const { searchParams } = new URL(req.url);
+        const projectId = req.headers.get('x-project-id') || searchParams.get('projectId');
+
+        if (!projectId) {
+            return new Response("projectId is required (header or param)", { status: 400 });
+        }
+
+        // Security Check
+        const auth = await getAuthContextFromRequest(req);
+        if (!auth?.userId) return new Response("Unauthorized", { status: 401 });
+
+        const project = await getProjectById(projectId, auth.userId);
+        if (!project) return new Response("Project not found", { status: 404 });
+
+        await ensureNotSuspended(project);
 
         if (data.length === 0) {
             return new Response(null, { status: 204 });
