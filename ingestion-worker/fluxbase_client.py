@@ -73,88 +73,102 @@ class FluxbaseClient:
         rows: list[dict[str, Any]],
     ) -> dict:
         """
-        Builds and executes a parameterised bulk INSERT statement.
-
-        Returns the Fluxbase response dict.
-        Raises:
-          FluxbaseRetryError   — transient / rate-limit errors (caller should retry)
-          FluxbaseError        — permanent failure (send to DLQ)
+        Production-grade bulk insert with automatic chunking.
+        Handles PostgreSQL parameter limits (~32k) and large batch splitting.
         """
         if not rows:
             return {"success": True, "rowsAffected": 0}
 
-        sql, params = self._build_bulk_insert(table, rows)
+        # 1. Extract canonical schema from union of all keys in this batch
+        all_keys = set()
+        for r in rows:
+            all_keys.update(r.keys())
+        columns = sorted(list(all_keys))
+        num_cols = len(columns)
 
-        start = time.monotonic()
-        try:
-            resp = await self.client.post(
-                "/api/execute-sql",
-                json={
-                    "projectId": cfg.fluxbase_project_id,
-                    "query": sql,
-                    "params": params,
-                },
+        if num_cols == 0:
+            return {"success": True, "rowsAffected": 0}
+
+        # 2. Calculate safe chunk size
+        # PG Limit: 32,767 params. Safety Buffer: 30,000.
+        max_rows_by_params = 30000 // num_cols
+        rows_per_chunk = max(1, min(1000, max_rows_by_params))
+        
+        chunks = [rows[i : i + rows_per_chunk] for i in range(0, len(rows), rows_per_chunk)]
+        
+        if len(chunks) > 1:
+            logger.info(
+                "[Fluxbase] Splitting %d rows into %d chunks (cols=%d, rows_per_chunk=%d)",
+                len(rows), len(chunks), num_cols, rows_per_chunk
             )
-            latency_ms = (time.monotonic() - start) * 1000
 
-            if resp.status_code == 429:
-                raise FluxbaseRetryError(f"Rate limited (429)", latency_ms=latency_ms)
+        total_affected = 0
+        total_latency = 0
 
-            if resp.status_code >= 500:
-                raise FluxbaseRetryError(
-                    f"Server error {resp.status_code}: {resp.text[:200]}",
-                    latency_ms=latency_ms,
+        # 3. Execute chunks sequentially for protocol safety and pool management
+        for i, chunk in enumerate(chunks):
+            sql, params = self._build_insert_chunk(table, columns, chunk)
+            
+            # Fail-safe check
+            if not params or not sql:
+                continue
+
+            start = time.monotonic()
+            try:
+                resp = await self.client.post(
+                    "/api/execute-sql",
+                    json={
+                        "projectId": cfg.fluxbase_project_id,
+                        "query": sql,
+                        "params": params,
+                    },
                 )
+                chunk_latency = (time.monotonic() - start) * 1000
+                total_latency += chunk_latency
 
-            if resp.status_code >= 400:
-                raise FluxbaseError(
-                    f"Client error {resp.status_code}: {resp.text[:200]}",
-                    latency_ms=latency_ms,
-                )
+                if resp.status_code == 429:
+                    raise FluxbaseRetryError(f"Rate limited (429) at chunk {i+1}", latency_ms=chunk_latency)
 
-            data = resp.json()
-            if not data.get("success"):
-                error_msg = data.get("error", {})
-                if isinstance(error_msg, dict):
-                    error_msg = error_msg.get("message", str(error_msg))
-                raise FluxbaseRetryError(f"API error: {error_msg}", latency_ms=latency_ms)
+                if resp.status_code >= 500:
+                    raise FluxbaseRetryError(
+                        f"Server error {resp.status_code} at chunk {i+1}: {resp.text[:200]}",
+                        latency_ms=chunk_latency,
+                    )
 
-            return {**data, "_latency_ms": latency_ms}
+                if resp.status_code >= 400:
+                    raise FluxbaseError(
+                        f"Client error {resp.status_code} at chunk {i+1}: {resp.text[:200]}",
+                        latency_ms=chunk_latency,
+                    )
 
-        except (httpx.TimeoutException, httpx.ConnectError) as exc:
-            latency_ms = (time.monotonic() - start) * 1000
-            raise FluxbaseRetryError(f"Network error: {exc}", latency_ms=latency_ms) from exc
+                data = resp.json()
+                if not data.get("success"):
+                    err = data.get("error", {})
+                    msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
+                    raise FluxbaseRetryError(f"API error at chunk {i+1}: {msg}", latency_ms=chunk_latency)
+
+                total_affected += data.get("rowsAffected", len(chunk))
+
+            except (httpx.TimeoutException, httpx.ConnectError) as exc:
+                latency_ms = (time.monotonic() - start) * 1000
+                raise FluxbaseRetryError(f"Network error at chunk {i+1}: {exc}", latency_ms=latency_ms) from exc
+
+        return {
+            "success": True, 
+            "rowsAffected": total_affected, 
+            "_latency_ms": total_latency
+        }
 
     # ── SQL builder ───────────────────────────────────────────────────────────
     @staticmethod
-    def _build_bulk_insert(
+    def _build_insert_chunk(
         table: str,
+        columns: list[str],
         rows: list[dict[str, Any]],
     ) -> tuple[str, list[Any]]:
         """
-        Returns (sql, params) for a parameterised multi-row INSERT.
-
-        Example output:
-          INSERT INTO orders (id, amount, _batch_id, _ingested_at)
-          VALUES ($1,$2,$3,$4),($5,$6,$7,$8),...
-          ON CONFLICT (id) DO NOTHING
-
-        All rows must share the same column set (taken from the first row).
-        Missing columns in subsequent rows are filled with None.
+        Builds a single parameterised INSERT block for a chunk of rows.
         """
-        # Derive canonical column order from union of all keys
-        all_keys: list[str] = []
-        seen: set[str] = set()
-        for row in rows:
-            for k in row:
-                if k not in seen:
-                    all_keys.append(k)
-                    seen.add(k)
-
-        # Strip internal metadata keys that shouldn't go into the DB
-        # (_batch_id and _ingested_at are INCLUDED for observability)
-        columns = all_keys
-
         col_list  = ", ".join(f'"{c}"' for c in columns)
         params: list[Any] = []
         value_groups: list[str] = []
