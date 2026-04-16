@@ -266,6 +266,7 @@ export class SqlEngine {
             
             const errorMessage = e.message || '';
             let code: FluxbaseErrorCode = ERROR_CODES.SQL_EXECUTION_ERROR;
+            let status = 500;
             
             if (errorMessage.toLowerCase().includes('syntax error') || 
                 errorMessage.toLowerCase().includes('check the manual that corresponds to your mysql server version') ||
