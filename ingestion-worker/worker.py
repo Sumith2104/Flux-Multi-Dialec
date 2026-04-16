@@ -163,8 +163,6 @@ async def run_worker(worker_id: str, batch_counter: list[int]):
             batch_size = throttle.batch_size
             messages   = await queue.dequeue_batch(batch_size)
             if not messages:
-                # Queue empty — short sleep to avoid tight loop
-                await asyncio.sleep(0.1)
                 continue
 
             batch_num = batch_counter[0]

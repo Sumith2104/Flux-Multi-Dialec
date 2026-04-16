@@ -16,6 +16,9 @@ class Config:
     upstash_rest_token: str = field(
         default_factory=lambda: os.environ["UPSTASH_REDIS_REST_TOKEN"]
     )
+    upstash_redis_url: str = field(
+        default_factory=lambda: os.environ.get("UPSTASH_REDIS_URL", "")
+    )
 
     queue_key: str    = "orders_queue"
     queue_key_high: str = "orders_queue:high"

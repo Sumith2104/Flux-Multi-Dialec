@@ -35,7 +35,7 @@ HIGH_WATERMARK    = int(os.environ.get("SCALE_UP_THRESHOLD",   "500"))   # depth
 LOW_WATERMARK     = int(os.environ.get("SCALE_DOWN_THRESHOLD", "50"))    # depth → remove worker
 MIN_WORKERS       = int(os.environ.get("MIN_WORKERS",          "1"))
 MAX_WORKERS       = int(os.environ.get("MAX_WORKERS",          "20"))
-EVAL_INTERVAL_S   = int(os.environ.get("SCALE_EVAL_INTERVAL",  "10"))
+EVAL_INTERVAL_S   = int(os.environ.get("SCALE_EVAL_INTERVAL",  "30"))
 STABLE_ROUNDS_DOWN = 3    # require N stable rounds before scaling down (hysteresis)
 
 SCALER_MODE = os.environ.get("SCALER_MODE", "process")   # "process" | "flyio"

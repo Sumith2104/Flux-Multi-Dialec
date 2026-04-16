@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 # ─── Metrics reporter ─────────────────────────────────────────────────────────
-async def _metrics_reporter(scaler, interval_s: int = 15):
+async def _metrics_reporter(scaler, interval_s: int = 60):
     while True:
         await asyncio.sleep(interval_s)
         snap  = metrics.snapshot()

@@ -23,7 +23,7 @@ from metrics import metrics
 
 logger = logging.getLogger(__name__)
 
-EVAL_INTERVAL_S = 10      # Re-evaluate every 10 seconds
+EVAL_INTERVAL_S = 30      # Re-evaluate every 30 seconds (saves Redis reads)
 RAMP_UP_PCT     = 0.10    # Grow batch by 10% when stable
 RAMP_DOWN_PCT   = 0.20    # Shrink batch by 20% on degradation
 
