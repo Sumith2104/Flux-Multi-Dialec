@@ -26,7 +26,7 @@ from metrics import metrics
 from prometheus_metrics import (
     prom,
     queue_depth as prom_queue_depth,
-    rows_per_second as prom_rows_ps,
+    rows_per_sec as prom_rows_ps,
     failure_rate as prom_failure_rate,
     batch_size_current as prom_batch_size,
     concurrency_current as prom_concurrency,
@@ -50,7 +50,7 @@ async def _health(request: web.Request) -> web.Response:
     snap = metrics.snapshot()
 
     # Push latest values into Prometheus gauges before serving
-    prom_rows_ps.set(snap["rows_per_second"])
+    prom_rows_ps.set(snap.get("rows_per_sec", 0))
     prom_failure_rate.set(snap["failure_rate_window"])
     prom_batch_size.set(throttle.batch_size)
     prom_concurrency.set(throttle.concurrency)
@@ -94,7 +94,7 @@ async def _prometheus_metrics(request: web.Request) -> web.Response:
     depth_info = await queue.queue_depth()
 
     # Sync all gauges with latest values
-    prom_rows_ps.set(snap["rows_per_second"])
+    prom_rows_ps.set(snap.get("rows_per_sec", 0))
     prom_failure_rate.set(snap["failure_rate_window"])
     prom_batch_size.set(throttle.batch_size)
     prom_concurrency.set(throttle.concurrency)

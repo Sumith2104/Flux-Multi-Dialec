@@ -44,7 +44,7 @@ async def _metrics_reporter(scaler, interval_s: int = 15):
             "[METRICS] rows/s=%.1f | batches=%d | ingested=%d | failed=%d | "
             "dlq=%d | fail_rate=%.1f%% | lat_p99=%.0fms | "
             "queue=%d | workers=%d | batch_sz=%d | concurrency=%d",
-            snap["rows_per_second"],
+            snap.get("rows_per_sec", 0),
             snap["batches_total"],
             snap["rows_ingested_total"],
             snap["rows_failed_total"],
