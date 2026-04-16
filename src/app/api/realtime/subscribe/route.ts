@@ -3,6 +3,8 @@ import { getAuthContextFromRequest } from '@/lib/auth';
 import { getPgPool } from '@/lib/pg';
 import { getProjectById, ensureNotSuspended } from '@/lib/data';
 import realtimeManager from '@/lib/realtime-manager';
+import { ERROR_CODES } from '@/lib/error-codes';
+import { redis } from '@/lib/redis';
 
 export const dynamic = 'force-dynamic';
 
@@ -102,8 +104,18 @@ export async function GET(req: NextRequest) {
                 controller.enqueue(encoder.encode('retry: 10000\n\n'));
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'connected', timestamp: new Date().toISOString() })}\n\n`));
 
-                interval = setInterval(() => {
+                interval = setInterval(async () => {
                     try {
+                        // RE-CHECK SUSPENSION EVERY HEARTBEAT (15s)
+                        const projectStatus = await redis.get<string>(`project_status:${projectId}`);
+                        const orgStatus = await redis.get<string>(`org_status:${project.user_id}`);
+                        
+                        if (projectStatus === 'suspended' || orgStatus === 'suspended') {
+                            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', message: 'Project or Organization suspended. Connection terminated.' })}\n\n`));
+                            releaseHandler();
+                            return;
+                        }
+
                         controller.enqueue(encoder.encode(': heartbeat\n\n'));
                     } catch (e) {
                         releaseHandler();

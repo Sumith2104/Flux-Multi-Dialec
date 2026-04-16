@@ -182,12 +182,13 @@ export async function getAuthContextFromRequest(request: Request): Promise<AuthC
  * Invalidates the authentication cache for a specific user.
  * Essential for immediate suspension enforcement.
  */
-export function invalidateAuthCache(userId: string) {
+export async function invalidateAuthCache(userId: string) {
     _userStatusCache.delete(userId);
     _authContextCache.delete(`cookie:${userId}`);
-    // For API keys, we don't know the hash here easily, but the fetchUserStatus
-    // check inside the cached AuthContext will eventually hit the (now empty)
-    // userStatusCache if the entry is re-fetched. To be safe, we clear all for this user.
+    
+    if (_authContextCache.size === 0) return;
+
+    // For API keys, we clear all entries belonging to this user.
     for (const key of _authContextCache.keys()) {
         const val = _authContextCache.get(key);
         if (val?.userId === userId) {

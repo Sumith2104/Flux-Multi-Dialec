@@ -228,8 +228,11 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
  * Invalidates the project cache for a specific project.
  * Useful when status or metadata changes.
  */
-export function invalidateProjectCache(projectId: string) {
+export async function invalidateProjectCache(projectId: string) {
     // Since cache keys are composite (projectId:userId), we iterate and clear all for this projectId.
+    // Optimization: Only iterate if we have entries.
+    if (_projectCache.size === 0) return;
+    
     const keys = _projectCache.keys();
     for (const key of keys) {
         if (key.startsWith(`${projectId}:`)) {
@@ -245,36 +248,49 @@ export function invalidateProjectCache(projectId: string) {
 export async function ensureNotSuspended(project: Project | null) {
     if (!project) return; // Let 404 handler take care of it if applicable
 
-    // Check Project Level
-    if (project.status === 'suspended') {
-        const { FluxbaseError } = await import('./error-codes');
+    const { redis } = await import('./redis');
+
+    // 1. Check Project Level (Redis Cache First)
+    let projectStatus = project.status;
+    const redisProjectStatus = await redis.get<string>(`project_status:${project.project_id}`);
+    if (redisProjectStatus) {
+        projectStatus = redisProjectStatus as any;
+    }
+
+    if (projectStatus === 'suspended') {
+        const { ERROR_CODES, FluxbaseError } = await import('./error-codes');
         throw new FluxbaseError(
             `Project '${project.display_name}' is currently suspended. Please resume it in Settings.`,
-            'PROJECT_SUSPENDED',
+            ERROR_CODES.FORBIDDEN,
             403
         );
     }
 
-    // Check Organization (User) Level
-    try {
-        const { getAuthContextFromRequest } = await import('./auth');
-        // This is a bit tricky since we don't always have the Request here.
-        // But in API routes we can fetch the user profile if needed.
-        // For efficiency, most routes already passed auth status.
-        // However, let's keep it simple: the caller should usually check auth server-side.
-        // We'll add a check here just in case.
-        const pool = getPgPool();
-        const { rows } = await pool.query('SELECT status FROM fluxbase_global.users WHERE id = $1', [project.user_id]);
-        if (rows.length > 0 && rows[0].status === 'suspended') {
-            const { FluxbaseError } = await import('./error-codes');
-            throw new FluxbaseError(
-                "Your organization is currently suspended. Database access and webhooks are disabled.",
-                'ORG_SUSPENDED',
-                403
-            );
+    // 2. Check Organization (User) Level (Redis Cache First)
+    let orgStatus: string = 'active';
+    const redisOrgStatus = await redis.get<string>(`org_status:${project.user_id}`);
+    
+    if (redisOrgStatus) {
+        orgStatus = redisOrgStatus;
+    } else {
+        // Fallback to DB and cache in Redis for next time
+        try {
+            const pool = (await import('./pg')).getPgPool();
+            const { rows } = await pool.query('SELECT status FROM fluxbase_global.users WHERE id = $1', [project.user_id]);
+            orgStatus = rows[0]?.status || 'active';
+            await redis.set(`org_status:${project.user_id}`, orgStatus, { ex: 300 }); // Cache for 5 mins
+        } catch (e) {
+            console.error('[Suspension Check Error] Falling back to active:', e);
         }
-    } catch (e) {
-        // Fallback to active if check fails or not applicable
+    }
+
+    if (orgStatus === 'suspended') {
+        const { ERROR_CODES, FluxbaseError } = await import('./error-codes');
+        throw new FluxbaseError(
+            "Your organization is currently suspended. Database access and webhooks are disabled.",
+            ERROR_CODES.FORBIDDEN,
+            403
+        );
     }
 }
 

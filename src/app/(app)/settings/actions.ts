@@ -2,6 +2,7 @@
 
 import { getCurrentUserId, invalidateAuthCache } from '@/lib/auth';
 import { deleteProject, invalidateProjectCache } from '@/lib/data';
+import { redis } from '@/lib/redis';
 import { deleteUserAccount } from '@/lib/auth-actions';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -112,7 +113,10 @@ export async function toggleOrganizationSuspensionAction(status: 'suspended' | '
         const pool = getPgPool();
         await pool.query('UPDATE fluxbase_global.users SET status = $1 WHERE id = $2', [status, userId]);
 
-        invalidateAuthCache(userId);
+        // Sync to Redis for global instant enforcement
+        await redis.set(`org_status:${userId}`, status);
+
+        await invalidateAuthCache(userId);
 
         revalidatePath('/settings');
         revalidatePath('/dashboard');
@@ -193,7 +197,10 @@ export async function toggleProjectSuspensionAction(projectId: string, status: '
             [status, projectId]
         );
 
-        invalidateProjectCache(projectId);
+        // Sync to Redis for global instant enforcement
+        await redis.set(`project_status:${projectId}`, status);
+
+        await invalidateProjectCache(projectId);
 
         revalidatePath('/settings');
         revalidatePath('/dashboard');
