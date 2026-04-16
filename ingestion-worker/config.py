@@ -53,7 +53,7 @@ class Config:
     backlog_scale_up_threshold: int = 1000
 
     # ── Health check server ──────────────────────────────────────────────────
-    health_port: int = field(default_factory=lambda: int(os.environ.get("HEALTH_PORT", "8080")))
+    health_port: int = field(default_factory=lambda: int(os.environ.get("PORT", "8080")))
 
     # ── Control plane ────────────────────────────────────────────────────────
     pause_key: str = "ingestion:paused"     # set to "1" in Redis to pause all workers
