@@ -214,10 +214,8 @@ export class SqlEngine {
                     `;
                     const sessionParams = [`project_${this.projectId}`, this.userId || '', this.projectTimezone || 'UTC'];
                     
-                    const [ sessionResult, result ] = await Promise.all([
-                        client.query(sessionSetupSql, sessionParams),
-                        client.query(queryCleaned, params || [])
-                    ]);
+                    await client.query(sessionSetupSql, sessionParams);
+                    const result = await client.query(queryCleaned, params || []);
 
                     const executionTime = Date.now() - startTime;
                     let explanation = [`Executed via Batch-Initialized AWS PostgreSQL in ${executionTime}ms`];
