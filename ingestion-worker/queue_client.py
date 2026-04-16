@@ -24,6 +24,8 @@ class QueueClient:
 
     def __init__(self):
         self._redis: Optional[redis.Redis] = None
+        self._depth_cache: dict = {}
+        self._depth_cache_time: float = 0
 
     async def connect(self):
         """
@@ -101,12 +103,33 @@ class QueueClient:
         await self._redis.lpush(cfg.dlq_key, json.dumps(dlq_entry))
         logger.warning("[Queue] → DLQ reason=%s batchId=%s", reason, message.get("batchId", "?"))
 
-    # ── Queue depth ───────────────────────────────────────────────────────────
+    # ── Queue depth (Cached) ──────────────────────────────────────────────────
+
     async def queue_depth(self) -> dict:
-        normal = await self._redis.llen(cfg.queue_key) or 0
-        high   = await self._redis.llen(cfg.queue_key_high) or 0
-        dlq    = await self._redis.llen(cfg.dlq_key) or 0
-        return {"normal": normal, "high": high, "dlq": dlq, "total": normal + high}
+        """
+        Calculates depth with a 30s local cache to save Upstash reads.
+        Used by Health, Scaler, Throttle, and Reporter.
+        """
+        now = asyncio.get_event_loop().time()
+        if now - self._depth_cache_time < 30:
+            return self._depth_cache
+
+        try:
+            normal = await self._redis.llen(cfg.queue_key) or 0
+            high   = await self._redis.llen(cfg.queue_key_high) or 0
+            dlq    = await self._redis.llen(cfg.dlq_key) or 0
+            
+            self._depth_cache = {
+                "normal": normal,
+                "high": high,
+                "dlq": dlq,
+                "total": normal + high
+            }
+            self._depth_cache_time = now
+            return self._depth_cache
+        except Exception as e:
+            logger.error("[Queue] Depth probe error: %s", e)
+            return self._depth_cache or {"normal": 0, "high": 0, "dlq": 0, "total": 0}
 
     # ── Pause / Resume ────────────────────────────────────────────────────────
     async def is_paused(self) -> bool:
