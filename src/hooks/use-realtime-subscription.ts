@@ -222,7 +222,7 @@ export function useRealtimeSubscription(projectId: string | undefined) {
         if (event.type === 'schema_update' || event.event_type === 'schema_update') {
             const pid = event.project_id || projectId;
             console.log(`[Realtime Sync] Schema changed. Instant Triple-Pass Pass 1...`);
-            
+
             // Pass 1: IMMEDIATE (0ms)
             queryClient.invalidateQueries({ queryKey: ['schema', pid] });
 
@@ -241,16 +241,16 @@ export function useRealtimeSubscription(projectId: string | undefined) {
         if (event.type === 'update' || event.action || event.operation) {
             const table = event.table;
             console.log(`[Realtime Sync] Data mutation in project ${projectId}. Table: ${table || 'generic'}`);
-            
+
             // Surgical Refetch: targeted table refresh
             if (table) {
-                queryClient.refetchQueries({ 
+                queryClient.refetchQueries({
                     queryKey: ['table-data', projectId, table],
                     type: 'active'
                 });
             } else {
                 // No table info — refetch all active tables for this project
-                queryClient.refetchQueries({ 
+                queryClient.refetchQueries({
                     queryKey: ['table-data', projectId],
                     type: 'active'
                 });
@@ -268,7 +268,7 @@ export function useRealtimeSubscription(projectId: string | undefined) {
         const listener: Listener = (event) => {
             // 1. Update UI-facing state (Batched by React)
             setLastEvent(event);
-            
+
             // 2. Trigger Database Sync (Instant, Event-driven)
             syncDatabase(event);
         };

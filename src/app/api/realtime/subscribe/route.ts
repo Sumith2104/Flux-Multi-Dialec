@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { getPgPool } from '@/lib/pg';
-import { ERROR_CODES } from '@/lib/error-codes';
+import { getProjectById, ensureNotSuspended } from '@/lib/data';
 import realtimeManager from '@/lib/realtime-manager';
 
 export const dynamic = 'force-dynamic';
@@ -21,39 +21,44 @@ export async function GET(req: NextRequest) {
 
     // Permission Check
     if (auth.allowedProjectId && auth.allowedProjectId !== projectId) {
-        return new Response(JSON.stringify({ 
-            success: false, 
-            error: { message: 'API Key is restricted to a different project', code: ERROR_CODES.UNAUTHORIZED } 
+        return new Response(JSON.stringify({
+            success: false,
+            error: { message: 'API Key is restricted to a different project', code: ERROR_CODES.UNAUTHORIZED }
         }), { status: 403 });
     }
 
-    const pool = getPgPool();
-    const projectRes = await pool.query(`
-        SELECT p.project_id 
-        FROM fluxbase_global.projects p
-        LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $2
-        WHERE p.project_id = $1 AND (p.user_id = $2 OR pm.user_id = $2)
-    `, [projectId, auth.userId]);
-    if (projectRes.rows.length === 0) {
-        return new Response(JSON.stringify({ 
-            success: false, 
-            error: { message: 'Project not found', code: ERROR_CODES.PROJECT_NOT_FOUND } 
+    // Use centralized project fetching to include status check
+    const project = await getProjectById(projectId, auth.userId);
+    if (!project) {
+        return new Response(JSON.stringify({
+            success: false,
+            error: { message: 'Project not found', code: 'PROJECT_NOT_FOUND' }
         }), { status: 404 });
     }
 
+    // Granular Suspension Check
+    try {
+        await ensureNotSuspended(project);
+    } catch (e: any) {
+        return new Response(JSON.stringify({
+            success: false,
+            error: { message: e.message, code: e.code }
+        }), { status: 403 });
+    }
+
     const ip = req.headers.get('x-forwarded-for') || '127.0.0.1';
-    
+
     // In-memory connection guard (Shared across requests in this instance)
     // Relaxed in dev to prevent 429 lockouts during React hot-reloading
     const MAX_CONNS_PER_IP = process.env.NODE_ENV === 'production' ? 10 : 1000;
     const globalConns = (global as any)._sse_conns || new Map<string, number>();
     (global as any)._sse_conns = globalConns;
-    
+
     const currentConns = globalConns.get(ip) || 0;
     if (currentConns >= MAX_CONNS_PER_IP) {
-        return new Response(JSON.stringify({ 
-            success: false, 
-            error: { message: 'Too many concurrent subscriptions from this address', code: ERROR_CODES.RATE_LIMIT_EXCEEDED } 
+        return new Response(JSON.stringify({
+            success: false,
+            error: { message: 'Too many concurrent subscriptions from this address', code: ERROR_CODES.RATE_LIMIT_EXCEEDED }
         }), { status: 429 });
     }
 
@@ -69,10 +74,10 @@ export async function GET(req: NextRequest) {
             releaseHandler = async () => {
                 if (isReleased) return;
                 isReleased = true;
-                
+
                 if (interval) clearInterval(interval);
                 if (unsubscribe) unsubscribe();
-                
+
                 // Decrement global IP tracker
                 const c = globalConns.get(ip) || 1;
                 if (c <= 1) globalConns.delete(ip);
@@ -87,13 +92,13 @@ export async function GET(req: NextRequest) {
                     try {
                         controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
                     } catch (e) {
-                         releaseHandler(); // Connection likely broken
+                        releaseHandler(); // Connection likely broken
                     }
                 });
 
                 // Abort listener for browser disconnect
                 req.signal.addEventListener('abort', () => releaseHandler());
-                
+
                 controller.enqueue(encoder.encode('retry: 10000\n\n'));
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'connected', timestamp: new Date().toISOString() })}\n\n`));
 
@@ -108,7 +113,7 @@ export async function GET(req: NextRequest) {
             } catch (err) {
                 console.error("[SSE Route Error]", err);
                 if (releaseHandler) releaseHandler();
-                try { controller.error(err); } catch(e) {}
+                try { controller.error(err); } catch (e) { }
             }
         },
         cancel() {

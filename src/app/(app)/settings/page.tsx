@@ -19,27 +19,28 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { deleteProjectAction, clearOrganizationAction, updateProjectSettingsAction, toggleOrganizationSuspensionAction } from './actions';
-import { 
-    get2FAStatusAction, 
-    setup2FAAction, 
-    verifyAndEnable2FAAction, 
-    disable2FAAction 
+import { deleteProjectAction, clearOrganizationAction, updateProjectSettingsAction, toggleOrganizationSuspensionAction, toggleProjectSuspensionAction } from './actions';
+import {
+    get2FAStatusAction,
+    setup2FAAction,
+    verifyAndEnable2FAAction,
+    disable2FAAction
 } from './2fa-actions';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { logoutAction } from '../actions';
-import { 
-    Copy, Check, Shield, Globe, Clock, Table as TableIcon, 
+import {
+    Copy, Check, Shield, Globe, Clock, Table as TableIcon,
     Key, Loader2, AlertTriangle, Database, ChevronRight
 } from "lucide-react";
-import { 
-    Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
+import {
+    Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
-import { 
-    CreditCard, Zap, Sparkles, Building2, HelpCircle 
+import {
+    CreditCard, Zap, Sparkles, Building2, HelpCircle,
+    Play, Pause, Projector
 } from "lucide-react";
-import { getTablesForProject, Table as DbTable } from '@/lib/data';
+import { getTablesForProject, getProjectsForCurrentUser, Project, Table as DbTable } from '@/lib/data';
 import { getUserPlanAction } from './billing-actions';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -70,10 +71,10 @@ function CopyableField({ label, value }: { label: string, value: string }) {
 }
 
 export default function GeneralSettingsPage() {
-    const { project: selectedProject, setProject } = useContext(ProjectContext);
+    const { project: selectedProject, setProject, setIsSuspended } = useContext(ProjectContext);
     const { toast } = useToast();
     const router = useRouter();
-    
+
     // State
     const [deleteConfirmation, setDeleteConfirmation] = useState('');
     const [timezone, setTimezone] = useState(selectedProject?.timezone || 'UTC');
@@ -99,6 +100,8 @@ export default function GeneralSettingsPage() {
     // Suspension State
     const [suspendConfirmation, setSuspendConfirmation] = useState('');
     const [isSuspending, setIsSuspending] = useState(false);
+    const [allProjects, setAllProjects] = useState<Project[]>([]);
+    const [loadingProjects, setLoadingProjects] = useState(true);
 
     useEffect(() => {
         // Load User Plan
@@ -106,17 +109,30 @@ export default function GeneralSettingsPage() {
             setUserPlan(res);
             setIsBillingLoading(false);
         });
+
+        // Load All Projects (for management)
+        const loadAllProjects = async () => {
+            try {
+                const projects = await getProjectsForCurrentUser();
+                setAllProjects(projects);
+            } catch (e) {
+                console.error("Failed to load projects:", e);
+            } finally {
+                setLoadingProjects(false);
+            }
+        };
+        loadAllProjects();
     }, []);
 
     useEffect(() => {
         if (selectedProject) {
             setTimezone(selectedProject.timezone || 'UTC');
-            
+
             setLoadingTables(true);
             getTablesForProject(selectedProject.project_id)
                 .then(setTables)
                 .finally(() => setLoadingTables(false));
-            
+
             // Check 2FA Status
             get2FAStatusAction().then(res => {
                 setIs2faEnabled(res.enabled);
@@ -151,7 +167,7 @@ export default function GeneralSettingsPage() {
         const result = await deleteProjectAction(selectedProject.project_id);
         if (result.success) {
             toast({ title: 'Success', description: `Project '${selectedProject.display_name}' has been deleted.` });
-            setProject(null); 
+            setProject(null);
             setDeleteConfirmation('');
             router.push('/dashboard/projects');
         } else {
@@ -174,15 +190,33 @@ export default function GeneralSettingsPage() {
         setIsSuspending(true);
         const newStatus = userPlan.status === 'suspended' ? 'active' : 'suspended';
         const result = await toggleOrganizationSuspensionAction(newStatus);
-        
+
         if (result.success) {
             toast({ title: 'Success', description: `Organization has been ${newStatus}.` });
             setUserPlan(prev => ({ ...prev, status: newStatus }));
+            setIsSuspended(newStatus === 'suspended');
             setSuspendConfirmation('');
         } else {
             toast({ variant: 'destructive', title: 'Error', description: result.error || `Failed to ${newStatus} organization.` });
         }
         setIsSuspending(false);
+    };
+
+    const handleToggleProjectSuspension = async (projectId: string, currentStatus: string) => {
+        const newStatus = currentStatus === 'suspended' ? 'active' : 'suspended';
+        const res = await toggleProjectSuspensionAction(projectId, newStatus as 'active' | 'suspended');
+        
+        if (res.success) {
+            toast({ title: "Status Updated", description: `Project is now ${newStatus}.` });
+            setAllProjects(prev => prev.map(p => p.project_id === projectId ? { ...p, status: newStatus } : p));
+            
+            // Sync selected project if it's the one we just toggled
+            if (selectedProject?.project_id === projectId) {
+                setProject({ ...selectedProject, status: newStatus as 'active' | 'suspended' });
+            }
+        } else {
+            toast({ variant: "destructive", title: "Error", description: res.error });
+        }
     };
 
     const handleSetup2FA = async () => {
@@ -206,7 +240,7 @@ export default function GeneralSettingsPage() {
         setIsVerifying(true);
         const res = await verifyAndEnable2FAAction(verificationCode);
         setIsVerifying(false);
-        
+
         if (res.success) {
             setIs2faEnabled(true);
             setSetupData(null);
@@ -221,7 +255,7 @@ export default function GeneralSettingsPage() {
         setIsVerifying(true);
         const res = await disable2FAAction(verificationCode);
         setIsVerifying(false);
-        
+
         if (res.success) {
             setIs2faEnabled(false);
             setVerificationCode('');
@@ -238,7 +272,7 @@ export default function GeneralSettingsPage() {
         }
 
         setUpgradingPlan(planType);
-        
+
         try {
             // Map plan display names to IDs
             const planToIdMap: Record<string, string | undefined> = {
@@ -408,7 +442,7 @@ export default function GeneralSettingsPage() {
                                         </div>
                                     </div>
                                 )}
-                                
+
                                 <div className="flex items-start gap-3 p-4 bg-zinc-900/50 border rounded-lg">
                                     <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
                                     <div>
@@ -416,12 +450,12 @@ export default function GeneralSettingsPage() {
                                         <p className="text-xs text-muted-foreground">Add an extra layer of security to your organization by requiring a verification code from your mobile device.</p>
                                     </div>
                                 </div>
-                                
+
                                 {setupData ? (
                                     <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
                                         <div className="space-y-3">
                                             <Label className="text-xs uppercase font-bold text-muted-foreground">Step 1: Scan this QR Code</Label>
-                                            
+
                                             <div className="flex flex-col items-center gap-4 py-2">
                                                 {qrCodeDataUrl ? (
                                                     <div className="p-3 bg-white rounded-xl shadow-inner shadow-black/20">
@@ -430,7 +464,7 @@ export default function GeneralSettingsPage() {
                                                 ) : (
                                                     <div className="w-48 h-48 bg-zinc-800 animate-pulse rounded-xl" />
                                                 )}
-                                                
+
                                                 <div className="w-full space-y-2">
                                                     <p className="text-[10px] text-muted-foreground text-center px-4">
                                                         Scan with Google Authenticator, Authy, or any TOTP app.
@@ -509,8 +543,8 @@ export default function GeneralSettingsPage() {
 
                                 {userPlan.plan.toLowerCase() === 'free' && (
                                     <div className="grid grid-cols-1 gap-3">
-                                        <Button 
-                                            variant="secondary" 
+                                        <Button
+                                            variant="secondary"
                                             className="h-14 rounded-2xl flex items-center justify-between px-6 bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 group"
                                             onClick={() => handleUpgradePlan('pro')}
                                             disabled={!!upgradingPlan}
@@ -527,7 +561,7 @@ export default function GeneralSettingsPage() {
                                             {upgradingPlan === 'pro' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
                                         </Button>
 
-                                        <Button 
+                                        <Button
                                             className="h-14 rounded-2xl flex items-center justify-between px-6 bg-gradient-to-r from-primary to-rose-600 hover:opacity-90 group border-none shadow-lg shadow-primary/20"
                                             onClick={() => handleUpgradePlan('max')}
                                             disabled={!!upgradingPlan}
@@ -645,10 +679,46 @@ export default function GeneralSettingsPage() {
                         </div>
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border bg-background p-4 gap-4">
                             <div>
+                                <Label htmlFor="suspend-project">{selectedProject?.status === 'suspended' ? 'Resume Project' : 'Suspend Project'}</Label>
+                                <p className="text-sm text-muted-foreground">
+                                    {selectedProject?.status === 'suspended'
+                                        ? `Re-enable database access and API operations for '${selectedProject?.display_name}'.`
+                                        : `Temporarily pause all database access for the '${selectedProject?.display_name}' project specifically.`}
+                                </p>
+                            </div>
+                            <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                    <Button variant={selectedProject?.status === 'suspended' ? "default" : "destructive"} disabled={!selectedProject}>
+                                        {selectedProject?.status === 'suspended' ? 'Resume Project' : 'Suspend Project'}
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent className="bg-zinc-950 border-zinc-800">
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                            {selectedProject?.status === 'suspended'
+                                                ? `This will immediately re-enable database access for the project '${selectedProject?.display_name}'.`
+                                                : `This will temporarily halt all queries and API access for the project '${selectedProject?.display_name}'. This does not affect other projects in your organization.`}
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel className="bg-zinc-800 border-zinc-700">Cancel</AlertDialogCancel>
+                                        <AlertDialogAction
+                                            onClick={() => handleToggleProjectSuspension(selectedProject!.project_id, selectedProject!.status)}
+                                            className={selectedProject?.status === 'suspended' ? "bg-primary" : "bg-destructive hover:bg-destructive/90"}
+                                        >
+                                            Continue
+                                        </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border bg-background p-4 gap-4">
+                            <div>
                                 <Label htmlFor="suspend-org">{userPlan.status === 'suspended' ? 'Resume Organization' : 'Suspend Organization'}</Label>
                                 <p className="text-sm text-muted-foreground">
-                                    {userPlan.status === 'suspended' 
-                                        ? 'Re-enable database access and background webhooks.' 
+                                    {userPlan.status === 'suspended'
+                                        ? 'Re-enable database access and background webhooks.'
                                         : 'Temporarily pause all database read/write access and disable webhook operations without deleting data.'}
                                 </p>
                             </div>
@@ -662,8 +732,8 @@ export default function GeneralSettingsPage() {
                                     <AlertDialogHeader>
                                         <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                                         <AlertDialogDescription>
-                                            {userPlan.status === 'suspended' 
-                                                ? 'This will immediately re-enable your database and webhooks. You will be able to read and write data again.' 
+                                            {userPlan.status === 'suspended'
+                                                ? 'This will immediately re-enable your database and webhooks. You will be able to read and write data again.'
                                                 : <span>This will temporarily halt all queries, APIs, and webhooks for all your projects. To confirm, please type <strong className="text-foreground">suspend my org</strong> in the box below.</span>}
                                         </AlertDialogDescription>
                                     </AlertDialogHeader>

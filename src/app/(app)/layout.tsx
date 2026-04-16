@@ -51,7 +51,8 @@ import {
     Globe,
     ServerCrash,
     BarChart3,
-    History
+    History,
+    AlertTriangle
 } from "lucide-react";
 import { checkDatabaseHealthAction } from "@/lib/data";
 
@@ -74,13 +75,12 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [userId, setUserId] = useState<string | null>(null);
     const [planType, setPlanType] = useState<string>('Free');
-    const [isSuspended, setIsSuspended] = useState(false);
     const [isOffline, setIsOffline] = useState(false);
     const [projects, setProjects] = useState<Project[]>([]);
     const [invitations, setInvitations] = useState<any[]>([]);
     const [userLoading, setUserLoading] = useState(true);
     const [loadingProgress, setLoadingProgress] = useState(0);
-    const { project: selectedProject, setProject, loading: projectContextLoading } = useContext(ProjectContext);
+    const { project: selectedProject, setProject, loading: projectContextLoading, isSuspended, setIsSuspended } = useContext(ProjectContext);
 
     useEffect(() => {
         async function fetchData() {
@@ -108,7 +108,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
                 if (data.userId) {
                     setUser(data.user || null);
-                    
+
                     if (data.plan) {
                         setPlanType(data.plan.type === 'max' ? 'Max' : (data.plan.type === 'pro' ? 'Pro' : 'Free'));
                         setIsSuspended(data.plan.status === 'suspended');
@@ -121,7 +121,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                         setProject(null);
                     }
                 }
-                
+
                 setLoadingProgress(100);
             } catch (error) {
                 console.error("Failed to fetch layout data:", error);
@@ -193,38 +193,38 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
     // Global Keyboard Shortcuts
     useKeyboardShortcuts([
-        { 
-            combination: 'g d', 
+        {
+            combination: 'g d',
             handler: () => router.push('/dashboard'),
             description: 'Go to Dashboard'
         },
-        { 
-            combination: 'g e', 
+        {
+            combination: 'g e',
             handler: () => selectedProject?.project_id ? router.push(`/editor?projectId=${selectedProject.project_id}`) : router.push('/dashboard/projects'),
             description: 'Go to Table Editor'
         },
-        { 
-            combination: 'g b', 
+        {
+            combination: 'g b',
             handler: () => selectedProject?.project_id ? router.push(`/database?projectId=${selectedProject.project_id}`) : router.push('/dashboard/projects'),
             description: 'Go to Database'
         },
-        { 
-            combination: 'g q', 
+        {
+            combination: 'g q',
             handler: () => selectedProject?.project_id ? router.push(`/query?projectId=${selectedProject.project_id}`) : router.push('/dashboard/projects'),
             description: 'Go to SQL Editor'
         },
-        { 
-            combination: 'g a', 
+        {
+            combination: 'g a',
             handler: () => selectedProject?.project_id ? router.push(`/analytics?projectId=${selectedProject.project_id}`) : router.push('/dashboard/projects'),
             description: 'Go to Analytics'
         },
-        { 
-            combination: 'g s', 
+        {
+            combination: 'g s',
             handler: () => selectedProject?.project_id ? router.push(`/settings?projectId=${selectedProject.project_id}`) : router.push('/dashboard/projects'),
             description: 'Go to Settings'
         },
-        { 
-            combination: 'g w', 
+        {
+            combination: 'g w',
             handler: () => selectedProject?.project_id ? router.push(`/scraper?projectId=${selectedProject.project_id}`) : router.push('/dashboard/projects'),
             description: 'Go to Scraper'
         },
@@ -266,13 +266,19 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
     return (
         <div className="flex min-h-screen w-full flex-col bg-background">
-            {isSuspended && (
+            {isSuspended ? (
                 <div className="bg-destructive text-destructive-foreground text-center py-1.5 px-4 text-xs font-semibold flex items-center justify-center gap-2 z-50">
                     <AlertTriangle className="h-4 w-4" />
                     Your organization is currently suspended. Database access and webhooks are disabled.
                     <Link href="/settings" className="underline underline-offset-2 ml-1 opacity-90 hover:opacity-100">Resume in Settings</Link>
                 </div>
-            )}
+            ) : selectedProject?.status === 'suspended' ? (
+                <div className="bg-amber-600 text-white text-center py-1.5 px-4 text-xs font-semibold flex items-center justify-center gap-2 z-50">
+                    <AlertTriangle className="h-4 w-4" />
+                    This project is currently suspended. API and SQL access are disabled.
+                    <Link href="/settings" className="underline underline-offset-2 ml-1 opacity-90 hover:opacity-100">Manage in Settings</Link>
+                </div>
+            ) : null}
             <header className="sticky top-0 flex h-14 items-center gap-4 border-b bg-background px-4 md:px-6 z-40">
                 <div className="flex items-center gap-2">
                     <Avatar className="h-8 w-8">

@@ -1,6 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { getTableData } from '@/lib/data';
+import { getTableData, getProjectById, ensureNotSuspended } from '@/lib/data';
 import { trackApiRequest } from '@/lib/analytics';
 import { getCurrentUserId, getAuthContextFromRequest } from '@/lib/auth';
 
@@ -40,6 +40,19 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Missing required query parameters: projectId and tableName' }, { status: 400 });
     }
 
+    // Granular Project Suspension Check
+    const project = await getProjectById(projectId, userId);
+    if (!project) {
+        return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+    
+    // This will throw a FluxbaseError if suspended
+    try {
+        await ensureNotSuspended(project);
+    } catch (e: any) {
+        return NextResponse.json({ error: e.message, code: e.code }, { status: e.status || 403 });
+    }
+
     if (isNaN(page) || page < 0 || isNaN(pageSize) || pageSize < 1) {
       return NextResponse.json({ error: 'Invalid pagination parameters.' }, { status: 400 });
     }
@@ -53,7 +66,7 @@ export async function GET(request: Request) {
       trackApiRequest(projectId, 'storage_read'),
       trackApiRequest(projectId, 'api_call'),
       trackApiRequest(projectId, 'sql_select'),
-    ]).catch(() => {});
+    ]).catch(() => { });
 
     return NextResponse.json(data);
 

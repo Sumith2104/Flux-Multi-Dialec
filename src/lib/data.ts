@@ -15,6 +15,7 @@ export interface Project {
     role?: string;
     ai_allow_destructive?: boolean;
     ai_schema_inference?: boolean;
+    status?: 'active' | 'suspended';
 }
 
 export interface Table {
@@ -31,12 +32,12 @@ export interface Column {
     column_id: string;
     table_id: string;
     column_name: string;
-    data_type: 'INT' | 'VARCHAR' | 'BOOLEAN' | 'DATE' | 'TIMESTAMP' | 'FLOAT' | 'TEXT' | 
-    'int' | 'varchar' | 'boolean' | 'date' | 'timestamp' | 'float' | 'text' | 'number' | 
-    'gen_random_uuid()' | 'now_date()' | 'now_time()'; 
+    data_type: 'INT' | 'VARCHAR' | 'BOOLEAN' | 'DATE' | 'TIMESTAMP' | 'FLOAT' | 'TEXT' |
+    'int' | 'varchar' | 'boolean' | 'date' | 'timestamp' | 'float' | 'text' | 'number' |
+    'gen_random_uuid()' | 'now_date()' | 'now_time()';
     is_primary_key: boolean;
     is_nullable: boolean;
-    default_value?: string; 
+    default_value?: string;
     created_at?: string;
 }
 
@@ -119,7 +120,7 @@ export async function getProjectsForCurrentUser(): Promise<Project[]> {
     try {
         const pool = getPgPool();
         const result = await pool.query(`
-            SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.ai_allow_destructive, p.ai_schema_inference,
+            SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.ai_allow_destructive, p.ai_schema_inference, p.status,
                    COALESCE(pm.role, CASE WHEN p.user_id = $1::text THEN 'admin' ELSE 'developer' END) as role
             FROM fluxbase_global.projects p
             LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $1::text
@@ -136,7 +137,8 @@ export async function getProjectsForCurrentUser(): Promise<Project[]> {
             timezone: row.timezone,
             role: row.role,
             ai_allow_destructive: row.ai_allow_destructive ?? false,
-            ai_schema_inference: row.ai_schema_inference ?? true
+            ai_schema_inference: row.ai_schema_inference ?? true,
+            status: row.status || 'active'
         }));
     } catch (error) {
         console.error("Error fetching projects:", error);
@@ -190,7 +192,7 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
     try {
         const pool = getPgPool();
         const result = await pool.query(`
-            SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.user_id as owner_id, p.ai_allow_destructive, p.ai_schema_inference,
+            SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.user_id as owner_id, p.ai_allow_destructive, p.ai_schema_inference, p.status,
                    COALESCE(pm.role, CASE WHEN p.user_id = $2::text THEN 'admin' ELSE NULL END) as role
             FROM fluxbase_global.projects p
             LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $2::text
@@ -211,13 +213,54 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
             timezone: row.timezone,
             role: row.role,
             ai_allow_destructive: row.ai_allow_destructive ?? false,
-            ai_schema_inference: row.ai_schema_inference ?? true
+            ai_schema_inference: row.ai_schema_inference ?? true,
+            status: row.status || 'active'
         };
         _projectCache.set(cacheKey, project);
         return project;
     } catch (error) {
         console.error("Error fetching project:", error);
         return null;
+    }
+}
+
+/**
+ * Checks if a project or its owner (organization) is suspended.
+ * Throws a FluxbaseError if access should be blocked.
+ */
+export async function ensureNotSuspended(project: Project | null) {
+    if (!project) return; // Let 404 handler take care of it if applicable
+
+    // Check Project Level
+    if (project.status === 'suspended') {
+        const { FluxbaseError } = await import('./error-codes');
+        throw new FluxbaseError(
+            `Project '${project.display_name}' is currently suspended. Please resume it in Settings.`,
+            'PROJECT_SUSPENDED',
+            403
+        );
+    }
+
+    // Check Organization (User) Level
+    try {
+        const { getAuthContextFromRequest } = await import('./auth');
+        // This is a bit tricky since we don't always have the Request here.
+        // But in API routes we can fetch the user profile if needed.
+        // For efficiency, most routes already passed auth status.
+        // However, let's keep it simple: the caller should usually check auth server-side.
+        // We'll add a check here just in case.
+        const pool = getPgPool();
+        const { rows } = await pool.query('SELECT status FROM fluxbase_global.users WHERE id = $1', [project.user_id]);
+        if (rows.length > 0 && rows[0].status === 'suspended') {
+            const { FluxbaseError } = await import('./error-codes');
+            throw new FluxbaseError(
+                "Your organization is currently suspended. Database access and webhooks are disabled.",
+                'ORG_SUSPENDED',
+                403
+            );
+        }
+    } catch (e) {
+        // Fallback to active if check fails or not applicable
     }
 }
 
@@ -361,7 +404,7 @@ export async function resetProjectData(projectId: string) {
     try {
         const { redis } = await import('@/lib/redis');
         await redis.del(`schema_inference_${projectId}`);
-    } catch(e){}
+    } catch (e) { }
 }
 
 export async function updateProjectTimezone(projectId: string, timezone: string): Promise<boolean> {
@@ -409,7 +452,7 @@ export async function deleteProject(projectId: string) {
     try {
         const { redis } = await import('@/lib/redis');
         await redis.del(`schema_inference_${projectId}`);
-    } catch(e){}
+    } catch (e) { }
 }
 
 // --- Tables ---

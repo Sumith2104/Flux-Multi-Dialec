@@ -53,7 +53,7 @@ export async function updateProjectAiSettingsAction(projectId: string, allowDest
         const { getPgPool } = await import('@/lib/pg');
         const pool = getPgPool();
         await pool.query(
-            'UPDATE fluxbase_global.projects SET ai_allow_destructive = $1, ai_schema_inference = $2 WHERE project_id = $3 AND user_id = $4', 
+            'UPDATE fluxbase_global.projects SET ai_allow_destructive = $1, ai_schema_inference = $2 WHERE project_id = $3 AND user_id = $4',
             [allowDestructive, schemaInference, projectId, userId]
         );
 
@@ -164,6 +164,36 @@ export async function deleteWebhookAction(projectId: string, webhookId: string) 
         const userId = await getCurrentUserId();
         if (!userId) throw new Error("Unauthorized");
         await deleteWebhook(projectId, userId, webhookId);
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+export async function toggleProjectSuspensionAction(projectId: string, status: 'active' | 'suspended') {
+    try {
+        const userId = await getCurrentUserId();
+        if (!userId) return { success: false, error: 'Unauthorized' };
+
+        const { getPgPool } = await import('@/lib/pg');
+        const pool = getPgPool();
+        
+        // Ensure user owns the project or is member
+        const { rows } = await pool.query(
+            'SELECT 1 FROM fluxbase_global.projects WHERE project_id = $1 AND user_id = $2',
+            [projectId, userId]
+        );
+
+        if (rows.length === 0) return { success: false, error: 'Project not found or permission denied' };
+
+        await pool.query(
+            'UPDATE fluxbase_global.projects SET status = $1 WHERE project_id = $2',
+            [status, projectId]
+        );
+
+        revalidatePath('/settings');
+        revalidatePath('/dashboard');
+        
         return { success: true };
     } catch (error: any) {
         return { success: false, error: error.message };

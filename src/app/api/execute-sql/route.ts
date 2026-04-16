@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { SqlEngine } from '@/lib/sql-engine';
-import { getProjectById, logAuditAction } from '@/lib/data';
+import { getProjectById, logAuditAction, ensureNotSuspended } from '@/lib/data';
 import { invalidateTableCache } from '@/lib/cache';
 import { fireWebhooks } from '@/lib/webhooks';
 import { ERROR_CODES, FluxbaseError } from '@/lib/error-codes';
@@ -30,8 +30,8 @@ export async function POST(req: NextRequest) {
         } catch (e) {
             console.error('[API JSON Error] Malformed body received:', e);
             throw new FluxbaseError(
-                "Malformed JSON. Ensure your client is sending valid, completed JSON bodies.", 
-                ERROR_CODES.BAD_REQUEST, 
+                "Malformed JSON. Ensure your client is sending valid, completed JSON bodies.",
+                ERROR_CODES.BAD_REQUEST,
                 400
             );
         }
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
             throw new FluxbaseError("The 'projectId' field is required (either in body or as query param).", ERROR_CODES.MISSING_FIELD, 400);
         }
         if (params !== undefined && params !== null && !Array.isArray(params)) {
-             throw new FluxbaseError("The 'params' field must be an array.", ERROR_CODES.BAD_REQUEST, 400);
+            throw new FluxbaseError("The 'params' field must be an array.", ERROR_CODES.BAD_REQUEST, 400);
         }
 
         // --- 3. Intelligent Bulk Insert Validation & Transformation ---
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
                                     return obj;
                                 })
                             ];
-                        } 
+                        }
                         // Case: Client sent Array of Objects (Correct, but validate keys)
                         else if (typeof rawData[0] === 'object' && rawData[0] !== null) {
                             const firstRow = rawData[0];
@@ -104,7 +104,9 @@ export async function POST(req: NextRequest) {
 
         const auth = await getAuthContextFromRequest(req);
         if (!auth?.userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
-        
+
+        // Project-level suspension check is handled more granularly later after fetching the project.
+        // But we keep the global check for immediate block.
         if (auth.status === 'suspended') {
             throw new FluxbaseError("Organization suspended. Please resume in Settings.", ERROR_CODES.FORBIDDEN, 403);
         }
@@ -117,7 +119,7 @@ export async function POST(req: NextRequest) {
 
         // Pre-Flight Optimization: Parallelize Auth, Burst Cache, and Traffic Limits
         const { checkProjectTrafficLimits } = await import('@/lib/limits');
-        
+
         const [cachedResult, project, trafficLimitResult] = await Promise.all([
             isSelect ? redis.get<CacheEntry>(cacheKey!) : Promise.resolve(null),
             getProjectById(projectId, userId),
@@ -126,6 +128,9 @@ export async function POST(req: NextRequest) {
 
         if (!trafficLimitResult.success) throw new FluxbaseError(`Infrastructure limit: ${trafficLimitResult.error.message}`, ERROR_CODES.RATE_LIMIT_EXCEEDED, 429);
         if (!project) throw new FluxbaseError("Project not found", ERROR_CODES.PROJECT_NOT_FOUND, 404);
+
+        // Granular Project Suspension Check
+        await ensureNotSuspended(project);
 
         if (cachedResult && cachedResult.expiresAt > Date.now()) {
             return NextResponse.json({
@@ -191,7 +196,7 @@ export async function POST(req: NextRequest) {
 
             if (mutatedTable) {
                 const cleanMutatedTable = mutatedTable.toLowerCase();
-                
+
                 backgroundTasks.push((async () => {
                     await invalidateTableCache(projectId, cleanMutatedTable).catch(err => {
                         console.warn(`[Upstash Invalidation Error] Failed to invalidate cache for ${cleanMutatedTable}:`, err);
@@ -200,9 +205,9 @@ export async function POST(req: NextRequest) {
                     const webhookEvent = uppercaseQuery.startsWith('INSERT') ? 'row.inserted' : uppercaseQuery.startsWith('UPDATE') ? 'row.updated' : 'row.deleted';
 
                     await fireWebhooks(
-                        projectId, 
-                        userId, 
-                        cleanMutatedTable, 
+                        projectId,
+                        userId,
+                        cleanMutatedTable,
                         webhookEvent as WebhookEvent,
                         newDataParsed || (uppercaseQuery.startsWith('INSERT') && Array.isArray(params) ? { raw_params: params } : undefined)
                     ).catch(err => console.error(`[Webhook Dispatch Error]`, err));
@@ -230,7 +235,7 @@ export async function POST(req: NextRequest) {
             if (isSchemaChange) {
                 backgroundTasks.push((async () => {
                     await redis.del(`schema_inference_${projectId}`).catch(err => console.warn('Cache del error:', err));
-                    
+
                     const pool = getPgPool();
                     const payload = {
                         event_type: 'schema_update',
