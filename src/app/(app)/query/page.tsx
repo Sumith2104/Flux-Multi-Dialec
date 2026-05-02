@@ -173,13 +173,14 @@ export default function QueryPage() {
 
   }, [query, project, toast]);
 
-  const { lastEvent } = useRealtimeSubscription();
+  const { lastEvent } = useRealtimeSubscription(project?.project_id);
 
   // Reactive SQL: Auto-refresh results when data in the affected table changes elsewhere
   useEffect(() => {
-    if (!lastEvent || lastEvent.type !== 'db_event' || !queryResponse?.success) return;
+    const eventType = lastEvent?.type || lastEvent?.event_type;
+    if (!lastEvent || eventType !== 'db_event' || !queryResponse?.success) return;
 
-    const affectedTable = lastEvent.payload.table;
+    const affectedTable = (lastEvent as any).payload?.table || lastEvent.table || lastEvent.table_name;
     if (!affectedTable) return;
 
     // Smart Refresh: Check if the affected table name exists in the current query string
@@ -314,7 +315,7 @@ export default function QueryPage() {
       const headers = Object.keys(rows[0]);
       content = [
         headers.join(','),
-        ...rows.map(row => headers.map(h => {
+        ...rows.map((row: Record<string, any>) => headers.map(h => {
           const val = row[h];
           return typeof val === 'string' ? `"${val.replace(/"/g, '""')}"` : val;
         }).join(','))
@@ -333,6 +334,155 @@ export default function QueryPage() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
+
+  if (isMobile) {
+    return (
+      <div className="min-h-[calc(100dvh-57px)] w-full overflow-x-hidden bg-background p-2 pb-24">
+        <Tabs defaultValue="editor" className="flex min-h-[calc(100dvh-73px)] flex-col gap-2">
+          <TabsList className="grid h-auto w-full grid-cols-4 gap-1 rounded-lg bg-secondary/60 p-1">
+            <TabsTrigger value="schema" className="h-9 px-1 text-[11px]">Schema</TabsTrigger>
+            <TabsTrigger value="editor" className="h-9 px-1 text-[11px]">Editor</TabsTrigger>
+            <TabsTrigger value="assist" className="h-9 px-1 text-[11px]">Assist</TabsTrigger>
+            <TabsTrigger value="results" className="h-9 px-1 text-[11px]">Results</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="schema" className="m-0 min-h-0 flex-1 overflow-hidden rounded-lg bg-card">
+            <div className="h-[calc(100dvh-145px)] overflow-hidden">
+              <SchemaExplorer projectId={project?.project_id} onInsertQuery={setQuery} />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="editor" className="m-0 min-h-0 flex-1 overflow-hidden rounded-lg bg-card">
+            <div className="h-[calc(100dvh-145px)] overflow-hidden">
+              <SqlEditor
+                projectId={project?.project_id}
+                query={query}
+                setQuery={setQuery}
+                onRun={handleRunQuery}
+                isGenerating={isExecuting}
+                results={queryResponse?.result}
+              />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="assist" className="m-0 min-h-0 flex-1 overflow-hidden rounded-lg bg-card">
+            <Tabs defaultValue="ai" className="flex h-[calc(100dvh-145px)] min-h-0 flex-col">
+              <div className="border-b px-2 py-2">
+                <TabsList className="grid h-9 w-full grid-cols-2 bg-secondary/60">
+                  <TabsTrigger value="ai" className="text-xs">AI</TabsTrigger>
+                  <TabsTrigger value="history" className="text-xs">History</TabsTrigger>
+                </TabsList>
+              </div>
+
+              <TabsContent value="ai" className="m-0 flex-1 p-3 data-[state=active]:flex data-[state=active]:flex-col">
+                <Textarea
+                  placeholder="Describe your query..."
+                  className="min-h-0 flex-1 resize-none"
+                  value={aiInput}
+                  onChange={(e) => setAiInput(e.target.value)}
+                />
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleGenerateSQL}
+                    disabled={isGeneratingSQL || isExecutingAI || !aiInput.trim()}
+                  >
+                    {isGeneratingSQL ? <MoreHorizontal className="mr-2 h-4 w-4 animate-pulse" /> : <Sparkles className="mr-2 h-3.5 w-3.5" />}
+                    Generate
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleDirectExecute}
+                    disabled={isGeneratingSQL || isExecutingAI || !aiInput.trim()}
+                  >
+                    {isExecutingAI ? <MoreHorizontal className="mr-2 h-4 w-4 animate-pulse" /> : <Play className="mr-2 h-3.5 w-3.5" />}
+                    Execute
+                  </Button>
+                </div>
+                <p className="mt-3 text-center text-[10px] text-muted-foreground">
+                  AI can make mistakes. Review generated SQL before running.
+                </p>
+              </TabsContent>
+
+              <TabsContent value="history" className="m-0 min-h-0 flex-1 data-[state=active]:flex data-[state=active]:flex-col">
+                <div className="flex items-center justify-between border-b p-2">
+                  <h3 className="px-2 py-1 text-xs font-medium text-muted-foreground">Recent Queries</h3>
+                  {history.length > 0 && (
+                    <Button variant="ghost" size="sm" className="h-7 text-[10px] text-destructive" onClick={clearHistory}>
+                      <Trash2 className="mr-1 h-3 w-3" /> Clear
+                    </Button>
+                  )}
+                </div>
+                <div className="min-h-0 flex-1 p-2">
+                  <QueryHistory history={history} onSelectQuery={setQuery} onClearHistory={clearHistory} />
+                </div>
+              </TabsContent>
+            </Tabs>
+          </TabsContent>
+
+          <TabsContent value="results" className="m-0 min-h-0 flex-1 overflow-hidden rounded-lg bg-card">
+            <Tabs value={activeResultsTab} onValueChange={setActiveResultsTab} className="flex h-[calc(100dvh-145px)] min-h-0 flex-col">
+              <div className="border-b px-2 py-2">
+                <TabsList className="grid h-9 w-full grid-cols-3 bg-secondary/60">
+                  <TabsTrigger value="results" className="text-xs">Results</TabsTrigger>
+                  <TabsTrigger value="explanation" className="text-xs">Plan</TabsTrigger>
+                  <TabsTrigger value="messages" className="text-xs">Messages</TabsTrigger>
+                </TabsList>
+              </div>
+              <div className="relative min-h-0 flex-1 overflow-hidden">
+                <TabsContent value="results" className="absolute inset-0 m-0">
+                  {queryResponse?.success ? (
+                    <QueryResults results={queryResponse.result} error={null} isGenerating={false} />
+                  ) : (
+                    <div className="flex h-full flex-col items-center justify-center p-8 text-center text-muted-foreground">
+                      <Table2 className="mb-3 h-10 w-10 opacity-20" />
+                      <p className="text-sm font-medium">Execute a query to view results</p>
+                    </div>
+                  )}
+                </TabsContent>
+                <TabsContent value="explanation" className="absolute inset-0 m-0 overflow-auto p-3">
+                  {queryResponse?.explanation ? (
+                    <div className="rounded-md bg-card text-card-foreground shadow-sm">
+                      {queryResponse.explanation.map((line: string, i: number) => (
+                        <div key={i} className="flex items-start gap-3 border-b border-border/40 p-2.5 font-mono text-xs last:border-0">
+                          <span className="w-6 select-none text-right text-muted-foreground opacity-50">{i + 1}</span>
+                          <span className="break-anywhere text-foreground/90">{line}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex h-full flex-col items-center justify-center text-sm text-muted-foreground opacity-60">
+                      <ListRestart className="mb-2 h-8 w-8 opacity-20" />
+                      No execution plan available
+                    </div>
+                  )}
+                </TabsContent>
+                <TabsContent value="messages" className="absolute inset-0 m-0 overflow-auto p-3">
+                  {queryResponse?.error ? (
+                    <Alert variant="destructive" className="border-red-900/50 bg-red-900/10 text-red-500 shadow-sm">
+                      <AlertCircle className="h-5 w-5" />
+                      <AlertTitle className="font-mono text-sm font-bold">Execution Failed</AlertTitle>
+                      <AlertDescription className="mt-3">
+                        <div className="break-anywhere rounded border border-red-900/30 bg-red-950/30 p-3 font-mono text-sm">
+                          {queryResponse.error.message}
+                        </div>
+                      </AlertDescription>
+                    </Alert>
+                  ) : (
+                    <div className="flex h-full flex-col items-center justify-center text-sm text-muted-foreground opacity-60">
+                      <TerminalSquare className="mb-2 h-8 w-8 opacity-20" />
+                      No active messages
+                    </div>
+                  )}
+                </TabsContent>
+              </div>
+            </Tabs>
+          </TabsContent>
+        </Tabs>
+      </div>
+    );
+  }
 
   return (
     <div className="h-[calc(100vh-57px)] w-full p-2 bg-background">

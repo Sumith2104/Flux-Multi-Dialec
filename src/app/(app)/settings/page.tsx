@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 
-import { useState, useContext, useEffect, useMemo } from 'react';
+import { useState, useContext, useEffect } from 'react';
 import QRCode from 'qrcode';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -30,17 +30,16 @@ import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { logoutAction } from '../actions';
 import {
-    Copy, Check, Shield, Globe, Clock, Table as TableIcon,
+    Copy, Check, Shield, Clock, Table as TableIcon,
     Key, Loader2, AlertTriangle, Database, ChevronRight
 } from "lucide-react";
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
 import {
-    CreditCard, Zap, Sparkles, Building2, HelpCircle,
-    Play, Pause, Projector
+    CreditCard, Zap, Sparkles, Building2, HelpCircle
 } from "lucide-react";
-import { getTablesForProject, getProjectsForCurrentUser, Project, Table as DbTable } from '@/lib/data';
+import { getTablesForProject, Table as DbTable } from '@/lib/data';
 import { getUserPlanAction } from './billing-actions';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -100,28 +99,12 @@ export default function GeneralSettingsPage() {
     // Suspension State
     const [suspendConfirmation, setSuspendConfirmation] = useState('');
     const [isSuspending, setIsSuspending] = useState(false);
-    const [allProjects, setAllProjects] = useState<Project[]>([]);
-    const [loadingProjects, setLoadingProjects] = useState(true);
-
     useEffect(() => {
         // Load User Plan
         getUserPlanAction().then(res => {
             setUserPlan(res);
             setIsBillingLoading(false);
         });
-
-        // Load All Projects (for management)
-        const loadAllProjects = async () => {
-            try {
-                const projects = await getProjectsForCurrentUser();
-                setAllProjects(projects);
-            } catch (e) {
-                console.error("Failed to load projects:", e);
-            } finally {
-                setLoadingProjects(false);
-            }
-        };
-        loadAllProjects();
     }, []);
 
     useEffect(() => {
@@ -135,8 +118,8 @@ export default function GeneralSettingsPage() {
 
             // Check 2FA Status
             get2FAStatusAction().then(res => {
-                setIs2faEnabled(res.enabled);
-                setHas2faSecret(res.hasSecret);
+                setIs2faEnabled(res.enabled ?? false);
+                setHas2faSecret(res.hasSecret ?? false);
                 setIs2faLoading(false);
             });
         }
@@ -208,8 +191,7 @@ export default function GeneralSettingsPage() {
         
         if (res.success) {
             toast({ title: "Status Updated", description: `Project is now ${newStatus}.` });
-            setAllProjects(prev => prev.map(p => p.project_id === projectId ? { ...p, status: newStatus } : p));
-            
+
             // Sync selected project if it's the one we just toggled
             if (selectedProject?.project_id === projectId) {
                 setProject({ ...selectedProject, status: newStatus as 'active' | 'suspended' });
@@ -304,7 +286,7 @@ export default function GeneralSettingsPage() {
                     description: `Upgrade to ${planType} plan`,
                     image: '/logo.png', // Fallback or placeholder
                     theme: { color: '#ef4444' }, // Premium red
-                    handler: function (response: any) {
+                    handler: function () {
                         toast({ title: "Processing Payment...", description: "Your upgrade is being verified." });
                         window.location.reload();
                     }
@@ -402,7 +384,7 @@ export default function GeneralSettingsPage() {
                                     <AlertDialogTrigger asChild>
                                         <Button variant="outline" size="sm" className="border-red-500/50 text-red-500 hover:bg-red-500/10">Disable</Button>
                                     </AlertDialogTrigger>
-                                    <AlertDialogContent className="bg-zinc-950 border-zinc-800">
+                                    <AlertDialogContent className="bg-card border-border">
                                         <AlertDialogHeader>
                                             <AlertDialogTitle>Disable Two-Factor Authentication?</AlertDialogTitle>
                                             <AlertDialogDescription>
@@ -443,7 +425,7 @@ export default function GeneralSettingsPage() {
                                     </div>
                                 )}
 
-                                <div className="flex items-start gap-3 p-4 bg-zinc-900/50 border rounded-lg">
+                                <div className="flex items-start gap-3 p-4 bg-secondary/70 border rounded-lg">
                                     <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
                                     <div>
                                         <p className="font-medium text-sm">2FA is not enabled</p>
@@ -458,18 +440,18 @@ export default function GeneralSettingsPage() {
 
                                             <div className="flex flex-col items-center gap-4 py-2">
                                                 {qrCodeDataUrl ? (
-                                                    <div className="p-3 bg-white rounded-xl shadow-inner shadow-black/20">
+                                                    <div className="p-3 bg-white rounded-lg shadow-inner shadow-black/20">
                                                         <img src={qrCodeDataUrl} alt="2FA QR Code" className="w-48 h-48 block" />
                                                     </div>
                                                 ) : (
-                                                    <div className="w-48 h-48 bg-zinc-800 animate-pulse rounded-xl" />
+                                                    <div className="w-48 h-48 bg-muted animate-pulse rounded-lg" />
                                                 )}
 
                                                 <div className="w-full space-y-2">
                                                     <p className="text-[10px] text-muted-foreground text-center px-4">
                                                         Scan with Google Authenticator, Authy, or any TOTP app.
                                                     </p>
-                                                    <div className="flex items-center justify-between text-xs p-2 bg-zinc-900 rounded border border-zinc-800">
+                                                    <div className="flex items-center justify-between text-xs p-2 bg-secondary rounded border border-border">
                                                         <span className="text-muted-foreground truncate mr-2">Secret: <span className="text-foreground font-mono">{setupData.secret}</span></span>
                                                         <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => {
                                                             navigator.clipboard.writeText(setupData.secret);
@@ -526,7 +508,7 @@ export default function GeneralSettingsPage() {
                             <div className="space-y-6">
                                 <div className="flex items-center justify-between p-4 bg-primary/5 border border-primary/10 rounded-2xl">
                                     <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-primary/20 rounded-xl">
+                                        <div className="p-2 bg-primary/20 rounded-lg">
                                             <Zap className="h-5 w-5 text-primary" />
                                         </div>
                                         <div>
@@ -581,7 +563,7 @@ export default function GeneralSettingsPage() {
                                 )}
 
                                 {userPlan.billing_cycle_end && (
-                                    <div className="flex items-center justify-center gap-2 p-2 bg-muted/30 rounded-xl">
+                                    <div className="flex items-center justify-center gap-2 p-2 bg-muted/30 rounded-lg">
                                         <HelpCircle className="h-3 w-3 text-muted-foreground" />
                                         <p className="text-[10px] text-muted-foreground font-medium">
                                             Next renewal: <span className="text-foreground">{new Date(userPlan.billing_cycle_end).toLocaleDateString()}</span>
@@ -647,7 +629,7 @@ export default function GeneralSettingsPage() {
                                 <AlertDialogTrigger asChild>
                                     <Button variant="destructive" disabled={!selectedProject}>Delete Project</Button>
                                 </AlertDialogTrigger>
-                                <AlertDialogContent className="bg-zinc-950 border-zinc-800">
+                                <AlertDialogContent className="bg-card border-border">
                                     <AlertDialogHeader>
                                         <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                                         <AlertDialogDescription>
@@ -661,11 +643,11 @@ export default function GeneralSettingsPage() {
                                             value={deleteConfirmation}
                                             onChange={(e) => setDeleteConfirmation(e.target.value)}
                                             placeholder={`delete my project ${selectedProject?.display_name}`}
-                                            className="font-mono bg-zinc-900 border-zinc-700"
+                                            className="font-mono bg-secondary border-border/80"
                                         />
                                     </div>
                                     <AlertDialogFooter>
-                                        <AlertDialogCancel className="bg-zinc-800 border-zinc-700">Cancel</AlertDialogCancel>
+                                        <AlertDialogCancel className="bg-muted border-border/80">Cancel</AlertDialogCancel>
                                         <AlertDialogAction
                                             onClick={handleDeleteProject}
                                             disabled={deleteConfirmation !== `delete my project ${selectedProject?.display_name}`}
@@ -692,7 +674,7 @@ export default function GeneralSettingsPage() {
                                         {selectedProject?.status === 'suspended' ? 'Resume Project' : 'Suspend Project'}
                                     </Button>
                                 </AlertDialogTrigger>
-                                <AlertDialogContent className="bg-zinc-950 border-zinc-800">
+                                <AlertDialogContent className="bg-card border-border">
                                     <AlertDialogHeader>
                                         <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                                         <AlertDialogDescription>
@@ -702,9 +684,9 @@ export default function GeneralSettingsPage() {
                                         </AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
-                                        <AlertDialogCancel className="bg-zinc-800 border-zinc-700">Cancel</AlertDialogCancel>
+                                        <AlertDialogCancel className="bg-muted border-border/80">Cancel</AlertDialogCancel>
                                         <AlertDialogAction
-                                            onClick={() => handleToggleProjectSuspension(selectedProject!.project_id, selectedProject!.status)}
+                                            onClick={() => handleToggleProjectSuspension(selectedProject!.project_id, selectedProject!.status || 'active')}
                                             className={selectedProject?.status === 'suspended' ? "bg-primary" : "bg-destructive hover:bg-destructive/90"}
                                         >
                                             Continue
@@ -728,7 +710,7 @@ export default function GeneralSettingsPage() {
                                         {userPlan.status === 'suspended' ? 'Resume Organization' : (isSuspending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Suspend Organization')}
                                     </Button>
                                 </AlertDialogTrigger>
-                                <AlertDialogContent className="bg-zinc-950 border-zinc-800">
+                                <AlertDialogContent className="bg-card border-border">
                                     <AlertDialogHeader>
                                         <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                                         <AlertDialogDescription>
@@ -743,12 +725,12 @@ export default function GeneralSettingsPage() {
                                                 value={suspendConfirmation}
                                                 onChange={(e) => setSuspendConfirmation(e.target.value)}
                                                 placeholder="suspend my org"
-                                                className="font-mono bg-zinc-900 border-zinc-700"
+                                                className="font-mono bg-secondary border-border/80"
                                             />
                                         </div>
                                     )}
                                     <AlertDialogFooter>
-                                        <AlertDialogCancel className="bg-zinc-800 border-zinc-700">Cancel</AlertDialogCancel>
+                                        <AlertDialogCancel className="bg-muted border-border/80">Cancel</AlertDialogCancel>
                                         <AlertDialogAction
                                             onClick={handleToggleSuspension}
                                             disabled={userPlan.status !== 'suspended' && suspendConfirmation !== 'suspend my org'}
@@ -769,7 +751,7 @@ export default function GeneralSettingsPage() {
                                 <AlertDialogTrigger asChild>
                                     <Button variant="destructive" >Clear Organization Data</Button>
                                 </AlertDialogTrigger>
-                                <AlertDialogContent className="bg-zinc-950 border-zinc-800">
+                                <AlertDialogContent className="bg-card border-border">
                                     <AlertDialogHeader>
                                         <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                                         <AlertDialogDescription>
@@ -777,7 +759,7 @@ export default function GeneralSettingsPage() {
                                         </AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
-                                        <AlertDialogCancel className="bg-zinc-800 border-zinc-700">Cancel</AlertDialogCancel>
+                                        <AlertDialogCancel className="bg-muted border-border/80">Cancel</AlertDialogCancel>
                                         <AlertDialogAction onClick={handleClearOrganization} className="bg-destructive hover:bg-destructive/90">I understand, delete everything</AlertDialogAction>
                                     </AlertDialogFooter>
                                 </AlertDialogContent>

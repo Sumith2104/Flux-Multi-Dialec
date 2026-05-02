@@ -11,14 +11,14 @@ interface PremiumLoaderProps {
 
 export function PremiumLoader({ className, fullScreen = true }: PremiumLoaderProps) {
     return (
-        <div className={`relative flex items-center justify-center bg-[#09090b] ${
+        <div className={`relative flex items-center justify-center bg-background ${
             fullScreen ? 'h-screen w-screen fixed inset-0 z-[100]' : 'h-full w-full'
         } ${className ?? ''}`}>
             <div className="flex items-center gap-1.5">
                 {[0, 1, 2].map((i) => (
                     <motion.div
                         key={i}
-                        className="w-2.5 h-2.5 bg-zinc-400 rounded-full"
+                        className="w-2.5 h-2.5 bg-muted-foreground rounded-full"
                         animate={{ opacity: [0.3, 1, 0.3] }}
                         transition={{
                             duration: 1.4,

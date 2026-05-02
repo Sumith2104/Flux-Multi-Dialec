@@ -3,7 +3,15 @@ import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { jwtVerify } from 'jose';
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fluxbase_dev_secret_key_123');
+function getJwtSecretValue(): string {
+    const secret = process.env.JWT_SECRET;
+    if (secret) return secret;
+
+    if (process.env.NODE_ENV === 'production') {
+        throw new Error('Missing required JWT_SECRET environment variable');
+    }
+    return 'fluxbase_dev_secret_key_123';
+}
 
 // Only create ratelimiter if we have env vars, otherwise bypass locally to avoid breaking dev
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
@@ -41,7 +49,7 @@ export async function middleware(request: NextRequest) {
 
     if (sessionCookie) {
         try {
-            const { payload } = await jwtVerify(sessionCookie, JWT_SECRET);
+            const { payload } = await jwtVerify(sessionCookie, new TextEncoder().encode(getJwtSecretValue()));
             userId = payload.uid;
             isMfaVerified = !!payload.mfa;
         } catch (error) {
@@ -121,6 +129,6 @@ export async function middleware(request: NextRequest) {
 // Config matcher is still useful but simpler to avoid issues with standard assets
 export const config = {
   matcher: [
-    '/((?!api/fast-insert|api/bulk-fast-insert|_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 };

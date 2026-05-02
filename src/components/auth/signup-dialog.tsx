@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -107,7 +107,7 @@ export function SignupDialog({ open, onOpenChange, onSwitchToLogin }: SignupDial
             <DialogTrigger asChild>
                 <Button>Sign Up</Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md backdrop-blur-3xl bg-white/5 border-white/10 shadow-2xl !rounded-[40px]">
+            <DialogContent className="border-border/70 bg-secondary/40 shadow-2xl backdrop-blur-3xl !rounded-2xl sm:max-w-md sm:!rounded-[40px]">
                 <DialogHeader>
                     <DialogTitle className="text-2xl font-bold">
                         {step === "SIGNUP" ? "Create an account" : "Check your email"}
@@ -123,8 +123,8 @@ export function SignupDialog({ open, onOpenChange, onSwitchToLogin }: SignupDial
                 <div className="space-y-4 pt-4">
                     {step === "SIGNUP" ? (
                         <>
-                            <div className="grid grid-cols-2 gap-4">
-                                <Button onClick={() => window.location.href = '/api/auth/google'} variant="outline" type="button" disabled={isLoading} className="border-white/10 hover:bg-white/5 hover:text-white transition-colors">
+                            <div className="grid grid-cols-2 gap-2 sm:gap-4">
+                                <Button onClick={() => window.location.href = '/api/auth/google'} variant="outline" type="button" disabled={isLoading} className="border-border/70 hover:bg-secondary/40 hover:text-white transition-colors">
                                     <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
                                         <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
                                         <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
@@ -133,14 +133,14 @@ export function SignupDialog({ open, onOpenChange, onSwitchToLogin }: SignupDial
                                     </svg>
                                     Google
                                 </Button>
-                                <Button onClick={() => window.location.href = '/api/auth/github'} variant="outline" type="button" disabled={isLoading} className="border-white/10 hover:bg-white/5 hover:text-white transition-colors">
+                                <Button onClick={() => window.location.href = '/api/auth/github'} variant="outline" type="button" disabled={isLoading} className="border-border/70 hover:bg-secondary/40 hover:text-white transition-colors">
                                     <Github className="mr-2 h-4 w-4" />
                                     GitHub
                                 </Button>
                             </div>
                             <div className="relative">
                                 <div className="absolute inset-0 flex items-center">
-                                    <span className="w-full border-t border-white/10" />
+                                    <span className="w-full border-t border-border/70" />
                                 </div>
                                 <div className="relative flex justify-center text-xs uppercase">
                                     <span className="bg-transparent px-2 text-muted-foreground/90 font-medium">Or continue with</span>
@@ -155,7 +155,7 @@ export function SignupDialog({ open, onOpenChange, onSwitchToLogin }: SignupDial
                                         type="text"
                                         placeholder="John Doe"
                                         required
-                                        className="border-white/10 bg-black/40 focus-visible:ring-2 focus-visible:ring-primary placeholder:text-muted-foreground/50"
+                                        className="border-border/70 bg-background/70 focus-visible:ring-2 focus-visible:ring-primary placeholder:text-muted-foreground/50"
                                     />
                                 </div>
                                 <div className="space-y-2">
@@ -166,7 +166,7 @@ export function SignupDialog({ open, onOpenChange, onSwitchToLogin }: SignupDial
                                         type="email"
                                         placeholder="m@example.com"
                                         required
-                                        className="border-white/10 bg-black/40 focus-visible:ring-2 focus-visible:ring-primary placeholder:text-muted-foreground/50"
+                                        className="border-border/70 bg-background/70 focus-visible:ring-2 focus-visible:ring-primary placeholder:text-muted-foreground/50"
                                     />
                                 </div>
                                 <div className="space-y-2">
@@ -175,7 +175,7 @@ export function SignupDialog({ open, onOpenChange, onSwitchToLogin }: SignupDial
                                         id="signup-password"
                                         name="password"
                                         required
-                                        className="border-white/10 bg-black/40 focus-visible:ring-2 focus-visible:ring-primary"
+                                        className="border-border/70 bg-background/70 focus-visible:ring-2 focus-visible:ring-primary"
                                         onChange={(e) => setPassword(e.target.value)}
                                     />
                                     <PasswordStrength password={password} />
@@ -199,13 +199,13 @@ export function SignupDialog({ open, onOpenChange, onSwitchToLogin }: SignupDial
                                     id="signup-otp"
                                     name="otp"
                                     type="text"
-                                    placeholder="••••••"
+                                    placeholder="â€¢â€¢â€¢â€¢â€¢â€¢"
                                     maxLength={6}
                                     pattern="[0-9]{6}"
                                     title="Please enter a 6-digit number"
                                     autoComplete="one-time-code"
                                     required
-                                    className="text-center text-3xl tracking-[0.5em] font-mono border-white/10 bg-black/40 focus-visible:ring-2 focus-visible:ring-primary h-16 w-3/4 mx-auto"
+                                    className="text-center text-3xl tracking-[0.5em] font-mono border-border/70 bg-background/70 focus-visible:ring-2 focus-visible:ring-primary h-16 w-3/4 mx-auto"
                                 />
                             </div>
                             <Button type="submit" className="w-full h-12 text-lg font-medium" disabled={isLoading}>

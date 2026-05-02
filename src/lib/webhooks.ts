@@ -1,5 +1,6 @@
 import { getPgPool } from '@/lib/pg';
 import crypto from 'crypto';
+import { validatePublicWebhookUrl } from '@/lib/url-safety';
 
 export type WebhookEvent = 'row.inserted' | 'row.updated' | 'row.deleted' | '*';
 
@@ -44,11 +45,12 @@ export async function createWebhook(projectId: string, userId: string, webhook: 
     await checkWebhookLimit(projectId, userId);
     const pool = getPgPool();
     const webhookId = crypto.randomUUID().replace(/-/g, '').substring(0, 20);
+    const safeUrl = validatePublicWebhookUrl(webhook.url);
 
     const result = await pool.query(`
         INSERT INTO fluxbase_global.webhooks (webhook_id, project_id, user_id, name, url, event, table_id, secret, is_active)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *
-    `, [webhookId, projectId, userId, webhook.name, webhook.url, webhook.event, webhook.table_id, webhook.secret || null, webhook.is_active !== false]);
+    `, [webhookId, projectId, userId, webhook.name, safeUrl, webhook.event, webhook.table_id, webhook.secret || null, webhook.is_active !== false]);
 
     return {
         ...result.rows[0],
@@ -65,7 +67,7 @@ export async function updateWebhook(projectId: string, userId: string, webhookId
     for (const [key, value] of Object.entries(updates)) {
         if (['name', 'url', 'event', 'table_id', 'secret', 'is_active'].includes(key) && value !== undefined) {
             setClauses.push(`"${key}" = $${i++}`);
-            params.push(value);
+            params.push(key === 'url' ? validatePublicWebhookUrl(value) : value);
         }
     }
 
@@ -166,6 +168,7 @@ export async function fireWebhooks(
                     headers['X-Fluxbase-Signature'] = signature;
                 }
 
+                validatePublicWebhookUrl(webhook.url);
                 console.log(`[Webhook Engine] Sending POST to ${webhook.url}`);
                 const response = await fetch(webhook.url, {
                     method: 'POST',

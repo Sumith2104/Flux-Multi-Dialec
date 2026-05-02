@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+﻿import React, { useRef } from 'react';
 import { type Table, type Column } from '@/lib/data';
 import { Database, KeyRound, Link2 } from 'lucide-react';
 
@@ -48,7 +48,7 @@ export function TableNode({ table, columns, pks, fks, x, y, width, onDrag }: Tab
   return (
     <div
       ref={nodeRef}
-      className="erd-node absolute rounded-xl border border-zinc-800 bg-zinc-900/80 shadow-2xl font-sans backdrop-blur-xl overflow-hidden ring-1 ring-white/5 hover:ring-orange-500/50 transition-colors transition-shadow duration-300 select-none z-10"
+      className="erd-node absolute rounded-lg border border-border bg-secondary/85 shadow-2xl font-sans backdrop-blur-xl overflow-hidden ring-1 ring-border/50 hover:ring-orange-500/50 transition-colors transition-shadow duration-300 select-none z-10"
       style={{
         transform: `translate(${x}px, ${y}px)`,
         width: `${width}px`,
@@ -57,12 +57,12 @@ export function TableNode({ table, columns, pks, fks, x, y, width, onDrag }: Tab
       onPointerDown={handlePointerDown}
     >
       {/* Table Header */}
-      <div className="bg-zinc-900/50 p-3 border-b border-white/5 flex items-center justify-between">
-        <p className="text-sm font-bold text-zinc-100 flex items-center gap-2">
+      <div className="bg-secondary/70 p-3 border-b border-border/50 flex items-center justify-between">
+        <p className="text-sm font-bold text-foreground flex items-center gap-2">
           <Database className="h-4 w-4 text-orange-500" />
           {table.table_name}
         </p>
-        <span className="text-[10px] text-zinc-500 font-mono tracking-wider">{columns.length} COLS</span>
+        <span className="text-[10px] text-muted-foreground/75 font-mono tracking-wider">{columns.length} COLS</span>
       </div>
 
       {/* Columns */}
@@ -90,11 +90,11 @@ export function TableNode({ table, columns, pks, fks, x, y, width, onDrag }: Tab
                 {isFk && <Link2 className="h-3 w-3 text-blue-500" />}
                 {!isPk && !isFk && <span className="w-3" />} {/* Spacer */}
 
-                <span className={`${isPk ? 'font-bold text-yellow-500' : isFk ? 'font-medium text-blue-400' : 'text-zinc-300'}`}>
+                <span className={`${isPk ? 'font-bold text-yellow-500' : isFk ? 'font-medium text-blue-400' : 'text-foreground/85'}`}>
                   {label}
                 </span>
               </div>
-              <span className="font-mono text-[10px] text-zinc-600 group-hover:text-zinc-400 transition-colors">
+              <span className="font-mono text-[10px] text-muted-foreground/55 group-hover:text-muted-foreground transition-colors">
                 {typeLabel}
               </span>
             </div>

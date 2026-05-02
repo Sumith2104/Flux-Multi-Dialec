@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
-import { Github, Shield, AlertTriangle, Loader2 } from "lucide-react";
+import { Github, Shield, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { loginAction, verify2FALoginAction } from "@/app/actions";
 
@@ -58,8 +58,6 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
         setIsLoading(true);
         localStorage.setItem('lastLoginMethod', 'email');
         const formData = new FormData(event.currentTarget);
-        const email = formData.get('email') as string;
-        const password = formData.get('password') as string;
 
         try {
             const result = await loginAction(formData);
@@ -153,7 +151,7 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
             <DialogTrigger asChild>
                 <Button variant={isGhost ? "ghost" : "default"}>Login</Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[400px] backdrop-blur-3xl bg-white/5 border-white/10 shadow-2xl !rounded-[40px]">
+            <DialogContent className="border-border/70 bg-secondary/40 shadow-2xl backdrop-blur-3xl !rounded-2xl sm:max-w-[400px] sm:!rounded-[40px]">
                 <DialogHeader>
                     <DialogTitle className="text-2xl font-bold">
                         {requires2FA ? "Two-Factor Authentication" : showForgotPass ? "Reset Password" : "Login"}
@@ -169,7 +167,7 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
 
                 {requires2FA ? (
                     <div className="space-y-4 pt-4">
-                        <div className="flex items-center gap-3 p-4 bg-primary/10 border border-primary/20 rounded-xl mb-4">
+                        <div className="flex items-center gap-3 p-4 bg-primary/10 border border-primary/20 rounded-lg mb-4">
                             <Shield className="h-5 w-5 text-primary shrink-0" />
                             <p className="text-sm text-foreground/90">Authentication required to protect your account.</p>
                         </div>
@@ -182,7 +180,7 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
                                     placeholder="000000"
                                     maxLength={6}
                                     required
-                                    className="text-center text-3xl h-16 tracking-[0.5em] font-mono border-white/10 bg-black/40 focus-visible:ring-2 focus-visible:ring-primary"
+                                    className="text-center text-3xl h-16 tracking-[0.5em] font-mono border-border/70 bg-background/70 focus-visible:ring-2 focus-visible:ring-primary"
                                     value={twoFactorCode}
                                     onChange={(e) => setTwoFactorCode(e.target.value)}
                                     autoFocus
@@ -196,7 +194,7 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
                                 setRequires2FA(false);
                                 setTwoFactorCode('');
                                 setTempUserId(null);
-                            }} className="w-full hover:bg-white/5" disabled={isLoading}>
+                            }} className="w-full hover:bg-secondary/40" disabled={isLoading}>
                                 Cancel
                             </Button>
                         </form>
@@ -212,15 +210,15 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
                                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 {isLoading ? 'Sending Link...' : 'Send Reset Link'}
                             </Button>
-                            <Button variant="ghost" type="button" onClick={() => setShowForgotPass(false)} className="w-full hover:bg-white/5" disabled={isLoading}>
+                            <Button variant="ghost" type="button" onClick={() => setShowForgotPass(false)} className="w-full hover:bg-secondary/40" disabled={isLoading}>
                                 Back to Login
                             </Button>
                         </form>
                     </div>
                 ) : (
                     <div className="space-y-4 pt-4">
-                        <div className="grid grid-cols-2 gap-4">
-                            <Button onClick={() => handleSocialLogin('google')} variant="outline" type="button" disabled={isLoading} className={cn("border-white/10 relative hover:bg-white/5 hover:text-white transition-colors", lastMethod === 'google' && "border-primary/50 bg-primary/5")}>
+                        <div className="grid grid-cols-2 gap-2 sm:gap-4">
+                            <Button onClick={() => handleSocialLogin('google')} variant="outline" type="button" disabled={isLoading} className={cn("border-border/70 relative hover:bg-secondary/40 hover:text-white transition-colors", lastMethod === 'google' && "border-primary/50 bg-primary/5")}>
                                 {lastMethod === 'google' && <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg whitespace-nowrap z-10">Last Used</span>}
                                 <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
                                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
@@ -230,7 +228,7 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
                                 </svg>
                                 Google
                             </Button>
-                            <Button onClick={() => handleSocialLogin('github')} variant="outline" type="button" disabled={isLoading} className={cn("border-white/10 relative hover:bg-white/5 hover:text-white transition-colors", lastMethod === 'github' && "border-primary/50 bg-primary/5")}>
+                            <Button onClick={() => handleSocialLogin('github')} variant="outline" type="button" disabled={isLoading} className={cn("border-border/70 relative hover:bg-secondary/40 hover:text-white transition-colors", lastMethod === 'github' && "border-primary/50 bg-primary/5")}>
                                 {lastMethod === 'github' && <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg whitespace-nowrap z-10">Last Used</span>}
                                 <Github className="mr-2 h-4 w-4" />
                                 GitHub
@@ -253,7 +251,7 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
                                     type="email"
                                     placeholder="m@example.com"
                                     required
-                                    className="border-white/10 bg-black/40 focus-visible:ring-2 focus-visible:ring-orange-500 placeholder:text-muted-foreground/50"
+                                    className="border-border/70 bg-background/70 focus-visible:ring-2 focus-visible:ring-orange-500 placeholder:text-muted-foreground/50"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -265,7 +263,7 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
                                     id="password"
                                     name="password"
                                     required
-                                    className="border-white/10 bg-black/40 focus-visible:ring-2 focus-visible:ring-orange-500"
+                                    className="border-border/70 bg-background/70 focus-visible:ring-2 focus-visible:ring-orange-500"
                                 />
                             </div>
                             <Button type="submit" className={cn("w-full transition-all duration-300", lastMethod === 'email' && "ring-2 ring-primary ring-offset-2 ring-offset-zinc-950")} disabled={isLoading}>

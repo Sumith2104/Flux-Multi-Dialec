@@ -1,10 +1,19 @@
 import { getAnalyticsStatsAction } from '@/app/(app)/dashboard/analytics-actions';
+import { getAuthContextFromRequest } from '@/lib/auth';
+import { jsonError, requireProjectAccess } from '@/lib/project-auth';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(req: Request, { params }: { params: { projectId: string } }) {
-    const resolvedParams = await Promise.resolve(params);
-    const projectId = resolvedParams.projectId;
+export async function GET(req: Request, { params }: { params: Promise<{ projectId: string }> }) {
+    const { projectId } = await params;
+    const auth = await getAuthContextFromRequest(req);
+
+    try {
+        await requireProjectAccess(projectId, auth);
+    } catch (error) {
+        const { body, status } = jsonError(error);
+        return Response.json(body, { status });
+    }
 
     const encoder = new TextEncoder();
 

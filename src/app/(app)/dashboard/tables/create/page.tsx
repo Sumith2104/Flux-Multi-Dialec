@@ -1,4 +1,4 @@
-
+﻿
 'use client';
 
 import Link from 'next/link';
@@ -127,7 +127,7 @@ export default function CreateTablePage() {
                 const lines = text.trim().split('\n');
                 if (lines.length > 0) {
                     const header = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-                    let newColumns: Column[] = header.map(name => ({
+                    const newColumns: Column[] = header.map(name => ({
                         id: uuidv4(),
                         name: name,
                         type: name.toLowerCase() === 'id' ? 'gen_random_uuid()' : 'text' as ColumnType,
@@ -160,7 +160,7 @@ export default function CreateTablePage() {
             <div className="flex items-center justify-center min-h-[60vh]">
                 <div className="flex flex-col items-center gap-4">
                     <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                    <p className="text-zinc-400 font-medium">Verifying project permissions...</p>
+                    <p className="text-muted-foreground font-medium">Verifying project permissions...</p>
                 </div>
             </div>
         );
@@ -334,7 +334,7 @@ export default function CreateTablePage() {
                                                 </p>
                                             </div>
                                             <div className="space-y-4">
-                                                {columns.map((col, index) => (
+                                                {columns.map((col) => (
                                                     <div key={col.id} className="rounded-lg border bg-card p-3 space-y-3">
                                                         {/* Row 1: Name + Type + Delete */}
                                                         <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] items-center gap-2">
@@ -356,12 +356,12 @@ export default function CreateTablePage() {
                                                                 </SelectTrigger>
                                                                 <SelectContent className="max-h-72">
                                                                     <SelectGroup>
-                                                                        <SelectLabel>— Special —</SelectLabel>
+                                                                        <SelectLabel>â€” Special â€”</SelectLabel>
                                                                         <SelectItem value="gen_random_uuid()">UUID (Auto-generated)</SelectItem>
                                                                         <SelectItem value="now()">Timestamp (now())</SelectItem>
                                                                     </SelectGroup>
                                                                     <SelectGroup>
-                                                                        <SelectLabel>— Text —</SelectLabel>
+                                                                        <SelectLabel>â€” Text â€”</SelectLabel>
                                                                         <SelectItem value="text">text</SelectItem>
                                                                         <SelectItem value="varchar">varchar</SelectItem>
                                                                         <SelectItem value="char">char</SelectItem>
@@ -369,7 +369,7 @@ export default function CreateTablePage() {
                                                                         <SelectItem value="name">name</SelectItem>
                                                                     </SelectGroup>
                                                                     <SelectGroup>
-                                                                        <SelectLabel>— Integer —</SelectLabel>
+                                                                        <SelectLabel>â€” Integer â€”</SelectLabel>
                                                                         <SelectItem value="integer">integer (int4)</SelectItem>
                                                                         <SelectItem value="smallint">smallint (int2)</SelectItem>
                                                                         <SelectItem value="bigint">bigint (int8)</SelectItem>
@@ -378,18 +378,18 @@ export default function CreateTablePage() {
                                                                         <SelectItem value="smallserial">smallserial</SelectItem>
                                                                     </SelectGroup>
                                                                     <SelectGroup>
-                                                                        <SelectLabel>— Decimal / Float —</SelectLabel>
+                                                                        <SelectLabel>â€” Decimal / Float â€”</SelectLabel>
                                                                         <SelectItem value="numeric">numeric / decimal</SelectItem>
                                                                         <SelectItem value="real">real (float4)</SelectItem>
                                                                         <SelectItem value="double precision">double precision (float8)</SelectItem>
                                                                         <SelectItem value="money">money</SelectItem>
                                                                     </SelectGroup>
                                                                     <SelectGroup>
-                                                                        <SelectLabel>— Boolean —</SelectLabel>
+                                                                        <SelectLabel>â€” Boolean â€”</SelectLabel>
                                                                         <SelectItem value="boolean">boolean</SelectItem>
                                                                     </SelectGroup>
                                                                     <SelectGroup>
-                                                                        <SelectLabel>— Date / Time —</SelectLabel>
+                                                                        <SelectLabel>â€” Date / Time â€”</SelectLabel>
                                                                         <SelectItem value="date">date</SelectItem>
                                                                         <SelectItem value="time">time</SelectItem>
                                                                         <SelectItem value="timetz">timetz (with timezone)</SelectItem>
@@ -398,29 +398,29 @@ export default function CreateTablePage() {
                                                                         <SelectItem value="interval">interval</SelectItem>
                                                                     </SelectGroup>
                                                                     <SelectGroup>
-                                                                        <SelectLabel>— UUID —</SelectLabel>
+                                                                        <SelectLabel>â€” UUID â€”</SelectLabel>
                                                                         <SelectItem value="uuid">uuid</SelectItem>
                                                                     </SelectGroup>
                                                                     <SelectGroup>
-                                                                        <SelectLabel>— JSON —</SelectLabel>
+                                                                        <SelectLabel>â€” JSON â€”</SelectLabel>
                                                                         <SelectItem value="json">json</SelectItem>
                                                                         <SelectItem value="jsonb">jsonb (binary json)</SelectItem>
                                                                     </SelectGroup>
                                                                     <SelectGroup>
-                                                                        <SelectLabel>— Arrays —</SelectLabel>
+                                                                        <SelectLabel>â€” Arrays â€”</SelectLabel>
                                                                         <SelectItem value="text[]">text[]</SelectItem>
                                                                         <SelectItem value="integer[]">integer[]</SelectItem>
                                                                         <SelectItem value="boolean[]">boolean[]</SelectItem>
                                                                         <SelectItem value="jsonb[]">jsonb[]</SelectItem>
                                                                     </SelectGroup>
                                                                     <SelectGroup>
-                                                                        <SelectLabel>— Network —</SelectLabel>
+                                                                        <SelectLabel>â€” Network â€”</SelectLabel>
                                                                         <SelectItem value="inet">inet (IP address)</SelectItem>
                                                                         <SelectItem value="cidr">cidr (network)</SelectItem>
                                                                         <SelectItem value="macaddr">macaddr</SelectItem>
                                                                     </SelectGroup>
                                                                     <SelectGroup>
-                                                                        <SelectLabel>— Other —</SelectLabel>
+                                                                        <SelectLabel>â€” Other â€”</SelectLabel>
                                                                         <SelectItem value="bytea">bytea (binary)</SelectItem>
                                                                         <SelectItem value="xml">xml</SelectItem>
                                                                         <SelectItem value="tsvector">tsvector (full-text)</SelectItem>
@@ -535,36 +535,36 @@ export default function CreateTablePage() {
                                                                     </SelectTrigger>
                                                                     <SelectContent className="max-h-72">
                                                                         <SelectGroup>
-                                                                            <SelectLabel>— Special —</SelectLabel>
+                                                                            <SelectLabel>â€” Special â€”</SelectLabel>
                                                                             <SelectItem value="gen_random_uuid()">UUID (Auto-generated)</SelectItem>
                                                                             <SelectItem value="now()">Timestamp (now())</SelectItem>
                                                                         </SelectGroup>
                                                                         <SelectGroup>
-                                                                            <SelectLabel>— Text —</SelectLabel>
+                                                                            <SelectLabel>â€” Text â€”</SelectLabel>
                                                                             <SelectItem value="text">text</SelectItem>
                                                                             <SelectItem value="varchar">varchar</SelectItem>
                                                                             <SelectItem value="char">char</SelectItem>
                                                                             <SelectItem value="citext">citext</SelectItem>
                                                                         </SelectGroup>
                                                                         <SelectGroup>
-                                                                            <SelectLabel>— Integer —</SelectLabel>
+                                                                            <SelectLabel>â€” Integer â€”</SelectLabel>
                                                                             <SelectItem value="integer">integer</SelectItem>
                                                                             <SelectItem value="smallint">smallint</SelectItem>
                                                                             <SelectItem value="bigint">bigint</SelectItem>
                                                                             <SelectItem value="serial">serial (auto-inc)</SelectItem>
                                                                         </SelectGroup>
                                                                         <SelectGroup>
-                                                                            <SelectLabel>— Decimal —</SelectLabel>
+                                                                            <SelectLabel>â€” Decimal â€”</SelectLabel>
                                                                             <SelectItem value="numeric">numeric</SelectItem>
                                                                             <SelectItem value="real">real</SelectItem>
                                                                             <SelectItem value="double precision">double precision</SelectItem>
                                                                         </SelectGroup>
                                                                         <SelectGroup>
-                                                                            <SelectLabel>— Boolean —</SelectLabel>
+                                                                            <SelectLabel>â€” Boolean â€”</SelectLabel>
                                                                             <SelectItem value="boolean">boolean</SelectItem>
                                                                         </SelectGroup>
                                                                         <SelectGroup>
-                                                                            <SelectLabel>— Date / Time —</SelectLabel>
+                                                                            <SelectLabel>â€” Date / Time â€”</SelectLabel>
                                                                             <SelectItem value="date">date</SelectItem>
                                                                             <SelectItem value="time">time</SelectItem>
                                                                             <SelectItem value="timestamp">timestamp</SelectItem>
@@ -572,7 +572,7 @@ export default function CreateTablePage() {
                                                                             <SelectItem value="interval">interval</SelectItem>
                                                                         </SelectGroup>
                                                                         <SelectGroup>
-                                                                            <SelectLabel>— JSON / Other —</SelectLabel>
+                                                                            <SelectLabel>â€” JSON / Other â€”</SelectLabel>
                                                                             <SelectItem value="uuid">uuid</SelectItem>
                                                                             <SelectItem value="json">json</SelectItem>
                                                                             <SelectItem value="jsonb">jsonb</SelectItem>

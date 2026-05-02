@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import {
@@ -19,9 +19,9 @@ const SHORTCUTS: ShortcutGroup[] = [
     {
         title: 'Global',
         shortcuts: [
-            { keys: ['⌘', 'K'], description: 'Open Command Palette' },
+            { keys: ['âŒ˜', 'K'], description: 'Open Command Palette' },
             { keys: ['?'], description: 'Show Keyboard Shortcuts' },
-            { keys: ['⌘', '/'], description: 'Toggle AI Assistant' },
+            { keys: ['âŒ˜', '/'], description: 'Toggle AI Assistant' },
         ],
     },
     {
@@ -37,17 +37,17 @@ const SHORTCUTS: ShortcutGroup[] = [
     {
         title: 'SQL Editor',
         shortcuts: [
-            { keys: ['⌘', 'Enter'], description: 'Run Query' },
-            { keys: ['⌘', 'Shift', 'F'], description: 'Format SQL' },
-            { keys: ['⌘', 'Z'], description: 'Undo' },
-            { keys: ['⌘', 'Shift', 'Z'], description: 'Redo' },
+            { keys: ['âŒ˜', 'Enter'], description: 'Run Query' },
+            { keys: ['âŒ˜', 'Shift', 'F'], description: 'Format SQL' },
+            { keys: ['âŒ˜', 'Z'], description: 'Undo' },
+            { keys: ['âŒ˜', 'Shift', 'Z'], description: 'Redo' },
         ],
     },
     {
         title: 'Table Editor',
         shortcuts: [
             { keys: ['N'], description: 'Add New Row' },
-            { keys: ['⌘', 'F'], description: 'Find in Table' },
+            { keys: ['âŒ˜', 'F'], description: 'Find in Table' },
             { keys: ['Del'], description: 'Delete Selected Row' },
             { keys: ['Esc'], description: 'Cancel Edit' },
         ],
@@ -84,7 +84,7 @@ export function KeyboardShortcuts() {
             </Button>
 
             <Dialog open={open} onOpenChange={setOpen}>
-                <DialogContent className="max-w-2xl bg-zinc-950 border-zinc-800 max-h-[80vh] overflow-y-auto">
+                <DialogContent className="max-w-2xl bg-card border-border max-h-[80vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Keyboard className="h-4 w-4 text-orange-400" />
@@ -94,18 +94,18 @@ export function KeyboardShortcuts() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-2">
                         {SHORTCUTS.map(group => (
                             <div key={group.title}>
-                                <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
+                                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/75 mb-3">
                                     {group.title}
                                 </h4>
                                 <div className="space-y-2">
                                     {group.shortcuts.map((s, i) => (
                                         <div key={i} className="flex items-center justify-between">
-                                            <span className="text-sm text-zinc-400">{s.description}</span>
+                                            <span className="text-sm text-muted-foreground">{s.description}</span>
                                             <div className="flex items-center gap-1">
                                                 {s.keys.map((key, ki) => (
                                                     <kbd
                                                         key={ki}
-                                                        className="flex h-6 min-w-6 items-center justify-center rounded border border-zinc-700 bg-zinc-800 px-1.5 font-mono text-[10px] text-zinc-300"
+                                                        className="flex h-6 min-w-6 items-center justify-center rounded border border-border/80 bg-muted px-1.5 font-mono text-[10px] text-foreground/85"
                                                     >
                                                         {key}
                                                     </kbd>
@@ -117,8 +117,8 @@ export function KeyboardShortcuts() {
                             </div>
                         ))}
                     </div>
-                    <div className="mt-4 pt-4 border-t border-zinc-800 text-xs text-zinc-600 text-center">
-                        Press <kbd className="rounded border border-zinc-700 px-1 bg-zinc-800 font-mono text-zinc-400">?</kbd> anywhere to toggle this panel
+                    <div className="mt-4 pt-4 border-t border-border text-xs text-muted-foreground/55 text-center">
+                        Press <kbd className="rounded border border-border/80 px-1 bg-muted font-mono text-muted-foreground">?</kbd> anywhere to toggle this panel
                     </div>
                 </DialogContent>
             </Dialog>

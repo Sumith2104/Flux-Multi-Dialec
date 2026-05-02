@@ -19,20 +19,20 @@ export default function Navbar({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
 
     return (
-        <nav className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[95%] max-w-5xl">
-            <div className="flex items-center justify-between px-6 py-3 rounded-full backdrop-blur-xl bg-background/40 border border-white/10 shadow-2xl">
+        <nav className="fixed left-1/2 top-3 z-50 w-[calc(100%-1rem)] max-w-5xl -translate-x-1/2 sm:top-4 sm:w-[95%]">
+            <div className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-border/70 bg-background/90 px-3 py-2 shadow-2xl shadow-black/25 backdrop-blur-xl sm:px-6 sm:py-3">
                 {/* Logo + Brand */}
-                <Link href="/" className="flex items-center gap-2 group">
-                    <div className="bg-primary/20 p-1.5 rounded-lg group-hover:bg-primary/30 transition-colors">
-                        <Database className="h-5 w-5 text-primary" />
+                <Link href="/" className="group flex min-w-0 items-center gap-2">
+                    <div className="shrink-0 rounded-md border border-primary/25 bg-primary/15 p-1.5 transition-colors group-hover:bg-primary/25">
+                        <Database className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
                     </div>
-                    <span className="text-base sm:text-lg font-bold text-foreground tracking-tight">
+                    <span className="truncate text-base font-bold tracking-tight text-foreground sm:text-lg">
                         Fluxbase
                     </span>
                 </Link>
 
                 {/* Nav Links & Actions */}
-                <div className="flex items-center gap-6 text-sm font-medium">
+                <div className="flex min-w-0 shrink-0 items-center gap-2 text-sm font-medium sm:gap-6">
                     <div className="hidden sm:flex items-center gap-6">
                         <Link
                             href="/#features"
@@ -66,10 +66,10 @@ export default function Navbar({ children }: { children: React.ReactNode }) {
                     </div>
 
                     {/* Vertical Separator */}
-                    <div className="hidden sm:block h-6 w-px bg-white/10 mx-2"></div>
+                    <div className="mx-2 hidden h-6 w-px bg-border sm:block"></div>
 
                     {/* Authentication Actions / Children */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 sm:gap-2 [&_button]:h-9 [&_button]:px-3 sm:[&_button]:h-10 sm:[&_button]:px-4">
                         {children}
                     </div>
                 </div>

@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { validateRazorpaySignature } from '@/lib/razorpay';
+import { getRazorpayWebhookSecret, validateRazorpaySignature } from '@/lib/razorpay';
 import { getPgPool } from '@/lib/pg';
 
 export async function POST(req: Request) {
     const bodyText = await req.text();
     const signature = req.headers.get('x-razorpay-signature');
-    const secret = process.env.RAZORPAY_WEBHOOK_SECRET || 'test_secret';
+    const secret = getRazorpayWebhookSecret();
 
     if (!signature || !validateRazorpaySignature(bodyText, signature, secret)) {
         return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 400 });

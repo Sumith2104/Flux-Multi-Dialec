@@ -1,15 +1,15 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { GitBranch, Plus, CheckCircle2, XCircle, Clock, Loader2, Play, RotateCcw, ChevronDown, ChevronRight, FileCode, ArrowUp, ArrowDown } from 'lucide-react';
+import { GitBranch, Plus, CheckCircle2, XCircle, Clock, Loader2, FileCode, ArrowUp, ArrowDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 
@@ -83,7 +83,7 @@ export default function MigrationsPage() {
     };
 
     const statusConfig = {
-        pending: { label: 'Pending', icon: Clock, className: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20' },
+        pending: { label: 'Pending', icon: Clock, className: 'bg-secondary text-muted-foreground border-border' },
         applied: { label: 'Applied', icon: CheckCircle2, className: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
         failed: { label: 'Failed', icon: XCircle, className: 'bg-red-500/10 text-red-400 border-red-500/20' },
     };
@@ -111,13 +111,13 @@ export default function MigrationsPage() {
             </div>
 
             {/* Stats Row */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
                 {[
                     { label: 'Applied', value: applied.length, color: 'text-emerald-400' },
                     { label: 'Pending', value: pending.length, color: 'text-yellow-400' },
                     { label: 'Failed', value: failed.length, color: 'text-red-400' },
                 ].map(s => (
-                    <Card key={s.label} className="border-zinc-800">
+                    <Card key={s.label} className="border-border">
                         <CardContent className="pt-4">
                             <div className={cn('text-2xl font-bold', s.color)}>{s.value}</div>
                             <div className="text-xs text-muted-foreground">{s.label}</div>
@@ -142,9 +142,9 @@ export default function MigrationsPage() {
                         const { label, icon: Icon, className } = statusConfig[m.status];
                         const isRunning = runningId === m.id;
                         return (
-                            <Card key={m.id} className="border-zinc-800">
+                            <Card key={m.id} className="border-border">
                                 <div className="flex items-center p-4 gap-4">
-                                    <div className="h-8 w-8 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-500 text-xs font-mono shrink-0">
+                                    <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-muted-foreground/75 text-xs font-mono shrink-0">
                                         {m.version}
                                     </div>
                                     <div className="flex-1 min-w-0">
@@ -182,15 +182,15 @@ export default function MigrationsPage() {
                                     </div>
                                 </div>
                                 {expanded === m.id && (
-                                    <div className="border-t border-zinc-800 p-4 space-y-3">
+                                    <div className="border-t border-border p-4 space-y-3">
                                         <div>
-                                            <p className="text-xs font-medium text-emerald-400 mb-1.5">▲ UP migration</p>
-                                            <pre className="text-xs bg-zinc-900 rounded-md p-3 overflow-x-auto text-zinc-300 border border-zinc-800 font-mono">{m.upSql}</pre>
+                                            <p className="text-xs font-medium text-emerald-400 mb-1.5">â–² UP migration</p>
+                                            <pre className="text-xs bg-secondary rounded-md p-3 overflow-x-auto text-foreground/85 border border-border font-mono">{m.upSql}</pre>
                                         </div>
                                         {m.downSql && (
                                             <div>
-                                                <p className="text-xs font-medium text-red-400 mb-1.5">▼ DOWN migration</p>
-                                                <pre className="text-xs bg-zinc-900 rounded-md p-3 overflow-x-auto text-zinc-300 border border-zinc-800 font-mono">{m.downSql}</pre>
+                                                <p className="text-xs font-medium text-red-400 mb-1.5">â–¼ DOWN migration</p>
+                                                <pre className="text-xs bg-secondary rounded-md p-3 overflow-x-auto text-foreground/85 border border-border font-mono">{m.downSql}</pre>
                                             </div>
                                         )}
                                     </div>
@@ -203,7 +203,7 @@ export default function MigrationsPage() {
 
             {/* Add Migration Dialog */}
             <Dialog open={showAdd} onOpenChange={setShowAdd}>
-                <DialogContent className="bg-zinc-950 border-zinc-800 max-w-2xl">
+                <DialogContent className="bg-card border-border max-w-2xl">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <GitBranch className="h-4 w-4 text-blue-400" />
@@ -214,17 +214,17 @@ export default function MigrationsPage() {
                         <div>
                             <Label className="text-xs mb-1.5 block">Migration Name</Label>
                             <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                                placeholder="e.g. add_user_roles_table" className="bg-zinc-900 border-zinc-700 font-mono h-9 text-sm" id="migration-name" />
+                                placeholder="e.g. add_user_roles_table" className="bg-secondary border-border/80 font-mono h-9 text-sm" id="migration-name" />
                         </div>
                         <div>
-                            <Label className="text-xs mb-1.5 flex items-center gap-1"><ArrowUp className="h-3 w-3 text-emerald-400" /> UP — Migrate Forward</Label>
+                            <Label className="text-xs mb-1.5 flex items-center gap-1"><ArrowUp className="h-3 w-3 text-emerald-400" /> UP â€” Migrate Forward</Label>
                             <Textarea value={form.upSql} onChange={e => setForm(f => ({ ...f, upSql: e.target.value }))}
-                                placeholder="ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'viewer';" className="bg-zinc-900 border-zinc-700 font-mono text-sm min-h-[100px]" id="migration-up-sql" />
+                                placeholder="ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'viewer';" className="bg-secondary border-border/80 font-mono text-sm min-h-[100px]" id="migration-up-sql" />
                         </div>
                         <div>
-                            <Label className="text-xs mb-1.5 flex items-center gap-1"><ArrowDown className="h-3 w-3 text-red-400" /> DOWN — Rollback (optional)</Label>
+                            <Label className="text-xs mb-1.5 flex items-center gap-1"><ArrowDown className="h-3 w-3 text-red-400" /> DOWN â€” Rollback (optional)</Label>
                             <Textarea value={form.downSql} onChange={e => setForm(f => ({ ...f, downSql: e.target.value }))}
-                                placeholder="ALTER TABLE users DROP COLUMN role;" className="bg-zinc-900 border-zinc-700 font-mono text-sm min-h-[80px]" id="migration-down-sql" />
+                                placeholder="ALTER TABLE users DROP COLUMN role;" className="bg-secondary border-border/80 font-mono text-sm min-h-[80px]" id="migration-down-sql" />
                         </div>
                         {error && <p className="text-xs text-red-400 bg-red-500/10 rounded p-2">{error}</p>}
                     </div>

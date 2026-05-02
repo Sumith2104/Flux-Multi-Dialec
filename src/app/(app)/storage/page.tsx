@@ -1,11 +1,11 @@
-'use client';
+﻿'use client';
 
 import { useState, useContext, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ProjectContext } from '@/contexts/project-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
     Folder, FolderOpen, Upload, Plus, Trash2, Copy, Check, Edit2,
-    File, Image, FileText, FileArchive, Loader2, HardDrive, X
+    File, Image as ImageIcon, FileText, FileArchive, Loader2, HardDrive, X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -31,10 +31,10 @@ function formatBytes(bytes: number): string {
 }
 
 function getFileIcon(mime: string) {
-    if (mime.startsWith('image/')) return <Image className="h-4 w-4 text-blue-400" />;
+    if (mime.startsWith('image/')) return <ImageIcon className="h-4 w-4 text-blue-400" />;
     if (mime === 'application/pdf') return <FileText className="h-4 w-4 text-red-400" />;
     if (mime.includes('zip')) return <FileArchive className="h-4 w-4 text-yellow-400" />;
-    return <File className="h-4 w-4 text-zinc-400" />;
+    return <File className="h-4 w-4 text-muted-foreground" />;
 }
 
 export default function StoragePage() {
@@ -91,7 +91,7 @@ export default function StoragePage() {
     const uploadFile = async (file: File) => {
         if (!projectId || !selectedBucket) return;
         setUploading(true);
-        setUploadProgress(`Uploading ${file.name}…`);
+        setUploadProgress(`Uploading ${file.name}â€¦`);
         setError(null);
         try {
             const formData = new FormData();
@@ -218,7 +218,7 @@ export default function StoragePage() {
                 setCopiedId(file.id);
                 setTimeout(() => setCopiedId(null), 2000);
             }
-        } catch (e) {}
+        } catch {}
     };
 
     if (!projectId) {
@@ -232,24 +232,24 @@ export default function StoragePage() {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="max-w-full space-y-5 overflow-x-hidden sm:space-y-6">
             {/* Header */}
-            <div className="flex justify-between items-start">
-                <div>
-                    <h1 className="text-3xl font-bold flex items-center gap-3">
-                        <HardDrive className="h-8 w-8 text-primary" /> Storage
+            <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
+                <div className="min-w-0">
+                    <h1 className="flex items-center gap-3 text-2xl font-bold sm:text-3xl">
+                        <HardDrive className="h-7 w-7 shrink-0 text-primary sm:h-8 sm:w-8" /> Storage
                     </h1>
-                    <p className="text-muted-foreground mt-1">
-                        Secure file storage backed by AWS S3 — private by default, signed URLs on demand.
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground sm:text-base">
+                        Secure file storage backed by AWS S3 â€” private by default, signed URLs on demand.
                     </p>
-                    <div className="flex items-center gap-2 mt-3">
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
                         <Badge variant="outline" className="bg-primary/5 border-primary/20 text-primary font-mono text-xs px-2.5 py-1">
                             Total Project Usage: {formatBytes(totalProjectSize)}
                         </Badge>
                     </div>
                 </div>
                 {selectedBucket && (
-                    <Button onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                    <Button className="w-full sm:w-auto" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
                         {uploading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
                         Upload File
                     </Button>
@@ -268,13 +268,13 @@ export default function StoragePage() {
                 </div>
             )}
 
-            <div className="flex gap-4 min-h-[500px]">
+            <div className="flex min-h-[500px] max-w-full flex-col gap-4 lg:flex-row">
                 {/* Bucket Sidebar */}
-                <div className="w-[20%] shrink-0">
-                    <Card className="h-full relative overflow-hidden group border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md shadow-lg transition-colors hover:bg-zinc-900/60">
+                <div className="w-full shrink-0 lg:w-[20%]">
+                    <Card className="h-full relative overflow-hidden group border-border/80 bg-secondary/60 backdrop-blur-md shadow-lg transition-colors hover:bg-secondary/70">
                         <CardHeader className="pb-3">
                             <div className="flex items-center justify-between">
-                                <CardTitle className="text-sm font-semibold text-zinc-400 uppercase tracking-wide">Buckets</CardTitle>
+                                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Buckets</CardTitle>
                                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowNewBucket(v => !v)}>
                                     <Plus className="h-3.5 w-3.5" />
                                 </Button>
@@ -310,7 +310,7 @@ export default function StoragePage() {
                                         'w-full flex justify-between items-center group px-3 py-2 rounded-lg text-sm transition-colors text-left cursor-pointer',
                                         selectedBucket?.id === bucket.id
                                             ? 'bg-primary/15 text-primary border border-primary/20'
-                                            : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200'
+                                            : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground/90'
                                     )}
                                     onClick={() => {
                                         if (editingBucketId !== bucket.id) setSelectedBucket(bucket);
@@ -349,7 +349,7 @@ export default function StoragePage() {
                                                 <Button
                                                     variant="ghost" 
                                                     size="icon" 
-                                                    className="h-6 w-6 hover:bg-zinc-700/50 hover:text-white"
+                                                    className="h-6 w-6 hover:bg-muted/80 hover:text-white"
                                                     title="Rename bucket"
                                                     onClick={(e) => { 
                                                         e.stopPropagation(); 
@@ -382,9 +382,9 @@ export default function StoragePage() {
                 </div>
 
                 {/* File Browser */}
-                <div className="flex-1">
-                    <Card className="h-full relative overflow-hidden group border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md shadow-lg transition-colors hover:bg-zinc-900/60">
-                        <CardHeader className="pb-3 border-b border-zinc-800/50">
+                <div className="min-w-0 flex-1">
+                    <Card className="h-full relative overflow-hidden group border-border/80 bg-secondary/60 backdrop-blur-md shadow-lg transition-colors hover:bg-secondary/70">
+                        <CardHeader className="pb-3 border-b border-border/60">
                             <div className="flex items-center justify-between">
                                 <CardTitle className="text-base">
                                     {selectedBucket ? (
@@ -432,10 +432,10 @@ export default function StoragePage() {
                                             <p className="text-xs text-muted-foreground/60">All file types supported (Images, PDFs, CSVs, JSON, ZIP, etc.)</p>
                                         </div>
                                     ) : (
-                                        <div className="overflow-auto">
-                                            <table className="w-full text-sm">
+                                        <div className="mobile-scroll">
+                                            <table className="w-max min-w-full text-sm">
                                                 <thead>
-                                                    <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500 uppercase tracking-wide">
+                                                    <tr className="border-b border-border text-left text-xs text-muted-foreground/75 uppercase tracking-wide">
                                                         <th className="px-4 py-3 font-medium">Name</th>
                                                         <th className="px-4 py-3 font-medium">Type</th>
                                                         <th className="px-4 py-3 font-medium">Size</th>
@@ -445,29 +445,29 @@ export default function StoragePage() {
                                                 </thead>
                                                 <tbody>
                                                     {files.map(file => (
-                                                        <tr key={file.id} className="border-b border-zinc-800/40 hover:bg-zinc-800/20 group transition-colors">
-                                                            <td className="px-4 py-3 font-medium text-zinc-200">
+                                                        <tr key={file.id} className="border-b border-border/40 hover:bg-muted/40 group transition-colors">
+                                                            <td className="px-4 py-3 font-medium text-foreground/90">
                                                                 <div className="flex items-center gap-2.5">
                                                                     {getFileIcon(file.mime_type)}
                                                                     <span className="truncate max-w-[200px]">{file.name}</span>
                                                                 </div>
                                                             </td>
-                                                            <td className="px-4 py-3 text-zinc-500 text-xs">{file.mime_type.split('/')[1]?.toUpperCase() || 'FILE'}</td>
-                                                            <td className="px-4 py-3 text-zinc-400">{formatBytes(file.size)}</td>
-                                                            <td className="px-4 py-3 text-zinc-500 text-xs">
+                                                            <td className="px-4 py-3 text-muted-foreground/75 text-xs">{file.mime_type.split('/')[1]?.toUpperCase() || 'FILE'}</td>
+                                                            <td className="px-4 py-3 text-muted-foreground">{formatBytes(file.size)}</td>
+                                                            <td className="px-4 py-3 text-muted-foreground/75 text-xs">
                                                                 {new Date(file.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
                                                             </td>
                                                             <td className="px-4 py-3">
                                                                 <div className="flex items-center gap-1.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                                                                     <Button
                                                                         variant="ghost" size="icon"
-                                                                        className="h-7 w-7 hover:bg-zinc-700"
+                                                                        className="h-7 w-7 hover:bg-muted"
                                                                         title="Copy signed URL (15 min)"
                                                                         onClick={() => copySignedUrl(file)}
                                                                     >
                                                                         {copiedId === file.id
                                                                             ? <Check className="h-3.5 w-3.5 text-green-400" />
-                                                                            : <Copy className="h-3.5 w-3.5 text-zinc-400" />}
+                                                                            : <Copy className="h-3.5 w-3.5 text-muted-foreground" />}
                                                                     </Button>
                                                                     <Button
                                                                         variant="ghost" size="icon"
@@ -497,7 +497,7 @@ export default function StoragePage() {
 
             {/* Bucket Delete Dialog */}
             <AlertDialog open={!!bucketToDelete} onOpenChange={() => setBucketToDelete(null)}>
-                <AlertDialogContent className="border-zinc-800 bg-zinc-950">
+                <AlertDialogContent className="border-border bg-card">
                     <AlertDialogHeader>
                         <AlertDialogTitle>Delete Bucket</AlertDialogTitle>
                         <AlertDialogDescription>
@@ -506,7 +506,7 @@ export default function StoragePage() {
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel className="border-zinc-800 hover:bg-zinc-800 hover:text-white">Cancel</AlertDialogCancel>
+                        <AlertDialogCancel className="border-border hover:bg-muted hover:text-white">Cancel</AlertDialogCancel>
                         <AlertDialogAction 
                             className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
                             onClick={() => {
@@ -522,7 +522,7 @@ export default function StoragePage() {
 
             {/* File Delete Dialog */}
             <AlertDialog open={!!fileToDelete} onOpenChange={() => setFileToDelete(null)}>
-                <AlertDialogContent className="border-zinc-800 bg-zinc-950">
+                <AlertDialogContent className="border-border bg-card">
                     <AlertDialogHeader>
                         <AlertDialogTitle>Delete File</AlertDialogTitle>
                         <AlertDialogDescription>
@@ -531,7 +531,7 @@ export default function StoragePage() {
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel className="border-zinc-800 hover:bg-zinc-800 hover:text-white">Cancel</AlertDialogCancel>
+                        <AlertDialogCancel className="border-border hover:bg-muted hover:text-white">Cancel</AlertDialogCancel>
                         <AlertDialogAction 
                             className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
                             onClick={() => {

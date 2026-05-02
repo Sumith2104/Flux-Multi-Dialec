@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { getAuthContextFromRequest } from '@/lib/auth';
-import { getProjectById } from '@/lib/data';
 import { ERROR_CODES } from '@/lib/error-codes';
 import crypto from 'crypto';
+import { requireProjectAccess } from '@/lib/project-auth';
+import { validatePublicWebhookUrl } from '@/lib/url-safety';
 
 export async function POST(req: NextRequest) {
     const auth = await getAuthContextFromRequest(req);
@@ -34,28 +35,23 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate project access & role
-    const project = await getProjectById(projectId, auth.userId);
-    if (!project) {
+    try {
+        await requireProjectAccess(projectId, auth, ['admin', 'developer']);
+    } catch (error: any) {
         return NextResponse.json(
-            { success: false, error: { message: 'Project not found', code: ERROR_CODES.PROJECT_NOT_FOUND } },
-            { status: 404 }
-        );
-    }
-
-    if (project.role === 'viewer') {
-        return NextResponse.json(
-            { success: false, error: { message: 'Insufficient Permissions: Viewers cannot create webhooks.', code: ERROR_CODES.FORBIDDEN } },
-            { status: 403 }
+            { success: false, error: { message: error.message || 'Forbidden', code: error.code || ERROR_CODES.FORBIDDEN } },
+            { status: error.status || 403 }
         );
     }
 
     // Validate URL
+    let safeUrl;
     try {
-        new URL(url);
-    } catch {
+        safeUrl = validatePublicWebhookUrl(url);
+    } catch (error: any) {
         return NextResponse.json(
-            { success: false, error: { message: 'Invalid webhook URL', code: ERROR_CODES.BAD_REQUEST } },
-            { status: 400 }
+            { success: false, error: { message: error.message || 'Invalid webhook URL', code: error.code || ERROR_CODES.BAD_REQUEST } },
+            { status: error.status || 400 }
         );
     }
 
@@ -68,7 +64,7 @@ export async function POST(req: NextRequest) {
             `INSERT INTO fluxbase_global.webhooks 
             (webhook_id, project_id, user_id, name, url, event, table_id, secret, is_active) 
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-            [webhookId, projectId, auth.userId, name, url, event, table_id, secret || null, active]
+            [webhookId, projectId, auth.userId, name, safeUrl, event, table_id, secret || null, active]
         );
 
         return NextResponse.json({
@@ -77,7 +73,7 @@ export async function POST(req: NextRequest) {
                 id: webhookId,
                 projectId,
                 name,
-                url,
+                url: safeUrl,
                 event,
                 table_id,
                 is_active: active
@@ -109,18 +105,19 @@ export async function GET(req: NextRequest) {
         );
     }
 
-    const project = await getProjectById(projectId, auth.userId);
-    if (!project) {
+    try {
+        await requireProjectAccess(projectId, auth);
+    } catch (error: any) {
         return NextResponse.json(
-            { success: false, error: { message: 'Project not found', code: ERROR_CODES.PROJECT_NOT_FOUND } },
-            { status: 404 }
+            { success: false, error: { message: error.message || 'Forbidden', code: error.code || ERROR_CODES.FORBIDDEN } },
+            { status: error.status || 403 }
         );
     }
 
     const pool = getPgPool();
     try {
         const res = await pool.query(
-            `SELECT webhook_id as id, name, url, event, table_id, secret, is_active, created_at 
+            `SELECT webhook_id as id, name, url, event, table_id, (secret IS NOT NULL) as has_secret, is_active, created_at 
              FROM fluxbase_global.webhooks 
              WHERE project_id = $1
              ORDER BY created_at DESC`,
@@ -168,18 +165,12 @@ export async function DELETE(req: NextRequest) {
         );
     }
 
-    const project = await getProjectById(projectId, auth.userId);
-    if (!project) {
+    try {
+        await requireProjectAccess(projectId, auth, ['admin', 'developer']);
+    } catch (error: any) {
         return NextResponse.json(
-            { success: false, error: { message: 'Project not found', code: ERROR_CODES.PROJECT_NOT_FOUND } },
-            { status: 404 }
-        );
-    }
-
-    if (project.role === 'viewer') {
-        return NextResponse.json(
-            { success: false, error: { message: 'Insufficient Permissions: Viewers cannot delete webhooks.', code: ERROR_CODES.FORBIDDEN } },
-            { status: 403 }
+            { success: false, error: { message: error.message || 'Forbidden', code: error.code || ERROR_CODES.FORBIDDEN } },
+            { status: error.status || 403 }
         );
     }
 

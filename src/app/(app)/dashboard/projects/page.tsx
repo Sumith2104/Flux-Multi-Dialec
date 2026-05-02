@@ -1,4 +1,4 @@
-
+﻿
 'use client';
 
 import { useEffect, useState, useContext } from 'react';
@@ -12,7 +12,6 @@ import { useRouter } from 'next/navigation';
 import { ProjectContext } from '@/contexts/project-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { InvitationAlerts } from '@/components/team/invitation-alerts';
 
 export default function SelectProjectPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -37,7 +36,6 @@ export default function SelectProjectPage() {
 
   useEffect(() => {
     fetchProjects();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleProjectSelect = (project: Project) => {
@@ -125,7 +123,7 @@ export default function SelectProjectPage() {
                                             "text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 shadow-sm border",
                                             project.role === 'admin' && "bg-amber-500/10 text-amber-400 border-amber-500/20",
                                             project.role === 'developer' && "bg-blue-500/10 text-blue-400 border-blue-500/20",
-                                            project.role === 'viewer' && "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
+                                            project.role === 'viewer' && "bg-secondary text-muted-foreground border-border"
                                         )}>
                                             {project.role}
                                         </Badge>

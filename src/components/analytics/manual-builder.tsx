@@ -167,7 +167,7 @@ export function ManualBuilder({ projectId, onSaved }: { projectId: string; onSav
                     </div>
                 </div>
                 
-                <Button onClick={handleSave} disabled={saving} className="w-full bg-white text-black hover:bg-gray-200">
+                <Button onClick={handleSave} disabled={saving} className="w-full">
                     {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin"/> Saving...</> : <><Save className="w-4 h-4 mr-2"/> Generate & Pin to Dashboard</>}
                 </Button>
             </DialogContent>

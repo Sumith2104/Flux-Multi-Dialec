@@ -601,7 +601,7 @@ export function EditorClient({
                                                 projectId={projectId}
                                                 tableId={tableId}
                                                 tableName={tableName}
-                                                onColumnAdded={() => refreshData(true)}
+                                                onColumnAdded={() => refreshData()}
                                             />
                                             {/* Import CSV — hidden file input triggered by button */}
                                             <input
@@ -975,7 +975,7 @@ export function EditorClient({
                     tableId={tableId!}
                     tableName={tableName!}
                     column={columnToEdit}
-                    onColumnUpdated={() => refreshData(true)}
+                    onColumnUpdated={() => refreshData()}
                 />
             )}
 

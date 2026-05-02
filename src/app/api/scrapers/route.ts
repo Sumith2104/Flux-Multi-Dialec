@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { getPgPool } from '@/lib/pg';
 import { v4 as uuidv4 } from 'uuid';
+import { requireProjectAccess } from '@/lib/project-auth';
 
 export async function GET(request: Request) {
     try {
@@ -12,6 +13,7 @@ export async function GET(request: Request) {
         const projectId = searchParams.get('projectId');
 
         if (!projectId) return NextResponse.json({ success: false, error: 'projectId is required' }, { status: 400 });
+        await requireProjectAccess(projectId, auth);
 
         const pool = getPgPool();
         const { rows } = await pool.query(`
@@ -35,6 +37,7 @@ export async function POST(request: Request) {
         const { projectId, url, selectors, tableName, schedule } = body;
 
         if (!projectId || !url || !selectors || !tableName) return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
+        await requireProjectAccess(projectId, auth, ['admin', 'developer']);
 
         const { checkScraperLimit } = await import('@/lib/limits');
         await checkScraperLimit(projectId, auth.userId);

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import * as React from 'react';
 import { useState, useEffect } from 'react';
@@ -6,14 +6,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     Download, ExternalLink, Copy, Check, Info, AlertCircle,
     Database, Code2, Globe, HardDrive, Webhook, Shield, Users, KeyRound, Zap,
-    ChevronRight, Book, ArrowLeft, X
+    Book, ArrowLeft
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 
-// ─── Code Block ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Code Block â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function CodeBlock({ code, title }: { code: string; title?: string }) {
     const [copied, setCopied] = useState(false);
@@ -23,20 +23,20 @@ function CodeBlock({ code, title }: { code: string; title?: string }) {
         setTimeout(() => setCopied(false), 2000);
     };
     return (
-        <div className="group relative rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden my-4">
+        <div className="group relative my-4 w-full max-w-full overflow-hidden rounded-lg border border-border bg-card">
             {title && (
-                <div className="flex items-center justify-between px-4 py-2.5 bg-zinc-900 border-b border-zinc-800">
-                    <span className="text-xs font-medium text-zinc-400 font-mono">{title}</span>
-                    <button onClick={copy} className="text-zinc-500 hover:text-white transition-colors p-1 rounded">
+                <div className="flex items-center justify-between gap-3 border-b border-border bg-secondary px-3 py-2.5 sm:px-4">
+                    <span className="truncate font-mono text-xs font-medium text-muted-foreground">{title}</span>
+                    <button onClick={copy} className="text-muted-foreground/75 hover:text-white transition-colors p-1 rounded">
                         {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
                     </button>
                 </div>
             )}
-            <pre className="p-4 overflow-x-auto text-[13px] leading-relaxed font-mono">
-                <code className="text-zinc-300">{code}</code>
+            <pre className="mobile-scroll p-3 text-[12px] leading-relaxed font-mono sm:p-4 sm:text-[13px]">
+                <code className="text-foreground/85">{code}</code>
             </pre>
             {!title && (
-                <button onClick={copy} className="absolute top-3 right-3 text-zinc-500 hover:text-white bg-zinc-900/80 p-1.5 rounded opacity-0 group-hover:opacity-100 transition-all">
+                <button onClick={copy} className="absolute top-3 right-3 text-muted-foreground/75 hover:text-white bg-secondary/85 p-1.5 rounded opacity-0 group-hover:opacity-100 transition-all">
                     {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
                 </button>
             )}
@@ -51,9 +51,9 @@ function Callout({ type = 'info', children }: { type?: 'info' | 'warning'; child
     }[type];
     const Icon = type === 'warning' ? AlertCircle : Info;
     return (
-        <div className={cn('flex gap-3 p-4 rounded-xl border text-sm leading-relaxed', styles)}>
+        <div className={cn('flex max-w-full gap-3 rounded-lg border p-4 text-sm leading-relaxed', styles)}>
             <Icon className="h-4 w-4 shrink-0 mt-0.5 opacity-80" />
-            <div className="text-zinc-400">{children}</div>
+            <div className="text-muted-foreground">{children}</div>
         </div>
     );
 }
@@ -66,30 +66,30 @@ function Endpoint({ method, path }: { method: 'GET' | 'POST' | 'DELETE' | 'PATCH
         PATCH: 'text-blue-400 bg-blue-500/10',
     }[method];
     return (
-        <div className="flex items-center gap-3 my-3 p-3 rounded-lg bg-zinc-900 border border-zinc-800 font-mono text-sm">
+        <div className="my-3 flex max-w-full flex-wrap items-center gap-2 rounded-lg border border-border bg-secondary p-3 font-mono text-sm sm:gap-3">
             <span className={cn('px-2 py-0.5 rounded font-bold text-xs', colors)}>{method}</span>
-            <span className="text-zinc-300">{path}</span>
+            <span className="break-anywhere text-foreground/85">{path}</span>
         </div>
     );
 }
 
 function Section({ id, title, icon: Icon, children }: { id: string; title: string; icon: any; children: React.ReactNode }) {
     return (
-        <section id={id} className="scroll-mt-28 space-y-6">
-            <div className="flex items-center gap-3 pb-4 border-b border-zinc-800">
+        <section id={id} className="max-w-full scroll-mt-24 space-y-5 sm:scroll-mt-28 sm:space-y-6">
+            <div className="flex items-center gap-3 pb-4 border-b border-border">
                 <div className="p-2 rounded-lg bg-orange-500/10 text-orange-400 shrink-0">
                     <Icon className="h-5 w-5" />
                 </div>
-                <h2 className="text-2xl font-bold tracking-tight text-white">{title}</h2>
+                <h2 className="text-xl font-bold tracking-tight text-white sm:text-2xl">{title}</h2>
             </div>
-            <div className="space-y-4 text-zinc-400 leading-relaxed">
+            <div className="space-y-4 text-muted-foreground leading-relaxed">
                 {children}
             </div>
         </section>
     );
 }
 
-// ─── Nav Sections ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Nav Sections â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const NAV_SECTIONS = [
     { id: 'getting-started', label: 'Getting Started', icon: Zap },
@@ -104,7 +104,7 @@ const NAV_SECTIONS = [
     { id: 'rls-tutorial', label: 'Row Level Security', icon: Shield },
 ];
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function SettingsDocsPage() {
     const router = useRouter();
@@ -129,14 +129,14 @@ export default function SettingsDocsPage() {
     const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 
     return (
-        <div className="fixed inset-0 z-50 flex bg-[#09090b] text-zinc-300 overflow-hidden">
+        <div className="docs-mobile-safe fixed inset-0 z-50 flex max-w-full overflow-hidden bg-background text-foreground/85">
 
-            {/* ── Sidebar ── */}
-            <aside className="w-64 shrink-0 hidden lg:flex flex-col border-r border-zinc-800/70 bg-zinc-950/60 backdrop-blur-lg pt-6 pb-8 px-4">
+            {/* â”€â”€ Sidebar â”€â”€ */}
+            <aside className="w-64 shrink-0 hidden lg:flex flex-col border-r border-border/70 bg-card/80 backdrop-blur-lg pt-6 pb-8 px-4">
                 {/* Back button */}
                 <button
                     onClick={() => router.back()}
-                    className="flex items-center gap-2 px-2 py-1.5 mb-6 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/50 transition-all text-sm group w-fit"
+                    className="flex items-center gap-2 px-2 py-1.5 mb-6 rounded-lg text-muted-foreground/75 hover:text-foreground/90 hover:bg-muted/70 transition-all text-sm group w-fit"
                 >
                     <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
                     Back to Settings
@@ -159,49 +159,49 @@ export default function SettingsDocsPage() {
                                 'w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all duration-200',
                                 activeSection === s.id
                                     ? 'bg-orange-500/10 text-orange-400 font-semibold'
-                                    : 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/40'
+                                    : 'text-muted-foreground/75 hover:text-foreground/90 hover:bg-muted/60'
                             )}
                         >
-                            <s.icon className={cn('h-3.5 w-3.5 shrink-0', activeSection === s.id ? 'text-orange-400' : 'text-zinc-600')} />
+                            <s.icon className={cn('h-3.5 w-3.5 shrink-0', activeSection === s.id ? 'text-orange-400' : 'text-muted-foreground/55')} />
                             {s.label}
                         </button>
                     ))}
                 </nav>
 
-                <div className="mt-6 pt-6 border-t border-zinc-800 space-y-2">
-                    <Button variant="outline" size="sm" className="w-full justify-start gap-2 border-zinc-800 bg-zinc-900/50 text-zinc-300 hover:bg-zinc-800 text-xs" asChild>
+                <div className="mt-6 pt-6 border-t border-border space-y-2">
+                    <Button variant="outline" size="sm" className="w-full justify-start gap-2 border-border bg-secondary/70 text-foreground/85 hover:bg-muted text-xs" asChild>
                         <a href="/fluxbase-integration-guide.pdf" download>
                             <Download className="h-3.5 w-3.5 text-orange-400" /> Download PDF Guide
                         </a>
                     </Button>
-                    <Link href="/docs" target="_blank" className="flex items-center gap-2 px-3 py-2 text-xs text-zinc-600 hover:text-zinc-300 transition-colors">
+                    <Link href="/docs" target="_blank" className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground/55 hover:text-foreground/85 transition-colors">
                         <ExternalLink className="h-3.5 w-3.5" /> Open Standalone Page
                     </Link>
                 </div>
             </aside>
 
-            {/* ── Mobile top bar ── */}
-            <div className="lg:hidden fixed top-0 left-0 right-0 z-10 flex items-center justify-between px-4 py-3 bg-zinc-950/90 backdrop-blur border-b border-zinc-800">
-                <button onClick={() => router.back()} className="flex items-center gap-2 text-zinc-400 hover:text-white text-sm">
+            {/* â”€â”€ Mobile top bar â”€â”€ */}
+            <div className="lg:hidden fixed top-0 left-0 right-0 z-10 flex items-center justify-between px-4 py-3 bg-popover/95 backdrop-blur border-b border-border">
+                <button onClick={() => router.back()} className="flex items-center gap-2 text-muted-foreground hover:text-white text-sm">
                     <ArrowLeft className="h-4 w-4" /> Back
                 </button>
                 <span className="font-bold text-white text-sm">Documentation</span>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-orange-500/10 text-orange-400 font-mono">v4.2</span>
             </div>
 
-            {/* ── Scrollable Content ── */}
-            <main className="flex-1 overflow-y-auto">
-                <div className="max-w-4xl mx-auto px-5 sm:px-8 lg:px-12 py-20 lg:py-16">
+            {/* â”€â”€ Scrollable Content â”€â”€ */}
+            <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+                <div className="mx-auto w-full max-w-4xl px-5 py-20 sm:px-8 lg:px-12 lg:py-16">
 
                     {/* Hero */}
-                    <header className="mb-16 space-y-4 max-w-2xl">
-                        <h1 className="text-4xl lg:text-5xl font-black tracking-tight text-white leading-tight">
+                    <header className="mb-12 max-w-full space-y-4 sm:mb-16 sm:max-w-2xl">
+                        <h1 className="text-4xl font-black leading-tight tracking-tight text-white sm:text-5xl">
                             Integration <span className="text-orange-400">Guide</span>
                         </h1>
-                        <p className="text-base text-zinc-500 leading-relaxed">
-                            Complete API reference for Fluxbase — covering authentication, SQL execution, real-time events, file storage, team management, and row-level security.
+                        <p className="text-base text-muted-foreground/75 leading-relaxed">
+                            Complete API reference for Fluxbase â€” covering authentication, SQL execution, real-time events, file storage, team management, and row-level security.
                         </p>
-                        <div className="flex flex-wrap items-center gap-3 pt-1">
+                        <div className="flex max-w-full flex-wrap items-center gap-2 pt-1 sm:gap-3">
                             {[
                                 { label: 'v4.2', color: 'bg-orange-500/10 text-orange-400' },
                                 { label: 'PostgreSQL', color: 'bg-blue-500/10 text-blue-400' },
@@ -212,21 +212,21 @@ export default function SettingsDocsPage() {
                         </div>
                     </header>
 
-                    <div className="space-y-24">
+                    <div className="max-w-full space-y-16 sm:space-y-24">
 
-                        {/* ── 1. Getting Started ── */}
+                        {/* â”€â”€ 1. Getting Started â”€â”€ */}
                         <Section id="getting-started" title="Getting Started" icon={Zap}>
-                            <p>Every Fluxbase integration needs three values from your <strong className="text-zinc-200">Project Settings</strong>:</p>
+                            <p>Every Fluxbase integration needs three values from your <strong className="text-foreground/90">Project Settings</strong>:</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
                                 {[
-                                    { label: 'API Key', desc: 'Bearer token from Settings → API Keys.', color: 'text-orange-400 bg-orange-500/10' },
+                                    { label: 'API Key', desc: 'Bearer token from Settings â†’ API Keys.', color: 'text-orange-400 bg-orange-500/10' },
                                     { label: 'Project ID', desc: 'Unique identifier visible in the URL and Settings.', color: 'text-blue-400 bg-blue-500/10' },
-                                    { label: 'Base URL', desc: 'https://fluxbase.vercel.app — all REST endpoints.', color: 'text-emerald-400 bg-emerald-500/10' },
+                                    { label: 'Base URL', desc: 'https://fluxbase.vercel.app â€” all REST endpoints.', color: 'text-emerald-400 bg-emerald-500/10' },
                                     { label: 'WebSocket URL', desc: 'wss://fluxbase-realtime-2bcf.onrender.com', color: 'text-purple-400 bg-purple-500/10' },
                                 ].map((item) => (
-                                    <div key={item.label} className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40 space-y-1.5">
+                                    <div key={item.label} className="p-4 rounded-lg border border-border bg-secondary/60 space-y-1.5">
                                         <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-widest', item.color)}>{item.label}</span>
-                                        <p className="text-sm text-zinc-300">{item.desc}</p>
+                                        <p className="text-sm text-foreground/85">{item.desc}</p>
                                     </div>
                                 ))}
                             </div>
@@ -238,25 +238,25 @@ NEXT_PUBLIC_WS_URL=wss://fluxbase-realtime.onrender.com`} />
                             </Callout>
                         </Section>
 
-                        {/* ── 2. Authentication ── */}
+                        {/* â”€â”€ 2. Authentication â”€â”€ */}
                         <Section id="authentication" title="Authentication" icon={KeyRound}>
-                            <p>All REST API requests must include an <code className="text-orange-300 bg-zinc-800 px-1.5 py-0.5 rounded text-xs">Authorization</code> header with a valid Bearer token.</p>
+                            <p>All REST API requests must include an <code className="text-orange-300 bg-muted px-1.5 py-0.5 rounded text-xs">Authorization</code> header with a valid Bearer token.</p>
                             <CodeBlock title="Required Header" code={`Authorization: Bearer flx_live_xxxxxxxxxxxxxxxxxxxx
 Content-Type: application/json`} />
                             <h3 className="text-base font-bold text-white mt-4">API Key Scopes</h3>
-                            <div className="rounded-xl border border-zinc-800 overflow-hidden text-sm">
-                                <table className="w-full text-left bg-zinc-950">
-                                    <thead><tr className="bg-zinc-900 border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500"><th className="px-4 py-3">Scope</th><th className="px-4 py-3">Access</th><th className="px-4 py-3">Use For</th></tr></thead>
-                                    <tbody className="divide-y divide-zinc-800/50">
+                            <div className="rounded-lg border border-border overflow-hidden text-sm">
+                                <table className="w-full text-left bg-card">
+                                    <thead><tr className="bg-secondary border-b border-border text-xs uppercase tracking-wide text-muted-foreground/75"><th className="px-4 py-3">Scope</th><th className="px-4 py-3">Access</th><th className="px-4 py-3">Use For</th></tr></thead>
+                                    <tbody className="divide-y divide-border/60">
                                         {[
                                             { scope: 'read', access: 'SELECT only', rec: 'Dashboards, public APIs' },
                                             { scope: 'readwrite', access: 'SELECT, INSERT, UPDATE', rec: 'Backend services' },
                                             { scope: 'admin', access: 'Full DDL + DML access', rec: 'Migration & init scripts' },
                                         ].map(r => (
-                                            <tr key={r.scope} className="hover:bg-zinc-900/50">
+                                            <tr key={r.scope} className="hover:bg-secondary/70">
                                                 <td className="px-4 py-3 font-mono text-orange-400 text-xs">{r.scope}</td>
-                                                <td className="px-4 py-3 text-zinc-300 text-xs">{r.access}</td>
-                                                <td className="px-4 py-3 text-zinc-500 text-xs">{r.rec}</td>
+                                                <td className="px-4 py-3 text-foreground/85 text-xs">{r.access}</td>
+                                                <td className="px-4 py-3 text-muted-foreground/75 text-xs">{r.rec}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -264,7 +264,7 @@ Content-Type: application/json`} />
                             </div>
                         </Section>
 
-                        {/* ── 3. Core SQL API ── */}
+                        {/* â”€â”€ 3. Core SQL API â”€â”€ */}
                         <Section id="core-api" title="Core SQL API" icon={Database}>
                             <p>Execute any SQL statement against your project database via a single endpoint.</p>
                             <Endpoint method="POST" path="/api/execute-sql" />
@@ -282,15 +282,15 @@ Content-Type: application/json`} />
   "executionInfo": { "time": "11ms", "operation": "SELECT" }
 }`} />
                             <Callout type="warning">
-                                SQL errors return HTTP <strong>200</strong> with <code className="text-xs">success: false</code>. Always check the <code className="text-xs">success</code> field — never rely solely on HTTP status codes.
+                                SQL errors return HTTP <strong>200</strong> with <code className="text-xs">success: false</code>. Always check the <code className="text-xs">success</code> field â€” never rely solely on HTTP status codes.
                             </Callout>
                         </Section>
 
-                        {/* ── 4. Language SDKs ── */}
+                        {/* â”€â”€ 4. Language SDKs â”€â”€ */}
                         <Section id="sdks" title="Language SDKs" icon={Code2}>
-                            <p>No official SDK required — Fluxbase is a plain HTTP API. Copy a snippet for your stack.</p>
+                            <p>No official SDK required â€” Fluxbase is a plain HTTP API. Copy a snippet for your stack.</p>
                             <Tabs defaultValue="nodejs" className="w-full mt-4">
-                                <TabsList className="flex flex-wrap h-auto gap-1.5 bg-zinc-900 border border-zinc-800 p-1.5 rounded-xl">
+                                <TabsList className="flex flex-wrap h-auto gap-1.5 bg-secondary border border-border p-1.5 rounded-lg">
                                     {[['Node.js', 'nodejs'], ['Python', 'python'], ['Go', 'go'], ['Rust', 'rust'], ['Java', 'java'], ['PHP', 'php'], ['Ruby', 'ruby'], ['cURL', 'curl']].map(([lang, val]) => (
                                         <TabsTrigger key={val} value={val} className="data-[state=active]:bg-orange-500 data-[state=active]:text-white rounded-lg px-3 py-1.5 text-xs font-medium transition-all">{lang}</TabsTrigger>
                                     ))}
@@ -404,12 +404,12 @@ end`} /></TabsContent>
                             </Tabs>
                         </Section>
 
-                        {/* ── 5. Real-time ── */}
+                        {/* â”€â”€ 5. Real-time â”€â”€ */}
                         <Section id="realtime" title="Real-time (WebSocket)" icon={Globe}>
                             <p>Subscribe to live database events over a persistent WebSocket with built-in exponential-backoff reconnection.</p>
                             <CodeBlock title=".env.local" code={`NEXT_PUBLIC_WS_URL=wss://fluxbase-realtime.onrender.com`} />
                             <Tabs defaultValue="js-rt" className="w-full">
-                                <TabsList className="flex flex-wrap h-auto gap-1.5 bg-zinc-900 border border-zinc-800 p-1.5 rounded-xl">
+                                <TabsList className="flex flex-wrap h-auto gap-1.5 bg-secondary border border-border p-1.5 rounded-lg">
                                     {[['JavaScript', 'js-rt'], ['Python', 'python-rt'], ['wscat CLI', 'wscat-rt']].map(([l, v]) => (
                                         <TabsTrigger key={v} value={v} className="data-[state=active]:bg-orange-500 data-[state=active]:text-white rounded-lg px-3 py-1.5 text-xs font-medium transition-all">{l}</TabsTrigger>
                                     ))}
@@ -431,7 +431,7 @@ function connect() {
       console.log(\`[\${payload.operation}] \${payload.table}\`, payload.record);
     }
     if (payload?.event_type === 'schema_update') {
-      console.log('Schema changed — refresh table list.');
+      console.log('Schema changed â€” refresh table list.');
     }
   };
   socket.onclose = () => { setTimeout(connect, delay); delay = Math.min(delay * 2, 15000); };
@@ -466,21 +466,21 @@ wscat -c wss://fluxbase-realtime.onrender.com
                                 </div>
                             </Tabs>
 
-                            <div className="rounded-xl border border-zinc-800 overflow-hidden text-sm mt-4">
-                                <table className="w-full text-left bg-zinc-950">
-                                    <thead><tr className="bg-zinc-900 border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500"><th className="px-4 py-3">msg.type</th><th className="px-4 py-3">payload detail</th><th className="px-4 py-3">When it fires</th></tr></thead>
-                                    <tbody className="divide-y divide-zinc-800/50">
+                            <div className="rounded-lg border border-border overflow-hidden text-sm mt-4">
+                                <table className="w-full text-left bg-card">
+                                    <thead><tr className="bg-secondary border-b border-border text-xs uppercase tracking-wide text-muted-foreground/75"><th className="px-4 py-3">msg.type</th><th className="px-4 py-3">payload detail</th><th className="px-4 py-3">When it fires</th></tr></thead>
+                                    <tbody className="divide-y divide-border/60">
                                         {[
-                                            { type: 'subscribed', detail: '—', when: 'Subscription confirmed.' },
+                                            { type: 'subscribed', detail: 'â€”', when: 'Subscription confirmed.' },
                                             { type: 'db_event', detail: 'operation: INSERT', when: 'Row inserted via SQL or Table Editor.' },
                                             { type: 'db_event', detail: 'operation: UPDATE', when: 'Row modified.' },
                                             { type: 'db_event', detail: 'operation: DELETE', when: 'Row deleted.' },
                                             { type: 'db_event', detail: 'event_type: schema_update', when: 'DDL executed (CREATE / DROP / ALTER).' },
                                         ].map((r, i) => (
-                                            <tr key={i} className="hover:bg-zinc-900/50">
+                                            <tr key={i} className="hover:bg-secondary/70">
                                                 <td className="px-4 py-3 font-mono font-bold text-orange-400 text-xs">{r.type}</td>
                                                 <td className="px-4 py-3 font-mono text-blue-300 text-xs">{r.detail}</td>
-                                                <td className="px-4 py-3 text-zinc-400 text-xs">{r.when}</td>
+                                                <td className="px-4 py-3 text-muted-foreground text-xs">{r.when}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -488,27 +488,27 @@ wscat -c wss://fluxbase-realtime.onrender.com
                             </div>
                         </Section>
 
-                        {/* ── 6. Storage ── */}
+                        {/* â”€â”€ 6. Storage â”€â”€ */}
                         <Section id="storage" title="Storage v2" icon={HardDrive}>
-                            <p>AWS S3-backed file storage — private by default, with logically isolated buckets and short-lived pre-signed URLs.</p>
+                            <p>AWS S3-backed file storage â€” private by default, with logically isolated buckets and short-lived pre-signed URLs.</p>
 
                             <h3 className="text-base font-bold text-white mt-2">Bucket Management</h3>
-                            <div className="rounded-xl border border-zinc-800 overflow-hidden text-sm">
-                                <table className="w-full text-left bg-zinc-950">
-                                    <thead><tr className="bg-zinc-900 border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500"><th className="px-4 py-3">Method</th><th className="px-4 py-3">Endpoint</th><th className="px-4 py-3">Action</th></tr></thead>
-                                    <tbody className="divide-y divide-zinc-800/50">
+                            <div className="rounded-lg border border-border overflow-hidden text-sm">
+                                <table className="w-full text-left bg-card">
+                                    <thead><tr className="bg-secondary border-b border-border text-xs uppercase tracking-wide text-muted-foreground/75"><th className="px-4 py-3">Method</th><th className="px-4 py-3">Endpoint</th><th className="px-4 py-3">Action</th></tr></thead>
+                                    <tbody className="divide-y divide-border/60">
                                         {[
-                                            { m: 'GET', path: '/api/storage/buckets?projectId=…', action: 'List buckets + sizes' },
+                                            { m: 'GET', path: '/api/storage/buckets?projectId=â€¦', action: 'List buckets + sizes' },
                                             { m: 'POST', path: '/api/storage/buckets', action: 'Create a bucket' },
                                             { m: 'PATCH', path: '/api/storage/buckets', action: 'Rename a bucket' },
                                             { m: 'DELETE', path: '/api/storage/buckets', action: 'Delete bucket (must be empty)' },
                                         ].map(r => {
                                             const colors: Record<string, string> = { GET: 'text-emerald-400 bg-emerald-500/10', POST: 'text-orange-400 bg-orange-500/10', PATCH: 'text-blue-400 bg-blue-500/10', DELETE: 'text-red-400 bg-red-500/10' };
                                             return (
-                                                <tr key={r.m + r.path} className="hover:bg-zinc-900/50">
+                                                <tr key={r.m + r.path} className="hover:bg-secondary/70">
                                                     <td className="px-4 py-3"><span className={cn('px-2 py-0.5 rounded font-bold text-xs font-mono', colors[r.m])}>{r.m}</span></td>
-                                                    <td className="px-4 py-3 font-mono text-zinc-300 text-xs">{r.path}</td>
-                                                    <td className="px-4 py-3 text-zinc-500 text-xs">{r.action}</td>
+                                                    <td className="px-4 py-3 font-mono text-foreground/85 text-xs">{r.path}</td>
+                                                    <td className="px-4 py-3 text-muted-foreground/75 text-xs">{r.action}</td>
                                                 </tr>
                                             );
                                         })}
@@ -516,25 +516,25 @@ wscat -c wss://fluxbase-realtime.onrender.com
                                 </table>
                             </div>
                             <CodeBlock title="POST /api/storage/buckets" code={`{ "projectId": "YOUR_PROJECT_ID", "name": "profile-photos", "isPublic": false }
-// Name: lowercase alphanumeric, hyphens, underscores, 1–63 chars`} />
+// Name: lowercase alphanumeric, hyphens, underscores, 1â€“63 chars`} />
 
                             <h3 className="text-base font-bold text-white mt-6">File Operations</h3>
-                            <div className="rounded-xl border border-zinc-800 overflow-hidden text-sm">
-                                <table className="w-full text-left bg-zinc-950">
-                                    <thead><tr className="bg-zinc-900 border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500"><th className="px-4 py-3">Method</th><th className="px-4 py-3">Endpoint</th><th className="px-4 py-3">Action</th></tr></thead>
-                                    <tbody className="divide-y divide-zinc-800/50">
+                            <div className="rounded-lg border border-border overflow-hidden text-sm">
+                                <table className="w-full text-left bg-card">
+                                    <thead><tr className="bg-secondary border-b border-border text-xs uppercase tracking-wide text-muted-foreground/75"><th className="px-4 py-3">Method</th><th className="px-4 py-3">Endpoint</th><th className="px-4 py-3">Action</th></tr></thead>
+                                    <tbody className="divide-y divide-border/60">
                                         {[
                                             { m: 'POST', path: '/api/storage/upload', action: 'Upload (multipart/form-data)' },
-                                            { m: 'GET', path: '/api/storage/files?bucketId=…&projectId=…', action: 'List files in bucket' },
-                                            { m: 'GET', path: '/api/storage/url?s3Key=…&projectId=…', action: '15-min pre-signed URL (accepts s3Key, fileId, or id)' },
+                                            { m: 'GET', path: '/api/storage/files?bucketId=â€¦&projectId=â€¦', action: 'List files in bucket' },
+                                            { m: 'GET', path: '/api/storage/url?s3Key=â€¦&projectId=â€¦', action: '15-min pre-signed URL (accepts s3Key, fileId, or id)' },
                                             { m: 'DELETE', path: '/api/storage/files', action: 'Delete file (S3 + DB)' },
                                         ].map(r => {
                                             const colors: Record<string, string> = { GET: 'text-emerald-400 bg-emerald-500/10', POST: 'text-orange-400 bg-orange-500/10', DELETE: 'text-red-400 bg-red-500/10' };
                                             return (
-                                                <tr key={r.m + r.path} className="hover:bg-zinc-900/50">
+                                                <tr key={r.m + r.path} className="hover:bg-secondary/70">
                                                     <td className="px-4 py-3"><span className={cn('px-2 py-0.5 rounded font-bold text-xs font-mono', colors[r.m])}>{r.m}</span></td>
-                                                    <td className="px-4 py-3 font-mono text-zinc-300 text-xs">{r.path}</td>
-                                                    <td className="px-4 py-3 text-zinc-500 text-xs">{r.action}</td>
+                                                    <td className="px-4 py-3 font-mono text-foreground/85 text-xs">{r.path}</td>
+                                                    <td className="px-4 py-3 text-muted-foreground/75 text-xs">{r.action}</td>
                                                 </tr>
                                             );
                                         })}
@@ -542,7 +542,7 @@ wscat -c wss://fluxbase-realtime.onrender.com
                                 </table>
                             </div>
 
-                            <CodeBlock title="Upload — required form fields" code={`curl -X POST "https://fluxbase.vercel.app/api/storage/upload" \\
+                            <CodeBlock title="Upload â€” required form fields" code={`curl -X POST "https://fluxbase.vercel.app/api/storage/upload" \\
   -H "Authorization: Bearer $FLUXBASE_API_KEY" \\
   -F "file=@avatar.jpg" \\       # binary file
   -F "bucketId=profile-photos" \\ # bucket UUID or name
@@ -554,14 +554,14 @@ wscat -c wss://fluxbase-realtime.onrender.com
             "size": 204800, "mime_type": "image/jpeg" }
 }`} />
 
-                            <CodeBlock title="Delete File — Request Body" code={`{
+                            <CodeBlock title="Delete File â€” Request Body" code={`{
   "fileId": "uuid-from-upload",
   "s3Key": "YOUR_PROJECT_ID/bucket-uuid/avatar.jpg",
   "projectId": "YOUR_PROJECT_ID"
 }`} />
                         </Section>
 
-                        {/* ── 7. Team ── */}
+                        {/* â”€â”€ 7. Team â”€â”€ */}
                         <Section id="team-api" title="Team & Invitations" icon={Users}>
                             <p>Manage collaborators and role-based invitations. Requires admin privileges.</p>
                             <h3 className="text-base font-bold text-white">List Members & Invites</h3>
@@ -569,18 +569,18 @@ wscat -c wss://fluxbase-realtime.onrender.com
                             <h3 className="text-base font-bold text-white mt-4">Send an Invitation</h3>
                             <Endpoint method="POST" path="/api/team" />
                             <CodeBlock title="Request Body" code={`{ "projectId": "YOUR_PROJECT_ID", "email": "user@company.com", "role": "developer" }`} />
-                            <div className="rounded-xl border border-zinc-800 overflow-hidden text-sm">
-                                <table className="w-full text-left bg-zinc-950">
-                                    <thead><tr className="bg-zinc-900 border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500"><th className="px-4 py-3">Role</th><th className="px-4 py-3">Permissions</th></tr></thead>
-                                    <tbody className="divide-y divide-zinc-800/50">
+                            <div className="rounded-lg border border-border overflow-hidden text-sm">
+                                <table className="w-full text-left bg-card">
+                                    <thead><tr className="bg-secondary border-b border-border text-xs uppercase tracking-wide text-muted-foreground/75"><th className="px-4 py-3">Role</th><th className="px-4 py-3">Permissions</th></tr></thead>
+                                    <tbody className="divide-y divide-border/60">
                                         {[
-                                            { role: 'admin', perms: 'Full access — members, settings, billing, data.' },
+                                            { role: 'admin', perms: 'Full access â€” members, settings, billing, data.' },
                                             { role: 'developer', perms: 'Read/write data & schema. No billing/member management.' },
                                             { role: 'viewer', perms: 'Read-only access to data and dashboard.' },
                                         ].map(r => (
-                                            <tr key={r.role} className="hover:bg-zinc-900/50">
+                                            <tr key={r.role} className="hover:bg-secondary/70">
                                                 <td className="px-4 py-3 font-mono text-orange-400 text-xs">{r.role}</td>
-                                                <td className="px-4 py-3 text-zinc-400 text-xs">{r.perms}</td>
+                                                <td className="px-4 py-3 text-muted-foreground text-xs">{r.perms}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -596,7 +596,7 @@ wscat -c wss://fluxbase-realtime.onrender.com
                             </Callout>
                         </Section>
 
-                        {/* ── 8. Webhooks ── */}
+                        {/* â”€â”€ 8. Webhooks â”€â”€ */}
                         <Section id="webhooks" title="Webhooks" icon={Webhook}>
                             <p>Outbound HTTP POST sent to your server when data events occur.</p>
                             <CodeBlock title="Webhook Payload" code={`{
@@ -614,12 +614,12 @@ const expected = 'sha256=' + crypto
 if (sig !== expected) return res.status(401).send('Unauthorized');`} />
                         </Section>
 
-                        {/* ── 9. Error Codes ── */}
+                        {/* â”€â”€ 9. Error Codes â”€â”€ */}
                         <Section id="error-codes" title="Error Codes" icon={AlertCircle}>
-                            <div className="rounded-xl border border-zinc-800 overflow-hidden text-sm">
-                                <table className="w-full text-left bg-zinc-950">
-                                    <thead><tr className="bg-zinc-900 border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500"><th className="px-4 py-3">Status</th><th className="px-4 py-3">Code</th><th className="px-4 py-3">Fix</th></tr></thead>
-                                    <tbody className="divide-y divide-zinc-800/50">
+                            <div className="rounded-lg border border-border overflow-hidden text-sm">
+                                <table className="w-full text-left bg-card">
+                                    <thead><tr className="bg-secondary border-b border-border text-xs uppercase tracking-wide text-muted-foreground/75"><th className="px-4 py-3">Status</th><th className="px-4 py-3">Code</th><th className="px-4 py-3">Fix</th></tr></thead>
+                                    <tbody className="divide-y divide-border/60">
                                         {[
                                             { s: '401', code: 'AUTH_REQUIRED', fix: 'Add Authorization: Bearer <key> header.' },
                                             { s: '401', code: 'TOKEN_EXPIRED', fix: 'Re-authenticate to get a fresh token.' },
@@ -628,14 +628,14 @@ if (sig !== expected) return res.status(401).send('Unauthorized');`} />
                                             { s: '403', code: 'PROJECT_SUSPENDED', fix: 'Check your billing plan status.' },
                                             { s: '404', code: 'PROJECT_NOT_FOUND', fix: 'Verify your projectId value.' },
                                             { s: '404', code: 'USER_NOT_FOUND', fix: 'Invitee must have a Fluxbase account.' },
-                                            { s: '429', code: 'RATE_LIMIT', fix: '50 requests per 10s — use exponential backoff.' },
-                                            { s: '503', code: 'DATABASE_CONNECTION_ERROR', fix: 'Transient DB issue — retry with backoff.' },
+                                            { s: '429', code: 'RATE_LIMIT', fix: '50 requests per 10s â€” use exponential backoff.' },
+                                            { s: '503', code: 'DATABASE_CONNECTION_ERROR', fix: 'Transient DB issue â€” retry with backoff.' },
                                             { s: '200', code: 'SQL_EXEC_ERROR', fix: 'Check error.details for the Postgres error.' },
                                         ].map((e, i) => (
-                                            <tr key={i} className="hover:bg-zinc-900/50">
-                                                <td className="px-4 py-3 text-zinc-500 font-mono text-xs">{e.s}</td>
+                                            <tr key={i} className="hover:bg-secondary/70">
+                                                <td className="px-4 py-3 text-muted-foreground/75 font-mono text-xs">{e.s}</td>
                                                 <td className="px-4 py-3 font-mono font-bold text-orange-400 text-xs">{e.code}</td>
-                                                <td className="px-4 py-3 text-zinc-400 text-xs">{e.fix}</td>
+                                                <td className="px-4 py-3 text-muted-foreground text-xs">{e.fix}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -643,23 +643,23 @@ if (sig !== expected) return res.status(401).send('Unauthorized');`} />
                             </div>
                         </Section>
 
-                        {/* ── 10. RLS ── */}
+                        {/* â”€â”€ 10. RLS â”€â”€ */}
                         <Section id="rls-tutorial" title="Row Level Security" icon={Shield}>
                             <Callout type="warning">
-                                RLS enforces access rules at the database engine level — your API can never return data that violates a policy, regardless of the SQL sent.
+                                RLS enforces access rules at the database engine level â€” your API can never return data that violates a policy, regardless of the SQL sent.
                             </Callout>
                             <div className="space-y-3 mt-4">
                                 {[
-                                    { step: '01', t: 'Open RLS Dashboard', d: 'Database → Row Level Security. All tables are listed.' },
-                                    { step: '02', t: 'Create a Policy', d: 'Choose command scope (ALL / SELECT / INSERT…) and write a USING expression.' },
-                                    { step: '03', t: 'Enable the Policy', d: 'Toggle ON → runs ALTER TABLE … ENABLE ROW LEVEL SECURITY.' },
-                                    { step: '04', t: 'Test It', d: 'Run SELECT * from the SQL Editor — only allowed rows appear.' },
+                                    { step: '01', t: 'Open RLS Dashboard', d: 'Database â†’ Row Level Security. All tables are listed.' },
+                                    { step: '02', t: 'Create a Policy', d: 'Choose command scope (ALL / SELECT / INSERTâ€¦) and write a USING expression.' },
+                                    { step: '03', t: 'Enable the Policy', d: 'Toggle ON â†’ runs ALTER TABLE â€¦ ENABLE ROW LEVEL SECURITY.' },
+                                    { step: '04', t: 'Test It', d: 'Run SELECT * from the SQL Editor â€” only allowed rows appear.' },
                                 ].map(item => (
-                                    <div key={item.step} className="flex gap-4 p-4 rounded-xl border border-zinc-800 bg-zinc-900/30">
+                                    <div key={item.step} className="flex gap-4 p-4 rounded-lg border border-border bg-secondary/50">
                                         <span className="text-xl font-black text-orange-500/30 font-mono shrink-0 mt-0.5">{item.step}</span>
                                         <div>
                                             <h5 className="font-semibold text-white text-sm mb-1">{item.t}</h5>
-                                            <p className="text-xs text-zinc-500">{item.d}</p>
+                                            <p className="text-xs text-muted-foreground/75">{item.d}</p>
                                         </div>
                                     </div>
                                 ))}
@@ -674,7 +674,7 @@ if (sig !== expected) return res.status(401).send('Unauthorized');`} />
                                     { label: 'Type cast fix', code: `user_id::text = auth.uid()` },
                                 ].map(item => (
                                     <div key={item.label}>
-                                        <p className="text-xs text-zinc-500 mb-1">{item.label}</p>
+                                        <p className="text-xs text-muted-foreground/75 mb-1">{item.label}</p>
                                         <CodeBlock code={item.code} />
                                     </div>
                                 ))}
@@ -682,16 +682,16 @@ if (sig !== expected) return res.status(401).send('Unauthorized');`} />
                         </Section>
 
                         {/* Footer */}
-                        <div className="pt-12 border-t border-zinc-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="pt-12 border-t border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                             <div>
                                 <p className="text-base font-bold text-white">Need more?</p>
-                                <p className="text-sm text-zinc-500">Open the full standalone documentation page.</p>
+                                <p className="text-sm text-muted-foreground/75">Open the full standalone documentation page.</p>
                             </div>
                             <div className="flex gap-3">
-                                <Button variant="outline" className="border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 rounded-xl" asChild>
+                                <Button variant="outline" className="border-border bg-secondary text-foreground/85 hover:bg-muted rounded-lg" asChild>
                                     <a href="/fluxbase-integration-guide.pdf" download><Download className="h-4 w-4 mr-2 text-orange-400" />PDF Guide</a>
                                 </Button>
-                                <Button className="bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-semibold shadow-lg shadow-orange-500/20" asChild>
+                                <Button className="bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-semibold shadow-lg shadow-orange-500/20" asChild>
                                     <Link href="/docs" target="_blank"><ExternalLink className="h-4 w-4 mr-2" />Full Docs</Link>
                                 </Button>
                             </div>

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { razorpay } from '@/lib/razorpay';
+import { getRazorpayClient } from '@/lib/razorpay';
 import { getCurrentUserId } from '@/lib/auth';
 
 export async function POST(req: Request) {
@@ -16,6 +16,7 @@ export async function POST(req: Request) {
         }
 
         // Generate a Subscription object via Razorpay Node SDK
+        const razorpay = getRazorpayClient();
         const subscription = await razorpay.subscriptions.create({
             plan_id: planId,
             customer_notify: 1,

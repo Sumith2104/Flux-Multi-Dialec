@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import {
@@ -26,7 +26,7 @@ const CHANGELOG: ChangelogEntry[] = [
         version: 'v2.4',
         type: 'new',
         title: 'Command Palette',
-        description: 'Press ⌘K to search and navigate anywhere in Fluxbase instantly.',
+        description: 'Press âŒ˜K to search and navigate anywhere in Fluxbase instantly.',
         icon: <Zap className="h-3.5 w-3.5" />,
     },
     {
@@ -88,7 +88,7 @@ const typeConfig = {
 
 export function ChangelogPopover() {
     const [open, setOpen] = useState(false);
-    // Track new entries (unread) — in a real app, persist last-seen version in localStorage
+    // Track new entries (unread) â€” in a real app, persist last-seen version in localStorage
     const [lastSeen, setLastSeen] = useState<string | null>(() => {
         if (typeof window !== 'undefined') return localStorage.getItem('flux_changelog_seen');
         return null;
@@ -123,8 +123,8 @@ export function ChangelogPopover() {
                     )}
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-96 p-0 bg-zinc-950 border-zinc-800 max-h-[480px] flex flex-col" align="end">
-                <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-2 shrink-0">
+            <PopoverContent className="w-96 p-0 bg-card border-border max-h-[480px] flex flex-col" align="end">
+                <div className="px-4 py-3 border-b border-border flex items-center gap-2 shrink-0">
                     <Sparkles className="h-4 w-4 text-orange-400" />
                     <div>
                         <h4 className="font-semibold text-sm text-foreground">What&apos;s New</h4>
@@ -138,11 +138,11 @@ export function ChangelogPopover() {
                             <div
                                 key={i}
                                 className={cn(
-                                    'px-4 py-3 border-b border-zinc-800/60 last:border-0 hover:bg-zinc-900/50 transition-colors',
+                                    'px-4 py-3 border-b border-border/60 last:border-0 hover:bg-secondary/70 transition-colors',
                                 )}
                             >
                                 <div className="flex items-start gap-3">
-                                    <div className="p-1.5 rounded-md bg-zinc-800 text-zinc-300 shrink-0 mt-0.5">
+                                    <div className="p-1.5 rounded-md bg-muted text-foreground/85 shrink-0 mt-0.5">
                                         {entry.icon}
                                     </div>
                                     <div className="flex-1 min-w-0">
@@ -152,8 +152,8 @@ export function ChangelogPopover() {
                                                 {label}
                                             </Badge>
                                         </div>
-                                        <p className="text-xs text-zinc-400 leading-relaxed">{entry.description}</p>
-                                        <p className="text-[10px] text-zinc-600 mt-1">{entry.date} · {entry.version}</p>
+                                        <p className="text-xs text-muted-foreground leading-relaxed">{entry.description}</p>
+                                        <p className="text-[10px] text-muted-foreground/55 mt-1">{entry.date} Â· {entry.version}</p>
                                     </div>
                                 </div>
                             </div>

@@ -21,7 +21,7 @@ export function getMysqlPool(): mysql.Pool {
             connectionLimit: 20,
             waitForConnections: true,
             queueLimit: 0,
-            multipleStatements: true, // Allow batch execution of scripts
+            multipleStatements: false,
             enableKeepAlive: true, // Prevent AWS RDS from dropping idle connections
             keepAliveInitialDelay: 10000,
             ssl: {

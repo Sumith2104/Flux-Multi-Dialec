@@ -15,7 +15,7 @@ app.use(cors());
 app.use(express.json());
 
 // Health Check Route
-app.get('/', (req, res) => {
+app.get('/', (_req: any, res: any) => {
     res.status(200).json({ 
         status: 'healthy', 
         service: 'Fluxbase Scraper Engine',
@@ -187,7 +187,7 @@ async function runScraper(job: any) {
 // EXTERNAL API (Webhook trigger from Next.js inside Vercel)
 // -------------------------------------------------------------
 
-app.post('/api/run', async (req, res) => {
+app.post('/api/run', async (req: any, res: any) => {
     const { job } = req.body;
     if (!job || !job.scraper_id) {
         return res.status(400).json({ success: false, error: 'Valid job object required.' });

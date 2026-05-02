@@ -8,7 +8,7 @@ import { useQueryClient } from '@tanstack/react-query';
 // This prevents the thundering herd of N connections when N hooks call useRealtimeSubscription.
 
 export interface RealtimeEvent {
-    type: 'live' | 'update' | 'subscribed' | 'error' | 'connected';
+    type: 'live' | 'update' | 'subscribed' | 'error' | 'connected' | 'schema_update' | 'db_event';
     project_id?: string;
     table?: string;
     table_id?: string;
@@ -209,7 +209,7 @@ function subscribe(projectId: string, listener: Listener): () => void {
 
 export function useRealtimeSubscription(projectId: string | undefined) {
     const [lastEvent, setLastEvent] = useState<RealtimeEvent | null>(null);
-    const [status, setStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
+    const [status, setStatus] = useState<'idle' | 'connecting' | 'open' | 'closed'>('connecting');
     const queryClient = useQueryClient();
     const projectIdRef = useRef(projectId);
     projectIdRef.current = projectId;

@@ -1,19 +1,17 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Shield, Plus, Trash2, ToggleLeft, ToggleRight, Loader2, AlertTriangle, Eye, EyeOff, ChevronDown, ChevronRight, Info } from 'lucide-react';
+import { Shield, Plus, Trash2, ToggleLeft, ToggleRight, Loader2, ChevronDown, ChevronRight, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getTablesForProject } from '@/lib/data';
-import { getPgPool } from '@/lib/pg';
 
 interface RLSPolicy {
     id: string;
@@ -133,8 +131,8 @@ export default function RLSPage() {
                     <Info className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
                     <div className="text-sm text-amber-200/80">
                         <strong className="text-amber-300">RLS policies are enforced at the database level</strong> for all API requests.
-                        Use <code className="bg-zinc-800 px-1 rounded text-xs">auth.uid()</code> to reference the current user&apos;s ID in your expressions.
-                        Example: <code className="bg-zinc-800 px-1 rounded text-xs">user_id = auth.uid()</code>
+                        Use <code className="bg-muted px-1 rounded text-xs">auth.uid()</code> to reference the current user&apos;s ID in your expressions.
+                        Example: <code className="bg-muted px-1 rounded text-xs">user_id = auth.uid()</code>
                     </div>
                 </CardContent>
             </Card>
@@ -154,9 +152,9 @@ export default function RLSPage() {
             ) : (
                 <div className="space-y-3">
                     {Object.entries(groupedByTable).map(([tableName, tablePolicies]) => (
-                        <Card key={tableName} className="border-zinc-800">
+                        <Card key={tableName} className="border-border">
                             <button
-                                className="w-full flex items-center justify-between p-4 text-left hover:bg-zinc-900/50 transition-colors rounded-lg"
+                                className="w-full flex items-center justify-between p-4 text-left hover:bg-secondary/70 transition-colors rounded-lg"
                                 onClick={() => setExpandedTable(prev => prev === tableName ? null : tableName)}
                                 id={`rls-table-${tableName}`}
                             >
@@ -177,23 +175,23 @@ export default function RLSPage() {
                             </button>
 
                             {expandedTable === tableName && (
-                                <div className="border-t border-zinc-800 p-4 space-y-3">
+                                <div className="border-t border-border p-4 space-y-3">
                                     {tablePolicies.length === 0 ? (
                                         <div className="text-center py-6 text-sm text-muted-foreground">
                                             No policies on this table. All rows are accessible via the API.
                                         </div>
                                     ) : (
                                         tablePolicies.map(policy => (
-                                            <div key={policy.id} className={cn('rounded-lg border p-3 flex items-start justify-between gap-3', policy.enabled ? 'border-zinc-700 bg-zinc-900/50' : 'border-zinc-800 bg-zinc-950 opacity-60')}>
+                                            <div key={policy.id} className={cn('rounded-lg border p-3 flex items-start justify-between gap-3', policy.enabled ? 'border-border/80 bg-secondary/70' : 'border-border bg-card opacity-60')}>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-2 mb-1">
                                                         <span className="font-medium text-sm">{policy.policyName}</span>
                                                         <Badge variant="outline" className={cn('text-[10px] h-4 px-1.5', commandColors[policy.command])}>
                                                             {policy.command}
                                                         </Badge>
-                                                        {!policy.enabled && <Badge variant="outline" className="text-[10px] h-4 px-1.5 text-zinc-500">Disabled</Badge>}
+                                                        {!policy.enabled && <Badge variant="outline" className="text-[10px] h-4 px-1.5 text-muted-foreground/75">Disabled</Badge>}
                                                     </div>
-                                                    <code className="text-xs text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded font-mono block truncate">
+                                                    <code className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded font-mono block truncate">
                                                         USING ({policy.expression})
                                                     </code>
                                                 </div>
@@ -222,7 +220,7 @@ export default function RLSPage() {
 
             {/* Add Policy Dialog */}
             <Dialog open={showAdd} onOpenChange={setShowAdd}>
-                <DialogContent className="bg-zinc-950 border-zinc-800 max-w-lg">
+                <DialogContent className="bg-card border-border max-w-lg">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Shield className="h-4 w-4 text-amber-400" />
@@ -234,10 +232,10 @@ export default function RLSPage() {
                             <div>
                                 <Label className="text-xs mb-1.5 block">Table</Label>
                                 <Select value={form.tableName} onValueChange={v => setForm(f => ({ ...f, tableName: v }))}>
-                                    <SelectTrigger className="bg-zinc-900 border-zinc-700 text-sm h-9" id="rls-table-select">
+                                    <SelectTrigger className="bg-secondary border-border/80 text-sm h-9" id="rls-table-select">
                                         <SelectValue placeholder="Select table" />
                                     </SelectTrigger>
-                                    <SelectContent className="bg-zinc-950 border-zinc-800">
+                                    <SelectContent className="bg-card border-border">
                                         {tables.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
@@ -245,10 +243,10 @@ export default function RLSPage() {
                             <div>
                                 <Label className="text-xs mb-1.5 block">Command</Label>
                                 <Select value={form.command} onValueChange={v => setForm(f => ({ ...f, command: v }))}>
-                                    <SelectTrigger className="bg-zinc-900 border-zinc-700 text-sm h-9" id="rls-command-select">
+                                    <SelectTrigger className="bg-secondary border-border/80 text-sm h-9" id="rls-command-select">
                                         <SelectValue />
                                     </SelectTrigger>
-                                    <SelectContent className="bg-zinc-950 border-zinc-800">
+                                    <SelectContent className="bg-card border-border">
                                         {['ALL', 'SELECT', 'INSERT', 'UPDATE', 'DELETE'].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
@@ -257,12 +255,12 @@ export default function RLSPage() {
                         <div>
                             <Label className="text-xs mb-1.5 block">Policy Name</Label>
                             <Input value={form.policyName} onChange={e => setForm(f => ({ ...f, policyName: e.target.value }))}
-                                placeholder="e.g. users_own_rows" className="bg-zinc-900 border-zinc-700 h-9 text-sm" id="rls-policy-name" />
+                                placeholder="e.g. users_own_rows" className="bg-secondary border-border/80 h-9 text-sm" id="rls-policy-name" />
                         </div>
                         <div>
                             <Label className="text-xs mb-1.5 block">USING Expression</Label>
                             <Textarea value={form.expression} onChange={e => setForm(f => ({ ...f, expression: e.target.value }))}
-                                placeholder="e.g. user_id = auth.uid()" className="bg-zinc-900 border-zinc-700 font-mono text-sm min-h-[80px]"
+                                placeholder="e.g. user_id = auth.uid()" className="bg-secondary border-border/80 font-mono text-sm min-h-[80px]"
                                 id="rls-expression" />
                             <p className="text-xs text-muted-foreground mt-1">SQL expression that must evaluate to true for a row to be accessible</p>
                         </div>

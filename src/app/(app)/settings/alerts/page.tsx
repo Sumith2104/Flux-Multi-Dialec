@@ -1,10 +1,10 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback, useContext } from 'react';
 import { ProjectContext } from '@/contexts/project-context';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -107,7 +107,7 @@ export default function AlertsPage() {
             </div>
 
             {!selectedProject ? (
-                <Card className="border-dashed border-zinc-800">
+                <Card className="border-dashed border-border">
                     <CardContent className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
                         <Bell className="h-12 w-12 opacity-20" />
                         <p className="text-sm">Please select a project to configure alerts.</p>
@@ -134,29 +134,29 @@ export default function AlertsPage() {
                         const metric = metricOptions.find(m => m.value === alert.metric);
                         const MetricIcon = metric?.icon || Activity;
                         return (
-                            <Card key={alert.id} className={cn('border-zinc-800', !alert.enabled && 'opacity-60')}>
+                            <Card key={alert.id} className={cn('border-border', !alert.enabled && 'opacity-60')}>
                                 <CardContent className="flex items-center gap-4 p-4">
-                                    <div className={cn('p-2 rounded-md shrink-0', alert.enabled ? 'bg-yellow-500/10' : 'bg-zinc-800')}>
-                                        <MetricIcon className={cn('h-4 w-4', alert.enabled ? 'text-yellow-400' : 'text-zinc-500')} />
+                                    <div className={cn('p-2 rounded-md shrink-0', alert.enabled ? 'bg-yellow-500/10' : 'bg-muted')}>
+                                        <MetricIcon className={cn('h-4 w-4', alert.enabled ? 'text-yellow-400' : 'text-muted-foreground/75')} />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 mb-0.5">
                                             <span className="font-medium text-sm">{alert.name}</span>
-                                            {!alert.enabled && <Badge variant="outline" className="text-[10px] h-4 text-zinc-500">Paused</Badge>}
+                                            {!alert.enabled && <Badge variant="outline" className="text-[10px] h-4 text-muted-foreground/75">Paused</Badge>}
                                             {alert.lastTriggeredAt && <Badge variant="outline" className="text-[10px] h-4 text-red-400 border-red-500/20 bg-red-500/10">Last triggered</Badge>}
                                         </div>
                                         <p className="text-xs text-muted-foreground">
-                                            Notify when <span className="text-zinc-300 font-medium">{metric?.label}</span>{' '}
+                                            Notify when <span className="text-foreground/85 font-medium">{metric?.label}</span>{' '}
                                             <span className="font-mono text-orange-400">{alert.condition} {alert.threshold.toLocaleString()}</span>
                                         </p>
                                         <div className="flex items-center gap-3 mt-1">
-                                            {alert.notifyEmail && <span className="text-[10px] text-zinc-500">📧 {alert.notifyEmail}</span>}
-                                            {alert.notifyWebhook && <span className="text-[10px] text-zinc-500">🔗 Webhook</span>}
+                                            {alert.notifyEmail && <span className="text-[10px] text-muted-foreground/75">ðŸ“§ {alert.notifyEmail}</span>}
+                                            {alert.notifyWebhook && <span className="text-[10px] text-muted-foreground/75">ðŸ”— Webhook</span>}
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-1 shrink-0">
                                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleToggle(alert)}>
-                                            {alert.enabled ? <ToggleRight className="h-5 w-5 text-emerald-400" /> : <ToggleLeft className="h-5 w-5 text-zinc-500" />}
+                                            {alert.enabled ? <ToggleRight className="h-5 w-5 text-emerald-400" /> : <ToggleLeft className="h-5 w-5 text-muted-foreground/75" />}
                                         </Button>
                                         <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-red-400" onClick={() => handleDelete(alert.id)}>
                                             <Trash2 className="h-4 w-4" />
@@ -173,7 +173,7 @@ export default function AlertsPage() {
 
             {/* Add Alert Dialog */}
             <Dialog open={showAdd} onOpenChange={setShowAdd}>
-                <DialogContent className="bg-zinc-950 border-zinc-800 max-w-lg">
+                <DialogContent className="bg-card border-border max-w-lg">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Bell className="h-4 w-4 text-yellow-400" />
@@ -184,16 +184,16 @@ export default function AlertsPage() {
                         <div>
                             <Label className="text-xs mb-1.5 block">Alert Name</Label>
                             <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                                placeholder="e.g. High traffic alert" className="bg-zinc-900 border-zinc-700 h-9 text-sm" id="alert-name" />
+                                placeholder="e.g. High traffic alert" className="bg-secondary border-border/80 h-9 text-sm" id="alert-name" />
                         </div>
-                        <div className="grid grid-cols-3 gap-3">
-                            <div className="col-span-1">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            <div>
                                 <Label className="text-xs mb-1.5 block">Metric</Label>
                                 <Select value={form.metric} onValueChange={v => setForm(f => ({ ...f, metric: v }))}>
-                                    <SelectTrigger className="bg-zinc-900 border-zinc-700 text-sm h-9" id="alert-metric">
+                                    <SelectTrigger className="bg-secondary border-border/80 text-sm h-9" id="alert-metric">
                                         <SelectValue />
                                     </SelectTrigger>
-                                    <SelectContent className="bg-zinc-950 border-zinc-800">
+                                    <SelectContent className="bg-card border-border">
                                         {metricOptions.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
@@ -201,10 +201,10 @@ export default function AlertsPage() {
                             <div>
                                 <Label className="text-xs mb-1.5 block">When</Label>
                                 <Select value={form.condition} onValueChange={v => setForm(f => ({ ...f, condition: v as any }))}>
-                                    <SelectTrigger className="bg-zinc-900 border-zinc-700 text-sm h-9 font-mono" id="alert-condition">
+                                    <SelectTrigger className="bg-secondary border-border/80 text-sm h-9 font-mono" id="alert-condition">
                                         <SelectValue />
                                     </SelectTrigger>
-                                    <SelectContent className="bg-zinc-950 border-zinc-800">
+                                    <SelectContent className="bg-card border-border">
                                         <SelectItem value=">">&gt; greater than</SelectItem>
                                         <SelectItem value="<">&lt; less than</SelectItem>
                                         <SelectItem value="=">=  equals</SelectItem>
@@ -214,18 +214,18 @@ export default function AlertsPage() {
                             <div>
                                 <Label className="text-xs mb-1.5 block">Threshold</Label>
                                 <Input type="number" value={form.threshold} onChange={e => setForm(f => ({ ...f, threshold: parseInt(e.target.value) || 0 }))}
-                                    className="bg-zinc-900 border-zinc-700 h-9 text-sm font-mono" id="alert-threshold" />
+                                    className="bg-secondary border-border/80 h-9 text-sm font-mono" id="alert-threshold" />
                             </div>
                         </div>
                         <div>
                             <Label className="text-xs mb-1.5 block">Notify Email (optional)</Label>
                             <Input value={form.notifyEmail} onChange={e => setForm(f => ({ ...f, notifyEmail: e.target.value }))}
-                                placeholder="you@example.com" className="bg-zinc-900 border-zinc-700 h-9 text-sm" id="alert-email" />
+                                placeholder="you@example.com" className="bg-secondary border-border/80 h-9 text-sm" id="alert-email" />
                         </div>
                         <div>
                             <Label className="text-xs mb-1.5 block">Notify Webhook URL (optional)</Label>
                             <Input value={form.notifyWebhook} onChange={e => setForm(f => ({ ...f, notifyWebhook: e.target.value }))}
-                                placeholder="https://hooks.slack.com/..." className="bg-zinc-900 border-zinc-700 h-9 text-sm font-mono" id="alert-webhook" />
+                                placeholder="https://hooks.slack.com/..." className="bg-secondary border-border/80 h-9 text-sm font-mono" id="alert-webhook" />
                         </div>
                         {error && <p className="text-xs text-red-400 bg-red-500/10 rounded p-2">{error}</p>}
                     </div>

@@ -1,10 +1,10 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Sparkles, Trash2, LayoutGrid, Loader2, Zap, Layers } from 'lucide-react';
+import { Sparkles, Trash2, Loader2, Zap, Layers } from 'lucide-react';
 import { UniversalChartRenderer } from '@/components/analytics/chart-renderer';
 import { ManualBuilder } from '@/components/analytics/manual-builder';
 import {
@@ -19,6 +19,8 @@ import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { createWidgetAction, removeWidgetAction, updateWidgetConfigAction } from './actions';
 import { useToast } from "@/hooks/use-toast";
+
+const ResponsiveGrid = ResponsiveGridLayout as any;
 
 function AsyncWidget({ projectId, widget, onRemove }: { projectId: string, widget: any, onRemove: (id: string) => void }) {
     const [data, setData] = useState<any[]>([]);
@@ -49,13 +51,13 @@ function AsyncWidget({ projectId, widget, onRemove }: { projectId: string, widge
 
     let configObj = widget.config;
     if (typeof configObj === 'string') {
-        try { configObj = JSON.parse(configObj); } catch (e) { configObj = {} }
+        try { configObj = JSON.parse(configObj); } catch { configObj = {} }
     }
 
     return (
         <div className="h-full w-full pointer-events-auto">
-        <Card className="h-full flex flex-col bg-[#1e1e1e] shadow-2xl border-white/10 overflow-hidden relative group">
-            <CardHeader className="py-3 px-4 flex flex-row items-center justify-between border-b border-white/5 bg-[#252525] cursor-move drag-handle group/header">
+        <Card className="h-full flex flex-col overflow-hidden relative group">
+            <CardHeader className="py-3 px-4 flex flex-row items-center justify-between border-b border-border/60 bg-secondary/60 cursor-move drag-handle group/header">
                 <CardTitle className="text-sm font-medium truncate pr-4 select-none">{widget.title}</CardTitle>
                 <Button 
                     variant="ghost" 
@@ -129,7 +131,7 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
                 } else {
                     setSuggestionsError(true);
                 }
-            } catch (error) {
+            } catch {
                 setSuggestionsError(true);
             } finally {
                 setLoadingSuggestions(false);
@@ -200,11 +202,11 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
     return (
         <div className="h-full min-h-screen flex flex-col space-y-6 relative">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-2 p-1.5 bg-zinc-900 border border-zinc-800 rounded-lg w-fit shrink-0">
+                <div className="flex items-center gap-2 p-1.5 bg-secondary border border-border rounded-lg w-fit shrink-0">
                     <Button 
                         variant="ghost" 
                         size="sm" 
-                        className={cn("h-8 text-xs px-4 rounded-md transition-all", activeTab === 'performance' ? "bg-orange-600 text-white hover:bg-orange-500 shadow-lg shadow-orange-950/20" : "text-zinc-500 hover:text-zinc-300")}
+                        className={cn("h-8 text-xs px-4 rounded-md transition-all", activeTab === 'performance' ? "bg-orange-600 text-white hover:bg-orange-500 shadow-lg shadow-orange-950/20" : "text-muted-foreground/75 hover:text-foreground/85")}
                         onClick={() => setActiveTab('performance')}
                     >
                         <Zap className="h-3.5 w-3.5 mr-2" />
@@ -213,7 +215,7 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
                     <Button 
                         variant="ghost" 
                         size="sm" 
-                        className={cn("h-8 text-xs px-4 rounded-md transition-all", activeTab === 'system' ? "bg-orange-600 text-white hover:bg-orange-500 shadow-lg shadow-orange-950/20" : "text-zinc-500 hover:text-zinc-300")}
+                        className={cn("h-8 text-xs px-4 rounded-md transition-all", activeTab === 'system' ? "bg-orange-600 text-white hover:bg-orange-500 shadow-lg shadow-orange-950/20" : "text-muted-foreground/75 hover:text-foreground/85")}
                         onClick={() => setActiveTab('system')}
                     >
                         <Layers className="h-3.5 w-3.5 mr-2" />
@@ -230,7 +232,7 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
                                 Ask AI
                             </Button>
                         </DialogTrigger>
-                        <DialogContent className="sm:max-w-[500px] border-white/10 bg-background/95 backdrop-blur-xl">
+                        <DialogContent className="sm:max-w-[500px] border-border/70 bg-background/95 backdrop-blur-xl">
                             <DialogHeader>
                                 <DialogTitle>Generate Analytics Widget</DialogTitle>
                                 <DialogDescription>Describe the data you want to see. AI will write the SQL and pick the best chart.</DialogDescription>
@@ -240,12 +242,12 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
                                 <div className="space-y-4">
                                     <div className="flex items-center gap-2">
                                         <Sparkles className="w-4 h-4 text-orange-500" />
-                                        <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Data-Driven Suggestions</span>
+                                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Data-Driven Suggestions</span>
                                     </div>
                                     <div className="flex flex-col gap-2">
                                         {loadingSuggestions ? (
                                             Array(3).fill(0).map((_, i) => (
-                                                <div key={i} className="h-10 border border-white/5 bg-white/5 rounded-lg animate-pulse" />
+                                                <div key={i} className="h-10 border border-border/50 bg-white/5 rounded-lg animate-pulse" />
                                             ))
                                         ) : suggestionsError ? (
                                             <div className="p-3 rounded-lg border border-red-500/20 bg-red-500/10 text-red-400 text-sm">
@@ -256,7 +258,7 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
                                                 <button
                                                     key={i}
                                                     onClick={() => setAiPrompt(s)}
-                                                    className="text-left px-4 py-2.5 rounded-lg border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 hover:border-zinc-700 transition-all text-sm text-zinc-300"
+                                                    className="text-left px-4 py-2.5 rounded-lg border border-border bg-secondary/70 hover:bg-muted hover:border-border/80 transition-all text-sm text-foreground/85"
                                                 >
                                                     {s}
                                                 </button>
@@ -266,7 +268,7 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
                                 </div>
                                 <Input 
                                     placeholder="e.g. Show me the number of users created per day" 
-                                    className="col-span-3 bg-zinc-900 border-zinc-800" 
+                                    className="col-span-3 bg-secondary border-border" 
                                     value={aiPrompt}
                                     onChange={e => setAiPrompt(e.target.value)}
                                     autoFocus
@@ -286,7 +288,7 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
             ) : (
                 <div className="flex-1 flex flex-col min-h-0">
                     {widgets.length === 0 ? (
-                        <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-xl bg-white/5 min-h-[400px]">
+                        <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-border/70 rounded-lg bg-white/5 min-h-[400px]">
                             <div className="w-16 h-16 rounded-full bg-blue-500/10 flex items-center justify-center mb-4">
                                 <Sparkles className="w-8 h-8 text-blue-500" />
                             </div>
@@ -296,7 +298,7 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
                         </div>
                     ) : (
                         <div 
-                            className="flex-1 rounded-xl border border-white/5 bg-black/20 relative pt-4 -mx-6 px-6 overflow-y-auto"
+                            className="flex-1 rounded-lg border border-border/50 bg-background/50 relative pt-4 -mx-6 px-6 overflow-y-auto"
                             style={{ backgroundImage: 'radial-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px)', backgroundSize: '24px 24px' }}
                         >
                             <AutoSizedGrid 
@@ -329,7 +331,7 @@ function AutoSizedGrid({ layoutMap, handleLayoutChange, widgets, projectId, hand
 
     return (
         <div ref={ref} className="pb-20 flex-1 w-full">
-            <ResponsiveGridLayout
+            <ResponsiveGrid
                 className="layout"
                 width={width}
                 layouts={{ lg: layoutMap }}
@@ -347,7 +349,7 @@ function AutoSizedGrid({ layoutMap, handleLayoutChange, widgets, projectId, hand
                         <AsyncWidget projectId={projectId} widget={widget} onRemove={handleRemove} />
                     </div>
                 ))}
-            </ResponsiveGridLayout>
+            </ResponsiveGrid>
         </div>
     );
 }

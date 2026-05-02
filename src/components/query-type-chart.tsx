@@ -1,16 +1,12 @@
-
+﻿
 'use client';
 
 import * as React from "react"
-import { TrendingUp } from "lucide-react"
-import { Label, Pie, PieChart, Sector } from "recharts"
-import { PieSectorDataItem } from "recharts/types/polar/Pie"
+import { Pie, PieChart } from "recharts"
 
 import {
     Card,
     CardContent,
-    CardDescription,
-    CardFooter,
     CardHeader,
     CardTitle,
 } from "@/components/ui/card"
@@ -18,7 +14,6 @@ import {
     ChartConfig,
     ChartContainer,
     ChartTooltip,
-    ChartTooltipContent,
 } from "@/components/ui/chart"
 import { AnalyticsStats } from "@/hooks/use-realtime-analytics";
 
@@ -75,18 +70,14 @@ export function QueryTypeChart({ stats }: { stats: AnalyticsStats | null }) {
         ]
     }, [stats, isHovered]);
 
-    const totalVisitors = React.useMemo(() => {
-        return chartData.reduce((acc, curr) => acc + curr.visitors, 0)
-    }, [chartData])
-
     return (
         <Card 
-            className="h-full w-full flex flex-col aspect-square justify-between border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md shadow-lg overflow-hidden transition-colors hover:bg-zinc-900/60"
+            className="h-full w-full flex flex-col aspect-square justify-between border-border/80 bg-secondary/60 backdrop-blur-md shadow-lg overflow-hidden transition-colors hover:bg-secondary/70"
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
-            <CardHeader className="items-center pb-4 border-b border-white/5 bg-zinc-900/20">
-                <CardTitle className="text-xl font-bold text-zinc-100 flex items-center gap-2">
+            <CardHeader className="items-center pb-4 border-b border-border/50 bg-secondary/40">
+                <CardTitle className="text-xl font-bold text-foreground flex items-center gap-2">
                     Query Type
                 </CardTitle>
             </CardHeader>
@@ -102,11 +93,11 @@ export function QueryTypeChart({ stats }: { stats: AnalyticsStats | null }) {
                                 if (active && payload && payload.length) {
                                     const data = payload[0].payload;
                                     return (
-                                        <div className="rounded-xl border border-zinc-800 bg-zinc-950/90 backdrop-blur-xl p-3 shadow-2xl min-w-[140px]">
+                                        <div className="rounded-lg border border-border bg-popover/95 backdrop-blur-xl p-3 shadow-2xl min-w-[140px]">
                                             <div className="flex items-center gap-2.5">
                                                 <div className="h-2.5 w-2.5 rounded-full ring-1 ring-white/20" style={{ backgroundColor: data.fill }} />
-                                                <span className="text-xs font-semibold text-zinc-300 uppercase tracking-widest">{data.browser}</span>
-                                                <span className="ml-auto font-mono text-sm font-bold text-zinc-100">{data.visitors}</span>
+                                                <span className="text-xs font-semibold text-foreground/85 uppercase tracking-widest">{data.browser}</span>
+                                                <span className="ml-auto font-mono text-sm font-bold text-foreground">{data.visitors}</span>
                                             </div>
                                         </div>
                                     );

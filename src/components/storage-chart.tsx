@@ -1,4 +1,4 @@
-
+﻿
 'use client';
 
 import { useState } from 'react';
@@ -38,9 +38,9 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<ValueType, NameT
   if (active && payload && payload.length) {
     const value = payload[0].value as number;
     return (
-      <div className="rounded-xl border border-zinc-800 bg-zinc-950/90 backdrop-blur-xl p-4 shadow-[0_4px_30px_rgba(0,0,0,0.8)] min-w-[160px] flex gap-4 justify-between items-center transition-all">
+      <div className="rounded-lg border border-border bg-popover/95 backdrop-blur-xl p-4 shadow-[0_4px_30px_rgba(0,0,0,0.8)] min-w-[160px] flex gap-4 justify-between items-center transition-all">
         <div className="flex flex-col space-y-1">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/75">
             {formatTableName(String(label))}
           </span>
           <span className="font-mono text-xl font-bold text-orange-300">
@@ -86,15 +86,15 @@ export function StorageChart({ data }: StorageChartProps) {
 
   return (
     <Card 
-        className="border-zinc-800 flex flex-col h-full min-h-[400px] bg-zinc-950/40 backdrop-blur-md shadow-2xl transition-colors hover:bg-zinc-900/60"
+        className="border-border flex flex-col h-full min-h-[400px] bg-card/70 backdrop-blur-md shadow-2xl transition-colors hover:bg-secondary/70"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
     >
-      <CardHeader className="border-b border-white/5 pb-4">
-        <CardTitle className="text-xl font-bold text-zinc-100 flex items-center gap-2">
+      <CardHeader className="border-b border-border/50 pb-4">
+        <CardTitle className="text-xl font-bold text-foreground flex items-center gap-2">
           Storage Usage
         </CardTitle>
-        <CardDescription className="text-zinc-400 font-medium">Size of each table's documents</CardDescription>
+        <CardDescription className="text-muted-foreground font-medium">Size of each table's documents</CardDescription>
       </CardHeader>
       <CardContent className="pt-6 flex-1 flex flex-col">
         <div style={{ width: '100%' }} className="flex-1 min-h-[300px]">

@@ -1,10 +1,9 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AnalyticsStats, useRealtimeAnalytics } from '@/hooks/use-realtime-analytics';
-import { useRealtimeHistory } from '@/hooks/use-realtime-history';
 import { Activity } from 'lucide-react';
 
 interface RealtimeLineChartProps {
@@ -39,7 +38,6 @@ const renderCustomDot = (props: any) => {
 
 export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
     const stats = useRealtimeAnalytics(projectId);
-    const prevStatsRef = useRef<AnalyticsStats | null>(null);
 
     const [data, setData] = useState<DataPoint[]>(() => {
         const initialData: DataPoint[] = [];
@@ -158,23 +156,23 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
 
     return (
         <Card 
-            className="col-span-4 flex flex-col h-full min-h-[400px] border-zinc-800 bg-zinc-950/40 backdrop-blur-md shadow-2xl transition-colors hover:bg-zinc-900/60"
+            className="col-span-4 flex flex-col h-full min-h-[400px] border-border bg-card/70 backdrop-blur-md shadow-2xl transition-colors hover:bg-secondary/70"
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
-            <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-white/5 bg-zinc-900/20">
+            <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-border/50 bg-secondary/40">
                 <div className="space-y-1">
-                    <CardTitle className="text-xl font-bold flex items-center gap-2 text-zinc-100">
-                        <Activity className="h-5 w-5 text-zinc-500" />
+                    <CardTitle className="text-xl font-bold flex items-center gap-2 text-foreground">
+                        <Activity className="h-5 w-5 text-muted-foreground/75" />
                         Real-Time Activity
                     </CardTitle>
-                    <CardDescription className="text-zinc-400 font-medium">Live incoming requests</CardDescription>
+                    <CardDescription className="text-muted-foreground font-medium">Live incoming requests</CardDescription>
                 </div>
 
                 {/* KPI Metrics */}
                 <div className="flex gap-8">
                     <div className="flex flex-col items-end">
-                        <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Current</span>
+                        <span className="text-[10px] text-muted-foreground/75 uppercase tracking-widest font-bold">Current</span>
                         <div className="flex items-center gap-2">
                             <div className="h-2 w-2 rounded-full bg-orange-500/70" />
                             <span className="text-2xl font-bold font-mono text-orange-400">
@@ -183,14 +181,14 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                         </div>
                     </div>
                     <div className="flex flex-col items-end">
-                        <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Peak (60s)</span>
-                        <span className="text-2xl font-bold font-mono text-zinc-300">
+                        <span className="text-[10px] text-muted-foreground/75 uppercase tracking-widest font-bold">Peak (60s)</span>
+                        <span className="text-2xl font-bold font-mono text-foreground/85">
                             {peakRPS}
                         </span>
                     </div>
                     <div className="flex flex-col items-end">
-                        <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Avg</span>
-                        <span className="text-2xl font-bold font-mono text-zinc-500">
+                        <span className="text-[10px] text-muted-foreground/75 uppercase tracking-widest font-bold">Avg</span>
+                        <span className="text-2xl font-bold font-mono text-muted-foreground/75">
                             {averages.requests}
                         </span>
                     </div>
@@ -238,9 +236,9 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                                 content={({ active, payload, label }) => {
                                     if (active && payload && payload.length) {
                                         return (
-                                            <div className="rounded-xl border border-zinc-800 bg-zinc-950/90 backdrop-blur-xl p-3 shadow-[0_4px_20px_rgba(0,0,0,0.5)] min-w-[200px]">
-                                                <div className="mb-2 border-b border-zinc-800 pb-2">
-                                                    <p className="text-[10px] font-bold tracking-wider text-zinc-400">{label}</p>
+                                            <div className="rounded-lg border border-border bg-popover/95 backdrop-blur-xl p-3 shadow-[0_4px_20px_rgba(0,0,0,0.5)] min-w-[200px]">
+                                                <div className="mb-2 border-b border-border pb-2">
+                                                    <p className="text-[10px] font-bold tracking-wider text-muted-foreground">{label}</p>
                                                 </div>
                                                 <div className="space-y-2.5">
                                                     {payload.map((p: any) => {
@@ -253,13 +251,13 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                                                             <div key={p.name} className="flex items-center justify-between gap-4">
                                                                 <div className="flex items-center gap-2">
                                                                     <div className="h-2 w-2 rounded-full" style={{ backgroundColor: p.stroke }} />
-                                                                    <span className="text-xs font-medium text-zinc-300">{p.name}</span>
+                                                                    <span className="text-xs font-medium text-foreground/85">{p.name}</span>
                                                                 </div>
                                                                 <div className="flex items-center gap-2">
-                                                                    <span className={`text-[10px] font-medium font-mono ${isPositive ? 'text-emerald-400' : isNegative ? 'text-rose-400' : 'text-zinc-500'}`}>
+                                                                    <span className={`text-[10px] font-medium font-mono ${isPositive ? 'text-emerald-400' : isNegative ? 'text-rose-400' : 'text-muted-foreground/75'}`}>
                                                                         {isPositive ? '+' : ''}{delta !== 0 ? delta : ''}
                                                                     </span>
-                                                                    <span className="font-mono text-sm font-bold text-zinc-100 min-w-[3ch] text-right">
+                                                                    <span className="font-mono text-sm font-bold text-foreground min-w-[3ch] text-right">
                                                                         {p.value}
                                                                     </span>
                                                                 </div>

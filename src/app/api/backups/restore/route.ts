@@ -2,24 +2,38 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { getMysqlPool } from '@/lib/mysql';
 import { getAuthContextFromRequest } from '@/lib/auth';
-import { getProjectById } from '@/lib/data';
+import { jsonError, requireProjectAccess } from '@/lib/project-auth';
+import {
+    quoteMysqlIdentifier,
+    quoteMysqlProjectSchema,
+    quotePgIdentifier,
+    quotePgProjectSchema,
+} from '@/lib/sql-safety';
+import { ERROR_CODES, FluxbaseError } from '@/lib/error-codes';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(req: NextRequest) {
-    const body = await req.json();
-    const { projectId, backupId } = body;
-    const auth = await getAuthContextFromRequest(req);
-    
-    if (!auth?.userId || !projectId) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+function safeColumnType(value: unknown): string {
+    const type = String(value || '').trim();
+    if (!type || type.length > 80 || !/^[A-Za-z0-9_(),\s]+$/.test(type)) {
+        throw new FluxbaseError('Backup contains an invalid column type.', ERROR_CODES.BAD_REQUEST, 400);
     }
+    return type;
+}
 
-    const pool = getPgPool();
-
+export async function POST(req: NextRequest) {
     try {
+        const body = await req.json();
+        const { projectId, backupId } = body;
+        const auth = await getAuthContextFromRequest(req);
+
+        if (!projectId || !backupId) {
+            throw new FluxbaseError('projectId and backupId are required', ERROR_CODES.MISSING_FIELD, 400);
+        }
+
+        const project = await requireProjectAccess(projectId, auth, ['admin']);
         const globalPool = getPgPool();
-        // 1. Fetch backup data
+
         const backupRes = await globalPool.query(
             `SELECT data FROM fluxbase_global.backups WHERE id = $1 AND project_id = $2`,
             [backupId, projectId]
@@ -30,80 +44,80 @@ export async function POST(req: NextRequest) {
         }
 
         const backupData = backupRes.rows[0].data;
-        const project = await getProjectById(projectId, auth.userId);
-        if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+        const tables = (backupData as any).tables;
+        if (!tables || typeof tables !== 'object') {
+            throw new FluxbaseError('Backup data is invalid.', ERROR_CODES.BAD_REQUEST, 400);
+        }
 
         const isMysql = project.dialect?.toLowerCase() === 'mysql';
-        const schemaName = `project_${projectId}`;
 
         if (isMysql) {
             const mysqlPool = getMysqlPool();
-            
-            // Wipe and recreate DB
-            await mysqlPool.query(`DROP DATABASE IF EXISTS \`${schemaName}\``);
-            await mysqlPool.query(`CREATE DATABASE \`${schemaName}\``);
+            const schemaIdent = quoteMysqlProjectSchema(projectId);
 
-            // Reconstruct tables and data
-            for (const [tableName, tableInfo] of Object.entries((backupData as any).tables)) {
+            await mysqlPool.query(`DROP DATABASE IF EXISTS ${schemaIdent}`);
+            await mysqlPool.query(`CREATE DATABASE ${schemaIdent}`);
+
+            for (const [tableName, tableInfo] of Object.entries(tables)) {
                 const { columns, rows } = tableInfo as any;
-                
-                // Create table
+                if (!Array.isArray(columns) || !Array.isArray(rows)) {
+                    throw new FluxbaseError('Backup table data is invalid.', ERROR_CODES.BAD_REQUEST, 400);
+                }
+
+                const tableIdent = quoteMysqlIdentifier(tableName, 'tableName');
                 const colDefs = columns.map((c: any) => {
-                    let type = c.data_type.toUpperCase();
-                    // Basic MySQL type mapping for common PG types found in older backups
+                    let type = safeColumnType(c.data_type).toUpperCase();
                     if (type === 'NUMBER' || type === 'NUMERIC') type = 'DOUBLE';
                     else if (type === 'VARCHAR') type = 'VARCHAR(255)';
                     else if (type === 'BOOLEAN') type = 'TINYINT(1)';
                     else if (type === 'JSONB') type = 'JSON';
-                    
-                    return `\`${c.column_name}\` ${type}`;
-                }).join(', ');
-                
-                await mysqlPool.query(`CREATE TABLE \`${schemaName}\`.\`${tableName}\` (${colDefs})`);
 
-                // Insert rows
+                    return `${quoteMysqlIdentifier(c.column_name, 'columnName')} ${type}`;
+                }).join(', ');
+
+                await mysqlPool.query(`CREATE TABLE ${schemaIdent}.${tableIdent} (${colDefs})`);
+
                 if (rows.length > 0) {
                     const colNamesArr = columns.map((c: any) => c.column_name);
-                    const colNamesStr = colNamesArr.map((n: string) => `\`${n}\``).join(', ');
-                    
+                    const colNamesStr = colNamesArr.map((name: string) => quoteMysqlIdentifier(name, 'columnName')).join(', ');
+
                     for (const rowData of rows) {
                         const values = colNamesArr.map((name: string) => (rowData as any)[name]);
                         const placeholders = values.map(() => '?').join(', ');
                         await mysqlPool.query(
-                            `INSERT INTO \`${schemaName}\`.\`${tableName}\` (${colNamesStr}) VALUES (${placeholders})`,
+                            `INSERT INTO ${schemaIdent}.${tableIdent} (${colNamesStr}) VALUES (${placeholders})`,
                             values
                         );
                     }
                 }
             }
         } else {
-            // PostgreSQL path
+            const schemaIdent = quotePgProjectSchema(projectId);
             const client = await globalPool.connect();
             try {
                 await client.query('BEGIN');
+                await client.query(`DROP SCHEMA IF EXISTS ${schemaIdent} CASCADE`);
+                await client.query(`CREATE SCHEMA ${schemaIdent}`);
 
-                // 3. Drop existing schema
-                await client.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
-                await client.query(`CREATE SCHEMA "${schemaName}"`);
-
-                // 4. Reconstruct tables and data
-                for (const [tableName, tableInfo] of Object.entries((backupData as any).tables)) {
+                for (const [tableName, tableInfo] of Object.entries(tables)) {
                     const { columns, rows } = tableInfo as any;
-                    
-                    // Create table
-                    const colDefs = columns.map((c: any) => `"${c.column_name}" ${c.data_type}`).join(', ');
-                    await client.query(`CREATE TABLE "${schemaName}"."${tableName}" (${colDefs})`);
+                    if (!Array.isArray(columns) || !Array.isArray(rows)) {
+                        throw new FluxbaseError('Backup table data is invalid.', ERROR_CODES.BAD_REQUEST, 400);
+                    }
 
-                    // Insert rows
+                    const tableIdent = quotePgIdentifier(tableName, 'tableName');
+                    const colDefs = columns.map((c: any) => `${quotePgIdentifier(c.column_name, 'columnName')} ${safeColumnType(c.data_type)}`).join(', ');
+                    await client.query(`CREATE TABLE ${schemaIdent}.${tableIdent} (${colDefs})`);
+
                     if (rows.length > 0) {
                         const colNamesArr = columns.map((c: any) => c.column_name);
-                        const colNamesStr = colNamesArr.map((n: string) => `"${n}"`).join(', ');
-                        
+                        const colNamesStr = colNamesArr.map((name: string) => quotePgIdentifier(name, 'columnName')).join(', ');
+
                         for (const rowData of rows) {
                             const values = colNamesArr.map((name: string) => (rowData as any)[name]);
                             const placeholders = values.map((_: any, i: number) => `$${i + 1}`).join(', ');
                             await client.query(
-                                `INSERT INTO "${schemaName}"."${tableName}" (${colNamesStr}) VALUES (${placeholders})`,
+                                `INSERT INTO ${schemaIdent}.${tableIdent} (${colNamesStr}) VALUES (${placeholders})`,
                                 values
                             );
                         }
@@ -111,17 +125,18 @@ export async function POST(req: NextRequest) {
                 }
 
                 await client.query('COMMIT');
-            } catch (e: any) {
+            } catch (error) {
                 await client.query('ROLLBACK');
-                throw e;
+                throw error;
             } finally {
                 client.release();
             }
         }
 
         return NextResponse.json({ success: true });
-    } catch (e: any) {
-        console.error('Restore failed:', e);
-        return NextResponse.json({ success: false, error: e.message }, { status: 500 });
+    } catch (error) {
+        console.error('Restore failed:', error);
+        const { body, status } = jsonError(error);
+        return NextResponse.json(body, { status });
     }
 }

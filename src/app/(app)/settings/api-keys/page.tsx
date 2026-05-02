@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -70,7 +70,7 @@ export default function ApiKeysPage() {
 
     return (
         <div className="space-y-6">
-            <Card className="border-zinc-800 bg-zinc-950/50">
+            <Card className="border-border bg-card/80">
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                         <Key className="h-5 w-5 text-orange-400" />
@@ -83,13 +83,13 @@ export default function ApiKeysPage() {
                         <div className="grid sm:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Key Name</Label>
-                                <Input placeholder="Production Worker" value={keyName} onChange={e => setKeyName(e.target.value)} className="bg-zinc-900 border-zinc-700 h-10" />
+                                <Input placeholder="Production Worker" value={keyName} onChange={e => setKeyName(e.target.value)} className="bg-secondary border-border/80 h-10" />
                             </div>
                             <div className="space-y-2">
                                 <Label>Project Scope</Label>
                                 <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
-                                    <SelectTrigger className="bg-zinc-900 border-zinc-700 h-10"><SelectValue /></SelectTrigger>
-                                    <SelectContent className="bg-zinc-950 border-zinc-800">
+                                    <SelectTrigger className="bg-secondary border-border/80 h-10"><SelectValue /></SelectTrigger>
+                                    <SelectContent className="bg-card border-border">
                                         <SelectItem value="global">Global (Full Workspace)</SelectItem>
                                         {projects.map(p => <SelectItem key={p.project_id} value={p.project_id}>{p.display_name}</SelectItem>)}
                                     </SelectContent>
@@ -103,14 +103,14 @@ export default function ApiKeysPage() {
                                 {SCOPES.map(scope => (
                                     <div key={scope.id} 
                                         className={cn(
-                                            "flex flex-col gap-2 p-3 rounded-lg border transition-all cursor-pointer group hover:bg-zinc-900",
-                                            selectedScopes.includes(scope.id) ? "border-orange-500/50 bg-orange-500/5" : "border-zinc-800 bg-zinc-900/30"
+                                            "flex flex-col gap-2 p-3 rounded-lg border transition-all cursor-pointer group hover:bg-secondary",
+                                            selectedScopes.includes(scope.id) ? "border-orange-500/50 bg-orange-500/5" : "border-border bg-secondary/50"
                                         )}
                                         onClick={() => toggleScope(scope.id)}
                                     >
                                         <div className="flex items-center justify-between">
                                             <scope.icon className={cn("h-4 w-4", selectedScopes.includes(scope.id) ? "text-orange-400" : "text-muted-foreground")} />
-                                            <Checkbox checked={selectedScopes.includes(scope.id)} className="border-zinc-700 data-[state=checked]:bg-orange-500 data-[state=checked]:border-orange-500" />
+                                            <Checkbox checked={selectedScopes.includes(scope.id)} className="border-border/80 data-[state=checked]:bg-orange-500 data-[state=checked]:border-orange-500" />
                                         </div>
                                         <div>
                                             <div className="text-sm font-medium">{scope.label}</div>
@@ -128,7 +128,7 @@ export default function ApiKeysPage() {
                     </div>
 
                     {newKey && (
-                        <div className="p-4 rounded-xl border border-yellow-500/30 bg-yellow-500/5 space-y-3 animate-in fade-in slide-in-from-top-2">
+                        <div className="p-4 rounded-lg border border-yellow-500/30 bg-yellow-500/5 space-y-3 animate-in fade-in slide-in-from-top-2">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-bold text-yellow-500 flex items-center gap-1.5"><ShieldAlert className="h-3 w-3" />Secret Key (Save it now!)</span>
                                 <Button variant="ghost" size="sm" className="h-7 text-xs text-yellow-500 hover:bg-yellow-500/10"
@@ -136,7 +136,7 @@ export default function ApiKeysPage() {
                                     <Copy className="h-3 w-3 mr-1.5" />Copy
                                 </Button>
                             </div>
-                            <code className="block p-3 bg-black rounded-lg border border-yellow-500/20 font-mono text-sm break-all text-yellow-200/90 shadow-inner">
+                            <code className="block p-3 bg-background rounded-lg border border-yellow-500/20 font-mono text-sm break-all text-yellow-200/90 shadow-inner">
                                 {newKey}
                             </code>
                             <p className="text-[10px] text-yellow-500/70">Warning: For security, this key won't be shown again. Lose it, and you'll have to generate a new one.</p>
@@ -148,30 +148,30 @@ export default function ApiKeysPage() {
             <div className="space-y-3">
                 <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground px-1">Manage Active Keys</h3>
                 {keys.length === 0 ? (
-                    <div className="p-12 text-center text-sm text-muted-foreground border border-dashed border-zinc-800 rounded-xl">
+                    <div className="p-12 text-center text-sm text-muted-foreground border border-dashed border-border rounded-lg">
                         No active API keys found.
                     </div>
                 ) : (
                     <div className="grid gap-3">
                         {keys.map(key => (
-                            <Card key={key.id} className="border-zinc-800 bg-zinc-950/30 group hover:border-zinc-700 transition-colors overflow-hidden">
+                            <Card key={key.id} className="border-border bg-card/70 group hover:border-border/80 transition-colors overflow-hidden">
                                 <CardContent className="flex items-center gap-4 p-4">
-                                    <div className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 shrink-0">
-                                        <Lock className="h-4 w-4 text-zinc-500" />
+                                    <div className="p-2.5 rounded-lg bg-secondary border border-border shrink-0">
+                                        <Lock className="h-4 w-4 text-muted-foreground/75" />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 mb-1">
                                             <span className="font-semibold text-sm truncate">{key.name}</span>
                                             <div className="flex items-center gap-1.5">
                                                 {key.scopes?.map((s: string) => (
-                                                    <Badge key={s} variant="outline" className="text-[9px] h-4 px-1.5 font-bold bg-zinc-900/50 border-zinc-800 text-zinc-400 capitalize">
+                                                    <Badge key={s} variant="outline" className="text-[9px] h-4 px-1.5 font-bold bg-secondary/70 border-border text-muted-foreground capitalize">
                                                         {s}
                                                     </Badge>
                                                 )) || <Badge variant="outline" className="text-[9px]">no-scopes</Badge>}
                                             </div>
                                         </div>
                                         <div className="flex flex-wrap items-center gap-4 text-[10px] text-muted-foreground">
-                                            <code className="text-zinc-600 bg-zinc-900/50 px-1.5 py-0.5 rounded font-mono border border-zinc-800/50">{key.preview}</code>
+                                            <code className="text-muted-foreground/55 bg-secondary/70 px-1.5 py-0.5 rounded font-mono border border-border/60">{key.preview}</code>
                                             <span className="flex items-center gap-1"><Globe className="h-3 w-3" />{key.projectName || 'Global'}</span>
                                             <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />{new Date(key.createdAt).toLocaleDateString()}</span>
                                             {key.lastUsedAt ? (
@@ -185,10 +185,10 @@ export default function ApiKeysPage() {
                                         <AlertDialogTrigger asChild>
                                             <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-red-400 shrink-0">Revoke</Button>
                                         </AlertDialogTrigger>
-                                        <AlertDialogContent className="bg-zinc-950 border-zinc-800">
+                                        <AlertDialogContent className="bg-card border-border">
                                             <AlertDialogHeader>
                                                 <AlertDialogTitle>Revoke Key?</AlertDialogTitle>
-                                                <AlertDialogDescription>This will instantly block all programmatic requests using <code className="bg-zinc-800 px-1 rounded">{key.preview}</code>. This cannot be undone.</AlertDialogDescription>
+                                                <AlertDialogDescription>This will instantly block all programmatic requests using <code className="bg-muted px-1 rounded">{key.preview}</code>. This cannot be undone.</AlertDialogDescription>
                                             </AlertDialogHeader>
                                             <AlertDialogFooter>
                                                 <AlertDialogCancel>Cancel</AlertDialogCancel>

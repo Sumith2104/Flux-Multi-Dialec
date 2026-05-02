@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
@@ -68,7 +68,6 @@ export function StatusIndicator() {
         check();
         const interval = setInterval(check, 300000); // re-check services every 5 mins (slow heartbeat)
         return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Phase 7: Sample JS heap memory every 5 seconds
@@ -80,7 +79,7 @@ export function StatusIndicator() {
     }, []);
 
     const colors: Record<HealthStatus, string> = {
-        checking: 'bg-zinc-500',
+        checking: 'bg-muted-foreground',
         healthy: 'bg-emerald-500',
         degraded: 'bg-yellow-500',
         offline: 'bg-red-500',
@@ -112,7 +111,7 @@ export function StatusIndicator() {
                     </span>
                     {/* Show orange memory warning text when over 80% capacity */}
                     {memWarning ? (
-                        <span className="hidden lg:block text-xs text-amber-400 font-medium">🧠 {heapMB!.used} MB</span>
+                        <span className="hidden lg:block text-xs text-amber-400 font-medium">ðŸ§  {heapMB!.used} MB</span>
                     ) : (
                         <span className="hidden lg:block text-xs text-muted-foreground">Status</span>
                     )}
@@ -121,9 +120,9 @@ export function StatusIndicator() {
             <PopoverContent
                 side="bottom"
                 align="end"
-                className="bg-zinc-950 border-zinc-800 p-0 overflow-hidden min-w-[230px] shadow-2xl duration-75 animate-in fade-in-0 zoom-in-95"
+                className="bg-card border-border p-0 overflow-hidden min-w-[230px] shadow-2xl duration-75 animate-in fade-in-0 zoom-in-95"
             >
-                <div className="px-3 py-2 border-b border-zinc-800">
+                <div className="px-3 py-2 border-b border-border">
                     <p className="text-xs font-semibold text-foreground">{labels[overall]}</p>
                 </div>
                 <div className="p-2 space-y-1">
@@ -131,17 +130,17 @@ export function StatusIndicator() {
                         <div key={svc.name} className="flex items-center justify-between px-1 py-0.5">
                             <div className="flex items-center gap-2">
                                 <span className={cn('h-1.5 w-1.5 rounded-full', colors[svc.status])} />
-                                <span className="text-xs text-zinc-300">{svc.name}</span>
+                                <span className="text-xs text-foreground/85">{svc.name}</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 {svc.latency && (
-                                    <span className="text-[10px] text-zinc-500">{svc.latency}ms</span>
+                                    <span className="text-[10px] text-muted-foreground/75">{svc.latency}ms</span>
                                 )}
                                 <span className={cn(
                                     'text-[10px] capitalize font-medium',
                                     svc.status === 'healthy' ? 'text-emerald-400' :
                                     svc.status === 'degraded' ? 'text-yellow-400' :
-                                    svc.status === 'offline' ? 'text-red-400' : 'text-zinc-500'
+                                    svc.status === 'offline' ? 'text-red-400' : 'text-muted-foreground/75'
                                 )}>
                                     {svc.status}
                                 </span>
@@ -150,22 +149,22 @@ export function StatusIndicator() {
                     ))}
 
                     {/* Phase 7: Browser JS Heap Memory Gauge */}
-                    <div className="mt-2 pt-2 border-t border-zinc-800 px-1">
+                    <div className="mt-2 pt-2 border-t border-border px-1">
                         <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-[10px] text-zinc-400 font-medium">🧠 Browser Memory</span>
+                            <span className="text-[10px] text-muted-foreground font-medium">ðŸ§  Browser Memory</span>
                             {heapMB ? (
                                 <span className={cn(
                                     'text-[10px] font-mono font-semibold',
-                                    memWarning ? 'text-amber-400' : 'text-zinc-300'
+                                    memWarning ? 'text-amber-400' : 'text-foreground/85'
                                 )}>
                                     {heapMB.used} MB / {(heapMB.total >= 1024) ? (heapMB.total / 1024).toFixed(1) + ' GB' : heapMB.total + ' MB'}
                                 </span>
                             ) : (
-                                <span className="text-[10px] text-zinc-600">N/A</span>
+                                <span className="text-[10px] text-muted-foreground/55">N/A</span>
                             )}
                         </div>
                         {heapMB && (
-                            <div className="w-full bg-zinc-800 rounded-full h-1.5">
+                            <div className="w-full bg-muted rounded-full h-1.5">
                                 <div
                                     className={cn(
                                         'h-1.5 rounded-full transition-all duration-500',

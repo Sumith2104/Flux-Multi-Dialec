@@ -1,17 +1,26 @@
 import { NextResponse } from 'next/server';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { createDatabaseSnapshot, listDatabaseSnapshots } from '@/lib/aws-rds';
+import { jsonError, requireProjectAccess } from '@/lib/project-auth';
+import { ERROR_CODES, FluxbaseError } from '@/lib/error-codes';
+
+function instancePrefixForProject(projectId: string): string {
+    return `fluxbase-tenant-${projectId.toLowerCase().replace(/[^a-z0-9-]/g, '')}-`;
+}
 
 export async function GET(request: Request) {
     try {
         const auth = await getAuthContextFromRequest(request);
-        if (!auth) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-
         const { searchParams } = new URL(request.url);
         const identifier = searchParams.get('identifier');
+        const projectId = searchParams.get('projectId') || auth?.allowedProjectId;
 
-        if (!identifier) {
-            return NextResponse.json({ success: false, error: 'Missing instance identifier' }, { status: 400 });
+        if (!identifier || !projectId) {
+            throw new FluxbaseError('Missing required parameters: identifier and projectId', ERROR_CODES.MISSING_FIELD, 400);
+        }
+        await requireProjectAccess(projectId, auth, ['admin']);
+        if (!identifier.startsWith(instancePrefixForProject(projectId))) {
+            throw new FluxbaseError('Instance identifier is not associated with this project.', ERROR_CODES.FORBIDDEN, 403);
         }
 
         const snapshots = await listDatabaseSnapshots(identifier);
@@ -26,21 +35,26 @@ export async function GET(request: Request) {
                 allocatedStorage: s.AllocatedStorage
             }))
         });
-    } catch (error: any) {
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    } catch (error) {
+        const { body, status } = jsonError(error);
+        return NextResponse.json(body, { status });
     }
 }
 
 export async function POST(request: Request) {
     try {
         const auth = await getAuthContextFromRequest(request);
-        if (!auth) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 
         const body = await request.json();
         const { identifier } = body;
+        const projectId = body.projectId || auth?.allowedProjectId;
 
-        if (!identifier) {
-            return NextResponse.json({ success: false, error: 'Missing instance identifier' }, { status: 400 });
+        if (!identifier || !projectId) {
+            throw new FluxbaseError('Missing required parameters: identifier and projectId', ERROR_CODES.MISSING_FIELD, 400);
+        }
+        await requireProjectAccess(projectId, auth, ['admin']);
+        if (!identifier.startsWith(instancePrefixForProject(projectId))) {
+            throw new FluxbaseError('Instance identifier is not associated with this project.', ERROR_CODES.FORBIDDEN, 403);
         }
 
         const snapshotIdentifier = `${identifier}-manual-${Date.now()}`;
@@ -53,7 +67,8 @@ export async function POST(request: Request) {
                 status: snapshot?.Status
             }
         });
-    } catch (error: any) {
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    } catch (error) {
+        const { body, status } = jsonError(error);
+        return NextResponse.json(body, { status });
     }
 }

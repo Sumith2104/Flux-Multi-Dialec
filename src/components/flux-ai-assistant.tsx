@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -34,7 +34,6 @@ export function FluxAiAssistant({ userId }: { userId: string }) {
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [voicesLoaded, setVoicesLoaded] = useState(false);
   
   const pathname = usePathname();
   const router = useRouter();
@@ -62,7 +61,7 @@ export function FluxAiAssistant({ userId }: { userId: string }) {
   useEffect(() => {
     if (isRestored.current) {
         // Phase 5: Cap message history at 50 messages with 512 KB size limit.
-        // localStorage.setItem is synchronous — large payloads hurt main thread on every render.
+        // localStorage.setItem is synchronous â€” large payloads hurt main thread on every render.
         const MAX_MESSAGES = 50;
         const MAX_STORAGE_BYTES = 512 * 1024; // 512 KB
 
@@ -81,7 +80,7 @@ export function FluxAiAssistant({ userId }: { userId: string }) {
 
   useEffect(() => {
     // Attempt to load voices ASAP
-    const loadVoices = () => setVoicesLoaded(true);
+    const loadVoices = () => window.speechSynthesis.getVoices();
     if (typeof window !== "undefined" && window.speechSynthesis) {
         window.speechSynthesis.onvoiceschanged = loadVoices;
     }
@@ -198,7 +197,7 @@ export function FluxAiAssistant({ userId }: { userId: string }) {
       } else {
         setMessages(prev => [...prev, { role: "assistant", content: "Oops, my brain disconnected. Please try asking again." }]);
       }
-    } catch (err) {
+    } catch {
       setMessages(prev => [...prev, { role: "assistant", content: "I'm having trouble connecting to Fluxbase servers right now." }]);
     } finally {
       setIsTyping(false);
@@ -353,7 +352,7 @@ export function FluxAiAssistant({ userId }: { userId: string }) {
       setMessages(prev => {
           const newMsgs = [...prev];
           delete newMsgs[msgIndex].pendingAction;
-          return [...newMsgs, { role: "assistant", content: "⚙️ Executing action... Please wait." }];
+          return [...newMsgs, { role: "assistant", content: "âš™ï¸ Executing action... Please wait." }];
       });
 
       if (action.type === "CREATE_PROJECT") {
@@ -364,19 +363,19 @@ export function FluxAiAssistant({ userId }: { userId: string }) {
           
           createProjectAction(formData).then(result => {
              setMessages(prev => {
-                 const newMsgs = prev.filter(m => m.content !== "⚙️ Executing action... Please wait.");
+                 const newMsgs = prev.filter(m => m.content !== "âš™ï¸ Executing action... Please wait.");
                  if (result.success && result.project) {
                      setProject(result.project);
                      router.push('/dashboard/projects');
-                     return [...newMsgs, { role: "assistant", content: `✅ Successfully created and switched to project **${action.projectName}**!` }];
+                     return [...newMsgs, { role: "assistant", content: `âœ… Successfully created and switched to project **${action.projectName}**!` }];
                  } else {
-                     return [...newMsgs, { role: "assistant", content: `❌ Failed to execute action: ${result.error}` }];
+                     return [...newMsgs, { role: "assistant", content: `âŒ Failed to execute action: ${result.error}` }];
                  }
              });
           });
       } else if (action.type === "EXECUTE_SQL") {
           if (!project) {
-             setMessages(prev => prev.filter(m => m.content !== "⚙️ Executing action... Please wait.").concat({ role: "assistant", content: `❌ Failed: No project selected.` }));
+             setMessages(prev => prev.filter(m => m.content !== "âš™ï¸ Executing action... Please wait.").concat({ role: "assistant", content: `âŒ Failed: No project selected.` }));
              return;
           }
           fetch('/api/execute-sql', {
@@ -385,11 +384,11 @@ export function FluxAiAssistant({ userId }: { userId: string }) {
               body: JSON.stringify({ projectId: project.project_id, query: action.query })
           }).then(res => res.json()).then(result => {
              setMessages(prev => {
-                 const newMsgs = prev.filter(m => m.content !== "⚙️ Executing action... Please wait.");
+                 const newMsgs = prev.filter(m => m.content !== "âš™ï¸ Executing action... Please wait.");
                  if (result.success) {
-                     return [...newMsgs, { role: "assistant", content: `✅ Successfully executed SQL query: \`${action.query}\`` }];
+                     return [...newMsgs, { role: "assistant", content: `âœ… Successfully executed SQL query: \`${action.query}\`` }];
                  } else {
-                     return [...newMsgs, { role: "assistant", content: `❌ Failed to execute SQL: ${result.error?.message || 'Unknown error'}` }];
+                     return [...newMsgs, { role: "assistant", content: `âŒ Failed to execute SQL: ${result.error?.message || 'Unknown error'}` }];
                  }
              });
           });
@@ -410,7 +409,7 @@ export function FluxAiAssistant({ userId }: { userId: string }) {
       const parts = str.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g);
       return parts.map((part, idx) => {
         if (part.startsWith('`') && part.endsWith('`')) {
-          return <code key={idx} className="px-1.5 py-0.5 rounded-md bg-black/20 dark:bg-white/10 text-orange-200 font-mono text-[12px]">{part.slice(1, -1)}</code>;
+          return <code key={idx} className="px-1.5 py-0.5 rounded-md bg-background/50 dark:bg-secondary text-orange-200 font-mono text-[12px]">{part.slice(1, -1)}</code>;
         }
         if (part.startsWith('**') && part.endsWith('**')) {
           return <strong key={idx} className="font-bold text-white drop-shadow-md tracking-wide">{part.slice(2, -2)}</strong>;
@@ -424,7 +423,7 @@ export function FluxAiAssistant({ userId }: { userId: string }) {
 
     return text.split("\n").map((line, i) => {
       if (line.includes("```")) {
-          return <div key={i} className="text-xs bg-black/40 dark:bg-white/10 p-3 rounded-lg my-2 font-mono overflow-x-auto border border-white/5">{line.replace(/```/g, '')}</div>;
+          return <div key={i} className="text-xs bg-background/70 dark:bg-secondary p-3 rounded-lg my-2 font-mono overflow-x-auto border border-border/50">{line.replace(/```/g, '')}</div>;
       }
       return <p key={i} className="mb-2 last:mb-0 break-words leading-relaxed">{parseFormatting(line)}</p>;
     });
@@ -439,7 +438,7 @@ export function FluxAiAssistant({ userId }: { userId: string }) {
             animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
             exit={{ opacity: 0, y: 20, scale: 0.95, filter: "blur(10px)" }}
             transition={{ duration: 0.3, type: "spring", bounce: 0.4 }}
-            className="mb-6 w-[360px] sm:w-[420px] h-[550px] max-h-[85vh] bg-background/60 backdrop-blur-3xl border border-white/10 dark:border-white/5 rounded-3xl shadow-[0_20px_40px_-15px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col relative"
+            className="mb-6 w-[360px] sm:w-[420px] h-[550px] max-h-[85vh] bg-background/60 backdrop-blur-3xl border border-border/70 dark:border-border/50 rounded-3xl shadow-[0_20px_40px_-15px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col relative"
           >
             {/* Ambient Background Glow */}
             <div className="absolute top-0 inset-x-0 h-40 bg-gradient-to-b from-orange-500/20 to-transparent pointer-events-none" />
@@ -459,14 +458,14 @@ export function FluxAiAssistant({ userId }: { userId: string }) {
               <div className="flex items-center gap-1">
                 <button
                   onClick={toggleVoice}
-                  className="p-2 text-muted-foreground/60 hover:text-foreground hover:bg-white/5 rounded-full transition-all"
+                  className="p-2 text-muted-foreground/60 hover:text-foreground hover:bg-secondary/40 rounded-full transition-all"
                   title={voiceEnabled ? "Mute Voice" : "Enable Voice"}
                 >
                   {voiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
                 </button>
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="p-2 text-muted-foreground/60 hover:text-foreground hover:bg-white/5 rounded-full transition-all"
+                  className="p-2 text-muted-foreground/60 hover:text-foreground hover:bg-secondary/40 rounded-full transition-all"
                 >
                   <X size={16} />
                 </button>
@@ -487,14 +486,14 @@ export function FluxAiAssistant({ userId }: { userId: string }) {
                     className={`max-w-[85%] px-4 py-3.5 text-[13.5px] leading-relaxed shadow-sm ${
                       msg.role === "user"
                         ? "bg-gradient-to-br from-orange-500 to-rose-600 text-white rounded-2xl rounded-br-sm font-medium shadow-orange-500/20"
-                        : "bg-white/5 backdrop-blur-md border border-white/5 text-foreground/90 rounded-2xl rounded-bl-sm"
+                        : "bg-secondary/40 backdrop-blur-md border border-border/50 text-foreground/90 rounded-2xl rounded-bl-sm"
                     }`}
                   >
                     {formatText(msg.content)}
                     {msg.pendingAction && (
                         <div className="mt-3 flex gap-2">
-                             <button onClick={() => executePendingAction(idx, msg.pendingAction)} className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-semibold shadow-sm transition-all">✅ Approve</button>
-                             <button onClick={() => cancelPendingAction(idx)} className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-rose-200 rounded-lg text-xs font-semibold shadow-sm transition-all">❌ Cancel</button>
+                             <button onClick={() => executePendingAction(idx, msg.pendingAction)} className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-semibold shadow-sm transition-all">âœ… Approve</button>
+                             <button onClick={() => cancelPendingAction(idx)} className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-rose-200 rounded-lg text-xs font-semibold shadow-sm transition-all">âŒ Cancel</button>
                         </div>
                     )}
                   </div>
@@ -506,7 +505,7 @@ export function FluxAiAssistant({ userId }: { userId: string }) {
                   animate={{ opacity: 1, y: 0 }}
                   className="flex justify-start"
                 >
-                  <div className="bg-white/5 backdrop-blur-md border border-white/5 text-foreground/70 rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-2 text-xs font-medium">
+                  <div className="bg-secondary/40 backdrop-blur-md border border-border/50 text-foreground/70 rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-2 text-xs font-medium">
                     <Loader2 size={14} className="animate-spin text-orange-500" />
                     Thinking...
                   </div>
@@ -523,13 +522,13 @@ export function FluxAiAssistant({ userId }: { userId: string }) {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   placeholder="Ask me anything..."
-                  className="w-full bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl pl-5 pr-14 py-3.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-transparent transition-all backdrop-blur-md placeholder:text-muted-foreground/50"
+                  className="w-full bg-secondary/40 hover:bg-secondary border border-border/70 rounded-2xl pl-5 pr-14 py-3.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-transparent transition-all backdrop-blur-md placeholder:text-muted-foreground/50"
                   disabled={isTyping}
                 />
                 <button
                   type="submit"
                   disabled={!input.trim() || isTyping}
-                  className="absolute right-2 p-2.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl hover:shadow-lg hover:shadow-orange-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  className="absolute right-2 p-2.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-lg hover:shadow-lg hover:shadow-orange-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 >
                   <ArrowUp size={16} strokeWidth={2.5} className="text-white" />
                 </button>

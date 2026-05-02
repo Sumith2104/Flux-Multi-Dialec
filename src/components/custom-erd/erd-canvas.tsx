@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { type Table, type Column, type Constraint } from '@/lib/data';
@@ -79,7 +79,7 @@ export function ErdCanvas({ tables, columns, constraints, projectId }: ErdCanvas
   // Load saved positions or calculate layout using Dagre
   useEffect(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null;
-    let savedPositions: Record<string, { x: number, y: number }> = saved ? JSON.parse(saved) : {};
+    const savedPositions: Record<string, { x: number, y: number }> = saved ? JSON.parse(saved) : {};
 
     const g = new dagre.graphlib.Graph();
     g.setGraph({ rankdir: 'LR', nodesep: 80, ranksep: 120 });
@@ -153,7 +153,7 @@ export function ErdCanvas({ tables, columns, constraints, projectId }: ErdCanvas
 
     setNodePositions(initialPositions);
     setIsCalculated(true);
-  }, [tables, columns, constraints]);
+  }, [tables, columns, constraints, storageKey]);
 
   const onPointerEnter = () => {
     setIsHovering(true);
@@ -250,12 +250,12 @@ export function ErdCanvas({ tables, columns, constraints, projectId }: ErdCanvas
   }, [nodePositions, isCalculated, storageKey]);
 
 
-  if (!isCalculated) return <div ref={containerRef} className="w-full h-full bg-black flex items-center justify-center text-zinc-500">Calculating layout...</div>;
+  if (!isCalculated) return <div ref={containerRef} className="w-full h-full bg-background flex items-center justify-center text-muted-foreground/75">Calculating layout...</div>;
 
   return (
     <div 
         ref={containerRef}
-        className="relative w-full h-full bg-[#0a0a0a] overflow-hidden cursor-grab active:cursor-grabbing"
+        className="relative w-full h-full bg-background overflow-hidden cursor-grab active:cursor-grabbing"
         onPointerEnter={onPointerEnter}
         onPointerLeave={onPointerLeave}
         onPointerDown={onPointerDown}
@@ -307,10 +307,10 @@ export function ErdCanvas({ tables, columns, constraints, projectId }: ErdCanvas
       </div>
 
       {/* Basic Controls Overlay */}
-      <div className="absolute bottom-4 left-4 flex items-center gap-2 bg-zinc-900/80 p-1.5 rounded-lg border border-white/10 backdrop-blur-md z-50">
-          <button onClick={() => setTransform(prev => ({ ...prev, scale: Math.min(2, prev.scale + 0.2) }))} className="w-8 h-8 flex items-center justify-center rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300">+</button>
-          <span className="text-xs font-mono text-zinc-400 w-12 text-center">{Math.round(transform.scale * 100)}%</span>
-          <button onClick={() => setTransform(prev => ({ ...prev, scale: Math.max(0.2, prev.scale - 0.2) }))} className="w-8 h-8 flex items-center justify-center rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300">-</button>
+      <div className="absolute bottom-4 left-4 flex items-center gap-2 bg-secondary/85 p-1.5 rounded-lg border border-border/70 backdrop-blur-md z-50">
+          <button onClick={() => setTransform(prev => ({ ...prev, scale: Math.min(2, prev.scale + 0.2) }))} className="w-8 h-8 flex items-center justify-center rounded bg-muted hover:bg-muted text-foreground/85">+</button>
+          <span className="text-xs font-mono text-muted-foreground w-12 text-center">{Math.round(transform.scale * 100)}%</span>
+          <button onClick={() => setTransform(prev => ({ ...prev, scale: Math.max(0.2, prev.scale - 0.2) }))} className="w-8 h-8 flex items-center justify-center rounded bg-muted hover:bg-muted text-foreground/85">-</button>
       </div>
     </div>
   );

@@ -6,16 +6,14 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { getCurrentUserId, User } from "@/lib/auth";
-import { findUserById } from "@/lib/auth-actions";
-import { getProjectsForCurrentUser, Project } from "@/lib/data";
+import { User } from "@/lib/auth";
+import { Project } from "@/lib/data";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { useEffect, useState, useContext } from "react";
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
-import { getAppLayoutBootstrapData, logoutAction } from "./actions";
+import { getAppLayoutBootstrapData } from "./actions";
 import { LogoutButton } from "@/components/logout-button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { ProjectProvider, ProjectContext } from "@/contexts/project-context";
 import { TimezoneSelector } from "@/components/timezone-selector";
 import Dock from "@/components/dock";
@@ -43,7 +41,6 @@ import { PremiumLoader } from "@/components/ui/premium-loader";
 import {
     LayoutDashboard,
     BrainCircuit,
-    Code,
     Folder,
     Settings as SettingsIcon,
     Table,
@@ -51,10 +48,8 @@ import {
     Globe,
     ServerCrash,
     BarChart3,
-    History,
     AlertTriangle
 } from "lucide-react";
-import { checkDatabaseHealthAction } from "@/lib/data";
 
 
 const navItems = [
@@ -265,7 +260,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     const shouldShowDock = userId && (selectedProject || pathname.startsWith('/dashboard/projects'));
 
     return (
-        <div className="flex min-h-screen w-full flex-col bg-background">
+        <div className="flex min-h-screen w-full max-w-full flex-col overflow-x-hidden bg-background text-foreground">
             {isSuspended ? (
                 <div className="bg-destructive text-destructive-foreground text-center py-1.5 px-4 text-xs font-semibold flex items-center justify-center gap-2 z-50">
                     <AlertTriangle className="h-4 w-4" />
@@ -279,9 +274,9 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                     <Link href="/settings" className="underline underline-offset-2 ml-1 opacity-90 hover:opacity-100">Manage in Settings</Link>
                 </div>
             ) : null}
-            <header className="sticky top-0 flex h-14 items-center gap-4 border-b bg-background px-4 md:px-6 z-40">
-                <div className="flex items-center gap-2">
-                    <Avatar className="h-8 w-8">
+            <header className="sticky top-0 z-40 flex h-14 max-w-full items-center gap-2 border-b border-border/70 bg-background/95 px-2 shadow-sm shadow-black/10 backdrop-blur-md sm:gap-4 sm:px-4 md:px-6">
+                <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
+                    <Avatar className="hidden h-8 w-8 shrink-0 sm:block">
                         {(user as any)?.photo_url && <AvatarImage src={(user as any).photo_url} referrerPolicy="no-referrer" />}
                         <AvatarFallback>{avatarFallback}</AvatarFallback>
                     </Avatar>
@@ -299,7 +294,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                                     "hidden sm:inline-flex transition-colors shadow-none text-[9px] uppercase font-bold tracking-wider rounded-md border",
                                     selectedProject.role === 'admin' && "bg-amber-500/10 text-amber-400 border-amber-500/20",
                                     selectedProject.role === 'developer' && "bg-blue-500/10 text-blue-400 border-blue-500/20",
-                                    selectedProject.role === 'viewer' && "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
+                                    selectedProject.role === 'viewer' && "bg-secondary text-muted-foreground border-border"
                                 )}
                             >
                                 {selectedProject.role}
@@ -321,16 +316,24 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                         <TimezoneSelector />
                     </div>
                 </div>
-                <div className="flex-1"></div>
+                <div className="hidden sm:flex sm:flex-1"></div>
                 {userId ? (
-                    <div className="flex items-center gap-0.5">
-                        <CommandPalette />
+                    <div className="flex shrink-0 items-center gap-0.5">
+                        <div className="hidden sm:block">
+                            <CommandPalette />
+                        </div>
                         <div className="w-px h-5 bg-border mx-1 hidden md:block" />
                         <StatusIndicator />
-                        <ChangelogPopover />
-                        <FeedbackWidget />
-                        <KeyboardShortcuts />
-                        <div className="w-px h-5 bg-border mx-1" />
+                        <div className="hidden sm:block">
+                            <ChangelogPopover />
+                        </div>
+                        <div className="hidden sm:block">
+                            <FeedbackWidget />
+                        </div>
+                        <div className="hidden sm:block">
+                            <KeyboardShortcuts />
+                        </div>
+                        <div className="mx-1 hidden h-5 w-px bg-border sm:block" />
                         <LogoutButton />
                     </div>
                 ) : (
@@ -339,15 +342,15 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                     </Button>
                 )}
             </header>
-            <div className="flex flex-1 overflow-hidden relative">
-                <main className={cn("flex-1 overflow-auto pb-24", {
+            <div className="relative flex min-w-0 flex-1 overflow-hidden">
+                <main className={cn("flex-1 overflow-auto bg-background pb-24", {
                     "p-0": isEditorOrDbPage,
-                    "p-4 md:p-6": !isEditorOrDbPage,
+                    "p-3 sm:p-4 md:p-6": !isEditorOrDbPage,
                 })}>
                     {userId && <InvitationAlerts initialInvites={invitations} />}
                     {children}
                     {shouldShowDock && (
-                        <div className="fixed bottom-4 left-0 right-0 flex justify-center z-50 pointer-events-none">
+                        <div className="pointer-events-none fixed bottom-3 left-0 right-0 z-50 flex justify-center px-2 sm:bottom-4">
                             <Dock items={dockItems} className="pointer-events-auto" />
                         </div>
                     )}

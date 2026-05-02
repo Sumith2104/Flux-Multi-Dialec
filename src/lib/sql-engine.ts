@@ -70,6 +70,9 @@ export class SqlEngine {
             if (project?.timezone) {
                 this.projectTimezone = project.timezone;
             }
+            if (!this.role && project?.role) {
+                this.role = project.role;
+            }
             this.projectDialect = project?.dialect || 'postgresql';
         }
     }

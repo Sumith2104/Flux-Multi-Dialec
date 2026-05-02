@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useState, useEffect, useContext } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -12,6 +12,15 @@ import { CreateScraperDialog } from "@/components/scrapers/create-scraper-dialog
 import { EditScraperDialog } from "@/components/scrapers/edit-scraper-dialog"
 import { ScraperRunsTable } from "@/components/scrapers/scraper-runs-table"
 import { formatDistanceToNow } from "date-fns"
+
+interface Scraper {
+    id: string;
+    table_name: string;
+    target_url?: string;
+    status?: string;
+    created_at?: string;
+    [key: string]: any;
+}
 
 export default function ScraperDashboard() {
     const searchParams = useSearchParams()
@@ -27,7 +36,7 @@ export default function ScraperDashboard() {
     const [runningId, setRunningId] = useState<string | null>(null)
     const [viewingHistoryId, setViewingHistoryId] = useState<string | null>(null)
 
-    const { data: scrapers = [], isLoading: loading } = useQuery({
+    const { data: scrapers = [], isLoading: loading } = useQuery<Scraper[]>({
         queryKey: ['scrapers', projectId],
         queryFn: async () => {
             const res = await fetch(`/api/scrapers?projectId=${projectId}`)
@@ -128,7 +137,7 @@ export default function ScraperDashboard() {
                                             <Badge variant="outline" className="capitalize text-xs font-mono bg-background flex items-center gap-1.5"><Calendar className="h-3 w-3" /> {scraper.schedule || 'manual'}</Badge>
                                             <Badge variant="secondary" className={`capitalize font-bold border-none ${scraper.status === 'running' ? 'bg-orange-500/20 text-orange-500 animate-pulse' :
                                                 scraper.status === 'failed' ? 'bg-red-500/20 text-red-500' :
-                                                    'bg-zinc-500/20 text-zinc-500'
+                                                    'bg-secondary text-muted-foreground'
                                                 }`}>
                                                 {scraper.status === 'running' ? 'Running...' : scraper.status === 'idle' ? 'Ready' : scraper.status}
                                             </Badge>
@@ -184,7 +193,7 @@ export default function ScraperDashboard() {
                     </div>
 
                     <div className="lg:col-span-4 sticky top-20 h-fit">
-                        <Card className="border-border shadow-xl rounded-xl overflow-hidden">
+                        <Card className="border-border shadow-xl rounded-lg overflow-hidden">
                             <CardHeader className="bg-muted/30 border-b pb-4">
                                 <CardTitle className="flex items-center gap-2 text-lg">
                                     <DatabaseZap className="h-5 w-5 text-orange-500" />

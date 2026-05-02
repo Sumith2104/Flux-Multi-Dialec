@@ -33,7 +33,6 @@ export function DataTable({
   onRowSelectionModelChange,
 }: DataTableProps) {
   const parentRef = React.useRef<HTMLDivElement>(null);
-  const headerRef = React.useRef<HTMLDivElement>(null);
 
   // Column Resizing State
   const [columnWidths, setColumnWidths] = React.useState<Record<string, number>>({});
@@ -136,14 +135,14 @@ export function DataTable({
 
   if (loading && rows.length === 0) {
     return (
-      <div className="w-full h-[70vh] flex flex-col rounded-xl border border-white/10 bg-black/40 shadow-2xl overflow-hidden relative">
+      <div className="relative flex h-[60dvh] w-full flex-col overflow-hidden rounded-lg border border-border/70 bg-card/90 shadow-2xl shadow-black/25 sm:h-[70vh]">
         {/* Render only headers for skeleton state */}
-        <div className="sticky top-0 z-20 bg-white border-b border-white/20 w-max min-w-full inline-flex text-xs font-bold tracking-widest uppercase text-zinc-800">
-          <div className="w-16 shrink-0 flex items-center justify-center border-r border-zinc-200/80 py-3.5 bg-zinc-100">#</div>
-          <div className="w-14 shrink-0 flex items-center justify-center border-r border-zinc-200/80 py-3.5 bg-white"><Checkbox disabled className="border-zinc-400" /></div>
+        <div className="sticky top-0 z-20 inline-flex w-max min-w-full border-b border-border bg-secondary text-xs font-bold uppercase tracking-widest text-muted-foreground">
+          <div className="flex w-16 shrink-0 items-center justify-center border-r border-border/60 bg-muted/50 py-3.5">#</div>
+          <div className="flex w-14 shrink-0 items-center justify-center border-r border-border/60 bg-secondary py-3.5"><Checkbox disabled /></div>
           {columns.map((c, i) => (
-            <div key={c.field} className={`relative flex items-center shrink-0 px-4 py-3.5 bg-white ${i !== columns.length - 1 ? 'border-r border-zinc-200/80' : ''}`} style={{ width: `${getColWidth(c.field)}px` }}>
-              <span className="truncate w-full text-zinc-800/50">{c.headerName}</span>
+            <div key={c.field} className={`relative flex shrink-0 items-center bg-secondary px-4 py-3.5 ${i !== columns.length - 1 ? 'border-r border-border/60' : ''}`} style={{ width: `${getColWidth(c.field)}px` }}>
+              <span className="w-full truncate">{c.headerName}</span>
             </div>
           ))}
         </div>
@@ -157,27 +156,26 @@ export function DataTable({
   // Define column width mathematically (tailwind grid doesn't play well with virtual absolute translation)
   // We'll use Flex flex-1 for distributing columns evenly.
   return (
-    <div className="rounded-xl border border-white/10 bg-black/40 backdrop-blur-2xl h-[70vh] flex flex-col text-foreground shadow-2xl ring-1 ring-white/5 relative overflow-hidden">
+    <div className="relative flex h-[60dvh] max-w-full flex-col overflow-hidden rounded-lg border border-border/70 bg-card/90 text-foreground shadow-2xl shadow-black/25 backdrop-blur-xl sm:h-[70vh]">
 
       {/* Unified Scrolling Container for both Header and Body (Eliminates scroll sync lag) */}
       <div ref={parentRef} className="flex-1 overflow-auto bg-transparent relative custom-scrollbar">
 
         {/* Sticky Header Area */}
-        <div className="sticky top-0 z-20 bg-white shadow-[0_4px_20px_-4px_rgba(0,0,0,0.3)] border-b border-white/20 w-max min-w-full inline-flex text-xs font-bold tracking-widest uppercase text-zinc-800">
-          <div className="w-16 shrink-0 flex items-center justify-center border-r border-zinc-200/80 py-3.5 bg-zinc-100">
+        <div className="sticky top-0 z-20 inline-flex w-max min-w-full border-b border-border bg-secondary text-xs font-bold uppercase tracking-widest text-muted-foreground shadow-sm">
+          <div className="flex w-16 shrink-0 items-center justify-center border-r border-border/60 bg-muted/50 py-3.5">
             #
           </div>
-          <div className="w-14 shrink-0 flex items-center justify-center border-r border-zinc-200/80 py-3.5 bg-white">
+          <div className="flex w-14 shrink-0 items-center justify-center border-r border-border/60 bg-secondary py-3.5">
             <Checkbox
               checked={selectionModel.length === rows.length && rows.length > 0}
               onCheckedChange={toggleAll}
-              className="border-zinc-400 data-[state=checked]:bg-zinc-800 data-[state=checked]:text-white"
             />
           </div>
           {columns.map((c, i) => (
             <div
               key={c.field}
-              className={`relative flex items-center shrink-0 px-4 py-3.5 bg-white ${i !== columns.length - 1 ? 'border-r border-zinc-200/80' : ''}`}
+              className={`relative flex shrink-0 items-center bg-secondary px-4 py-3.5 ${i !== columns.length - 1 ? 'border-r border-border/60' : ''}`}
               style={{ width: `${getColWidth(c.field)}px` }}
             >
               <span className="truncate w-full">{c.headerName}</span>
@@ -188,7 +186,7 @@ export function DataTable({
                 onDoubleClick={(e) => handleResizeDoubleClick(e, c.field)}
                 title="Drag to resize · Double-click to auto-fit"
               >
-                <div className="w-px h-4 bg-zinc-300 group-hover/handle:bg-blue-400 group-hover/handle:w-0.5 group-hover/handle:h-full transition-all duration-100" />
+                <div className="h-4 w-px bg-border transition-all duration-100 group-hover/handle:h-full group-hover/handle:w-0.5 group-hover/handle:bg-primary/70" />
               </div>
             </div>
           ))}
@@ -209,34 +207,34 @@ export function DataTable({
             return (
               <div
                 key={virtualRow.index}
-                className={`absolute top-0 left-0 min-w-full w-max inline-flex items-center border-b border-white/10 transition-colors duration-150 cursor-pointer ${isSelected ? 'bg-white/10' : 'hover:bg-white/[0.04]'
+                className={`absolute top-0 left-0 inline-flex w-max min-w-full cursor-pointer items-center border-b border-border/50 transition-colors duration-150 ${isSelected ? 'bg-primary/10' : 'hover:bg-secondary/50'
                   }`}
                 style={{
                   height: `${virtualRow.size}px`,
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
-                onClick={(e) => toggleSelection(row.id || row._id, e)}
+                onClick={(e) => row && toggleSelection(row.id || row._id, e)}
               >
                 {isLoaderRow ? (
-                  <div className="w-full h-full flex items-center justify-center text-sm text-zinc-400 gap-3 bg-white/5 animate-pulse">
+                  <div className="flex h-full w-full animate-pulse items-center justify-center gap-3 bg-secondary/40 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" /> Fetching more rows...
                   </div>
                 ) : (
                   <>
-                    <div className="w-16 shrink-0 flex items-center justify-center h-full border-r border-white/10 font-mono text-xs text-zinc-500 bg-black/20">
+                    <div className="flex h-full w-16 shrink-0 items-center justify-center border-r border-border/50 bg-secondary/40 font-mono text-xs text-muted-foreground/75">
                       {virtualRow.index + 1}
                     </div>
-                    <div className="w-14 shrink-0 flex items-center justify-center h-full border-r border-white/10">
+                    <div className="flex h-full w-14 shrink-0 items-center justify-center border-r border-border/50">
                       <Checkbox
                         checked={isSelected}
                         onClick={(e: any) => toggleSelection(row.id || row._id, e)}
-                        className={`transition-colors ${isSelected ? 'border-white bg-white text-black' : 'border-zinc-600'}`}
+                        className="transition-colors"
                       />
                     </div>
                     {columns.map((c, i) => (
                       <div
                         key={c.field}
-                        className={`shrink-0 truncate px-4 h-full flex items-center text-sm ${i !== columns.length - 1 ? 'border-r border-white/10' : ''} ${isSelected ? 'text-white font-medium' : 'text-zinc-300 font-normal'}`}
+                        className={`flex h-full shrink-0 items-center truncate px-4 text-sm ${i !== columns.length - 1 ? 'border-r border-border/50' : ''} ${isSelected ? 'font-medium text-foreground' : 'font-normal text-foreground/85'}`}
                         style={{ width: `${getColWidth(c.field)}px` }}
                       >
                         {String(row[c.field] !== null && row[c.field] !== undefined ? row[c.field] : '')}
@@ -251,11 +249,11 @@ export function DataTable({
 
         {!loading && rows.length === 0 && (
           <div className="w-full h-full min-h-[400px] flex flex-col items-center justify-center text-muted-foreground absolute inset-0 opacity-80 pointer-events-none mt-20">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-black/20 mb-4">
-              <Database className="h-8 w-8 text-white/30" />
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-secondary">
+              <Database className="h-8 w-8 text-muted-foreground/40" />
             </div>
-            <h3 className="text-lg font-semibold text-white/60">No rows found</h3>
-            <p className="text-sm mt-1 text-center max-w-sm text-white/40">This table is empty. Insert a new row.</p>
+            <h3 className="text-lg font-semibold text-muted-foreground">No rows found</h3>
+            <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground/70">This table is empty. Insert a new row.</p>
           </div>
         )}
       </div>

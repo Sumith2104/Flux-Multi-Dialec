@@ -1,4 +1,4 @@
-
+﻿
 "use client"
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
@@ -12,7 +12,6 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2 } from 'lucide-react';
 
 interface AlertOptions {
     title: string;
@@ -82,13 +81,13 @@ export function GlobalAlertProvider({ children }: { children: ReactNode }) {
                 <AlertDialog open={alertState.isOpen} onOpenChange={(open) => !open && handleClose(false)}>
                     <AlertDialogContent>
                         <AlertDialogHeader>
-                            <AlertDialogTitle className="text-zinc-100">{alertState.title}</AlertDialogTitle>
-                            <AlertDialogDescription className="text-zinc-400">
+                            <AlertDialogTitle className="text-foreground">{alertState.title}</AlertDialogTitle>
+                            <AlertDialogDescription className="text-muted-foreground">
                                 {alertState.description}
                             </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                            <AlertDialogCancel onClick={() => handleClose(false)} className="border-white/10 bg-transparent text-zinc-300 hover:bg-white/5 hover:text-white">
+                            <AlertDialogCancel onClick={() => handleClose(false)} className="border-border/70 bg-transparent text-foreground/85 hover:bg-secondary/40 hover:text-white">
                                 {alertState.cancelText || 'Cancel'}
                             </AlertDialogCancel>
                             <AlertDialogAction

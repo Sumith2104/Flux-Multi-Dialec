@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader } from './ui/card';
 import Editor from '@monaco-editor/react';
 import { useToast } from '@/hooks/use-toast';
 
-// ─── Module-level constants — live outside React, never recreated ─────────────
+// â”€â”€â”€ Module-level constants â€” live outside React, never recreated â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const SQL_KEYWORDS = [
     'SELECT', 'FROM', 'WHERE', 'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET',
     'DELETE', 'CREATE', 'TABLE', 'DROP', 'ALTER', 'ADD', 'COLUMN', 'INDEX',
@@ -25,7 +25,7 @@ const SQL_KEYWORDS = [
     'TIMESTAMP', 'DATE', 'JSONB', 'JSON', 'UUID', 'BIGINT', 'DECIMAL', 'FLOAT',
 ];
 
-// Module-level mutable ref — shared with the provider closure.
+// Module-level mutable ref â€” shared with the provider closure.
 // React state/useState is NOT used here because the provider closure
 // is registered once and must always read the latest schema.
 const _schemaRef: { current: Record<string, any[]> | null } = { current: null };
@@ -33,7 +33,7 @@ let _providerRegistered = false;
 
 /**
  * Registers the SQL completion provider on the Monaco singleton.
- * Called via beforeMount — guaranteed to fire exactly once before
+ * Called via beforeMount â€” guaranteed to fire exactly once before
  * any editor instance is created, even across HMR reloads.
  */
 function ensureProviderRegistered(monaco: any) {
@@ -53,7 +53,7 @@ function ensureProviderRegistered(monaco: any) {
 
             const suggestions: any[] = [];
 
-            // ── SQL Keywords ──────────────────────────────────────────────────
+            // â”€â”€ SQL Keywords â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             for (const kw of SQL_KEYWORDS) {
                 suggestions.push({
                     label: kw,
@@ -65,7 +65,7 @@ function ensureProviderRegistered(monaco: any) {
                 });
             }
 
-            // ── Tables + Columns (live from module-level ref) ─────────────────
+            // â”€â”€ Tables + Columns (live from module-level ref) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             const tables = _schemaRef.current;
             if (tables) {
                 for (const tableName of Object.keys(tables)) {
@@ -86,7 +86,7 @@ function ensureProviderRegistered(monaco: any) {
                             label: col.name,
                             kind: monaco.languages.CompletionItemKind.Field,
                             insertText: col.name,
-                            detail: `${col.type}  ←  ${tableName}`,
+                            detail: `${col.type}  â†  ${tableName}`,
                             sortText: 'C' + col.name,
                             range,
                         });
@@ -98,7 +98,7 @@ function ensureProviderRegistered(monaco: any) {
         },
     });
 }
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface SqlEditorProps {
     projectId?: string;
@@ -113,7 +113,7 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
     const editorRef = useRef<any>(null);
     const { toast } = useToast();
 
-    // Fetch schema — used only to populate the module-level ref
+    // Fetch schema â€” used only to populate the module-level ref
     const { data: schema } = useQuery({
         queryKey: ['schema', projectId],
         queryFn: async () => {
@@ -130,7 +130,7 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
         _schemaRef.current = schema ?? null;
     }, [schema]);
 
-    // beforeMount — fires ONCE on the Monaco singleton before any editor renders.
+    // beforeMount â€” fires ONCE on the Monaco singleton before any editor renders.
     // This is the correct place to register global providers.
     const handleBeforeMount = (monaco: any) => {
         ensureProviderRegistered(monaco);
@@ -143,13 +143,13 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => handleRunClick());
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => handleSaveQuery());
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () => handleFormatSql());
-        // Ctrl+Space — force-open the suggestion widget
+        // Ctrl+Space â€” force-open the suggestion widget
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space, () => {
             editor.trigger('keyboard', 'editor.action.triggerSuggest', {});
         });
     };
 
-    // Monaco GC — dispose editor model on unmount to prevent memory leaks
+    // Monaco GC â€” dispose editor model on unmount to prevent memory leaks
     useEffect(() => {
         return () => {
             if (editorRef.current) {
@@ -243,7 +243,7 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
                 </div>
                 <div className="flex items-center gap-2 shrink-0 ml-auto">
                     <span className="text-[10px] text-muted-foreground mr-2 hidden lg:inline-block">
-                        Ctrl+Enter Run · Ctrl+Space Autocomplete
+                        Ctrl+Enter Run Â· Ctrl+Space Autocomplete
                     </span>
                     <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={handleExport} disabled={!results?.rows?.length} title="Export CSV">
                         <Download className="h-3.5 w-3.5" />
@@ -255,12 +255,12 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
                 </div>
             </CardHeader>
 
-            <CardContent className="p-0 flex-grow relative bg-[#1e1e1e]">
+            <CardContent className="p-0 flex-grow relative bg-card">
                 {!query.trim() && (
                     <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-                        <div className="text-center bg-black/40 backdrop-blur-sm px-6 py-4 rounded-lg border border-white/5 opacity-80">
+                        <div className="text-center bg-background/70 backdrop-blur-sm px-6 py-4 rounded-lg border border-border/50 opacity-80">
                             <p className="text-white/70 text-sm font-medium">
-                                Start typing SQL — press <kbd className="px-1 py-0.5 rounded bg-white/10 text-xs font-mono">Ctrl+Space</kbd> for autocomplete.
+                                Start typing SQL â€” press <kbd className="px-1 py-0.5 rounded bg-secondary text-xs font-mono">Ctrl+Space</kbd> for autocomplete.
                             </p>
                         </div>
                     </div>

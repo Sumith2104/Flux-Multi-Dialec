@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
@@ -34,7 +34,7 @@ export function SystemMetrics({ projectId }: { projectId: string }) {
     const maxCount = Math.max(...data.heatmap.map((h: any) => h.count), 1);
     const getIntensity = (count: number) => {
         const ratio = count / maxCount;
-        if (ratio === 0) return 'bg-zinc-900/30';
+        if (ratio === 0) return 'bg-secondary/50';
         if (ratio < 0.25) return 'bg-emerald-900/30';
         if (ratio < 0.5) return 'bg-emerald-700/50';
         if (ratio < 0.75) return 'bg-emerald-500/70';
@@ -48,7 +48,7 @@ export function SystemMetrics({ projectId }: { projectId: string }) {
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
-            <Card className="border-zinc-800 bg-zinc-950/50">
+            <Card className="border-border bg-card/80">
                 <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium flex items-center gap-2">
                         <Activity className="h-4 w-4 text-emerald-400" />
@@ -69,7 +69,7 @@ export function SystemMetrics({ projectId }: { projectId: string }) {
                     <div className="mt-4 flex items-center justify-end gap-2 text-[10px] text-muted-foreground font-mono">
                         <span>Less</span>
                         <div className="flex gap-1">
-                            <div className="h-2 w-2 rounded-sm bg-zinc-900/30" />
+                            <div className="h-2 w-2 rounded-sm bg-secondary/50" />
                             <div className="h-2 w-2 rounded-sm bg-emerald-900/30" />
                             <div className="h-2 w-2 rounded-sm bg-emerald-700/50" />
                             <div className="h-2 w-2 rounded-sm bg-emerald-500/70" />
@@ -81,7 +81,7 @@ export function SystemMetrics({ projectId }: { projectId: string }) {
             </Card>
 
             <div className="grid md:grid-cols-2 gap-6">
-                <Card className="border-zinc-800 bg-zinc-950/50">
+                <Card className="border-border bg-card/80">
                     <CardHeader>
                         <CardTitle className="text-sm font-medium flex items-center gap-2">
                             <Clock className="h-4 w-4 text-orange-400" />
@@ -105,7 +105,7 @@ export function SystemMetrics({ projectId }: { projectId: string }) {
                     </CardContent>
                 </Card>
 
-                <Card className="border-zinc-800 bg-zinc-950/50">
+                <Card className="border-border bg-card/80">
                     <CardHeader>
                         <CardTitle className="text-sm font-medium flex items-center gap-2">
                             <ShieldCheck className="h-4 w-4 text-blue-400" />

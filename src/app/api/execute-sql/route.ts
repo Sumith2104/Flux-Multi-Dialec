@@ -9,6 +9,7 @@ import { redis } from '@/lib/redis';
 import { getPgPool, handleDatabaseError } from '@/lib/pg';
 import { type WebhookEvent } from '@/lib/webhooks';
 import { Parser } from 'node-sql-parser';
+import { assertProjectScope } from '@/lib/project-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -112,6 +113,7 @@ export async function POST(req: NextRequest) {
         }
 
         const userId = auth.userId;
+        assertProjectScope(auth, projectId);
 
         // Optimization: Burst Cache (Reads only)
         const isSelect = query.trim().toUpperCase().startsWith('SELECT');
@@ -123,7 +125,9 @@ export async function POST(req: NextRequest) {
         const [cachedResult, project, trafficLimitResult] = await Promise.all([
             isSelect ? redis.get<CacheEntry>(cacheKey!) : Promise.resolve(null),
             getProjectById(projectId, userId),
-            checkProjectTrafficLimits(projectId).then(() => ({ success: true })).catch(e => ({ success: false, error: e }))
+            checkProjectTrafficLimits(projectId)
+                .then(() => ({ success: true as const }))
+                .catch(error => ({ success: false as const, error }))
         ]);
 
         if (!trafficLimitResult.success) throw new FluxbaseError(`Infrastructure limit: ${trafficLimitResult.error.message}`, ERROR_CODES.RATE_LIMIT_EXCEEDED, 429);
@@ -142,7 +146,7 @@ export async function POST(req: NextRequest) {
         }
 
         const startTime = Date.now();
-        const engine = new SqlEngine(projectId, userId, auth.scopes, auth.role, project);
+        const engine = new SqlEngine(projectId, userId, auth.scopes, project.role, project);
         const result = await engine.execute(query, finalParams);
         const duration = Date.now() - startTime;
 

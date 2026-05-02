@@ -9,7 +9,7 @@ import {
   AnimatePresence,
   MotionValue,
 } from "framer-motion";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 function useDockItemSize(
   mouseX: MotionValue<number>,
@@ -88,12 +88,12 @@ function DockItem({
       onFocus={() => isHovered.set(1)}
       onBlur={() => isHovered.set(0)}
       onClick={onClick}
-      className="relative flex cursor-pointer items-center justify-center rounded-full bg-background/90 text-foreground shadow-sm ring-1 ring-border/50 hover:bg-background transition-colors"
+      className="relative flex shrink-0 snap-center cursor-pointer items-center justify-center rounded-full bg-secondary text-foreground shadow-sm ring-1 ring-border/70 transition-colors hover:bg-muted"
       tabIndex={0}
       role="button"
       aria-haspopup="true"
     >
-      <div className="flex items-center justify-center">{icon}</div>
+      <div className="flex items-center justify-center [&_svg]:h-5 [&_svg]:w-5">{icon}</div>
       {badgeCount !== undefined && badgeCount > 0 && (
         <span className="absolute -top-2 -right-2 flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full">
           {badgeCount > 99 ? "99+" : badgeCount}
@@ -106,7 +106,7 @@ function DockItem({
             animate={{ opacity: 1, y: -10 }}
             exit={{ opacity: 0, y: 0 }}
             transition={{ duration: 0.2 }}
-            className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-background px-2 py-1 text-xs text-foreground shadow-md"
+            className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-lg shadow-black/30"
             role="tooltip"
           >
             {label}
@@ -142,12 +142,25 @@ export default function Dock({
   baseItemSize = 40,
 }: DockProps) {
   const mouseX = useMotionValue(Infinity);
+  const [compactDock, setCompactDock] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia("(pointer: coarse), (max-width: 640px)");
+    const update = () => setCompactDock(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  const effectiveBaseItemSize = compactDock ? Math.min(baseItemSize, 36) : baseItemSize;
+  const effectiveMagnification = compactDock ? effectiveBaseItemSize : magnification;
+  const effectiveDistance = compactDock ? 0 : distance;
 
   return (
     <motion.div
       onMouseMove={(e) => mouseX.set(e.pageX)}
       onMouseLeave={() => mouseX.set(Infinity)}
-      className={`flex h-16 items-end gap-3 rounded-2xl border border-border/40 bg-background/70 shadow-[0_8px_32px_rgba(0,0,0,0.4)] ring-1 ring-white/5 px-3 pb-3 backdrop-blur-2xl max-w-[calc(100vw-2rem)] overflow-x-auto overflow-y-hidden [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] ${className}`}
+      className={`flex h-14 max-w-[calc(100vw-1rem)] snap-x items-end gap-2 overflow-x-auto overflow-y-hidden rounded-lg border border-border/70 bg-card/90 px-2 pb-2 shadow-2xl shadow-black/30 backdrop-blur-xl sm:h-16 sm:max-w-[calc(100vw-2rem)] sm:gap-3 sm:px-3 sm:pb-3 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] ${className}`}
       role="toolbar"
       aria-label="Application dock"
     >
@@ -158,9 +171,9 @@ export default function Dock({
           label={item.label}
           onClick={item.onClick}
           mouseX={mouseX}
-          baseItemSize={baseItemSize}
-          magnification={magnification}
-          distance={distance}
+          baseItemSize={effectiveBaseItemSize}
+          magnification={effectiveMagnification}
+          distance={effectiveDistance}
           spring={spring}
           badgeCount={item.badgeCount}
         />

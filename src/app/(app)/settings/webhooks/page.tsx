@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useContext, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -17,7 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getWebhooksAction, createWebhookAction, deleteWebhookAction, toggleWebhookAction } from '../actions';
 import { type Webhook, type WebhookEvent } from '@/lib/webhooks';
-import { CheckCircle2, XCircle, Clock, RefreshCw, Webhook as WebhookIcon, Activity, Loader2, RotateCcw } from 'lucide-react';
+import { CheckCircle2, XCircle, RefreshCw, Webhook as WebhookIcon, Activity, Loader2, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface DeliveryLog {
@@ -131,7 +131,7 @@ export default function WebhooksPage() {
     return (
         <div className="space-y-6">
             <Tabs defaultValue="endpoints">
-                <TabsList className="bg-zinc-900 border border-zinc-800">
+                <TabsList className="bg-secondary border border-border">
                     <TabsTrigger value="endpoints" id="webhooks-endpoints-tab">
                         <WebhookIcon className="h-3.5 w-3.5 mr-1.5" />
                         Endpoints ({webhooks.length})
@@ -147,7 +147,7 @@ export default function WebhooksPage() {
 
                 {/* Endpoints Tab */}
                 <TabsContent value="endpoints" className="mt-4">
-                    <Card className="border-zinc-800">
+                    <Card className="border-border">
                         <CardHeader>
                             <CardTitle className="text-base">Add Webhook</CardTitle>
                             <CardDescription>Configure real-time HTTP push events for database changes.</CardDescription>
@@ -156,17 +156,17 @@ export default function WebhooksPage() {
                             <div className="grid gap-3 sm:grid-cols-2">
                                 <div className="space-y-1.5">
                                     <Label className="text-xs">Name</Label>
-                                    <Input placeholder="Slack notification" value={name} onChange={e => setName(e.target.value)} className="bg-zinc-900 border-zinc-700 h-9 text-sm" id="webhook-name" />
+                                    <Input placeholder="Slack notification" value={name} onChange={e => setName(e.target.value)} className="bg-secondary border-border/80 h-9 text-sm" id="webhook-name" />
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label className="text-xs">URL Endpoint</Label>
-                                    <Input placeholder="https://hooks.slack.com/..." value={url} onChange={e => setUrl(e.target.value)} className="bg-zinc-900 border-zinc-700 h-9 text-sm font-mono" id="webhook-url" />
+                                    <Input placeholder="https://hooks.slack.com/..." value={url} onChange={e => setUrl(e.target.value)} className="bg-secondary border-border/80 h-9 text-sm font-mono" id="webhook-url" />
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label className="text-xs">Event</Label>
                                     <Select value={event} onValueChange={(e: WebhookEvent) => setEvent(e)}>
-                                        <SelectTrigger className="bg-zinc-900 border-zinc-700 h-9 text-sm" id="webhook-event"><SelectValue /></SelectTrigger>
-                                        <SelectContent className="bg-zinc-950 border-zinc-800">
+                                        <SelectTrigger className="bg-secondary border-border/80 h-9 text-sm" id="webhook-event"><SelectValue /></SelectTrigger>
+                                        <SelectContent className="bg-card border-border">
                                             <SelectItem value="*">All Events (*)</SelectItem>
                                             <SelectItem value="row.inserted">row.inserted</SelectItem>
                                             <SelectItem value="row.updated">row.updated</SelectItem>
@@ -176,12 +176,12 @@ export default function WebhooksPage() {
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label className="text-xs">Table (or * for all)</Label>
-                                    <Input placeholder="*" value={tableId} onChange={e => setTableId(e.target.value)} className="bg-zinc-900 border-zinc-700 h-9 text-sm font-mono" id="webhook-table" />
+                                    <Input placeholder="*" value={tableId} onChange={e => setTableId(e.target.value)} className="bg-secondary border-border/80 h-9 text-sm font-mono" id="webhook-table" />
                                 </div>
                             </div>
                             <div className="space-y-1.5">
                                 <Label className="text-xs">Signing Secret (optional)</Label>
-                                <Input placeholder="Used to verify webhook authenticity" value={secret} onChange={e => setSecret(e.target.value)} className="bg-zinc-900 border-zinc-700 h-9 text-sm font-mono" id="webhook-secret" />
+                                <Input placeholder="Used to verify webhook authenticity" value={secret} onChange={e => setSecret(e.target.value)} className="bg-secondary border-border/80 h-9 text-sm font-mono" id="webhook-secret" />
                             </div>
                             <Button onClick={handleCreate} disabled={loading || !name.trim() || !url.trim()} className="bg-orange-600 hover:bg-orange-500" id="webhook-add">
                                 {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <WebhookIcon className="h-4 w-4 mr-2" />}
@@ -193,14 +193,14 @@ export default function WebhooksPage() {
                     {/* Webhook List */}
                     <div className="mt-4 space-y-2">
                         {webhooks.length === 0 ? (
-                            <div className="text-center py-12 text-sm text-muted-foreground border border-dashed border-zinc-800 rounded-lg">
+                            <div className="text-center py-12 text-sm text-muted-foreground border border-dashed border-border rounded-lg">
                                 No webhooks configured yet. Add one above.
                             </div>
                         ) : webhooks.map(webhook => (
-                            <Card key={webhook.webhook_id} className={cn('border-zinc-800', !webhook.is_active && 'opacity-60')}>
+                            <Card key={webhook.webhook_id} className={cn('border-border', !webhook.is_active && 'opacity-60')}>
                                 <CardContent className="flex items-center gap-4 p-4">
-                                    <div className={cn('p-2 rounded-md shrink-0', webhook.is_active ? 'bg-emerald-500/10' : 'bg-zinc-800')}>
-                                        <WebhookIcon className={cn('h-4 w-4', webhook.is_active ? 'text-emerald-400' : 'text-zinc-500')} />
+                                    <div className={cn('p-2 rounded-md shrink-0', webhook.is_active ? 'bg-emerald-500/10' : 'bg-muted')}>
+                                        <WebhookIcon className={cn('h-4 w-4', webhook.is_active ? 'text-emerald-400' : 'text-muted-foreground/75')} />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 mb-0.5">
@@ -216,10 +216,10 @@ export default function WebhooksPage() {
                                             <AlertDialogTrigger asChild>
                                                 <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-red-400 h-8 text-xs" id={`delete-${webhook.webhook_id}`}>Delete</Button>
                                             </AlertDialogTrigger>
-                                            <AlertDialogContent className="bg-zinc-950 border-zinc-800">
+                                            <AlertDialogContent className="bg-card border-border">
                                                 <AlertDialogHeader>
                                                     <AlertDialogTitle>Delete Webhook?</AlertDialogTitle>
-                                                    <AlertDialogDescription>This will permanently stop all events being sent to <code className="bg-zinc-800 px-1 rounded">{webhook.url}</code>.</AlertDialogDescription>
+                                                    <AlertDialogDescription>This will permanently stop all events being sent to <code className="bg-muted px-1 rounded">{webhook.url}</code>.</AlertDialogDescription>
                                                 </AlertDialogHeader>
                                                 <AlertDialogFooter>
                                                     <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -237,13 +237,13 @@ export default function WebhooksPage() {
                 {/* Delivery History Tab */}
                 <TabsContent value="logs" className="mt-4 space-y-4">
                     {/* Stats */}
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                         {[
                             { label: 'Total Deliveries', value: deliveryLogs.length, color: 'text-foreground' },
                             { label: 'Success Rate', value: `${successRate}%`, color: successRate === 100 ? 'text-emerald-400' : successRate > 80 ? 'text-yellow-400' : 'text-red-400' },
                             { label: 'Failed', value: failedLogs.length, color: failedLogs.length > 0 ? 'text-red-400' : 'text-emerald-400' },
                         ].map(s => (
-                            <Card key={s.label} className="border-zinc-800">
+                            <Card key={s.label} className="border-border">
                                 <CardContent className="pt-4">
                                     <div className={cn('text-2xl font-bold', s.color)}>{s.value}</div>
                                     <div className="text-xs text-muted-foreground">{s.label}</div>
@@ -262,13 +262,13 @@ export default function WebhooksPage() {
                     {logsLoading ? (
                         <div className="flex items-center justify-center h-32"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
                     ) : deliveryLogs.length === 0 ? (
-                        <div className="text-center py-12 text-sm text-muted-foreground border border-dashed border-zinc-800 rounded-lg">
+                        <div className="text-center py-12 text-sm text-muted-foreground border border-dashed border-border rounded-lg">
                             No delivery history yet. Events will appear here after webhooks fire.
                         </div>
                     ) : (
                         <div className="space-y-1.5">
                             {deliveryLogs.map(log => (
-                                <div key={log.id} className={cn('flex items-start gap-3 p-3 rounded-lg border transition-colors', log.success ? 'border-zinc-800 bg-zinc-900/40' : 'border-red-500/20 bg-red-500/5')}>
+                                <div key={log.id} className={cn('flex items-start gap-3 p-3 rounded-lg border transition-colors', log.success ? 'border-border bg-secondary/60' : 'border-red-500/20 bg-red-500/5')}>
                                     <div className="shrink-0 mt-0.5">
                                         {log.success
                                             ? <CheckCircle2 className="h-4 w-4 text-emerald-400" />
@@ -284,13 +284,13 @@ export default function WebhooksPage() {
                                                     {log.statusCode}
                                                 </Badge>
                                             )}
-                                            {log.responseMs && <span className="text-[10px] text-zinc-500">{log.responseMs}ms</span>}
+                                            {log.responseMs && <span className="text-[10px] text-muted-foreground/75">{log.responseMs}ms</span>}
                                         </div>
-                                        <code className="text-xs text-zinc-500 font-mono truncate block">{log.url}</code>
+                                        <code className="text-xs text-muted-foreground/75 font-mono truncate block">{log.url}</code>
                                         {log.error && <p className="text-xs text-red-400 mt-0.5">{log.error}</p>}
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
-                                        <span className="text-[10px] text-zinc-600">{new Date(log.createdAt).toLocaleTimeString()}</span>
+                                        <span className="text-[10px] text-muted-foreground/55">{new Date(log.createdAt).toLocaleTimeString()}</span>
                                         {!log.success && (
                                             <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-orange-400"
                                                 onClick={() => handleRetry(log.id)} disabled={retrying === log.id} id={`retry-${log.id}`}>

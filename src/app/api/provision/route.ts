@@ -1,71 +1,74 @@
 import { NextResponse } from 'next/server';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { provisionDatabaseInstance, getDatabaseStatus } from '@/lib/aws-rds';
-import { getPgPool } from '@/lib/pg';
 import crypto from 'crypto';
+import { jsonError, requireProjectAccess } from '@/lib/project-auth';
+import { checkInstanceSizeLimit } from '@/lib/limits';
+import { ERROR_CODES, FluxbaseError } from '@/lib/error-codes';
+
+function instancePrefixForProject(projectId: string): string {
+    return `fluxbase-tenant-${projectId.toLowerCase().replace(/[^a-z0-9-]/g, '')}-`;
+}
 
 export async function POST(request: Request) {
     try {
         const auth = await getAuthContextFromRequest(request);
-        if (!auth) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-
         const body = await request.json();
-        const { engine, size, region } = body;
-
-        // CI/CD API Keys inject `allowedProjectId` automatically
-        const projectId = body.projectId || auth.allowedProjectId;
+        const { engine } = body;
+        const size = body.size || 'db.t3.micro';
+        const projectId = body.projectId || auth?.allowedProjectId;
 
         if (!engine || !projectId) {
-            return NextResponse.json({ success: false, error: 'Missing required parameters (engine, projectId)' }, { status: 400 });
+            throw new FluxbaseError('Missing required parameters: engine and projectId', ERROR_CODES.MISSING_FIELD, 400);
         }
 
-        // Generate secure master credentials for the new RDS instance
+        await requireProjectAccess(projectId, auth, ['admin']);
+        await checkInstanceSizeLimit(auth!.userId, size);
+
         const masterUsername = 'fluxadmin_' + crypto.randomBytes(4).toString('hex');
-        const masterPassword = 'Flux' + crypto.randomBytes(16).toString('base64').replace(/[^a-zA-Z0-9]/g, '') + 'A1!'; // AWS requires strict passwords
+        const masterPassword = 'Flux' + crypto.randomBytes(16).toString('base64').replace(/[^a-zA-Z0-9]/g, '') + 'A1!';
+        const instanceIdentifier = `${instancePrefixForProject(projectId)}${Date.now()}`;
 
-        // AWS requires instance identifiers to be strictly lowercase alphanumeric with hyphens
-        const instanceIdentifier = `fluxbase-tenant-${projectId.toLowerCase().replace(/[^a-z0-9-]/g, '')}-${Date.now()}`;
-
-        // Fire off the AWS API call using the orchestrator
         const instance = await provisionDatabaseInstance({
             instanceIdentifier,
             engine: engine.toLowerCase() === 'mysql' ? 'mysql' : 'postgres',
             masterUsername,
             masterPassword,
-            instanceClass: size || 'db.t3.micro'
+            instanceClass: size
         });
-
-        // Normally, we would update the `fluxbase_global.projects` table here to store the AWS identifier and password.
-        // For phase 1, we just return the confirmation and identifier back to the UI.
 
         return NextResponse.json({
             success: true,
             status: 'creating',
             instanceIdentifier,
             masterUsername,
-            masterPassword, // Exposing temporarily for the dashboard UI testing
             awsResponse: {
                 arn: instance?.DBInstanceArn,
                 status: instance?.DBInstanceStatus
             }
         });
 
-    } catch (error: any) {
+    } catch (error) {
         console.error('[Provisioning API Error]', error);
-        return NextResponse.json({ success: false, error: error.message || 'Internal Provisioning Error' }, { status: 500 });
+        const { body, status } = jsonError(error);
+        return NextResponse.json(body, { status });
     }
 }
 
 export async function GET(request: Request) {
     try {
         const auth = await getAuthContextFromRequest(request);
-        if (!auth) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-
         const { searchParams } = new URL(request.url);
         const identifier = searchParams.get('identifier');
+        const projectId = searchParams.get('projectId') || auth?.allowedProjectId;
 
-        if (!identifier) {
-            return NextResponse.json({ success: false, error: 'Missing instance identifier' }, { status: 400 });
+        if (!identifier || !projectId) {
+            throw new FluxbaseError('Missing required parameters: identifier and projectId', ERROR_CODES.MISSING_FIELD, 400);
+        }
+
+        await requireProjectAccess(projectId, auth, ['admin']);
+        if (!identifier.startsWith(instancePrefixForProject(projectId))) {
+            throw new FluxbaseError('Instance identifier is not associated with this project.', ERROR_CODES.FORBIDDEN, 403);
         }
 
         const status = await getDatabaseStatus(identifier);
@@ -80,7 +83,8 @@ export async function GET(request: Request) {
             endpoint: status.endpoint,
             port: status.port
         });
-    } catch (error: any) {
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    } catch (error) {
+        const { body, status } = jsonError(error);
+        return NextResponse.json(body, { status });
     }
 }

@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Area, AreaChart, Bar, BarChart, Line, LineChart, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -15,11 +15,11 @@ interface SparklineCardProps {
 
 export function SparklineCard({ title, value, subtitle, type, color, data }: SparklineCardProps) {
     const [isHovered, setIsHovered] = useState(false);
-    const activeColor = isHovered ? "#ea580c" : "#52525b"; // grey initially, orange on hover
+    const activeColor = isHovered ? "#ea580c" : color;
 
     return (
         <Card 
-            className="h-full w-full aspect-square flex flex-col justify-between relative overflow-hidden group border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md shadow-lg transition-colors hover:bg-zinc-900/60"
+            className="h-full w-full aspect-square flex flex-col justify-between relative overflow-hidden group border-border/80 bg-secondary/60 backdrop-blur-md shadow-lg transition-colors hover:bg-secondary/70"
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
@@ -92,10 +92,10 @@ export function SparklineCard({ title, value, subtitle, type, color, data }: Spa
             {/* Foreground Content */}
             <div className="relative z-10 flex flex-col justify-between h-full p-6 pointer-events-none">
                 <CardHeader className="p-0 pb-2">
-                    <CardTitle className="text-sm font-bold tracking-wider uppercase text-zinc-500 flex items-center gap-2">
+                    <CardTitle className="text-sm font-bold tracking-wider uppercase text-muted-foreground/75 flex items-center gap-2">
                         {title}
                         {type === "line" && (
-                            <div className="h-1.5 w-1.5 rounded-full bg-zinc-400" />
+                            <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
                         )}
                     </CardTitle>
                 </CardHeader>
@@ -103,7 +103,7 @@ export function SparklineCard({ title, value, subtitle, type, color, data }: Spa
                     <div className="text-4xl font-black tracking-tight text-white">
                         {value}
                     </div>
-                    <p className="text-xs text-zinc-400 font-medium mt-1 truncate">
+                    <p className="text-xs text-muted-foreground font-medium mt-1 truncate">
                         {subtitle}
                     </p>
                 </CardContent>

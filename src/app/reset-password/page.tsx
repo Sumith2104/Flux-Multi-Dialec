@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -24,7 +24,7 @@ function ResetPasswordForm() {
         return (
             <div className="text-center space-y-4">
                 <p className="text-red-400 font-medium">Invalid or missing reset token.</p>
-                <Button onClick={() => router.push('/')} variant="outline" className="border-white/10 hover:bg-white/5 text-white">
+                <Button onClick={() => router.push('/')} variant="outline" className="border-border/70 hover:bg-secondary/40 text-white">
                     Return to Login
                 </Button>
             </div>
@@ -83,7 +83,7 @@ function ResetPasswordForm() {
                     id="password"
                     name="password"
                     required
-                    className="border-white/10 bg-black/40 focus-visible:ring-2 focus-visible:ring-orange-500 py-6"
+                    className="border-border/70 bg-background/70 focus-visible:ring-2 focus-visible:ring-orange-500 py-6"
                 />
             </div>
             <div className="space-y-2">
@@ -92,7 +92,7 @@ function ResetPasswordForm() {
                     id="confirmPassword"
                     name="confirmPassword"
                     required
-                    className="border-white/10 bg-black/40 focus-visible:ring-2 focus-visible:ring-orange-500 py-6"
+                    className="border-border/70 bg-background/70 focus-visible:ring-2 focus-visible:ring-orange-500 py-6"
                 />
             </div>
             <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-6 mt-4" disabled={isLoading}>
@@ -108,8 +108,8 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
     return (
-        <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
-            <div className="w-full max-w-md p-8 sm:p-10 backdrop-blur-3xl bg-white/5 border border-white/10 shadow-2xl rounded-[40px] text-center">
+        <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+            <div className="w-full max-w-md p-8 sm:p-10 backdrop-blur-3xl bg-secondary/40 border border-border/70 shadow-2xl rounded-[40px] text-center">
                 <h1 className="text-3xl font-bold mb-3 text-white">Reset Password</h1>
                 <p className="text-muted-foreground mb-8 text-sm">Choose a new, secure password for your Fluxbase account.</p>
                 <Suspense fallback={<Loader2 className="mx-auto h-8 w-8 animate-spin text-orange-500" />}>

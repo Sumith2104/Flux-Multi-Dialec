@@ -11,7 +11,6 @@ import {
     Table as TableIcon,
     Layout,
     ArrowRight,
-    CheckCircle2,
     Github,
     Twitter,
     ServerCrash
@@ -21,7 +20,7 @@ import { motion } from 'framer-motion';
 import Aurora from '@/components/Aurora';
 import Navbar from '@/components/layout/navbar';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { checkDatabaseHealthAction } from '@/lib/data';
 
 const LoginDialog = dynamic(() => import('@/components/auth/login-dialog').then(mod => mod.LoginDialog), {
@@ -34,25 +33,13 @@ const SignupDialog = dynamic(() => import('@/components/auth/signup-dialog').the
 });
 
 export default function Home() {
-    const [colors, setColors] = useState(['#111111', '#FF4B29', '#111111']);
+    const colors = ['#252523', '#ff7a1a', '#34342f'];
     const [loginOpen, setLoginOpen] = useState(false);
     const [signupOpen, setSignupOpen] = useState(false);
     const [isOffline, setIsOffline] = useState(false);
 
     useEffect(() => {
         checkDatabaseHealthAction().then(isHealthy => setIsOffline(!isHealthy));
-
-        const getRandomColor = () => {
-            const letters = '0123456789ABCDEF';
-            let color = '#';
-            for (let i = 0; i < 6; i++) {
-                color += letters[Math.floor(Math.random() * 16)];
-            }
-            return color;
-        };
-
-        const randomColors = [getRandomColor(), getRandomColor(), getRandomColor()];
-        setColors(randomColors);
     }, []);
 
     const openSignup = () => {
@@ -88,7 +75,7 @@ export default function Home() {
             </Navbar>
 
             {/* Hero Section */}
-            <section className="relative h-screen flex items-center justify-center pt-20 overflow-hidden">
+            <section className="relative flex min-h-[82svh] items-center justify-center overflow-hidden px-0 pt-24 pb-12 sm:min-h-[86vh] sm:pt-20 sm:pb-0">
                 <div className="absolute inset-0 z-0">
                     <Aurora
                         colorStops={colors}
@@ -97,7 +84,7 @@ export default function Home() {
                         speed={0.5}
                     />
                 </div>
-                <div className="relative z-10 text-center space-y-8 max-w-4xl mx-auto px-4">
+                <div className="relative z-10 mx-auto max-w-4xl space-y-7 px-5 text-center sm:space-y-8">
                     <div className="flex flex-col items-center gap-3">
                         {isOffline && (
                             <motion.div
@@ -123,7 +110,7 @@ export default function Home() {
                     </div>
                     <motion.h1
                         {...fadeIn}
-                        className="text-6xl font-bold tracking-tight sm:text-7xl md:text-8xl bg-clip-text text-transparent bg-gradient-to-b from-foreground to-foreground/50"
+                        className="text-5xl font-bold leading-[0.96] tracking-tight text-foreground sm:text-7xl md:text-8xl"
                     >
                         Data Management <br />
                         <span className="text-primary">Redefined.</span>
@@ -131,20 +118,20 @@ export default function Home() {
                     <motion.p
                         {...fadeIn}
                         transition={{ delay: 0.2 }}
-                        className="text-lg text-muted-foreground md:text-xl max-w-2xl mx-auto"
+                        className="mx-auto max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg md:text-xl"
                     >
                         The modern, AI-powered spreadsheet and data analysis tool. Manage projects, create tables, and unlock insights with natural language queries.
                     </motion.p>
                     <motion.div
                         {...fadeIn}
                         transition={{ delay: 0.4 }}
-                        className="flex flex-col sm:flex-row justify-center gap-4 pt-4"
+                        className="flex flex-col justify-center gap-3 pt-2 sm:flex-row sm:gap-4 sm:pt-4"
                     >
-                        <Button size="lg" className="rounded-full h-12 px-8 text-base group" onClick={() => setSignupOpen(true)}>
+                        <Button size="lg" className="group h-12 w-full px-8 text-base sm:w-auto" onClick={() => setSignupOpen(true)}>
                             Get Started Free
                             <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
                         </Button>
-                        <Button variant="outline" size="lg" className="rounded-full h-12 px-8 text-base" onClick={() => setLoginOpen(true)}>
+                        <Button variant="outline" size="lg" className="h-12 w-full px-8 text-base sm:w-auto" onClick={() => setLoginOpen(true)}>
                             Sign In
                         </Button>
                     </motion.div>
@@ -152,11 +139,11 @@ export default function Home() {
             </section>
 
             {/* Features Section */}
-            <section id="features" className="py-24 px-4 bg-background relative z-10">
+            <section id="features" className="relative z-10 bg-background px-5 py-16 sm:px-4 sm:py-24">
                 <div className="max-w-7xl mx-auto">
-                    <div className="text-center space-y-4 mb-16">
-                        <h2 className="text-3xl font-bold tracking-tight sm:text-5xl">Built for Developers by Developers</h2>
-                        <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+                    <div className="mb-10 space-y-4 text-center sm:mb-16">
+                        <h2 className="text-3xl font-bold leading-tight tracking-tight sm:text-5xl">Built for Developers by Developers</h2>
+                        <p className="mx-auto max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
                             Everything you need to manage complex datasets without the overhead of a traditional database administrator.
                         </p>
                     </div>
@@ -206,9 +193,9 @@ export default function Home() {
                                 viewport={{ once: true }}
                                 transition={{ delay: feature.delay }}
                             >
-                                <Card className="h-full bg-card/50 border-border/50 hover:border-primary/50 transition-colors group">
+                                <Card className="h-full border-border/70 bg-card/80 transition-colors group hover:border-primary/55">
                                     <CardHeader>
-                                        <div className="p-3 rounded-lg bg-background w-fit mb-4 group-hover:scale-110 transition-transform">
+                                        <div className="mb-4 w-fit rounded-md border border-border bg-secondary p-3 transition-transform group-hover:scale-105">
                                             {feature.icon}
                                         </div>
                                         <CardTitle>{feature.title}</CardTitle>
@@ -227,13 +214,13 @@ export default function Home() {
 
 
             {/* Footer */}
-            <footer className="py-12 border-t border-border/50 px-4">
-                <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
+            <footer className="border-t border-border/50 px-5 py-10 sm:px-4 sm:py-12">
+                <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 md:flex-row md:gap-8">
                     <div className="flex items-center gap-2">
                         <Database className="h-6 w-6 text-primary" />
                         <span className="font-bold text-xl">Fluxbase</span>
                     </div>
-                    <div className="flex gap-8 text-sm text-muted-foreground">
+                    <div className="flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm text-muted-foreground sm:gap-8">
                         <Link href="/privacy" className="hover:text-primary transition-colors">Privacy</Link>
                         <Link href="/terms" className="hover:text-primary transition-colors">Terms</Link>
                         <Link href="/docs" className="hover:text-primary transition-colors">Documentation</Link>
@@ -249,7 +236,7 @@ export default function Home() {
                     </div>
                 </div>
                 <div className="text-center text-xs text-muted-foreground mt-12">
-                    © {new Date().getFullYear()} Fluxbase Inc. All rights reserved.
+                    Copyright {new Date().getFullYear()} Fluxbase Inc. All rights reserved.
                 </div>
             </footer>
         </div>

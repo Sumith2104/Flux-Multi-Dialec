@@ -45,4 +45,8 @@ next-env.d.ts
 # firebase
 firebase-debug.log
 firestore-debug.log
+
+# AI Tooling
+.codex/
+.agents/
 # End

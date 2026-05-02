@@ -5,7 +5,15 @@ import { validateApiKey } from '@/lib/api-keys';
 import { LRUCache } from 'lru-cache';
 import crypto from 'crypto';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fluxbase_dev_secret_key_123';
+function getJwtSecret(): string {
+    const secret = process.env.JWT_SECRET;
+    if (secret) return secret;
+
+    if (process.env.NODE_ENV === 'production') {
+        throw new Error('Missing required JWT_SECRET environment variable');
+    }
+    return 'fluxbase_dev_secret_key_123';
+}
 
 // Cache user suspension status for 30s — avoids a DB query on every API request.
 // If a user is suspended it takes at most 30s to take effect, which is acceptable.
@@ -15,7 +23,7 @@ const _userStatusCache = new LRUCache<string, string>({ max: 1000, ttl: 30_000 }
 // Keyed on a SHA-256 hash of the JWT so we never store the raw token in memory.
 // AuthContext is declared below in this same file — TS hoists interface declarations.
 // eslint-disable-next-line @typescript-eslint/no-use-before-define
-const _authContextCache = new LRUCache<string, AuthContext | null>({ max: 1000, ttl: 30_000 });
+const _authContextCache = new LRUCache<string, AuthContext>({ max: 1000, ttl: 30_000 });
 
 export interface User {
     id: string;
@@ -38,7 +46,7 @@ export async function getSessionContext(): Promise<{ uid: string; mfa?: boolean 
     if (!sessionCookie) return null;
 
     try {
-        const decoded = jwt.verify(sessionCookie, JWT_SECRET) as { uid: string; mfa?: boolean };
+        const decoded = jwt.verify(sessionCookie, getJwtSecret()) as { uid: string; mfa?: boolean };
         return { uid: decoded.uid, mfa: decoded.mfa };
     } catch (error) {
         console.error("Failed to verify session cookie:", error);
@@ -54,7 +62,7 @@ export async function getSessionContext(): Promise<{ uid: string; mfa?: boolean 
 export async function createSessionCookie(uid: string, isMfaVerified: boolean = false) {
     const expiresIn = 60 * 60 * 24 * 30; // 30 days in seconds
     try {
-        const sessionCookie = jwt.sign({ uid, mfa: isMfaVerified }, JWT_SECRET, { expiresIn });
+        const sessionCookie = jwt.sign({ uid, mfa: isMfaVerified }, getJwtSecret(), { expiresIn });
         const isProduction = process.env.NODE_ENV === 'production';
         const expiresAt = new Date(Date.now() + expiresIn * 1000);
 

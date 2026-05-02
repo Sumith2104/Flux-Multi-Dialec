@@ -45,6 +45,20 @@ interface QueueMessage {
     attempt: number;
 }
 
+function isAuthorized(req: NextRequest): boolean {
+    const expected = process.env.INGEST_API_SECRET;
+    if (!expected) return false;
+
+    const authHeader = req.headers.get('authorization') || '';
+    const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length).trim() : '';
+    const supplied = req.headers.get('x-ingest-secret') || bearer;
+    if (!supplied) return false;
+
+    const suppliedBuffer = Buffer.from(supplied);
+    const expectedBuffer = Buffer.from(expected);
+    return suppliedBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(suppliedBuffer, expectedBuffer);
+}
+
 // ─── Validation ───────────────────────────────────────────────────────────────
 function validate(body: unknown): { ok: true; data: IngestRequest } | { ok: false; error: string } {
     if (!body || typeof body !== 'object') return { ok: false, error: 'Body must be JSON object' };
@@ -69,6 +83,10 @@ function validate(body: unknown): { ok: true; data: IngestRequest } | { ok: fals
 // ─── Handler ─────────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
     const start = Date.now();
+
+    if (!isAuthorized(req)) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     // Reject oversized payloads early
     const contentLength = parseInt(req.headers.get('content-length') ?? '0');
@@ -141,7 +159,11 @@ export async function POST(req: NextRequest) {
 }
 
 // ─── Queue depth probe (GET /api/ingest) ─────────────────────────────────────
-export async function GET() {
+export async function GET(req: NextRequest) {
+    if (!isAuthorized(req)) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     try {
         const [depth, highDepth, stats] = await Promise.all([
             redis.llen(QUEUE_KEY),

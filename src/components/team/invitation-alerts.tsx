@@ -1,13 +1,11 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Users, Check, X, Bell } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Loader2, Users, Check, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useRouter } from 'next/navigation';
 
 interface Invite {
     id: string;
@@ -22,7 +20,6 @@ export function InvitationAlerts({ initialInvites }: { initialInvites?: Invite[]
     const [loading, setLoading] = useState(!initialInvites);
     const [processingId, setProcessingId] = useState<string | null>(null);
     const { toast } = useToast();
-    const router = useRouter();
 
     const fetchInvites = useCallback(async () => {
         try {
@@ -101,13 +98,13 @@ export function InvitationAlerts({ initialInvites }: { initialInvites?: Invite[]
                             </div>
                             <div className="space-y-1">
                                 <div className="flex items-center gap-2">
-                                    <h3 className="font-semibold text-sm text-zinc-100">Team Invitation</h3>
+                                    <h3 className="font-semibold text-sm text-foreground">Team Invitation</h3>
                                     <Badge variant="outline" className="text-[10px] uppercase font-bold tracking-tight bg-orange-500/10 text-orange-400 border-orange-500/20 px-1.5 h-4">
                                         {invite.role}
                                     </Badge>
                                 </div>
-                                <p className="text-xs text-zinc-400 leading-relaxed max-w-md">
-                                    <span className="text-zinc-200 font-medium">{invite.inviterName}</span> invited you to collaborate on the project 
+                                <p className="text-xs text-muted-foreground leading-relaxed max-w-md">
+                                    <span className="text-foreground/90 font-medium">{invite.inviterName}</span> invited you to collaborate on the project 
                                     <span className="text-orange-400 font-medium ml-1">{invite.projectName}</span>.
                                 </p>
                             </div>
@@ -119,7 +116,7 @@ export function InvitationAlerts({ initialInvites }: { initialInvites?: Invite[]
                                 size="sm"
                                 disabled={!!processingId}
                                 onClick={() => handleAction(invite.id, 'rejected')}
-                                className="h-9 px-3 border-zinc-800 hover:bg-zinc-900 text-zinc-400 hover:text-red-400 transition-colors"
+                                className="h-9 px-3 border-border hover:bg-secondary text-muted-foreground hover:text-red-400 transition-colors"
                             >
                                 <X className="h-4 w-4 mr-2" />
                                 Decline

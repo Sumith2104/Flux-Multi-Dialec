@@ -12,8 +12,17 @@ interface ScraperRunsTableProps {
 
 import { useQuery } from '@tanstack/react-query';
 
+interface ScraperRun {
+    id: string;
+    status: string;
+    created_at: string;
+    rows_inserted?: number;
+    error_message?: string;
+    [key: string]: any;
+}
+
 export function ScraperRunsTable({ scraperId }: ScraperRunsTableProps) {
-    const { data: runs = [], isLoading: loading, error } = useQuery({
+    const { data: runs = [], isLoading: loading, error } = useQuery<ScraperRun[]>({
         queryKey: ['scraper_runs', scraperId],
         queryFn: async () => {
             const res = await fetch(`/api/scrapers/runs?scraperId=${scraperId}`);
@@ -34,7 +43,7 @@ export function ScraperRunsTable({ scraperId }: ScraperRunsTableProps) {
     }
 
     if (error) {
-        return <div className="p-8 text-center text-destructive border border-destructive/20 rounded-md bg-destructive/5">{error}</div>
+        return <div className="p-8 text-center text-destructive border border-destructive/20 rounded-md bg-destructive/5">{error instanceof Error ? error.message : String(error)}</div>
     }
 
     if (runs.length === 0) {

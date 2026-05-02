@@ -75,6 +75,38 @@ export async function getDatabaseStatus(instanceIdentifier: string) {
     }
 }
 
+export async function createDatabaseSnapshot(instanceIdentifier: string, snapshotIdentifier: string) {
+    const client = getRdsClient();
+
+    try {
+        const command = new CreateDBSnapshotCommand({
+            DBInstanceIdentifier: instanceIdentifier,
+            DBSnapshotIdentifier: snapshotIdentifier,
+        });
+        const response = await client.send(command);
+        return response.DBSnapshot;
+    } catch (error) {
+        console.error(`[AWS RDS Error] Failed to create snapshot ${snapshotIdentifier}:`, error);
+        throw error;
+    }
+}
+
+export async function listDatabaseSnapshots(instanceIdentifier: string) {
+    const client = getRdsClient();
+
+    try {
+        const command = new DescribeDBSnapshotsCommand({
+            DBInstanceIdentifier: instanceIdentifier,
+            SnapshotType: 'manual',
+        });
+        const response = await client.send(command);
+        return response.DBSnapshots || [];
+    } catch (error) {
+        console.error(`[AWS RDS Error] Failed to list snapshots for ${instanceIdentifier}:`, error);
+        throw error;
+    }
+}
+
 /**
  * Destroys an RDS Database Instance gracefully completely removing it.
  */

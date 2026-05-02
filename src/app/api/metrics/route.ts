@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { CloudWatchClient, GetMetricStatisticsCommand } from "@aws-sdk/client-cloudwatch";
 import { fromEnv } from "@aws-sdk/credential-providers";
+import { jsonError, requireProjectAccess } from '@/lib/project-auth';
+import { ERROR_CODES, FluxbaseError } from '@/lib/error-codes';
 
 const getCloudWatchClient = () => {
     return new CloudWatchClient({
@@ -10,19 +12,27 @@ const getCloudWatchClient = () => {
     });
 };
 
+function instancePrefixForProject(projectId: string): string {
+    return `fluxbase-tenant-${projectId.toLowerCase().replace(/[^a-z0-9-]/g, '')}-`;
+}
+
 export async function GET(request: Request) {
     try {
         const auth = await getAuthContextFromRequest(request);
-        if (!auth) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 
         const { searchParams } = new URL(request.url);
         const identifier = searchParams.get('identifier');
+        const projectId = searchParams.get('projectId') || auth?.allowedProjectId;
         const metricName = searchParams.get('metric') || 'CPUUtilization'; // CPUUtilization, DatabaseConnections, FreeableMemory
         const periodParam = searchParams.get('period') || '60'; // in minutes
         const minutes = parseInt(periodParam, 10);
 
-        if (!identifier) {
-            return NextResponse.json({ success: false, error: 'Missing instance identifier' }, { status: 400 });
+        if (!identifier || !projectId) {
+            throw new FluxbaseError('Missing required parameters: identifier and projectId', ERROR_CODES.MISSING_FIELD, 400);
+        }
+        await requireProjectAccess(projectId, auth, ['admin']);
+        if (!identifier.startsWith(instancePrefixForProject(projectId))) {
+            throw new FluxbaseError('Instance identifier is not associated with this project.', ERROR_CODES.FORBIDDEN, 403);
         }
 
         const client = getCloudWatchClient();
@@ -59,8 +69,9 @@ export async function GET(request: Request) {
             }))
         });
 
-    } catch (error: any) {
+    } catch (error) {
         console.error('[CloudWatch API Error]', error);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        const { body, status } = jsonError(error);
+        return NextResponse.json(body, { status });
     }
 }

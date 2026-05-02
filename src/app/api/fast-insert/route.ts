@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { getAuthContextFromRequest } from "@/lib/auth";
-import { getProjectById, ensureNotSuspended } from "@/lib/data";
+import { ensureNotSuspended } from "@/lib/data";
+import { pool } from "@/lib/pg";
+import { requireProjectAccess } from "@/lib/project-auth";
+import { quotePgIdentifier, quotePgProjectSchema } from "@/lib/sql-safety";
 
 export const dynamic = 'force-dynamic';
 
@@ -29,8 +32,10 @@ export async function POST(req: NextRequest) {
         const auth = await getAuthContextFromRequest(req);
         if (!auth?.userId) return new Response("Unauthorized", { status: 401 });
 
-        const project = await getProjectById(projectId, auth.userId);
-        if (!project) return new Response("Project not found", { status: 404 });
+        const project = await requireProjectAccess(projectId, auth, ['admin', 'developer']);
+        if (project.dialect?.toLowerCase() === 'mysql') {
+            return new Response("fast-insert is only supported for PostgreSQL projects", { status: 400 });
+        }
 
         await ensureNotSuspended(project);
     } catch (err: any) {
@@ -52,13 +57,14 @@ export async function POST(req: NextRequest) {
 
     try {
         const start = Date.now();
+        const schemaIdent = quotePgProjectSchema(projectId);
+        const tableIdent = quotePgIdentifier('orders1', 'tableName');
 
         // Safe Parameterized Query (No String Building)
-        const result = await pool.query({
-            text: "INSERT INTO orders1 (customer_id, order_date, status) VALUES ($1, $2, $3)",
-            values: [customer_id, order_date, status],
-            signal: controller.signal,
-        });
+        const result = await pool.query(
+            `INSERT INTO ${schemaIdent}.${tableIdent} (customer_id, order_date, status) VALUES ($1, $2, $3)`,
+            [customer_id, order_date, status]
+        );
 
         const duration = Date.now() - start;
 

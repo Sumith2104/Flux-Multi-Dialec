@@ -1,11 +1,11 @@
-
+﻿
 'use client';
 
 import { useContext } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Plus, Table, Edit, Rows, Database } from "lucide-react"
+import { Plus, Edit } from "lucide-react"
 import Link from "next/link"
 import { getTablesForProject, Table as DbTable, getProjectAnalytics, ProjectAnalytics } from "@/lib/data";
 import { Badge } from "@/components/ui/badge";
@@ -53,16 +53,6 @@ export default function DashboardPage() {
     const realtimeStats = useRealtimeAnalytics(selectedProject?.project_id);
     const historyStats = useProjectHistory(selectedProject?.project_id);
 
-
-
-    const formatSize = (bytes: number) => {
-        if (bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
-
     if (loading) {
         return (
             <div className="space-y-6">
@@ -91,17 +81,17 @@ export default function DashboardPage() {
     }
 
     return (
-        <div className="container mx-auto px-0">
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold flex items-center gap-3">
+        <div className="container mx-auto max-w-full px-0">
+            <div className="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+                <h1 className="flex items-center gap-3 text-2xl font-bold sm:text-3xl">
                     Dashboard
                     <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-zinc-400 opacity-30"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-zinc-400"></span>
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-muted-foreground opacity-30"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-muted-foreground"></span>
                     </span>
                 </h1>
-                <div className="flex items-center gap-3">
-                    <Button asChild variant="outline" className="border-zinc-700 text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-300 text-sm">
+                <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-3">
+                    <Button asChild variant="outline" className="border-border/80 text-muted-foreground hover:bg-muted/70 hover:text-foreground/85 text-sm">
                         <Link href="/pricing">
                             Upgrade Plan
                         </Link>
@@ -109,7 +99,7 @@ export default function DashboardPage() {
                     <Button asChild>
                         <Link href={`/editor?projectId=${selectedProject.project_id}&newTable=true`}>
                             <Plus className="mr-2 h-4 w-4" />
-                            New Table
+                            <span className="truncate">New Table</span>
                         </Link>
                     </Button>
                 </div>

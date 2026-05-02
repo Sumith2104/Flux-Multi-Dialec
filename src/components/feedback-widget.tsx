@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { MessageSquarePlus, Star, Loader2, CheckCircle2, Frown, Meh, Smile, SmilePlus } from 'lucide-react';
+import { MessageSquarePlus, Loader2, CheckCircle2, Frown, Meh, Smile, SmilePlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const moods = [
@@ -62,7 +62,7 @@ export function FeedbackWidget() {
                     <span className="hidden md:inline text-xs">Feedback</span>
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-80 p-4 bg-zinc-950 border-zinc-800" align="end">
+            <PopoverContent className="w-80 p-4 bg-card border-border" align="end">
                 {submitted ? (
                     <div className="flex flex-col items-center justify-center py-6 gap-3">
                         <div className="p-3 rounded-full bg-emerald-500/10">
@@ -88,7 +88,7 @@ export function FeedbackWidget() {
                                         className={cn(
                                             'flex-1 flex flex-col items-center gap-1 py-2 rounded-md border text-xs transition-all',
                                             color,
-                                            mood === value ? 'bg-opacity-20 ring-1 ring-current' : 'border-zinc-800 bg-zinc-900/50'
+                                            mood === value ? 'bg-opacity-20 ring-1 ring-current' : 'border-border bg-secondary/70'
                                         )}
                                         id={`mood-${label.toLowerCase().replace(' ', '-')}`}
                                     >
@@ -105,7 +105,7 @@ export function FeedbackWidget() {
                                 placeholder="Tell us what you think, report a bug, or suggest a feature..."
                                 value={message}
                                 onChange={e => setMessage(e.target.value)}
-                                className="bg-zinc-900 border-zinc-800 text-sm min-h-[80px] resize-none focus-visible:ring-orange-500/50"
+                                className="bg-secondary border-border text-sm min-h-[80px] resize-none focus-visible:ring-orange-500/50"
                                 id="feedback-message"
                             />
                         </div>

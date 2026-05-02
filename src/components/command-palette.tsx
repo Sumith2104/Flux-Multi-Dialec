@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback, useContext } from 'react';
 import { useRouter } from 'next/navigation';
@@ -8,12 +8,11 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { ProjectContext } from '@/contexts/project-context';
 import {
     LayoutDashboard, Table, Database, BrainCircuit, BarChart3,
     Code, Globe, Folder, Settings, Search, ArrowRight,
-    Terminal, Zap, Users, Key, Webhook, Shield, GitBranch,
+    Users, Key, Webhook, Shield, GitBranch,
     Bell, Archive
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -57,7 +56,7 @@ const getStaticItems = (projectId?: string): CommandItem[] => {
 
 const categoryColors: Record<string, string> = {
     Navigation: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-    Settings: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
+    Settings: 'bg-secondary text-muted-foreground border-border',
     Security: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
     Database: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
 };
@@ -128,14 +127,14 @@ export function CommandPalette() {
                 <Search className="h-3.5 w-3.5 shrink-0" />
                 <span className="hidden sm:block truncate">Search...</span>
                 <kbd className="hidden sm:flex ml-auto pointer-events-none items-center gap-0.5 rounded border border-border bg-background px-1 font-mono text-[10px] text-muted-foreground">
-                    <span>⌘</span><span>K</span>
+                    <span>âŒ˜</span><span>K</span>
                 </kbd>
             </button>
 
             <Dialog open={open} onOpenChange={setOpen}>
-                <DialogContent className="p-0 gap-0 max-w-lg overflow-hidden bg-zinc-950 border-zinc-800">
+                <DialogContent className="p-0 gap-0 max-w-lg overflow-hidden bg-card border-border">
                     <DialogTitle className="sr-only">Command Palette</DialogTitle>
-                    <div className="flex items-center border-b border-zinc-800 px-3 pr-12">
+                    <div className="flex items-center border-b border-border px-3 pr-12">
                         <Search className="h-4 w-4 text-muted-foreground shrink-0" />
                         <Input
                             autoFocus
@@ -145,7 +144,7 @@ export function CommandPalette() {
                             className="border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 h-12 text-sm placeholder:text-muted-foreground"
                             id="command-palette-input"
                         />
-                        <kbd className="shrink-0 rounded border border-zinc-700 px-1.5 font-mono text-[10px] text-muted-foreground">ESC</kbd>
+                        <kbd className="shrink-0 rounded border border-border/80 px-1.5 font-mono text-[10px] text-muted-foreground">ESC</kbd>
                     </div>
                     <div className="max-h-[360px] overflow-y-auto p-2">
                         {flatFiltered.length === 0 && (
@@ -153,7 +152,7 @@ export function CommandPalette() {
                         )}
                         {Object.entries(grouped).map(([category, catItems]) => (
                             <div key={category} className="mb-1">
-                                <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{category}</p>
+                                <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">{category}</p>
                                 {catItems.map((item) => {
                                     const globalIdx = flatFiltered.indexOf(item);
                                     return (
@@ -162,28 +161,28 @@ export function CommandPalette() {
                                             onClick={() => navigate(item)}
                                             className={cn(
                                                 'w-full flex items-center gap-3 px-2 py-2 rounded-md text-sm transition-colors text-left group',
-                                                globalIdx === selected ? 'bg-zinc-800 text-white' : 'text-zinc-300 hover:bg-zinc-800/60'
+                                                globalIdx === selected ? 'bg-muted text-white' : 'text-foreground/85 hover:bg-muted/80'
                                             )}
                                             id={`cmd-item-${item.id}`}
                                         >
-                                            <span className={cn('p-1.5 rounded-md border', categoryColors[item.category] || 'bg-zinc-800 text-zinc-400')}>
+                                            <span className={cn('p-1.5 rounded-md border', categoryColors[item.category] || 'bg-muted text-muted-foreground')}>
                                                 {item.icon}
                                             </span>
                                             <div className="flex-1 min-w-0">
                                                 <div className="font-medium truncate">{item.label}</div>
-                                                {item.description && <div className="text-xs text-zinc-500 truncate">{item.description}</div>}
+                                                {item.description && <div className="text-xs text-muted-foreground/75 truncate">{item.description}</div>}
                                             </div>
-                                            <ArrowRight className="h-3.5 w-3.5 text-zinc-600 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                            <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/55 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
                                         </button>
                                     );
                                 })}
                             </div>
                         ))}
                     </div>
-                    <div className="border-t border-zinc-800 px-3 py-2 flex items-center gap-3 text-[10px] text-zinc-600">
-                        <span><kbd className="rounded border border-zinc-700 px-1 font-mono">↑↓</kbd> navigate</span>
-                        <span><kbd className="rounded border border-zinc-700 px-1 font-mono">↵</kbd> open</span>
-                        <span><kbd className="rounded border border-zinc-700 px-1 font-mono">esc</kbd> close</span>
+                    <div className="border-t border-border px-3 py-2 flex items-center gap-3 text-[10px] text-muted-foreground/55">
+                        <span><kbd className="rounded border border-border/80 px-1 font-mono">â†‘â†“</kbd> navigate</span>
+                        <span><kbd className="rounded border border-border/80 px-1 font-mono">â†µ</kbd> open</span>
+                        <span><kbd className="rounded border border-border/80 px-1 font-mono">esc</kbd> close</span>
                     </div>
                 </DialogContent>
             </Dialog>

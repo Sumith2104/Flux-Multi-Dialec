@@ -1,86 +1,87 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { getAuthContextFromRequest } from '@/lib/auth';
+import { jsonError, requireProjectAccess } from '@/lib/project-auth';
+import {
+    quotePgIdentifier,
+    quotePgProjectSchema,
+    validateRlsCommand,
+    validateRlsExpression,
+} from '@/lib/sql-safety';
+import { ERROR_CODES, FluxbaseError } from '@/lib/error-codes';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-    const body = await req.json();
-    const { projectId, tableName, policyName, enabled } = body;
-    const auth = await getAuthContextFromRequest(req);
-    
-    if (!auth?.userId || !projectId) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const pool = getPgPool();
-    const schemaName = `project_${projectId}`;
-    
     try {
-        // 1. Update metadata in our catalog
+        const body = await req.json();
+        const { projectId, tableName, policyName, enabled } = body;
+        const auth = await getAuthContextFromRequest(req);
+
+        if (!projectId || !tableName || !policyName) {
+            throw new FluxbaseError('projectId, tableName, and policyName are required', ERROR_CODES.MISSING_FIELD, 400);
+        }
+
+        await requireProjectAccess(projectId, auth, ['admin']);
+
+        const pool = getPgPool();
+        const schemaIdent = quotePgProjectSchema(projectId);
+        const tableIdent = quotePgIdentifier(tableName, 'tableName');
+        const policyIdent = quotePgIdentifier(policyName, 'policyName');
+
         await pool.query(
-            `UPDATE fluxbase_global.rls_policies SET enabled = $1 
+            `UPDATE fluxbase_global.rls_policies SET enabled = $1
              WHERE project_id = $2 AND table_name = $3 AND policy_name = $4`,
-            [enabled, projectId, tableName, policyName]
+            [Boolean(enabled), projectId, tableName, policyName]
         );
 
-        // 2. Fetch the full policy details to execute the real SQL
         const policyRes = await pool.query(
-            `SELECT command, expression FROM fluxbase_global.rls_policies 
+            `SELECT command, expression FROM fluxbase_global.rls_policies
              WHERE project_id = $1 AND table_name = $2 AND policy_name = $3`,
             [projectId, tableName, policyName]
         );
 
         if (policyRes.rows.length === 0) {
-            throw new Error('Policy not found in catalog');
+            throw new FluxbaseError('Policy not found', ERROR_CODES.BAD_REQUEST, 404);
         }
 
-        const { command, expression } = policyRes.rows[0];
+        const sqlCommand = validateRlsCommand(policyRes.rows[0].command);
+        const safeExpression = validateRlsExpression(policyRes.rows[0].expression);
 
-        // 3. Execute database-level SQL
-        // We use a transaction to ensure schema consistency
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
 
             if (enabled) {
-                // Enable RLS on the table
-                await client.query(`ALTER TABLE "${schemaName}"."${tableName}" ENABLE ROW LEVEL SECURITY`);
-                await client.query(`ALTER TABLE "${schemaName}"."${tableName}" FORCE ROW LEVEL SECURITY`); // Ensure owner is also restricted
-                
-                // Drop if exists first to avoid duplicates
-                await client.query(`DROP POLICY IF EXISTS "${policyName}" ON "${schemaName}"."${tableName}"`);
-                
-                // Create the actual policy
-                const sqlCommand = command === 'ALL' ? 'ALL' : command;
-                await client.query(`CREATE POLICY "${policyName}" ON "${schemaName}"."${tableName}" FOR ${sqlCommand} TO PUBLIC USING (${expression})`);
+                await client.query(`ALTER TABLE ${schemaIdent}.${tableIdent} ENABLE ROW LEVEL SECURITY`);
+                await client.query(`ALTER TABLE ${schemaIdent}.${tableIdent} FORCE ROW LEVEL SECURITY`);
+                await client.query(`DROP POLICY IF EXISTS ${policyIdent} ON ${schemaIdent}.${tableIdent}`);
+                await client.query(`CREATE POLICY ${policyIdent} ON ${schemaIdent}.${tableIdent} FOR ${sqlCommand} TO PUBLIC USING (${safeExpression})`);
             } else {
-                // Drop the policy
-                await client.query(`DROP POLICY IF EXISTS "${policyName}" ON "${schemaName}"."${tableName}"`);
-                
-                // Check if any other enabled policies remain for this table
+                await client.query(`DROP POLICY IF EXISTS ${policyIdent} ON ${schemaIdent}.${tableIdent}`);
+
                 const otherPolicies = await client.query(
-                    `SELECT id FROM fluxbase_global.rls_policies 
+                    `SELECT id FROM fluxbase_global.rls_policies
                      WHERE project_id = $1 AND table_name = $2 AND enabled = true`,
                     [projectId, tableName]
                 );
 
                 if (otherPolicies.rows.length === 0) {
-                    // No enabled policies left, we can disable RLS completely for better performance
-                    await client.query(`ALTER TABLE "${schemaName}"."${tableName}" DISABLE ROW LEVEL SECURITY`);
+                    await client.query(`ALTER TABLE ${schemaIdent}.${tableIdent} DISABLE ROW LEVEL SECURITY`);
                 }
             }
 
             await client.query('COMMIT');
             return NextResponse.json({ success: true });
-        } catch (dbErr: any) {
+        } catch (dbErr) {
             await client.query('ROLLBACK');
             throw dbErr;
         } finally {
             client.release();
         }
-    } catch (e: any) {
-        console.error('[RLS Toggle Error]', e);
-        return NextResponse.json({ success: false, error: e.message }, { status: 400 });
+    } catch (error) {
+        console.error('[RLS Toggle Error]', error);
+        const { body, status } = jsonError(error);
+        return NextResponse.json(body, { status });
     }
 }

@@ -50,14 +50,14 @@ export default function PricingPage() {
                 subscription_id: data.subscriptionId,
                 name: 'Fluxbase',
                 description: `${planName} Subscription`,
-                handler: function (response: any) {
+                handler: function () {
                     toast({
-                        title: 'Payment Successful! 🎉',
+                        title: 'Payment Successful',
                         description: `You are now subscribed to the ${planName} plan. Restarting session...`
                     });
                     setTimeout(() => router.push('/dashboard'), 2000);
                 },
-                theme: { color: '#000000' }
+                theme: { color: '#ff7a1a' }
             };
 
             const rzp = new (window as any).Razorpay(options);
@@ -82,50 +82,50 @@ export default function PricingPage() {
     };
 
     return (
-        <div className="min-h-screen bg-black text-white flex flex-col items-center py-20 px-4">
+        <div className="flex min-h-screen flex-col items-center bg-background px-5 py-14 text-foreground sm:px-4 sm:py-20">
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
 
-            <div className="text-center max-w-3xl mb-16 space-y-4">
-                <h1 className="text-5xl font-extrabold tracking-tight lg:text-6xl text-transparent bg-clip-text bg-gradient-to-r from-gray-100 to-gray-500">
+            <div className="mb-10 max-w-3xl space-y-4 text-center sm:mb-16">
+                <h1 className="text-4xl font-extrabold leading-tight tracking-tight text-foreground sm:text-5xl lg:text-6xl">
                     Scale Your Database.
                 </h1>
-                <p className="text-xl text-gray-400">
+                <p className="text-base leading-7 text-muted-foreground sm:text-xl">
                     From hobby projects to enterprise performance, choose the database power you actually need without unpredictable bills.
                 </p>
                 {process.env.NEXT_PUBLIC_ENABLE_DISCOUNT === 'true' && (
-                    <div className="flex justify-center items-center space-x-2 mt-6">
+                    <div className="mt-6 flex w-full flex-col items-stretch justify-center gap-2 sm:flex-row sm:items-center">
                         <input
                             type="text"
                             placeholder="Have a promo code?"
                             value={discountCode}
                             onChange={(e) => setDiscountCode(e.target.value)}
-                            className="bg-zinc-900 border border-zinc-700 text-white px-4 py-2 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-zinc-600 uppercase"
+                            className="w-full rounded-md border border-border bg-input px-4 py-2 text-foreground shadow-inner shadow-black/10 uppercase placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/70 sm:w-auto"
                             disabled={isDiscountApplied}
                         />
                         <Button
                             variant="secondary"
                             onClick={checkDiscount}
                             disabled={isDiscountApplied || !discountCode}
-                            className="bg-zinc-800 text-white hover:bg-zinc-700"
+                            className="bg-secondary text-secondary-foreground hover:bg-muted"
                         >
-                            {isDiscountApplied ? 'Applied ✓' : 'Apply'}
+                            {isDiscountApplied ? 'Applied' : 'Apply'}
                         </Button>
                     </div>
                 )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl w-full">
+            <div className="grid w-full max-w-6xl grid-cols-1 gap-6 md:grid-cols-3 md:gap-8">
                 {/* FREE TIER */}
-                <Card className="bg-zinc-950 border-zinc-800 flex flex-col">
+                <Card className="flex flex-col border-border/70 bg-card/85">
                     <CardHeader>
-                        <CardTitle className="text-2xl text-white">Free</CardTitle>
+                        <CardTitle className="text-2xl text-foreground">Free</CardTitle>
                         <CardDescription>Perfect for side projects and learning.</CardDescription>
                         <div className="mt-4">
-                            <span className="text-4xl font-bold text-white">₹0</span>
-                            <span className="text-zinc-500"> / month</span>
+                            <span className="text-4xl font-bold text-foreground">Rs.0</span>
+                            <span className="text-muted-foreground"> / month</span>
                         </div>
                     </CardHeader>
-                    <CardContent className="flex-1 space-y-4 text-zinc-300">
+                    <CardContent className="flex-1 space-y-4 text-muted-foreground">
                         <FeatureItem text="1 Database Project" />
                         <FeatureItem text="500 MB Storage limit" />
                         <FeatureItem text="50,000 requests / month" />
@@ -133,35 +133,35 @@ export default function PricingPage() {
                         <FeatureItem text="Community Support" />
                     </CardContent>
                     <CardFooter>
-                        <Button variant="outline" className="w-full text-white border-zinc-700 hover:bg-zinc-800" onClick={() => router.push('/dashboard')}>
+                        <Button variant="outline" className="w-full" onClick={() => router.push('/dashboard')}>
                             Get Started
                         </Button>
                     </CardFooter>
                 </Card>
 
                 {/* PRO TIER */}
-                <Card className="bg-zinc-900 border-zinc-700 relative flex flex-col scale-105 shadow-2xl shadow-white/5">
-                    <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white text-black px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
+                <Card className="relative flex flex-col border-primary/45 bg-card shadow-2xl shadow-primary/10 md:scale-105">
+                    <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 rounded-md bg-primary px-4 py-1 text-xs font-bold uppercase tracking-wider text-primary-foreground">
                         Most Popular
                     </div>
                     <CardHeader>
-                        <CardTitle className="text-2xl text-white">Pro</CardTitle>
+                        <CardTitle className="text-2xl text-foreground">Pro</CardTitle>
                         <CardDescription>Advanced capacity for production apps.</CardDescription>
                         <div className="mt-4 flex items-end space-x-2">
                             {isDiscountApplied ? (
                                 <>
-                                    <span className="text-4xl font-bold text-green-400">₹{process.env.NEXT_PUBLIC_DISCOUNT_PRO_PRICE || '299'}</span>
-                                    <span className="text-xl text-zinc-600 line-through">₹{process.env.NEXT_PUBLIC_RAZORPAY_PRO_PRICE || '499'}</span>
+                                    <span className="text-4xl font-bold text-green-400">Rs.{process.env.NEXT_PUBLIC_DISCOUNT_PRO_PRICE || '299'}</span>
+                                    <span className="text-xl text-muted-foreground line-through">Rs.{process.env.NEXT_PUBLIC_RAZORPAY_PRO_PRICE || '499'}</span>
                                 </>
                             ) : (
-                                <span className="text-4xl font-bold text-white">₹{process.env.NEXT_PUBLIC_RAZORPAY_PRO_PRICE || '499'}</span>
+                                <span className="text-4xl font-bold text-foreground">Rs.{process.env.NEXT_PUBLIC_RAZORPAY_PRO_PRICE || '499'}</span>
                             )}
-                            <span className="text-zinc-400 mb-1"> / month</span>
+                            <span className="mb-1 text-muted-foreground"> / month</span>
                         </div>
                     </CardHeader>
-                    <CardContent className="flex-1 space-y-4 text-zinc-200">
+                    <CardContent className="flex-1 space-y-4 text-muted-foreground">
                         <FeatureItem text="Up to 3 Database Projects" />
-                        <FeatureItem text="8 GB Storage (₹10/GB overage)" />
+                        <FeatureItem text="8 GB Storage (Rs.10/GB overage)" />
                         <FeatureItem text="2,000,000 requests / month" />
                         <FeatureItem text="500 Concurrent WebSockets" />
                         <FeatureItem text="7-day automated backups" />
@@ -169,7 +169,7 @@ export default function PricingPage() {
                     </CardContent>
                     <CardFooter>
                         <Button
-                            className="w-full bg-white text-black hover:bg-gray-200 font-semibold"
+                            className="w-full"
                             onClick={() => handleUpgrade(process.env.NEXT_PUBLIC_RAZORPAY_PRO_PLAN_ID || '', 'Pro')}
                             disabled={loadingPlan !== null}
                         >
@@ -179,25 +179,25 @@ export default function PricingPage() {
                 </Card>
 
                 {/* MAX TIER */}
-                <Card className="bg-zinc-950 border-zinc-800 flex flex-col">
+                <Card className="flex flex-col border-border/70 bg-card/85">
                     <CardHeader>
-                        <CardTitle className="text-2xl text-white">Max</CardTitle>
+                        <CardTitle className="text-2xl text-foreground">Max</CardTitle>
                         <CardDescription>Scale limitlessly with dedicated power.</CardDescription>
                         <div className="mt-4 flex items-end space-x-2">
                             {isDiscountApplied ? (
                                 <>
-                                    <span className="text-4xl font-bold text-green-400">₹{process.env.NEXT_PUBLIC_DISCOUNT_MAX_PRICE || '1499'}</span>
-                                    <span className="text-xl text-zinc-600 line-through">₹{process.env.NEXT_PUBLIC_RAZORPAY_MAX_PRICE || '2499'}</span>
+                                    <span className="text-4xl font-bold text-green-400">Rs.{process.env.NEXT_PUBLIC_DISCOUNT_MAX_PRICE || '1499'}</span>
+                                    <span className="text-xl text-muted-foreground line-through">Rs.{process.env.NEXT_PUBLIC_RAZORPAY_MAX_PRICE || '2499'}</span>
                                 </>
                             ) : (
-                                <span className="text-4xl font-bold text-white">₹{process.env.NEXT_PUBLIC_RAZORPAY_MAX_PRICE || '2,499'}</span>
+                                <span className="text-4xl font-bold text-foreground">Rs.{process.env.NEXT_PUBLIC_RAZORPAY_MAX_PRICE || '2,499'}</span>
                             )}
-                            <span className="text-zinc-500 mb-1"> / month</span>
+                            <span className="mb-1 text-muted-foreground"> / month</span>
                         </div>
                     </CardHeader>
-                    <CardContent className="flex-1 space-y-4 text-zinc-300">
+                    <CardContent className="flex-1 space-y-4 text-muted-foreground">
                         <FeatureItem text="Unlimited Database Projects" />
-                        <FeatureItem text="50 GB Storage (₹10/GB overage)" />
+                        <FeatureItem text="50 GB Storage (Rs.10/GB overage)" />
                         <FeatureItem text="10,000,000 requests / month" />
                         <FeatureItem text="5,000 Concurrent WebSockets" />
                         <FeatureItem text="Point-in-Time Recovery" />
@@ -206,7 +206,7 @@ export default function PricingPage() {
                     <CardFooter>
                         <Button
                             variant="outline"
-                            className="w-full text-white border-zinc-700 hover:bg-zinc-800"
+                            className="w-full"
                             onClick={() => handleUpgrade(process.env.NEXT_PUBLIC_RAZORPAY_MAX_PLAN_ID || '', 'Max')}
                             disabled={loadingPlan !== null}
                         >

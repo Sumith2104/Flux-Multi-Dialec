@@ -2,9 +2,15 @@ import { NextResponse } from 'next/server';
 import { ai } from '@/ai/genkit';
 import fs from 'fs';
 import path from 'path';
+import { getAuthContextFromRequest } from '@/lib/auth';
 
 export async function POST(req: Request) {
     try {
+        const auth = await getAuthContextFromRequest(req);
+        if (!auth?.userId) {
+            return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+        }
+
         const { messages, currentPath } = await req.json();
 
         // Load Integration Guide for context

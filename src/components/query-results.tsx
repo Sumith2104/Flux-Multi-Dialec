@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Skeleton } from './ui/skeleton';
 import { AlertCircle, Table as TableIcon, BarChart3, Code2, LineChart as LineChartIcon, PieChart as PieChartIcon } from 'lucide-react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { Button } from './ui/button';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -64,9 +64,9 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
 
         return (
             <div className="flex flex-col h-full bg-background relative overflow-hidden">
-                <div className="flex items-center justify-between border-b px-2 py-1 shrink-0 bg-muted/10">
-                    <Tabs value={view} onValueChange={(v) => setView(v as any)} className="w-full max-w-[400px]">
-                        <TabsList className="h-8 pb-0 bg-transparent gap-1">
+                <div className="flex shrink-0 flex-col gap-2 border-b bg-muted/10 px-2 py-1 sm:flex-row sm:items-center sm:justify-between">
+                    <Tabs value={view} onValueChange={(v) => setView(v as any)} className="w-full min-w-0 sm:max-w-[400px]">
+                        <TabsList className="h-8 max-w-full gap-1 overflow-x-auto bg-transparent pb-0">
                             <TabsTrigger value="table" className="h-7 text-[11px] data-[state=active]:bg-muted"><TableIcon className="h-3.5 w-3.5 mr-1" /> Table</TabsTrigger>
                             <TabsTrigger value="chart" className="h-7 text-[11px] data-[state=active]:bg-muted"><BarChart3 className="h-3.5 w-3.5 mr-1" /> Chart</TabsTrigger>
                             <TabsTrigger value="json" className="h-7 text-[11px] data-[state=active]:bg-muted"><Code2 className="h-3.5 w-3.5 mr-1" /> JSON</TabsTrigger>
@@ -74,14 +74,14 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
                     </Tabs>
 
                     {view === 'chart' && (
-                        <div className="flex items-center gap-1 mx-2">
+                        <div className="mx-0 flex items-center gap-1 sm:mx-2">
                             <Button variant={chartType === 'bar' ? 'secondary' : 'ghost'} size="sm" className="h-6 w-6 p-0" onClick={() => setChartType('bar')}><BarChart3 className="h-3 w-3" /></Button>
                             <Button variant={chartType === 'line' ? 'secondary' : 'ghost'} size="sm" className="h-6 w-6 p-0" onClick={() => setChartType('line')}><LineChartIcon className="h-3 w-3" /></Button>
                             <Button variant={chartType === 'pie' ? 'secondary' : 'ghost'} size="sm" className="h-6 w-6 p-0" onClick={() => setChartType('pie')}><PieChartIcon className="h-3 w-3" /></Button>
                         </div>
                     )}
                     {results.rows.length > 100 && view === 'table' && (
-                        <div className="text-[10px] text-muted-foreground mr-2 font-medium flex items-center">
+                        <div className="mr-2 flex items-center text-[10px] font-medium text-muted-foreground">
                             Showing first 100 of {results.rows.length.toLocaleString()} rows
                         </div>
                     )}
@@ -94,7 +94,7 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
 
                 <div className="flex-grow relative overflow-auto">
                     {view === 'table' && (
-                        <Table className="border-collapse border-spacing-0 w-full relative">
+                        <Table className="relative w-max min-w-full border-collapse border-spacing-0">
                             <TableHeader className="sticky top-0 z-20 shadow-sm">
                                 <TableRow className="hover:bg-muted/50 border-b border-border">
                                     {results.columns.map((col, idx) => (
@@ -174,8 +174,8 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
                     )}
 
                     {view === 'json' && (
-                        <div className="p-4 h-full overflow-auto bg-[#1e1e1e]">
-                            <pre className="text-xs font-mono text-green-400">
+                        <div className="h-full overflow-auto bg-card p-4">
+                            <pre className="font-mono text-xs text-green-400">
                                 {JSON.stringify(results.rows.slice(0, 100), null, 2)}
                             </pre>
                         </div>
@@ -186,7 +186,7 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
     }
 
     return (
-        <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8 bg-muted/5/50">
+        <div className="flex h-full flex-col items-center justify-center bg-muted/50 p-8 text-muted-foreground">
             <div className="w-16 h-16 mb-4 rounded-xl bg-muted/50 flex items-center justify-center border border-dashed border-muted-foreground/30">
                 <TableHead className="h-8 w-8 text-muted-foreground/50" />
             </div>

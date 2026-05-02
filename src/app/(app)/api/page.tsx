@@ -150,7 +150,7 @@ export default function ApiPage() {
                             ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
                             : planType === 'pro'
                                 ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
-                                : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/30'
+                                : 'bg-secondary text-muted-foreground border-border'
                         }`}>
                         <Shield className="h-3 w-3" />
                         {planType.charAt(0).toUpperCase() + planType.slice(1)} Plan
@@ -196,14 +196,14 @@ export default function ApiPage() {
 
                     {/* API Keys Section (Migrated) */}
                     <Card>
-                        <CardHeader className="flex flex-row items-center justify-between">
+                        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                                 <CardTitle>API Keys</CardTitle>
                                 <CardDescription>Manage access keys scoped specifically to this project.</CardDescription>
                             </div>
                             <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
                                 <DialogTrigger asChild>
-                                    <Button>
+                                    <Button className="w-full sm:w-auto">
                                         <Plus className="mr-2 h-4 w-4" />
                                         Create New Key
                                     </Button>

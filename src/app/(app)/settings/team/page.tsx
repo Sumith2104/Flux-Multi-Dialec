@@ -1,12 +1,11 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback, useContext } from 'react';
 import { ProjectContext } from '@/contexts/project-context';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -24,7 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, Plus, Trash2, Loader2, Shield, Terminal, Clock, Filter, Search } from 'lucide-react';
+import { Users, Plus, Trash2, Loader2, Terminal, Clock, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 
@@ -57,7 +56,7 @@ interface AuditLog {
 const roleColors = {
     admin: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
     developer: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-    viewer: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
+    viewer: 'bg-secondary text-muted-foreground border-border',
 };
 
 export default function TeamPage() {
@@ -169,17 +168,17 @@ export default function TeamPage() {
                     <p className="text-muted-foreground text-sm mt-1">Manage team members and invitations across your projects</p>
                 </div>
                 
-                <Card className="mt-4 border-dashed border-zinc-800 bg-zinc-950/50">
+                <Card className="mt-4 border-dashed border-border bg-card/80">
                     <CardContent className="flex flex-col items-center justify-center py-16 gap-4 text-muted-foreground text-center">
-                        <div className="p-4 rounded-full bg-zinc-900 border border-zinc-800">
+                        <div className="p-4 rounded-full bg-secondary border border-border">
                             <Users className="h-10 w-10 opacity-40" />
                         </div>
                         <div className="space-y-1">
-                            <p className="text-zinc-200 font-medium">No Project Active</p>
+                            <p className="text-foreground/90 font-medium">No Project Active</p>
                             <p className="text-sm max-w-xs mx-auto">Select a project from the switcher above to manage its team members. If you've just been invited, check your dashboard for pending requests.</p>
                         </div>
                         <div className="flex gap-3 mt-2">
-                             <Button variant="outline" size="sm" onClick={() => router.push('/dashboard/projects')} className="border-zinc-800 hover:bg-zinc-900">
+                             <Button variant="outline" size="sm" onClick={() => router.push('/dashboard/projects')} className="border-border hover:bg-secondary">
                                 Go to Project Selection
                             </Button>
                         </div>
@@ -202,7 +201,7 @@ export default function TeamPage() {
             </div>
 
             <Tabs defaultValue="members">
-                <TabsList className="bg-zinc-900 border border-zinc-800">
+                <TabsList className="bg-secondary border border-border">
                     <TabsTrigger value="members" id="team-members-tab"><Users className="h-3.5 w-3.5 mr-1.5" />Members ({members.length})</TabsTrigger>
                     <TabsTrigger value="audit" id="team-audit-tab"><Terminal className="h-3.5 w-3.5 mr-1.5" />Audit Log</TabsTrigger>
                 </TabsList>
@@ -222,11 +221,11 @@ export default function TeamPage() {
                     ) : (
                         <div className="space-y-2">
                             {members.map(member => (
-                                <Card key={member.userId} className="border-zinc-800">
+                                <Card key={member.userId} className="border-border">
                                     {/* ... member card content ... */}
                                     <CardContent className="flex items-center gap-4 p-4">
                                         <Avatar className="h-9 w-9 shrink-0">
-                                            <AvatarFallback className="bg-zinc-800 text-sm">
+                                            <AvatarFallback className="bg-muted text-sm">
                                                 {(member.displayName || member.email).charAt(0).toUpperCase()}
                                             </AvatarFallback>
                                         </Avatar>
@@ -243,7 +242,7 @@ export default function TeamPage() {
                                                 <SelectTrigger className={cn('h-7 text-xs w-28 border', roleColors[member.role])} id={`role-${member.userId}`}>
                                                     <SelectValue />
                                                 </SelectTrigger>
-                                                <SelectContent className="bg-zinc-950 border-zinc-800">
+                                                <SelectContent className="bg-card border-border">
                                                     <SelectItem value="admin">Admin</SelectItem>
                                                     <SelectItem value="developer">Developer</SelectItem>
                                                     <SelectItem value="viewer">Viewer</SelectItem>
@@ -267,18 +266,18 @@ export default function TeamPage() {
                         <div className="space-y-3 pt-6">
                             <div className="flex items-center gap-2 px-1">
                                 <Clock className="h-4 w-4 text-orange-400" />
-                                <h3 className="text-sm font-semibold text-zinc-300">Pending Invitations</h3>
+                                <h3 className="text-sm font-semibold text-foreground/85">Pending Invitations</h3>
                             </div>
                             <div className="space-y-2">
                                 {pendingInvites.map(invite => (
-                                    <Card key={invite.id} className="border-zinc-800 bg-zinc-900/40">
+                                    <Card key={invite.id} className="border-border bg-secondary/60">
                                         <CardContent className="flex items-center gap-4 p-4">
-                                            <div className="h-9 w-9 rounded-full bg-zinc-800 flex items-center justify-center shrink-0">
-                                                <Clock className="h-4 w-4 text-zinc-500" />
+                                            <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center shrink-0">
+                                                <Clock className="h-4 w-4 text-muted-foreground/75" />
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <p className="font-medium text-sm truncate">{invite.displayName || invite.email}</p>
-                                                <p className="text-xs text-muted-foreground truncate">Invited as {invite.role} • {format(new Date(invite.invitedAt), 'MMM d')}</p>
+                                                <p className="text-xs text-muted-foreground truncate">Invited as {invite.role} â€¢ {format(new Date(invite.invitedAt), 'MMM d')}</p>
                                             </div>
                                             {selectedProject.role === 'admin' && (
                                                 <Button variant="ghost" size="sm" className="h-8 text-xs text-red-400 hover:text-red-300 hover:bg-red-400/10"
@@ -302,7 +301,7 @@ export default function TeamPage() {
                             value={auditSearch}
                             onChange={e => setAuditSearch(e.target.value)}
                             placeholder="Search SQL statements or actions..."
-                            className="pl-9 bg-zinc-900 border-zinc-800 h-9 text-sm"
+                            className="pl-9 bg-secondary border-border h-9 text-sm"
                             id="audit-search"
                         />
                     </div>
@@ -320,20 +319,20 @@ export default function TeamPage() {
                         <div className="space-y-1.5">
                             {filteredLogs.map(log => {
                                 const firstWord = log.statement?.trim().split(/\s+/)[0]?.toUpperCase() || log.action;
-                                const color = actionColors[firstWord] || 'text-zinc-400';
+                                const color = actionColors[firstWord] || 'text-muted-foreground';
                                 return (
-                                    <div key={log.id} className="flex items-start gap-3 p-3 rounded-lg bg-zinc-900 border border-zinc-800 group">
-                                        <div className="p-1.5 rounded-md bg-zinc-800 shrink-0">
-                                            <Terminal className="h-3 w-3 text-zinc-400" />
+                                    <div key={log.id} className="flex items-start gap-3 p-3 rounded-lg bg-secondary border border-border group">
+                                        <div className="p-1.5 rounded-md bg-muted shrink-0">
+                                            <Terminal className="h-3 w-3 text-muted-foreground" />
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2 mb-0.5">
                                                 <span className={cn('text-xs font-mono font-bold', color)}>{firstWord}</span>
-                                                {log.userEmail && <span className="text-[10px] text-zinc-500">{log.userEmail}</span>}
+                                                {log.userEmail && <span className="text-[10px] text-muted-foreground/75">{log.userEmail}</span>}
                                             </div>
-                                            <code className="text-xs text-zinc-300 font-mono block truncate">{log.statement}</code>
+                                            <code className="text-xs text-foreground/85 font-mono block truncate">{log.statement}</code>
                                         </div>
-                                        <div className="flex items-center gap-1 shrink-0 text-[10px] text-zinc-600">
+                                        <div className="flex items-center gap-1 shrink-0 text-[10px] text-muted-foreground/55">
                                             <Clock className="h-3 w-3" />
                                             {format(new Date(log.createdAt), 'MMM d, HH:mm:ss')}
                                         </div>
@@ -347,7 +346,7 @@ export default function TeamPage() {
 
             {/* Invite Dialog */}
             <Dialog open={showInvite} onOpenChange={setShowInvite}>
-                <DialogContent className="bg-zinc-950 border-zinc-800 max-w-md">
+                <DialogContent className="bg-card border-border max-w-md">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2"><Users className="h-4 w-4" />Invite Team Member</DialogTitle>
                     </DialogHeader>
@@ -355,17 +354,17 @@ export default function TeamPage() {
                         <div>
                             <Label className="text-xs mb-1.5 block">Email Address</Label>
                             <Input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
-                                placeholder="colleague@company.com" className="bg-zinc-900 border-zinc-700 h-9 text-sm" id="invite-email" />
+                                placeholder="colleague@company.com" className="bg-secondary border-border/80 h-9 text-sm" id="invite-email" />
                         </div>
                         <div>
                             <Label className="text-xs mb-1.5 block">Role</Label>
                             <Select value={inviteRole} onValueChange={v => setInviteRole(v as any)}>
-                                <SelectTrigger className="bg-zinc-900 border-zinc-700 h-9 text-sm" id="invite-role">
+                                <SelectTrigger className="bg-secondary border-border/80 h-9 text-sm" id="invite-role">
                                     <SelectValue />
                                 </SelectTrigger>
-                                <SelectContent className="bg-zinc-950 border-zinc-800">
-                                    <SelectItem value="developer">Developer — Can read, write, run SQL</SelectItem>
-                                    <SelectItem value="viewer">Viewer — Read-only access</SelectItem>
+                                <SelectContent className="bg-card border-border">
+                                    <SelectItem value="developer">Developer â€” Can read, write, run SQL</SelectItem>
+                                    <SelectItem value="viewer">Viewer â€” Read-only access</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -380,7 +379,7 @@ export default function TeamPage() {
                                     Send Invite
                                 </Button>
                             </AlertDialogTrigger>
-                            <AlertDialogContent className="bg-zinc-950 border-zinc-800">
+                            <AlertDialogContent className="bg-card border-border">
                                 <AlertDialogHeader>
                                     <AlertDialogTitle>Confirm Invitation</AlertDialogTitle>
                                     <AlertDialogDescription>
@@ -388,7 +387,7 @@ export default function TeamPage() {
                                     </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                    <AlertDialogCancel className="bg-zinc-800">Cancel</AlertDialogCancel>
+                                    <AlertDialogCancel className="bg-muted">Cancel</AlertDialogCancel>
                                     <AlertDialogAction onClick={handleInvite} className="bg-orange-600 hover:bg-orange-500">
                                         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm & Send"}
                                     </AlertDialogAction>

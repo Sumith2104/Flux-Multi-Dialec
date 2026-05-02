@@ -64,11 +64,12 @@ export interface Constraint {
  * Utility to verify if the user has appropriate permissions for a project resource.
  * Must be async to be exported from a 'use server' file in Next.js.
  */
-export async function ensureRole(project: Project | null, allowedRoles: string[]): Promise<void> {
+export async function ensureRole(project: Project | null, allowedRoles: string[]): Promise<Project> {
     if (!project) throw new FluxbaseError("Project not found or access denied.", ERROR_CODES.PROJECT_NOT_FOUND, 404);
     if (!project.role || !allowedRoles.includes(project.role)) {
         throw new FluxbaseError(`Insufficient Permissions: Your role (${project.role || 'none'}) does not have permission to perform this action. Required: ${allowedRoles.join(', ')}`, ERROR_CODES.FORBIDDEN, 403);
     }
+    return project;
 }
 
 import crypto from 'crypto';
@@ -81,7 +82,7 @@ import { FluxbaseError, ERROR_CODES } from '@/lib/error-codes';
 // Short-lived cache: eliminates the duplicate getProjectById DB query that fires
 // on EVERY table-data, execute-sql, and schema API call. 60s TTL is safe because
 // project metadata (display_name, dialect, role) almost never changes mid-session.
-const _projectCache = new LRUCache<string, Project | null>({ max: 200, ttl: 60_000 });
+const _projectCache = new LRUCache<string, Project>({ max: 200, ttl: 60_000 });
 
 // Terminal log throttling: avoids spamming the console 10 times a second during DNS outages.
 let _lastHealthLogTime = 0;
@@ -199,7 +200,6 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
             WHERE p.project_id = $1 AND (p.user_id = $2::text OR pm.user_id = $2::text)
         `, [projectId, userId]);
         if (result.rows.length === 0) {
-            _projectCache.set(cacheKey, null);
             return null;
         }
 
@@ -416,8 +416,7 @@ export async function resetProjectData(projectId: string) {
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
     const pool = getPgPool();
-    const project = await getProjectById(projectId, userId);
-    await ensureRole(project, ['admin']);
+    const project = await ensureRole(await getProjectById(projectId, userId), ['admin']);
 
     if (project.dialect?.toLowerCase() === 'mysql') {
         const { getMysqlPool } = await import('@/lib/mysql');
@@ -441,8 +440,7 @@ export async function updateProjectTimezone(projectId: string, timezone: string)
     const userId = await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
-    const project = await getProjectById(projectId, userId);
-    await ensureRole(project, ['admin']);
+    const project = await ensureRole(await getProjectById(projectId, userId), ['admin']);
 
     const pool = getPgPool();
     await pool.query(
@@ -457,8 +455,7 @@ export async function deleteProject(projectId: string) {
     const userId = await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
-    const project = await getProjectById(projectId, userId);
-    await ensureRole(project, ['admin']);
+    const project = await ensureRole(await getProjectById(projectId, userId), ['admin']);
 
     const pool = getPgPool();
 
@@ -550,8 +547,7 @@ export async function createTable(projectId: string, tableName: string, descript
 
     await checkTableLimit(projectId, userId);
 
-    const project = await getProjectById(projectId, userId);
-    await ensureRole(project, ['admin', 'developer']);
+    const project = await ensureRole(await getProjectById(projectId, userId), ['admin', 'developer']);
 
     const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
 
@@ -681,8 +677,7 @@ export async function deleteTable(projectId: string, tableId: string, explicitUs
     const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
-    const project = await getProjectById(projectId, userId);
-    await ensureRole(project, ['admin', 'developer']);
+    const project = await ensureRole(await getProjectById(projectId, userId), ['admin', 'developer']);
 
     const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
 
@@ -789,8 +784,7 @@ export async function addColumn(projectId: string, tableId: string, column: Omit
     const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
-    const project = await getProjectById(projectId, userId);
-    await ensureRole(project, ['admin', 'developer']);
+    const project = await ensureRole(await getProjectById(projectId, userId), ['admin', 'developer']);
 
     const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
 
@@ -842,8 +836,7 @@ export async function deleteColumn(projectId: string, tableId: string, columnId:
     const userId = await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
-    const project = await getProjectById(projectId, userId);
-    await ensureRole(project, ['admin', 'developer']);
+    const project = await ensureRole(await getProjectById(projectId, userId), ['admin', 'developer']);
 
     const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
     const safeColName = columnId.replace(/[^a-zA-Z0-9_]/g, '');
@@ -868,8 +861,7 @@ export async function updateColumn(projectId: string, tableId: string, columnId:
     const userId = await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
-    const project = await getProjectById(projectId, userId);
-    await ensureRole(project, ['admin', 'developer']);
+    const project = await ensureRole(await getProjectById(projectId, userId), ['admin', 'developer']);
     const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
     const safeColName = columnId.replace(/[^a-zA-Z0-9_]/g, '');
 
@@ -1070,8 +1062,7 @@ export async function addConstraint(projectId: string, constraint: Omit<Constrai
     const userId = await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
-    const project = await getProjectById(projectId, userId);
-    await ensureRole(project, ['admin', 'developer']);
+    const project = await ensureRole(await getProjectById(projectId, userId), ['admin', 'developer']);
 
     const safeTableName = constraint.table_id.replace(/[^a-zA-Z0-9_]/g, '');
     const colName = constraint.column_names.replace(/[^a-zA-Z0-9_]/g, '');
@@ -1122,8 +1113,7 @@ export async function deleteConstraint(projectId: string, constraintId: string, 
 
     if (!tableId) throw new FluxbaseError("Table ID required for native constraint deletion", ERROR_CODES.BAD_REQUEST, 400);
 
-    const project = await getProjectById(projectId, userId);
-    await ensureRole(project, ['admin', 'developer']);
+    const project = await ensureRole(await getProjectById(projectId, userId), ['admin', 'developer']);
 
     const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
     const safeConstraint = constraintId.replace(/[^a-zA-Z0-9_]/g, '');
@@ -1267,8 +1257,7 @@ export async function insertRow(projectId: string, tableId: string, rowData: Rec
     const userId = await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
-    const project = await getProjectById(projectId, userId);
-    await ensureRole(project, ['admin', 'developer']);
+    const project = await ensureRole(await getProjectById(projectId, userId), ['admin', 'developer']);
 
     const columns = await getColumnsForTable(projectId, tableId);
     validateRow(rowData as Row, columns);
@@ -1338,7 +1327,7 @@ export async function insertRow(projectId: string, tableId: string, rowData: Rec
             console.error(`[Webhook Fire Error] ${tableId} insert:`, err);
         });
     } catch (error: any) {
-        throw new FluxbaseError(`Insertion failed: ${error.message}`, ERROR_CODES.INTERNAL_SERVER_ERROR, 500);
+        throw new FluxbaseError(`Insertion failed: ${error.message}`, ERROR_CODES.INTERNAL_ERROR, 500);
     }
 }
 
@@ -1346,8 +1335,7 @@ export async function updateRow(projectId: string, tableId: string, rowId: strin
     const userId = await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
-    const project = await getProjectById(projectId, userId);
-    await ensureRole(project, ['admin', 'developer']);
+    const project = await ensureRole(await getProjectById(projectId, userId), ['admin', 'developer']);
 
     const columns = await getColumnsForTable(projectId, tableId);
     const pkCol = columns.find(c => c.is_primary_key);
@@ -1420,8 +1408,7 @@ export async function deleteRow(projectId: string, tableId: string, rowId: strin
     const userId = await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
-    const project = await getProjectById(projectId, userId);
-    await ensureRole(project, ['admin', 'developer']);
+    const project = await ensureRole(await getProjectById(projectId, userId), ['admin', 'developer']);
 
     const columns = await getColumnsForTable(projectId, tableId);
     const pkCol = columns.find(c => c.is_primary_key);
