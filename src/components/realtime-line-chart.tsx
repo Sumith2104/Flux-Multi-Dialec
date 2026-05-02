@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from 'recharts';
@@ -229,7 +229,7 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                                 tickLine={false}
                                 axisLine={false}
                                 width={50}
-                                domain={[0, (dataMax: number) => Math.max(10, dataMax)]}
+                                domain={[(dataMin: number) => dataMin > 0 ? 0 : -0.5, (dataMax: number) => Math.max(5, Math.ceil(dataMax * 1.3))]} allowDataOverflow={false}
                                 tick={{ fill: '#71717a' }}
                             />
                             <Tooltip
