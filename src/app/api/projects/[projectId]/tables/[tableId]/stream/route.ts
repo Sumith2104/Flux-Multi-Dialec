@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getCurrentUserId } from '@/lib/auth';
 import { getProjectById } from '@/lib/data';
 import { getPgPool } from '@/lib/pg';
@@ -34,7 +34,7 @@ export async function GET(
                 [tableId]
             );
             if (tnRes.rows.length > 0) tableName = tnRes.rows[0].table_name.toLowerCase();
-        } catch (_) { /* keep fallback */ }
+        } catch { /* keep fallback */ }
 
         const client = await pool.connect();
 
@@ -54,10 +54,10 @@ export async function GET(
                 client.query('UNLISTEN fluxbase_live')
                     .catch(() => { }) // Ignore unlisten errors during death
                     .finally(() => {
-                        try { client.release(); } catch (e) { }
+                        try { client.release(); } catch { }
                     });
-            } catch (e) {
-                try { client.release(); } catch (err) { }
+            } catch {
+                try { client.release(); } catch { }
             }
         };
 
@@ -105,7 +105,7 @@ export async function GET(
                 keepAliveInterval = setInterval(() => {
                     try {
                         sendEvent('ping', '{}');
-                    } catch (e) {
+                    } catch {
                         releaseClient();
                     }
                 }, 15000);

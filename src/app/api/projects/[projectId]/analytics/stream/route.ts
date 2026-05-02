@@ -48,7 +48,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ projectI
                     if (!isClosed) await new Promise((resolve) => setTimeout(resolve, 5000));
                 }
             }
-            try { controller.close(); } catch (e) { }
+            try { controller.close(); } catch { }
         }
     });
 

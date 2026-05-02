@@ -6,13 +6,13 @@ import { useGlobalAlert } from '@/components/global-alert-provider';
 
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import React, { useState, useEffect, useCallback, useMemo, useTransition } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Table as DbTable, Column as DbColumn, Constraint as DbConstraint } from '@/lib/data';
 import {
     Plus,
     Table,
     Search,
-    ChevronDown,
+
     Filter,
     ArrowDownUp,
     Edit,
@@ -127,8 +127,8 @@ export function EditorClient({
     // Eliminates two full array copies of tables/columns from the JS heap.
     const [deletedTableIds, setDeletedTableIds] = useState<Set<string>>(new Set());
     const [deletedColumnIds, setDeletedColumnIds] = useState<Set<string>>(new Set());
-    const [, startTransition] = useTransition();
-    const wsRefreshTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+
 
     // Derived local tables/columns — computed from props minus deletions (no copy)
     const localTables = useMemo(
@@ -207,7 +207,7 @@ export function EditorClient({
     useEffect(() => { setDeletedTableIds(new Set()); }, [allTables]);
     useEffect(() => { setDeletedColumnIds(new Set()); }, [tableId]);
 
-    const { lastEvent } = useRealtimeSubscription(projectId);
+    useRealtimeSubscription(projectId);
 
     const {
         data: infiniteData,

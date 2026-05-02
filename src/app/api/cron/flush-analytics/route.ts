@@ -53,7 +53,7 @@ export async function GET(request: Request) {
 
             try {
                 await pool.query(query, [projectId, periodStartISO, eventType, val]);
-            } catch (err: any) {
+            } catch {
                 // Silently skip if project doesn't exist anymore
             }
             

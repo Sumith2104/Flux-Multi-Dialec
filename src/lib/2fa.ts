@@ -21,7 +21,7 @@ export function getTOTPCode(secret: string, window = 0) {
     let bSecret: Buffer;
     try {
         bSecret = Buffer.from(base32Decode(secret, 'RFC4648'));
-    } catch (e) {
+    } catch {
         // Fallback for any old hex secrets if they still exist (migration period)
         bSecret = Buffer.from(secret, 'hex');
     }

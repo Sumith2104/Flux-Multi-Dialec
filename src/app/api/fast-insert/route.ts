@@ -7,8 +7,7 @@ import { quotePgIdentifier, quotePgProjectSchema } from "@/lib/sql-safety";
 
 export const dynamic = 'force-dynamic';
 
-// Toggle for heavy background tasks
-const FAST_MODE = true;
+
 
 export async function POST(req: NextRequest) {
     let body;

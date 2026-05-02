@@ -2,13 +2,11 @@
 import { Suspense } from 'react';
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { getTablesForProject, getColumnsForTable, getConstraintsForProject, Table, Column, Constraint } from '@/lib/data';
+import { getTablesForProject, getColumnsForTable, getConstraintsForProject } from '@/lib/data';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErdView } from '@/components/erd-view';
 
-interface DatabasePageProps {
-    searchParams?: { [key: string]: string | string[] | undefined };
-}
+
 
 async function Database({ projectId }: { projectId: string }) {
     const allTables = await getTablesForProject(projectId);

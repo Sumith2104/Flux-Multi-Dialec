@@ -11,7 +11,6 @@ import {
     getTablesForProject,
     insertRow,
     updateRow,
-    deleteRow,
     addColumn,
     updateColumn,
     deleteColumn,
@@ -132,7 +131,7 @@ export async function addRowAction(formData: FormData) {
         const project = await getProjectById(projectId, userId);
 
         const newRowObject: Record<string, any> = {};
-        const now = new Date();
+
 
         for (const col of columns) {
             let value: string | null = null;
@@ -174,7 +173,7 @@ export async function addRowAction(formData: FormData) {
                 } else if (['TIMESTAMP', 'TIMESTAMPTZ', 'DATETIME'].includes(dataType)) {
                     try {
                         value = new Date(value).toISOString();
-                    } catch (e) {
+                    } catch {
                         console.error("Invalid date value", value);
                     }
                 }
@@ -252,7 +251,7 @@ export async function editRowAction(formData: FormData) {
                     } else if (['TIMESTAMP', 'TIMESTAMPTZ', 'DATETIME'].includes(dataType)) {
                         try {
                             value = new Date(value).toISOString();
-                        } catch (e) {
+                        } catch {
                             // Keep original
                         }
                     }
@@ -374,7 +373,6 @@ export async function addColumnAction(formData: FormData) {
 export async function editColumnAction(formData: FormData) {
     const projectId = formData.get('projectId') as string;
     const tableId = formData.get('tableId') as string;
-    const tableName = formData.get('tableName') as string;
     const columnId = formData.get('columnId') as string;
     const newColumnName = formData.get('newColumnName') as string;
 
@@ -398,7 +396,6 @@ export async function editColumnAction(formData: FormData) {
 export async function deleteColumnAction(formData: FormData) {
     const projectId = formData.get('projectId') as string;
     const tableId = formData.get('tableId') as string;
-    const tableName = formData.get('tableName') as string;
     const columnId = formData.get('columnId') as string;
     const columnName = formData.get('columnName') as string;
 
@@ -456,8 +453,6 @@ export async function addConstraintAction(formData: FormData) {
 
 export async function deleteConstraintAction(formData: FormData) {
     const projectId = formData.get('projectId') as string;
-    const tableId = formData.get('tableId') as string;
-    const tableName = formData.get('tableName') as string;
     const constraintId = formData.get('constraintId') as string;
 
     try {
@@ -470,6 +465,7 @@ export async function deleteConstraintAction(formData: FormData) {
     }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function deleteTableAction(projectId: string, tableId: string, tableName: string) {
     try {
         await deleteTable(projectId, tableId);

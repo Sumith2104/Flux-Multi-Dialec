@@ -113,7 +113,7 @@ export function EditRowDialog({
         // Try to format if it's a valid date string
         try {
           defaultValue = new Date(defaultValue).toISOString().slice(0, 16);
-        } catch (e) {
+        } catch {
           // Keep as is if invalid
         }
       }

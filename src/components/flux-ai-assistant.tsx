@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Volume2, VolumeX, Loader2, ArrowUp, CheckCircle2, XCircle, Settings2 } from "lucide-react";
+import { X, Volume2, VolumeX, Loader2, ArrowUp, CheckCircle2, XCircle } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useContext } from "react";
 import { ProjectContext } from "@/contexts/project-context";

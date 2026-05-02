@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { getAuthContextFromRequest } from '@/lib/auth';
-import { getPgPool } from '@/lib/pg';
+
 import { getProjectById, ensureNotSuspended } from '@/lib/data';
 import realtimeManager from '@/lib/realtime-manager';
 import { ERROR_CODES } from '@/lib/error-codes';
@@ -93,7 +93,7 @@ export async function GET(req: NextRequest) {
                 unsubscribe = realtimeManager.subscribe(projectId, (payload: string) => {
                     try {
                         controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
-                    } catch (e) {
+                    } catch {
                         releaseHandler(); // Connection likely broken
                     }
                 });
@@ -117,7 +117,7 @@ export async function GET(req: NextRequest) {
                         }
 
                         controller.enqueue(encoder.encode(': heartbeat\n\n'));
-                    } catch (e) {
+                    } catch {
                         releaseHandler();
                     }
                 }, 15000);
@@ -125,7 +125,7 @@ export async function GET(req: NextRequest) {
             } catch (err) {
                 console.error("[SSE Route Error]", err);
                 if (releaseHandler) releaseHandler();
-                try { controller.error(err); } catch (e) { }
+                try { controller.error(err); } catch { }
             }
         },
         cancel() {

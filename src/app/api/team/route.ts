@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool, handleDatabaseError } from '@/lib/pg';
-import { getAuthContextFromRequest, getCurrentUserId } from '@/lib/auth';
+import { getAuthContextFromRequest } from '@/lib/auth';
 import { sendTeamInviteEmail } from '@/lib/email';
 import crypto from 'crypto';
 

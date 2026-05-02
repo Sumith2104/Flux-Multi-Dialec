@@ -75,7 +75,7 @@ export async function ensureRole(project: Project | null, allowedRoles: string[]
 import crypto from 'crypto';
 import { validateRow } from '@/lib/validation';
 import { fireWebhooks } from '@/lib/webhooks';
-import { unstable_cache, revalidateTag } from 'next/cache';
+import { revalidateTag } from 'next/cache';
 import { LRUCache } from 'lru-cache';
 import { FluxbaseError, ERROR_CODES } from '@/lib/error-codes';
 
@@ -324,8 +324,8 @@ export async function createUserProfile(userId: string, email: string, displayNa
 
 export async function updateUserProfile(userId: string, displayName?: string, photoURL?: string) {
     const pool = getPgPool();
-    let updates = [];
-    let values = [userId];
+    const updates: string[] = [];
+    const values: any[] = [userId];
     let idx = 2;
 
     if (displayName) {
@@ -433,14 +433,14 @@ export async function resetProjectData(projectId: string) {
     try {
         const { redis } = await import('@/lib/redis');
         await redis.del(`schema_inference_${projectId}`);
-    } catch (e) { }
+    } catch { }
 }
 
 export async function updateProjectTimezone(projectId: string, timezone: string): Promise<boolean> {
     const userId = await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
-    const project = await ensureRole(await getProjectById(projectId, userId), ['admin']);
+    await ensureRole(await getProjectById(projectId, userId), ['admin']);
 
     const pool = getPgPool();
     await pool.query(
@@ -479,7 +479,7 @@ export async function deleteProject(projectId: string) {
     try {
         const { redis } = await import('@/lib/redis');
         await redis.del(`schema_inference_${projectId}`);
-    } catch (e) { }
+    } catch { }
 }
 
 // --- Tables ---
@@ -556,7 +556,7 @@ export async function createTable(projectId: string, tableName: string, descript
         const mysqlPool = getMysqlPool();
         const dbName = `project_${projectId}`;
 
-        let columnDefs = [];
+        const columnDefs = [];
         for (const col of columns) {
             let type = col.data_type.toUpperCase();
             if (type === 'NUMBER') type = 'DOUBLE';
@@ -595,7 +595,7 @@ export async function createTable(projectId: string, tableName: string, descript
         const pool = getPgPool();
         const schemaName = `project_${projectId}`;
 
-        let columnDefs = [];
+        const columnDefs = [];
         for (const col of columns) {
             let type = col.data_type.toUpperCase();
             if (type === 'NUMBER') type = 'NUMERIC';
@@ -1146,8 +1146,8 @@ export async function getTableData(
     tableName: string,
     page: number = 0,
     pageSize: number = 50,
-    explicitUserId?: string,
-    _cursorId?: string
+    explicitUserId?: string
+
 ) {
     const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);

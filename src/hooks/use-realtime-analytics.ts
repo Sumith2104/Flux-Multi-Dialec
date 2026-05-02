@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { getAnalyticsStatsAction } from '@/app/(app)/dashboard/analytics-actions';
 import { useRealtimeSubscription } from '@/hooks/use-realtime-subscription';
 import { useEffect } from 'react';
@@ -18,7 +18,7 @@ export interface AnalyticsStats {
 }
 
 export function useRealtimeAnalytics(projectId: string | undefined): AnalyticsStats | null {
-    const queryClient = useQueryClient();
+
     const { lastEvent } = useRealtimeSubscription(projectId);
 
     const queryKey = ['analytics_stats', projectId];

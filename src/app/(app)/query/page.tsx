@@ -3,8 +3,8 @@
 import { useGlobalAlert } from '@/components/global-alert-provider';
 
 import { useState, useContext, useEffect, useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { Play, Trash2, History as HistoryIcon, Sparkles, Layout, ChevronRight, ChevronLeft, Table2, ListRestart, Info, Database, AlertCircle, CheckCircle2, TerminalSquare, Bot, MoreHorizontal, FileJson, FileType, Copy as CopyIcon, AlignLeft, Upload } from 'lucide-react';
+
+import { Play, Trash2, History as HistoryIcon, Sparkles,  ChevronRight,  Table2, ListRestart, Info, Database, AlertCircle, CheckCircle2, TerminalSquare,  MoreHorizontal, FileJson, FileType, Copy as CopyIcon, AlignLeft, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -16,7 +16,7 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
-    DropdownMenuSeparator,
+
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { SqlEditor } from '@/components/sql-editor';
@@ -30,7 +30,7 @@ import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useRealtimeSubscription } from '@/hooks/use-realtime-subscription';
 
 export default function QueryPage() {
-  const queryClient = useQueryClient();
+  
 
   const [query, setQuery] = useState('SELECT * FROM your_table_name LIMIT 100;');
   const [isQueryLoaded, setIsQueryLoaded] = useState(false);
@@ -91,7 +91,7 @@ export default function QueryPage() {
     }
   }, [query, isQueryLoaded, project?.project_id]);
 
-  const addToHistory = (queryStr: string, success: boolean) => {
+  const addToHistory = useCallback((queryStr: string, success: boolean) => {
     if (!project?.project_id) return;
     const newItem: HistoryItem = {
       id: crypto.randomUUID(),
@@ -105,7 +105,7 @@ export default function QueryPage() {
       localStorage.setItem(`queryHistory_${project.project_id}`, JSON.stringify(newHistory));
       return newHistory;
     });
-  };
+  }, [project?.project_id]);
 
 
   const { showConfirm } = useGlobalAlert();
@@ -153,10 +153,7 @@ export default function QueryPage() {
       if (!data.success) {
         setActiveResultsTab('messages');
       } else {
-        // PROACTIVE REFRESH: If this was a structural command, trigger an invisible refresh
-        // We strip comments and whitespace to ensure detection is robust
-        const normalized = queryToExecute.trim().replace(/^(\/\*[\s\S]*?\*\/|--.*?\n)*/g, '');
-        // The sidebar and table views are now automatically synchronized via the global WebSocket listener 
+        // The sidebar and table views are now automatically synchronized via the global WebSocket listener
         // in `useRealtimeSubscription`, which reacts to the 'schema_update' event emitted by the server.
       }
 
@@ -171,7 +168,7 @@ export default function QueryPage() {
 
     setIsExecuting(false);
 
-  }, [query, project, toast]);
+  }, [query, project, toast, addToHistory]);
 
   const { lastEvent } = useRealtimeSubscription(project?.project_id);
 
@@ -283,7 +280,7 @@ export default function QueryPage() {
 
   const formatSql = () => {
     // Basic regex-based SQL formatter
-    let formatted = query
+    const formatted = query
       .replace(/\s+/g, ' ')
       .replace(/\s*,\s*/g, ', ')
       .replace(/\s*\(\s*/g, ' (')
@@ -415,7 +412,7 @@ export default function QueryPage() {
                   )}
                 </div>
                 <div className="min-h-0 flex-1 p-2">
-                  <QueryHistory history={history} onSelectQuery={setQuery} onClearHistory={clearHistory} />
+                  <QueryHistory history={history} onSelectQuery={setQuery} />
                 </div>
               </TabsContent>
             </Tabs>
@@ -599,7 +596,6 @@ export default function QueryPage() {
                     <QueryHistory
                       history={history}
                       onSelectQuery={setQuery}
-                      onClearHistory={clearHistory}
                     />
                   </div>
                 </TabsContent>

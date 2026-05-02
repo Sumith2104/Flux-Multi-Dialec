@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Database, Table2, Columns, ChevronRight, ChevronDown, Play, LayoutGrid, Hash, Loader2, Folder, FolderOpen, Box, Binary, FileCode2 } from 'lucide-react';
+import { useState } from 'react';
+import { Database, Table2, Columns, ChevronRight, ChevronDown, Hash, Folder, FolderOpen, Box, Binary, FileCode2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -15,7 +15,7 @@ interface IndexDef {
     table: string;
 }
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useRealtimeSubscription } from '@/hooks/use-realtime-subscription';
 
 interface SchemaData {
@@ -26,12 +26,7 @@ interface SchemaData {
     extensions: string[];
 }
 
-const fetchSchema = async (projectId: string) => {
-    const res = await fetch(`/api/schema?projectId=${projectId}`);
-    const data = await res.json();
-    if (!data.success || !data.tables) return null;
-    return data as SchemaData;
-};
+
 
 export function SchemaExplorer({ projectId, onInsertQuery }: { projectId?: string, onInsertQuery: (query: string) => void }) {
     const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
@@ -39,12 +34,10 @@ export function SchemaExplorer({ projectId, onInsertQuery }: { projectId?: strin
     // Core structural folders
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['tables']));
 
-    const queryClient = useQueryClient();
-
     // Register with the global sync layer to catch CREATE/DROP/ALTER events
     useRealtimeSubscription(projectId);
 
-    const { data: schema, isLoading: loading, isFetching } = useQuery({
+    const { data: schema, isLoading: loading } = useQuery({
         queryKey: ['schema', projectId],
         queryFn: async () => {
             // Bust both browser and server-side Redis cache

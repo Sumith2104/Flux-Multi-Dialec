@@ -5,7 +5,7 @@ import { useContext } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Plus, Table, Edit, Rows, Database } from "lucide-react"
+import { Plus, Edit } from "lucide-react"
 import Link from "next/link"
 import { getTablesForProject, Table as DbTable, getProjectAnalytics, ProjectAnalytics } from "@/lib/data";
 import { Badge } from "@/components/ui/badge";

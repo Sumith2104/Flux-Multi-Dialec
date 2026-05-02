@@ -43,7 +43,7 @@ export function LogoutButton({ className, variant = 'outline', size = 'sm', chil
                     className={className}
                     variant={variant}
                     size={size}
-                    onClick={(e) => {
+                    onClick={() => {
                         // Let AlertDialog handle the click event instead of immediate logout
                     }}
                 >

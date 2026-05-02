@@ -289,7 +289,7 @@ export function useRealtimeSubscription(projectId: string | undefined) {
             unsubscribe();
             clearInterval(statusInterval);
         };
-    }, [projectId]);
+    }, [projectId, syncDatabase]);
 
     const sendMessage = () => {
         console.warn('[Realtime] sendMessage is a no-op in SSE mode.');

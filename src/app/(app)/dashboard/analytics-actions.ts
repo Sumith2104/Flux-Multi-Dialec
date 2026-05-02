@@ -82,15 +82,15 @@ export async function getAnalyticsStatsAction(projectId: string) {
                     }
                 }
             }
-        } catch (redisErr) {
-            console.warn('Error merging Redis in-flight analytics:', redisErr);
+        } catch {
+            console.warn('Error merging Redis in-flight analytics');
         }
 
         // --- PHASE 3: Fetch Live Sessions ---
         try {
             const liveSessions = await redis.get(`live_sessions:${projectId}`);
             (stats as any).live_sessions = parseInt(liveSessions as string || '0', 10);
-        } catch (redisErr) {
+        } catch {
             (stats as any).live_sessions = 0;
         }
 
@@ -261,8 +261,8 @@ export async function getProjectHistoryAction(projectId: string) {
                     }
                 }
             }
-        } catch (redisErr) {
-            console.warn('Error merging Redis in-flight sessions:', redisErr);
+        } catch {
+            console.warn('Error merging Redis in-flight sessions');
         }
 
         const payload = {

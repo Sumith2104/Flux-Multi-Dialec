@@ -2,7 +2,7 @@
 
 import { generateApiKey, listApiKeys, revokeApiKey } from '@/lib/api-keys';
 import { getCurrentUserId } from '@/lib/auth';
-import { revalidatePath } from 'next/cache';
+
 
 import { getProjectById, getProjectsForCurrentUser } from '@/lib/data';
 

@@ -21,7 +21,7 @@ export function TimezoneSelector() {
     const timezones = React.useMemo(() => {
         try {
             return Intl.supportedValuesOf('timeZone');
-        } catch (e) {
+        } catch {
             // Fallback list if Intl.supportedValuesOf is not supported
             return ['UTC', 'America/New_York', 'Europe/London', 'Asia/Kolkata', 'Asia/Tokyo', 'Australia/Sydney'];
         }

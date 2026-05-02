@@ -1,8 +1,7 @@
 'use client';
 
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Button } from "@/components/ui/button";
-import { Clock, Play, Trash2 } from "lucide-react";
+import { Clock, Play } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
 
 export interface HistoryItem {
@@ -15,10 +14,9 @@ export interface HistoryItem {
 interface QueryHistoryProps {
     history: HistoryItem[];
     onSelectQuery: (query: string) => void;
-    onClearHistory: () => void;
 }
 
-export function QueryHistory({ history, onSelectQuery, onClearHistory }: QueryHistoryProps) {
+export function QueryHistory({ history, onSelectQuery }: QueryHistoryProps) {
     if (history.length === 0) {
         return (
             <div className="h-full w-full flex flex-col items-center justify-center text-muted-foreground p-4">

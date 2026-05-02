@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getTableData, getProjectById, ensureNotSuspended } from '@/lib/data';
 import { trackApiRequest } from '@/lib/analytics';
-import { getCurrentUserId, getAuthContextFromRequest } from '@/lib/auth';
+import { getAuthContextFromRequest } from '@/lib/auth';
 
 export const maxDuration = 60; // 1 minute
 export const dynamic = 'force-dynamic';
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
     const tableName = searchParams.get('tableName');
     const page = parseInt(searchParams.get('page') || '0', 10);
     const pageSize = parseInt(searchParams.get('pageSize') || '100', 10);
-    const cursorId = searchParams.get('cursorId') || undefined;
+
 
     // Enforce Scope
     if (allowedProjectId) {
@@ -57,7 +57,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Invalid pagination parameters.' }, { status: 400 });
     }
 
-    const data = await getTableData(projectId, tableName, page, pageSize, userId, cursorId);
+    const data = await getTableData(projectId, tableName, page, pageSize, userId);
 
 
     // Track analytics in the background — do NOT await, we don't want

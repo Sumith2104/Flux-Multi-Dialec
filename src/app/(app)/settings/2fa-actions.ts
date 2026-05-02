@@ -104,7 +104,7 @@ export async function get2FAStatusAction() {
             enabled: user?.two_factor_enabled || false,
             hasSecret: !!user?.two_factor_secret
         };
-    } catch (error) {
+    } catch {
         return { enabled: false };
     }
 }

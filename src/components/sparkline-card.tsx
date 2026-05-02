@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Area, AreaChart, Bar, BarChart, Line, LineChart, ResponsiveContainer, Tooltip, YAxis, XAxis } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -17,10 +17,16 @@ export function SparklineCard({ title, value, subtitle, type, color, data }: Spa
     const [isHovered, setIsHovered] = useState(false);
     const activeColor = isHovered ? "#ea580c" : color;
 
+    const [now, setNow] = useState(0);
+    useEffect(() => {
+        setNow(Date.now());
+    }, []);
+
     // Use the real history data directly, and inject localized 1-hour timestamps
     // dynamically on the client so it perfectly matches the user's timezone.
     const chartData = data.map((d, i) => {
-        const date = new Date(Date.now() - ((data.length - 1 - i) * 60 * 60 * 1000));
+        if (now === 0) return d;
+        const date = new Date(now - ((data.length - 1 - i) * 60 * 60 * 1000));
         return {
             ...d,
             timeLabel: d.timeLabel || date.toLocaleTimeString([], { hour: 'numeric', hour12: true })

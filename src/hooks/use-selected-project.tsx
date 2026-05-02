@@ -22,7 +22,7 @@ export function useSelectedProject() {
     const cookie = Cookies.get(COOKIE_NAME);
     try {
         return cookie ? JSON.parse(cookie) : null;
-    } catch (e) {
+    } catch {
         return null;
     }
   };

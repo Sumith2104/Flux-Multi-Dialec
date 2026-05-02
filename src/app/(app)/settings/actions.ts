@@ -5,7 +5,7 @@ import { deleteProject, invalidateProjectCache } from '@/lib/data';
 import { redis } from '@/lib/redis';
 import { deleteUserAccount } from '@/lib/auth-actions';
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
+
 
 export async function getUserPlanAction(): Promise<{ success: boolean; plan?: string; status?: string; error?: string }> {
     try {

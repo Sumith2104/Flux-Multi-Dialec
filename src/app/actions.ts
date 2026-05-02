@@ -3,7 +3,7 @@
 import { getPgPool } from "@/lib/pg";
 import { createSessionCookie } from "@/lib/auth";
 import { sendOtpEmail, sendWelcomeEmail } from "@/lib/email";
-import { redirect } from "next/navigation";
+
 import { cookies } from "next/headers";
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';

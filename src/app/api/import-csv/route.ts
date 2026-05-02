@@ -189,7 +189,7 @@ export async function POST(req: NextRequest) {
                 try {
                     await client.query(sql, flatParams);
                     importedCount += batch.length;
-                } catch (batchErr: any) {
+                } catch {
                     // Batch failed — fall back to row-by-row for this batch to collect per-row errors
                     for (let r = 0; r < batch.length; r++) {
                         const row = batch[r];

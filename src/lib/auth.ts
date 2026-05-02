@@ -22,7 +22,7 @@ const _userStatusCache = new LRUCache<string, string>({ max: 1000, ttl: 30_000 }
 // Cache the full AuthContext for cookie-based sessions for 30s.
 // Keyed on a SHA-256 hash of the JWT so we never store the raw token in memory.
 // AuthContext is declared below in this same file — TS hoists interface declarations.
-// eslint-disable-next-line @typescript-eslint/no-use-before-define
+
 const _authContextCache = new LRUCache<string, AuthContext>({ max: 1000, ttl: 30_000 });
 
 export interface User {
@@ -150,7 +150,7 @@ export async function getAuthContextFromRequest(request: Request): Promise<AuthC
         try {
             const url = new URL(request.url);
             apiKey = url.searchParams.get('apiKey') || '';
-        } catch (e) {}
+        } catch {}
     }
 
     const headerProjectId = request.headers.get('x-project-id');

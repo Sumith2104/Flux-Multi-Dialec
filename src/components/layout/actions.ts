@@ -11,7 +11,7 @@ export async function createProjectAction(formData: FormData) {
   const dialect = formData.get('dialect') as string;
   const timezone = formData.get('timezone') as string;
   const instanceSize = formData.get('instanceSize') as string;
-  const region = formData.get('region') as string;
+
 
   if (!projectName) {
     return { error: 'Project name is required.' };
@@ -69,7 +69,7 @@ export async function getAllowedInstanceSizesAction() {
       case 'free':
       default: return { allowedSizes: ['db.t3.micro'] as string[] };
     }
-  } catch (e) {
+  } catch {
     return { allowedSizes: ['db.t3.micro'] as string[] };
   }
 }
