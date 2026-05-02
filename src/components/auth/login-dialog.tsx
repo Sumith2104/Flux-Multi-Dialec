@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -42,7 +42,7 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
     };
 
     // Listen for URL params in case of GitHub 2FA redirect
-    useState(() => {
+    useEffect(() => {
         if (typeof window !== 'undefined') {
             const params = new URLSearchParams(window.location.search);
             if (params.get('requires2FA') === 'true' && params.get('userId')) {
@@ -51,7 +51,7 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
                 onOpenChange(true); // Ensure dialog is open
             }
         }
-    });
+    }, [onOpenChange]);
 
     async function handleEmailLogin(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();

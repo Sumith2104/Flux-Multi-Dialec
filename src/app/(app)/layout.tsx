@@ -48,7 +48,8 @@ import {
     Globe,
     ServerCrash,
     BarChart3,
-    AlertTriangle
+    AlertTriangle,
+    Sparkles
 } from "lucide-react";
 
 
@@ -76,6 +77,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     const [userLoading, setUserLoading] = useState(true);
     const [loadingProgress, setLoadingProgress] = useState(0);
     const { project: selectedProject, setProject, loading: projectContextLoading, isSuspended, setIsSuspended } = useContext(ProjectContext);
+    const [isAiOpen, setIsAiOpen] = useState(false);
 
     useEffect(() => {
         async function fetchData() {
@@ -334,6 +336,20 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                             <KeyboardShortcuts />
                         </div>
                         <div className="mx-1 hidden h-5 w-px bg-border sm:block" />
+                        {userId && (
+                            <button
+                                onClick={() => setIsAiOpen(true)}
+                                className="relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-all text-xs font-medium group"
+                                title="Open Flux AI Assistant"
+                            >
+                                <span className="relative">
+                                    <Sparkles className="h-4 w-4 text-orange-400 group-hover:text-orange-300 transition-colors" />
+                                    <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 bg-orange-500 rounded-full animate-pulse" />
+                                </span>
+                                <span className="hidden md:block">Flux AI</span>
+                            </button>
+                        )}
+                        <div className="mx-1 hidden h-5 w-px bg-border sm:block" />
                         <LogoutButton />
                     </div>
                 ) : (
@@ -354,7 +370,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                             <Dock items={dockItems} className="pointer-events-auto" />
                         </div>
                     )}
-                    {userId && <FluxAiAssistant key={userId} userId={userId} />}
+                    {userId && <FluxAiAssistant key={userId} userId={userId} isOpen={isAiOpen} onOpenChange={setIsAiOpen} />}
                 </main>
             </div>
         </div>

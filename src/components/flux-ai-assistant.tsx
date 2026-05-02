@@ -1,8 +1,8 @@
-﻿"use client";
+"use client";
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Volume2, VolumeX, Loader2, ArrowUp } from "lucide-react";
+import { X, Volume2, VolumeX, Loader2, ArrowUp, CheckCircle2, XCircle, Settings2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useContext } from "react";
 import { ProjectContext } from "@/contexts/project-context";
@@ -27,8 +27,7 @@ const AiIcon = ({ size = 24, className = "" }: { size?: number; className?: stri
   </svg>
 );
 
-export function FluxAiAssistant({ userId }: { userId: string }) {
-  const [isOpen, setIsOpen] = useState(false);
+export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: string; isOpen: boolean; onOpenChange: (open: boolean) => void }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const isRestored = useRef(false);
   const [input, setInput] = useState("");
@@ -367,7 +366,7 @@ export function FluxAiAssistant({ userId }: { userId: string }) {
                  if (result.success && result.project) {
                      setProject(result.project);
                      router.push('/dashboard/projects');
-                     return [...newMsgs, { role: "assistant", content: `âœ… Successfully created and switched to project **${action.projectName}**!` }];
+                     return [...newMsgs, { role: "assistant", content: `Successfully created and switched to project **${action.projectName}**!` }];
                  } else {
                      return [...newMsgs, { role: "assistant", content: `âŒ Failed to execute action: ${result.error}` }];
                  }
@@ -386,7 +385,7 @@ export function FluxAiAssistant({ userId }: { userId: string }) {
              setMessages(prev => {
                  const newMsgs = prev.filter(m => m.content !== "âš™ï¸ Executing action... Please wait.");
                  if (result.success) {
-                     return [...newMsgs, { role: "assistant", content: `âœ… Successfully executed SQL query: \`${action.query}\`` }];
+                     return [...newMsgs, { role: "assistant", content: `Successfully executed SQL query: \`${action.query}\`` }];
                  } else {
                      return [...newMsgs, { role: "assistant", content: `âŒ Failed to execute SQL: ${result.error?.message || 'Unknown error'}` }];
                  }
@@ -430,21 +429,28 @@ export function FluxAiAssistant({ userId }: { userId: string }) {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
-      <AnimatePresence>
-        {isOpen && (
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          {/* Backdrop */}
           <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95, filter: "blur(10px)" }}
-            animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-            exit={{ opacity: 0, y: 20, scale: 0.95, filter: "blur(10px)" }}
-            transition={{ duration: 0.3, type: "spring", bounce: 0.4 }}
-            className="mb-6 w-[360px] sm:w-[420px] h-[550px] max-h-[85vh] bg-background/60 backdrop-blur-3xl border border-border/70 dark:border-border/50 rounded-3xl shadow-[0_20px_40px_-15px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col relative"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => onOpenChange(false)}
+            className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm"
+          />
+          {/* Side Panel */}
+          <motion.div
+            initial={{ opacity: 0, x: 420 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 420 }}
+            transition={{ duration: 0.3, type: "spring", bounce: 0.15 }}
+            className="fixed right-0 top-0 bottom-0 z-50 w-[380px] sm:w-[420px] bg-background/90 backdrop-blur-3xl border-l border-border/70 shadow-2xl flex flex-col"
           >
-            {/* Ambient Background Glow */}
             <div className="absolute top-0 inset-x-0 h-40 bg-gradient-to-b from-orange-500/20 to-transparent pointer-events-none" />
-
             {/* Header */}
-            <div className="h-16 flex items-center justify-between px-5 shrink-0 relative z-10">
+            <div className="h-16 flex items-center justify-between px-5 shrink-0 relative z-10 border-b border-border/50">
               <div className="flex items-center gap-3">
                 <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-tr from-orange-500 to-rose-500 shadow-lg shadow-orange-500/30">
                   <AiIcon size={14} className="text-white relative z-10" />
@@ -456,111 +462,50 @@ export function FluxAiAssistant({ userId }: { userId: string }) {
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <button
-                  onClick={toggleVoice}
-                  className="p-2 text-muted-foreground/60 hover:text-foreground hover:bg-secondary/40 rounded-full transition-all"
-                  title={voiceEnabled ? "Mute Voice" : "Enable Voice"}
-                >
+                <button onClick={toggleVoice} className="p-2 text-muted-foreground/60 hover:text-foreground hover:bg-secondary/40 rounded-full transition-all" title={voiceEnabled ? "Mute Voice" : "Enable Voice"}>
                   {voiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
                 </button>
-                <button
-                  onClick={() => setIsOpen(false)}
-                  className="p-2 text-muted-foreground/60 hover:text-foreground hover:bg-secondary/40 rounded-full transition-all"
-                >
+                <button onClick={() => onOpenChange(false)} className="p-2 text-muted-foreground/60 hover:text-foreground hover:bg-secondary/40 rounded-full transition-all">
                   <X size={16} />
                 </button>
               </div>
             </div>
-
             {/* Chat Area */}
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5 scrollbar-thin scrollbar-thumb-white/10 relative z-10">
               {messages.map((msg, idx) => (
-                <motion.div
-                  key={idx}
-                  initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={{ duration: 0.2 }}
-                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[85%] px-4 py-3.5 text-[13.5px] leading-relaxed shadow-sm ${
-                      msg.role === "user"
-                        ? "bg-gradient-to-br from-orange-500 to-rose-600 text-white rounded-2xl rounded-br-sm font-medium shadow-orange-500/20"
-                        : "bg-secondary/40 backdrop-blur-md border border-border/50 text-foreground/90 rounded-2xl rounded-bl-sm"
-                    }`}
-                  >
+                <motion.div key={idx} initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.2 }} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[85%] px-4 py-3.5 text-[13.5px] leading-relaxed shadow-sm ${msg.role === "user" ? "bg-gradient-to-br from-orange-500 to-rose-600 text-white rounded-2xl rounded-br-sm font-medium shadow-orange-500/20" : "bg-secondary/40 backdrop-blur-md border border-border/50 text-foreground/90 rounded-2xl rounded-bl-sm"}`}>
                     {formatText(msg.content)}
                     {msg.pendingAction && (
                         <div className="mt-3 flex gap-2">
-                             <button onClick={() => executePendingAction(idx, msg.pendingAction)} className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-semibold shadow-sm transition-all">âœ… Approve</button>
-                             <button onClick={() => cancelPendingAction(idx)} className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-rose-200 rounded-lg text-xs font-semibold shadow-sm transition-all">âŒ Cancel</button>
+                             <button onClick={() => executePendingAction(idx, msg.pendingAction)} className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg text-xs font-semibold shadow-sm transition-all flex items-center gap-1.5"><CheckCircle2 size={12} /> Approve</button>
+                             <button onClick={() => cancelPendingAction(idx)} className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-rose-300 rounded-lg text-xs font-semibold shadow-sm transition-all flex items-center gap-1.5"><XCircle size={12} /> Cancel</button>
                         </div>
                     )}
                   </div>
                 </motion.div>
               ))}
               {isTyping && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex justify-start"
-                >
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-start">
                   <div className="bg-secondary/40 backdrop-blur-md border border-border/50 text-foreground/70 rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-2 text-xs font-medium">
-                    <Loader2 size={14} className="animate-spin text-orange-500" />
-                    Thinking...
+                    <Loader2 size={14} className="animate-spin text-orange-500" /> Thinking...
                   </div>
                 </motion.div>
               )}
               <div ref={messagesEndRef} />
             </div>
-
             {/* Input Area */}
-            <div className="p-4 shrink-0 relative z-10">
+            <div className="p-4 shrink-0 relative z-10 border-t border-border/50">
               <form onSubmit={handleSend} className="relative flex items-center group">
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Ask me anything..."
-                  className="w-full bg-secondary/40 hover:bg-secondary border border-border/70 rounded-2xl pl-5 pr-14 py-3.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-transparent transition-all backdrop-blur-md placeholder:text-muted-foreground/50"
-                  disabled={isTyping}
-                />
-                <button
-                  type="submit"
-                  disabled={!input.trim() || isTyping}
-                  className="absolute right-2 p-2.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-lg hover:shadow-lg hover:shadow-orange-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                >
+                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask me anything..." className="w-full bg-secondary/40 hover:bg-secondary border border-border/70 rounded-2xl pl-5 pr-14 py-3.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-transparent transition-all backdrop-blur-md placeholder:text-muted-foreground/50" disabled={isTyping} autoFocus />
+                <button type="submit" disabled={!input.trim() || isTyping} className="absolute right-2 p-2.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-lg hover:shadow-lg hover:shadow-orange-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
                   <ArrowUp size={16} strokeWidth={2.5} className="text-white" />
                 </button>
               </form>
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Floating Button Orbit Design */}
-      <motion.button
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        onClick={() => setIsOpen(!isOpen)}
-        className="relative flex items-center justify-center group"
-      >
-        <div className="absolute inset-0 bg-gradient-to-tr from-orange-500 to-rose-500 rounded-full blur-xl opacity-40 group-hover:opacity-60 transition-opacity duration-500" />
-        <div className="w-16 h-16 bg-gradient-to-tr from-orange-500 via-orange-400 to-rose-500 text-white rounded-full shadow-2xl flex items-center justify-center ring-1 ring-white/20 relative z-10 overflow-hidden">
-          <div className="absolute inset-0 bg-white/20 translate-y-[100%] group-hover:translate-y-0 transition-transform duration-500 ease-out" />
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={isOpen ? 'close' : 'open'}
-              initial={{ rotate: -90, opacity: 0 }}
-              animate={{ rotate: 0, opacity: 1 }}
-              exit={{ rotate: 90, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              {isOpen ? <X size={28} /> : <AiIcon size={28} className="text-white drop-shadow-md" />}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </motion.button>
-    </div>
+        </>
+      )}
+    </AnimatePresence>
   );
 }
