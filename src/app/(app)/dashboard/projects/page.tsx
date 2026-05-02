@@ -1,7 +1,8 @@
-﻿
+
 'use client';
 
 import { useEffect, useState, useContext } from 'react';
+import Image from 'next/image';
 import { getProjectsForCurrentUser, Project } from '@/lib/data';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -99,9 +100,9 @@ export default function SelectProjectPage() {
                         {/* Faint Background Logo Outline */}
                         <div className="absolute -right-6 -bottom-6 w-36 h-36 group-hover:scale-110 transition-all duration-500 pointer-events-none overflow-visible z-0">
                             {isPostgres ? (
-                                <img src="/postgres-bg.png" alt="PostgreSQL Background" className="w-full h-full object-contain grayscale opacity-[0.4] group-hover:opacity-[0.7] transition-opacity" loading="lazy" />
+                                <Image src="/postgres-bg.png" alt="PostgreSQL Background" width={144} height={144} className="w-full h-full object-contain grayscale opacity-[0.4] group-hover:opacity-[0.7] transition-opacity" />
                             ) : (
-                                <img src="/mysql-bg.png" alt="MySQL Background" className="w-full h-full object-contain grayscale opacity-[0.4] group-hover:opacity-[0.7] transition-opacity" loading="lazy" />
+                                <Image src="/mysql-bg.png" alt="MySQL Background" width={144} height={144} className="w-full h-full object-contain grayscale opacity-[0.4] group-hover:opacity-[0.7] transition-opacity" />
                             )}
                         </div>
 

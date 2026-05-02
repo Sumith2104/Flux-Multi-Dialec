@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useState, useContext, useEffect } from 'react';
+import Image from 'next/image';
 import QRCode from 'qrcode';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -441,7 +442,7 @@ export default function GeneralSettingsPage() {
                                             <div className="flex flex-col items-center gap-4 py-2">
                                                 {qrCodeDataUrl ? (
                                                     <div className="p-3 bg-white rounded-lg shadow-inner shadow-black/20">
-                                                        <img src={qrCodeDataUrl} alt="2FA QR Code" className="w-48 h-48 block" />
+                                                        <Image src={qrCodeDataUrl} alt="2FA QR Code" width={192} height={192} className="block" unoptimized />
                                                     </div>
                                                 ) : (
                                                     <div className="w-48 h-48 bg-muted animate-pulse rounded-lg" />
@@ -771,3 +772,4 @@ export default function GeneralSettingsPage() {
         </div>
     )
 }
+
