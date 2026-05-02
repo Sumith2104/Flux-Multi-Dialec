@@ -19,7 +19,7 @@ export async function createTable(
         const { getMysqlPool } = await import('@/lib/mysql');
         const mysqlPool = getMysqlPool();
 
-        let defs = [];
+        const defs = [];
         for (const c of columns) {
             defs.push(`\`${c.columnName}\` LONGTEXT`);
         }

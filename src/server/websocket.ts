@@ -105,7 +105,7 @@ async function authenticateRequest(req: http.IncomingMessage): Promise<{ userId:
             try {
                 const decoded = jwt.verify(session, JWT_SECRET) as { uid: string };
                 return { userId: decoded.uid };
-            } catch (e) {
+            } catch {
                 // Invalid cookie — fall through to API key check
             }
         }
@@ -137,7 +137,7 @@ async function authenticateRequest(req: http.IncomingMessage): Promise<{ userId:
             if (decoded && decoded.uid) {
                 return { userId: decoded.uid };
             }
-        } catch (e) {
+        } catch {
             // Not a valid JWT or expired — fall through to API key lookup
         }
 

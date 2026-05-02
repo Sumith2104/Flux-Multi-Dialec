@@ -52,7 +52,7 @@ export async function middleware(request: NextRequest) {
             const { payload } = await jwtVerify(sessionCookie, new TextEncoder().encode(getJwtSecretValue()));
             userId = payload.uid;
             isMfaVerified = !!payload.mfa;
-        } catch (error) {
+        } catch {
             // Invalid or expired session
             // To prevent redirect loop on '/', we just clear the cookie and continue
             if (pathname === '/') {

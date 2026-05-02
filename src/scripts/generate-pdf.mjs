@@ -27,8 +27,6 @@ const DARK = [17, 17, 17];
 const MUTED = [100, 100, 100];
 const CODE_BG = [28, 28, 28];
 const CODE_FG = [220, 220, 220];
-const SUCCESS = [34, 197, 94];
-const WARN = [251, 191, 36];
 
 let y = 0;
 
@@ -169,10 +167,6 @@ function addCodeBlock(lines, lang = '') {
     y += padV + 8;
 }
 
-function addResponseBox(json) {
-    const lines = json.split('\n');
-    addCodeBlock(lines, 'Response JSON');
-}
 
 // ─── COVER PAGE ─────────────────────────────────────────────────────────────
 doc.setFillColor(17, 17, 17);

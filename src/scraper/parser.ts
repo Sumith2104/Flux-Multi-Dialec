@@ -36,7 +36,7 @@ export function parseHTML(html: string, selectors: Record<string, string>): Reco
             }
 
             for (let i = 0; i < maxElements; i++) {
-                let rowData: Record<string, string> = {};
+                const rowData: Record<string, string> = {};
                 let hasData = false;
                 for (const key of extractKeys) {
                     if (extractedArrays[key][i]) {
@@ -49,7 +49,7 @@ export function parseHTML(html: string, selectors: Record<string, string>): Reco
         } else {
             // Iterate through every container that matches the 'item' selector
             $(selectors.item).each((_, element) => {
-                let rowData: Record<string, string> = {};
+                const rowData: Record<string, string> = {};
                 let hasData = false;
 
                 for (const key of extractKeys) {
