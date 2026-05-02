@@ -1147,7 +1147,7 @@ export async function getTableData(
     page: number = 0,
     pageSize: number = 50,
     explicitUserId?: string,
-    cursorId?: string
+    _cursorId?: string
 ) {
     const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);

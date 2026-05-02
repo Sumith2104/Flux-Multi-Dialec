@@ -148,13 +148,13 @@ export class SqlEngine {
                     await connection.query(`USE \`project_${this.projectId}\``);
                     
                     if (this.projectTimezone) {
-                        connection.query(`SET time_zone = ?`, [this.projectTimezone]).catch(e => {});
+                        connection.query(`SET time_zone = ?`, [this.projectTimezone]).catch(() => {});
                     }
 
                     const [queryResult, fields]: any = await connection.query(queryCleaned, params || []);
 
                     const executionTime = Date.now() - startTime;
-                    let explanation = [`Executed via Native AWS MySQL in ${executionTime}ms`];
+                    const explanation = [`Executed via Native AWS MySQL in ${executionTime}ms`];
 
                     let formattedRows = [];
                     let formattedColumns: string[] = [];
@@ -221,7 +221,7 @@ export class SqlEngine {
                     const result = await client.query(queryCleaned, params || []);
 
                     const executionTime = Date.now() - startTime;
-                    let explanation = [`Executed via Batch-Initialized AWS PostgreSQL in ${executionTime}ms`];
+                    const explanation = [`Executed via Batch-Initialized AWS PostgreSQL in ${executionTime}ms`];
 
                     if (Array.isArray(result)) {
                         const finalRes = result[result.length - 1];

@@ -95,7 +95,7 @@ export async function checkRowLimit(projectId: string, userId: string, tableName
         try {
             const [rows]: any = await mysqlPool.query(`SELECT COUNT(*) as count FROM \`${dbName}\`.\`${tableName}\``);
             currentRows = parseInt(rows[0].count, 10);
-        } catch (e) {
+        } catch {
             // Table might not exist yet, which is fine
             currentRows = 0;
         }
@@ -105,7 +105,7 @@ export async function checkRowLimit(projectId: string, userId: string, tableName
         try {
             const res = await pool.query(`SELECT COUNT(*) as count FROM "${schemaName}"."${tableName}"`);
             currentRows = parseInt(res.rows[0].count, 10);
-        } catch (e) {
+        } catch {
             currentRows = 0;
         }
     }

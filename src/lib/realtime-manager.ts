@@ -29,7 +29,7 @@ class RealtimeManager extends EventEmitter {
             this.reconnectTimeout = null;
         }
         if (this.client) {
-            try { this.client.release(); } catch (e) {}
+            try { this.client.release(); } catch {}
             this.client = null;
         }
         this.removeAllListeners();
@@ -109,7 +109,7 @@ class RealtimeManager extends EventEmitter {
         if (this.reconnectTimeout) return; // Already scheduled
 
         if (this.client) {
-            try { this.client.release(); } catch (e) {}
+            try { this.client.release(); } catch {}
             this.client = null;
         }
 
@@ -158,7 +158,7 @@ if (process.env.NODE_ENV !== 'production' && globalWithRealtime.realtimeManager)
     console.log('[RealtimeManager] HMR: Refreshing Global Singleton...');
     try {
         globalWithRealtime.realtimeManager.destroy(); // <--- STOP OLD INSTANCE TIMERS
-    } catch (e) {}
+    } catch {}
     globalWithRealtime.realtimeManager = undefined;
 }
 

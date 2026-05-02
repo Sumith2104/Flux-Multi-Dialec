@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { FluxbaseError, ERROR_CODES } from './error-codes';
+import { ERROR_CODES } from './error-codes';
 import { NextResponse } from 'next/server';
 
 // --- GLOBAL POOL SINGLETON (Serverless Optimization) ---
@@ -29,25 +29,6 @@ export function getPgPool(): Pool {
     return pool;
 }
 
-/**
- * Ensures the 'auth' schema and 'auth.uid()' convenience function exist in the target database.
- * This function allows RLS policies to use auth.uid() just like Supabase.
- */
-async function setupRlsSupport(pool: Pool) {
-    const client = await pool.connect();
-    try {
-        await client.query('CREATE SCHEMA IF NOT EXISTS auth');
-        await client.query(`
-            CREATE OR REPLACE FUNCTION auth.uid() RETURNS text AS $$
-                BEGIN
-                    RETURN current_setting('fluxbase.auth_uid', true)::text;
-                END;
-            $$ LANGUAGE plpgsql STABLE;
-        `);
-    } finally {
-        client.release();
-    }
-}
 
 /**
  * Standard utility to handle database connectivity errors and return 503 instead of 500.
