@@ -58,7 +58,12 @@ export function ImportPreviewSidebar({
     onCancel,
 }: ImportPreviewSidebarProps) {
     const [colOffset, setColOffset] = React.useState(0);
-    React.useEffect(() => { setColOffset(0); }, [data]);
+    const [excludedColumns, setExcludedColumns] = React.useState<Set<string>>(new Set());
+
+    React.useEffect(() => { 
+        setColOffset(0); 
+        setExcludedColumns(new Set());
+    }, [data]);
 
     const visibleHeaders = data ? data.headers.slice(colOffset, colOffset + PREVIEW_COLS) : [];
     const canScrollLeft  = colOffset > 0;
@@ -66,6 +71,21 @@ export function ImportPreviewSidebar({
 
     const formatBytes = (n: number) =>
         n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`;
+
+    const toggleColumn = (h: string) => {
+        setExcludedColumns(prev => {
+            const next = new Set(prev);
+            if (next.has(h)) next.delete(h);
+            else next.add(h);
+            return next;
+        });
+    };
+
+    const handleConfirm = () => {
+        if (!data) return;
+        // Inject excludedColumns into the data object without changing its base type for now
+        onConfirm({ ...data, excludedColumns: Array.from(excludedColumns) } as ImportPreviewData & { excludedColumns: string[] });
+    };
 
     return (
         <AnimatePresence>
@@ -111,26 +131,35 @@ export function ImportPreviewSidebar({
                         {/* ── Stats strip ── */}
                         <div className="flex items-center gap-3 px-5 py-3 shrink-0 border-b border-border bg-muted/30">
                             <StatBadge label="Rows" value={data.totalRows.toLocaleString()} />
-                            <StatBadge label="Columns" value={data.headers.length.toString()} />
+                            <StatBadge label="Columns" value={(data.headers.length - excludedColumns.size).toString()} />
                             <StatBadge label="Format" value={FORMAT_LABEL[data.format]} />
                             <StatBadge label="Size" value={formatBytes(data.file.size)} />
                         </div>
 
                         {/* ── Column list ── */}
                         <div className="px-5 py-3 shrink-0 border-b border-border">
-                            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-widest mb-2">
-                                Detected Columns
+                            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-widest mb-2 flex items-center justify-between">
+                                <span>Detected Columns</span>
+                                <span className="text-[10px] lowercase normal-case opacity-70">Click to exclude</span>
                             </p>
                             <div className="flex flex-wrap gap-1.5">
-                                {data.headers.map(h => (
-                                    <span
-                                        key={h}
-                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-secondary border border-border text-[11.5px] font-mono text-foreground/80"
-                                    >
-                                        <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0" />
-                                        {h}
-                                    </span>
-                                ))}
+                                {data.headers.map(h => {
+                                    const isExcluded = excludedColumns.has(h);
+                                    return (
+                                        <button
+                                            key={h}
+                                            onClick={() => toggleColumn(h)}
+                                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11.5px] font-mono transition-colors ${
+                                                isExcluded 
+                                                    ? "bg-transparent border-dashed border-border/50 text-muted-foreground line-through opacity-60 hover:opacity-100" 
+                                                    : "bg-secondary border-border text-foreground hover:bg-secondary/80"
+                                            }`}
+                                        >
+                                            <CheckCircle2 className={`h-3 w-3 shrink-0 transition-all ${isExcluded ? 'opacity-0 w-0' : 'text-emerald-500'}`} />
+                                            {h}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
 
@@ -170,7 +199,7 @@ export function ImportPreviewSidebar({
                                             {visibleHeaders.map(h => (
                                                 <th
                                                     key={h}
-                                                    className="px-2.5 py-2 text-left font-semibold text-foreground/70 bg-muted border-b border-border whitespace-nowrap truncate max-w-[120px]"
+                                                    className={`px-2.5 py-2 text-left font-semibold text-foreground/70 bg-muted border-b border-border whitespace-nowrap truncate max-w-[120px] ${excludedColumns.has(h) ? 'line-through opacity-50' : ''}`}
                                                 >
                                                     {h}
                                                 </th>
@@ -186,10 +215,11 @@ export function ImportPreviewSidebar({
                                                 {visibleHeaders.map((h, ci) => {
                                                     const globalIdx = data.headers.indexOf(h);
                                                     const val = row[globalIdx];
+                                                    const isExcluded = excludedColumns.has(h);
                                                     return (
                                                         <td
                                                             key={ci}
-                                                            className="px-2.5 py-1.5 max-w-[140px] whitespace-nowrap overflow-hidden text-ellipsis"
+                                                            className={`px-2.5 py-1.5 max-w-[140px] whitespace-nowrap overflow-hidden text-ellipsis ${isExcluded ? 'opacity-30' : ''}`}
                                                         >
                                                             {val === null || val === '' ? (
                                                                 <span className="text-muted-foreground/40 italic">null</span>
@@ -223,8 +253,8 @@ export function ImportPreviewSidebar({
                         <div className="px-5 py-4 shrink-0 border-t border-border flex items-center gap-2 bg-card/95">
                             <Button
                                 className="flex-1"
-                                onClick={() => onConfirm(data)}
-                                disabled={isUploading}
+                                onClick={handleConfirm}
+                                disabled={isUploading || excludedColumns.size === data.headers.length}
                             >
                                 {isUploading ? (
                                     <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{uploadProgress || "Uploading…"}</>

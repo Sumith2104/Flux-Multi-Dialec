@@ -272,8 +272,7 @@ export function EditorClient({
         // This ensures the UI remains snappy during manual operations.
         queryClient.refetchQueries({ 
             queryKey: ['table-data', projectId, tableId],
-            type: 'active',
-            exact: true
+            type: 'active'
         });
     }, [queryClient, projectId, tableId]);
 
@@ -389,6 +388,9 @@ export function EditorClient({
             const fd = new FormData();
             fd.append('projectId', projectId);
             fd.append('tableName', tableName);
+            if ((data as any).excludedColumns?.length) {
+                fd.append('excludedColumns', JSON.stringify((data as any).excludedColumns));
+            }
             fd.append('csvFile', data.csvBlob, data.file.name.replace(/\.[^.]+$/, '.csv'));
             const res = await fetch('/api/import-csv', { method: 'POST', body: fd });
             const ct = res.headers.get('content-type') || '';

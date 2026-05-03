@@ -243,18 +243,12 @@ export function useRealtimeSubscription(projectId: string | undefined) {
             console.log(`[Realtime Sync] Data mutation in project ${projectId}. Table: ${table || 'generic'}`);
 
             // Surgical Refetch: targeted table refresh
-            if (table) {
-                queryClient.refetchQueries({
-                    queryKey: ['table-data', projectId, table],
-                    type: 'active'
-                });
-            } else {
-                // No table info — refetch all active tables for this project
-                queryClient.refetchQueries({
-                    queryKey: ['table-data', projectId],
-                    type: 'active'
-                });
-            }
+            // The event.table is the physical table name, but the queryKey uses the internal tableId UUID.
+            // By using a predicate, we can simply refetch any active table-data queries for this project.
+            queryClient.refetchQueries({
+                predicate: (query) => query.queryKey[0] === 'table-data' && query.queryKey[1] === projectId,
+                type: 'active'
+            });
 
             // Invalidate analytics
             queryClient.invalidateQueries({ queryKey: ['analytics_stats', projectId] });

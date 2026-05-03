@@ -1,11 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUserId } from '@/lib/auth';
 import { getPgPool } from '@/lib/pg';
+import Busboy from 'busboy';
+import { Readable } from 'node:stream';
 
 export const runtime = 'nodejs';
 // 200k rows at ~5ms/row single-insert = ~1000s. Batch inserts are 50-100x faster,
 // so 300s is ample for a 200MB CSV.
 export const maxDuration = 300;
+
+/**
+ * Streams a multipart/form-data request body using busboy — completely bypassing
+ * Next.js's built-in body-size limit (which blocks files >4 MB via req.formData()).
+ * Returns { fields, files } where files[name] is a Buffer.
+ */
+async function parseMultipart(req: NextRequest): Promise<{
+    fields: Record<string, string>;
+    files: Record<string, { buffer: Buffer; filename: string; mimetype: string }>;
+}> {
+    const contentType = req.headers.get('content-type') || '';
+    const bb = Busboy({ headers: { 'content-type': contentType }, limits: { fileSize: 500 * 1024 * 1024 } }); // 500 MB hard cap
+    const fields: Record<string, string> = {};
+    const files: Record<string, { buffer: Buffer; filename: string; mimetype: string }> = {};
+
+    return new Promise((resolve, reject) => {
+        bb.on('field', (name, val) => { fields[name] = val; });
+        bb.on('file', (name, stream, info) => {
+            const chunks: Buffer[] = [];
+            stream.on('data', (d: Buffer) => chunks.push(d));
+            stream.on('end', () => { files[name] = { buffer: Buffer.concat(chunks), filename: info.filename, mimetype: info.mimeType }; });
+            stream.on('error', reject);
+        });
+        bb.on('close', () => resolve({ fields, files }));
+        bb.on('error', reject);
+
+        // Pipe the Web ReadableStream into busboy (a Node.js Writable)
+        if (!req.body) { reject(new Error('No request body')); return; }
+        const nodeStream = Readable.fromWeb(req.body as any);
+        nodeStream.pipe(bb);
+    });
+}
+
 
 // Rows per INSERT (...), (...), ... batch statement.
 // ~1000 is optimal: low round-trip count, avoids pg 65535 param limit.
@@ -77,12 +112,18 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const formData = await req.formData();
-        const projectId = formData.get('projectId') as string;
-        const tableName = formData.get('tableName') as string;
-        const csvFile = formData.get('csvFile') as File | null;
+        // Use streaming busboy parser — bypasses Next.js's 4 MB body-size cap
+        const { fields, files } = await parseMultipart(req);
+        const projectId = fields['projectId'];
+        const tableName  = fields['tableName'];
+        const csvFileRaw = files['csvFile'];
+        const excludedRaw = fields['excludedColumns'];
+        let excludedColumns: string[] = [];
+        try {
+            if (excludedRaw) excludedColumns = JSON.parse(excludedRaw);
+        } catch {}
 
-        if (!projectId || !tableName || !csvFile) {
+        if (!projectId || !tableName || !csvFileRaw) {
             return NextResponse.json(
                 { error: 'Missing required fields: projectId, tableName, csvFile' },
                 { status: 400 }
@@ -93,8 +134,9 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Invalid table name' }, { status: 400 });
         }
 
-        const csvText = await csvFile.text();
+        const csvText = csvFileRaw.buffer.toString('utf-8');
         const { headers, rows: dataRows } = parseCSV(csvText);
+
 
         if (headers.length === 0) {
             return NextResponse.json({ error: 'Could not parse CSV headers.' }, { status: 400 });
@@ -144,6 +186,7 @@ export async function POST(req: NextRequest) {
             // we omit it so the DB auto-generates; otherwise we pass null and let the DB error surface.
             const headerToTableCol: Record<string, string> = {};
             for (const h of headers) {
+                if (excludedColumns.includes(h)) continue;
                 const lh = h.toLowerCase();
                 const match = tableColumnNames.find(tc => tc.toLowerCase() === lh);
                 if (match) headerToTableCol[h] = match;
