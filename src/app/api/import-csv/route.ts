@@ -133,12 +133,18 @@ export async function POST(req: NextRequest) {
             }
 
             const tableColumnNames = colResult.rows.map((r: any) => r.column_name as string);
+            // Map column_name → has a server-side default (e.g. gen_random_uuid(), now())
+            const columnHasDefault = new Map<string, boolean>(
+                colResult.rows.map((r: any) => [r.column_name as string, !!(r.column_default)])
+            );
 
-            // Map CSV headers to actual table columns (case-insensitive, skip id/_id)
+            // Map CSV headers to actual table columns (case-insensitive).
+            // We include 'id' / '_id' columns — if the CSV provides a real value we use it.
+            // Empty id values are handled at row-level: if the column has a server default
+            // we omit it so the DB auto-generates; otherwise we pass null and let the DB error surface.
             const headerToTableCol: Record<string, string> = {};
             for (const h of headers) {
                 const lh = h.toLowerCase();
-                if (lh === 'id' || lh === '_id') continue;
                 const match = tableColumnNames.find(tc => tc.toLowerCase() === lh);
                 if (match) headerToTableCol[h] = match;
             }
@@ -151,64 +157,113 @@ export async function POST(req: NextRequest) {
                 }, { status: 400 });
             }
 
-            const quotedCols = insertableHeaders.map(h => `"${headerToTableCol[h]}"`).join(', ');
+            // Build per-row column lists: if a column has a server default AND its value is
+            // empty/null in this row, omit it from the INSERT so the default fires.
             const colCount = insertableHeaders.length;
 
-            // Collect valid rows (skip blanks)
-            const validRows: (string | null)[][] = [];
+
+            // Collect valid rows (skip blanks).
+            // Each row is stored as { cols: string[], vals: (string|null)[] }
+            // where columns with server defaults are omitted when their value is null/empty.
+            type ImportRow = { cols: string[]; vals: (string | null)[] };
+            const validRows: ImportRow[] = [];
+
             for (const rawValues of dataRows) {
                 if (rawValues.length === 0 || (rawValues.length === 1 && rawValues[0] === '')) continue;
-                const params: (string | null)[] = insertableHeaders.map(h => {
+
+                const rowCols: string[] = [];
+                const rowVals: (string | null)[] = [];
+
+                for (const h of insertableHeaders) {
                     const csvIdx = headers.indexOf(h);
-                    if (csvIdx === -1) return null;
-                    const raw = (rawValues[csvIdx] ?? '').replace(/^"|"$/g, '').trim();
-                    return raw === '' ? null : raw;
-                });
-                validRows.push(params);
+                    const raw = csvIdx === -1 ? '' : (rawValues[csvIdx] ?? '').replace(/^"|"$/g, '').trim();
+                    const val = raw === '' ? null : raw;
+                    const tableCol = headerToTableCol[h];
+
+                    // If column has a server default AND this value is empty, skip it
+                    // so the DB auto-generates (handles id, created_at, etc.)
+                    if (val === null && columnHasDefault.get(tableCol)) continue;
+
+                    rowCols.push(`"${tableCol}"`);
+                    rowVals.push(val);
+                }
+
+                if (rowCols.length > 0) validRows.push({ cols: rowCols, vals: rowVals });
             }
 
             await client.query('BEGIN');
 
-            // ── Batched multi-row INSERT ────────────────────────────────────────
-            // Each batch: INSERT INTO t (cols) VALUES ($1,$2,...),($n+1,...), ...
-            // This gives ~50-100x fewer round-trips vs. row-by-row inserts.
-            for (let batchStart = 0; batchStart < validRows.length; batchStart += BATCH_SIZE) {
-                const batch = validRows.slice(batchStart, batchStart + BATCH_SIZE);
-                const flatParams: (string | null)[] = [];
-                const valueClauses: string[] = [];
+            // ── Batched multi-row INSERT with SAVEPOINT isolation ──────────────
+            // Because rows may have different column sets (e.g., some have explicit id, some don't)
+            // we group rows by their column signature, then batch each group.
+            // Fallback: row-by-row with SAVEPOINTs for error isolation.
+            let savepointIdx = 0;
 
-                for (let r = 0; r < batch.length; r++) {
-                    const row = batch[r];
-                    const placeholders = row.map((_, c) => `$${r * colCount + c + 1}`).join(', ');
-                    valueClauses.push(`(${placeholders})`);
-                    flatParams.push(...row);
-                }
-
-                const sql = `INSERT INTO "${schemaName}"."${tableName}" (${quotedCols}) VALUES ${valueClauses.join(', ')}`;
-
-                try {
-                    await client.query(sql, flatParams);
-                    importedCount += batch.length;
-                } catch {
-                    // Batch failed — fall back to row-by-row for this batch to collect per-row errors
-                    for (let r = 0; r < batch.length; r++) {
-                        const row = batch[r];
-                        const placeholders = row.map((_, c) => `$${c + 1}`).join(', ');
-                        const rowSql = `INSERT INTO "${schemaName}"."${tableName}" (${quotedCols}) VALUES (${placeholders})`;
-                        try {
-                            await client.query(rowSql, row);
-                            importedCount++;
-                        } catch (rowErr: any) {
-                            const absoluteRowNum = batchStart + r + 2; // +2 = header + 1-index
-                            errors.push(`Row ${absoluteRowNum}: ${rowErr.message.split('\n')[0]}`);
-                            if (errors.length >= 20) break;
-                        }
-                        if (errors.length >= 20) break;
-                    }
-                }
-
-                if (errors.length >= 20) break;
+            // Group rows by column signature for efficient batching
+            const groups = new Map<string, ImportRow[]>();
+            for (const row of validRows) {
+                const sig = row.cols.join(',');
+                if (!groups.has(sig)) groups.set(sig, []);
+                groups.get(sig)!.push(row);
             }
+
+            for (const [, groupRows] of groups) {
+                const quotedCols = groupRows[0].cols.join(', ');
+                const colCount = groupRows[0].cols.length;
+                for (let batchStart = 0; batchStart < groupRows.length; batchStart += BATCH_SIZE) {
+                    const batch = groupRows.slice(batchStart, batchStart + BATCH_SIZE);
+                    const flatParams: (string | null)[] = [];
+                    const valueClauses: string[] = [];
+
+                    for (let r = 0; r < batch.length; r++) {
+                        const vals = batch[r].vals;
+                        const placeholders = vals.map((_, c) => `$${r * colCount + c + 1}`).join(', ');
+                        valueClauses.push(`(${placeholders})`);
+                        flatParams.push(...vals);
+                    }
+
+                    const batchSp = `sp_batch_${savepointIdx++}`;
+                    await client.query(`SAVEPOINT ${batchSp}`);
+
+                    const sql = `INSERT INTO "${schemaName}"."${tableName}" (${quotedCols}) VALUES ${valueClauses.join(', ')}`;
+
+                    try {
+                        await client.query(sql, flatParams);
+                        await client.query(`RELEASE SAVEPOINT ${batchSp}`);
+                        importedCount += batch.length;
+                    } catch {
+                        // Batch failed — rollback to clear aborted state, retry row-by-row
+                        await client.query(`ROLLBACK TO SAVEPOINT ${batchSp}`);
+                        await client.query(`RELEASE SAVEPOINT ${batchSp}`);
+
+                        for (let r = 0; r < batch.length; r++) {
+                            const vals = batch[r].vals;
+                            const rowCols = batch[r].cols.join(', ');
+                            const placeholders = vals.map((_, c) => `$${c + 1}`).join(', ');
+                            const rowSql = `INSERT INTO "${schemaName}"."${tableName}" (${rowCols}) VALUES (${placeholders})`;
+                            const rowSp = `sp_row_${savepointIdx++}`;
+
+                            await client.query(`SAVEPOINT ${rowSp}`);
+                            try {
+                                await client.query(rowSql, vals);
+                                await client.query(`RELEASE SAVEPOINT ${rowSp}`);
+                                importedCount++;
+                            } catch (rowErr: any) {
+                                await client.query(`ROLLBACK TO SAVEPOINT ${rowSp}`);
+                                await client.query(`RELEASE SAVEPOINT ${rowSp}`);
+                                const absoluteRowNum = batchStart + r + 2;
+                                errors.push(`Row ${absoluteRowNum}: ${rowErr.message.split('\n')[0]}`);
+                                if (errors.length >= 50) break;
+                            }
+                            if (errors.length >= 50) break;
+                        }
+                    }
+
+                    if (errors.length >= 50) break;
+                } // end batchStart loop
+                if (errors.length >= 50) break;
+            } // end groups loop
+
 
             if (importedCount === 0 && errors.length > 0) {
                 await client.query('ROLLBACK');

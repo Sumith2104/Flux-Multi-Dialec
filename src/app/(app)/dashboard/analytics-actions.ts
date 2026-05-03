@@ -217,11 +217,11 @@ export async function getProjectHistoryAction(projectId: string) {
         const sessionsArr = Array(24).fill(0);
 
         const now = new Date();
-        now.setMinutes(0, 0, 0); // Align to current hour
+        // Remove truncating to keep a smooth 24-hour rolling window
+        const nowTime = now.getTime();
 
         for (const row of result.rows) {
             const rowTime = new Date(row.period_start).getTime();
-            const nowTime = now.getTime();
             const hoursAgo = Math.floor((nowTime - rowTime) / (1000 * 60 * 60));
 
             if (hoursAgo >= 0 && hoursAgo < 24) {
@@ -245,24 +245,50 @@ export async function getProjectHistoryAction(projectId: string) {
             }
         }
 
-        // --- PHASE 2: Merge "In-Flight" session data from Redis (Unsynced) ---
+        // --- PHASE 2: Merge "In-Flight" data from Redis (Unsynced) ---
         try {
-            const keys = await redis.keys(`analytics_rollup:${projectId}:*:sessions`);
-            if (keys && keys.length > 0) {
-                for (const key of keys) {
+            const allFlushKeys = await redis.smembers('analytics_keys_to_flush');
+            const projectKeys = (allFlushKeys || []).filter(k => k.startsWith(`analytics_rollup:${projectId}:`));
+            
+            if (projectKeys.length > 0) {
+                const values = await redis.mget(...projectKeys);
+                for (let i = 0; i < projectKeys.length; i++) {
+                    const key = projectKeys[i];
+                    const val = parseInt(values[i] as string || '0', 10);
                     const rowTime = parseInt(key.split(':')[2], 10);
-                    const nowTime = now.getTime();
+                    const type = key.split(':')[3];
+                    
+                    const hoursAgo = Math.floor((nowTime - rowTime) / (1000 * 60 * 60));
+
+                    if (hoursAgo >= 0 && hoursAgo < 24) {
+                        const index = 23 - hoursAgo;
+                        
+                        if (type === 'api_call' || type === 'sql_execution') {
+                            requestsArr[index] += val;
+                        }
+                        if (type === 'api_call') {
+                            apiCallsArr[index] += val;
+                        }
+                    }
+                }
+            }
+
+            // Also check current active sessions key (not part of the flush keys)
+            const sessionKeys = await redis.keys(`analytics_rollup:${projectId}:*:sessions`);
+            if (sessionKeys && sessionKeys.length > 0) {
+                for (const key of sessionKeys) {
+                    const rowTime = parseInt(key.split(':')[2], 10);
                     const hoursAgo = Math.floor((nowTime - rowTime) / (1000 * 60 * 60));
 
                     if (hoursAgo >= 0 && hoursAgo < 24) {
                         const index = 23 - hoursAgo;
                         const val = await redis.scard(key);
-                        sessionsArr[index] = Math.max(sessionsArr[index], val); // Use max because scard is current state
+                        sessionsArr[index] = Math.max(sessionsArr[index], val);
                     }
                 }
             }
         } catch {
-            console.warn('Error merging Redis in-flight sessions');
+            console.warn('Error merging Redis in-flight analytics for history');
         }
 
         const payload = {

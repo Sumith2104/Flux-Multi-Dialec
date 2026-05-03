@@ -1141,13 +1141,77 @@ export async function deleteConstraint(projectId: string, constraintId: string, 
 
 // --- Rows (Data) ---
 
+export interface TableFilter {
+    field: string;
+    op: 'contains' | 'equals' | 'not_equals' | 'starts_with' | 'ends_with' | 'gt' | 'lt' | 'gte' | 'lte' | 'is_null' | 'is_not_null' | 'between';
+    value: string;
+    value2?: string;
+}
+export interface TableSort { field: string; direction: 'asc' | 'desc'; }
+
+function _pgWhere(filters: TableFilter[], start: number): { clause: string; params: any[] } {
+    const parts: string[] = []; const params: any[] = []; let i = start;
+    const sc = (c: string) => `"${c.replace(/[^a-zA-Z0-9_]/g, '')}"`;
+    for (const f of filters) {
+        const col = sc(f.field);
+        switch (f.op) {
+            case 'contains':    parts.push(`${col}::text ILIKE $${i++}`); params.push(`%${f.value}%`); break;
+            case 'equals':      parts.push(`${col}::text = $${i++}`);     params.push(f.value); break;
+            case 'not_equals':  parts.push(`${col}::text <> $${i++}`);    params.push(f.value); break;
+            case 'starts_with': parts.push(`${col}::text ILIKE $${i++}`); params.push(`${f.value}%`); break;
+            case 'ends_with':   parts.push(`${col}::text ILIKE $${i++}`); params.push(`%${f.value}`); break;
+            case 'gt':          parts.push(`${col} > $${i++}`);  params.push(f.value); break;
+            case 'lt':          parts.push(`${col} < $${i++}`);  params.push(f.value); break;
+            case 'gte':         parts.push(`${col} >= $${i++}`); params.push(f.value); break;
+            case 'lte':         parts.push(`${col} <= $${i++}`); params.push(f.value); break;
+            case 'is_null':     parts.push(`${col} IS NULL`);     break;
+            case 'is_not_null': parts.push(`${col} IS NOT NULL`); break;
+            case 'between':     parts.push(`${col} BETWEEN $${i++} AND $${i++}`); params.push(f.value, f.value2 ?? f.value); break;
+        }
+    }
+    return { clause: parts.length ? `WHERE ${parts.join(' AND ')}` : '', params };
+}
+function _pgOrder(sorts: TableSort[]): string {
+    if (!sorts.length) return '';
+    const sc = (c: string) => `"${c.replace(/[^a-zA-Z0-9_]/g, '')}"`;
+    return 'ORDER BY ' + sorts.map(s => `${sc(s.field)} ${s.direction === 'desc' ? 'DESC' : 'ASC'} NULLS LAST`).join(', ');
+}
+function _myWhere(filters: TableFilter[]): { clause: string; params: any[] } {
+    const parts: string[] = []; const params: any[] = [];
+    const sc = (c: string) => `\`${c.replace(/[^a-zA-Z0-9_]/g, '')}\``;
+    for (const f of filters) {
+        const col = sc(f.field);
+        switch (f.op) {
+            case 'contains':    parts.push(`${col} LIKE ?`);        params.push(`%${f.value}%`); break;
+            case 'equals':      parts.push(`${col} = ?`);           params.push(f.value); break;
+            case 'not_equals':  parts.push(`${col} <> ?`);          params.push(f.value); break;
+            case 'starts_with': parts.push(`${col} LIKE ?`);        params.push(`${f.value}%`); break;
+            case 'ends_with':   parts.push(`${col} LIKE ?`);        params.push(`%${f.value}`); break;
+            case 'gt':          parts.push(`${col} > ?`);           params.push(f.value); break;
+            case 'lt':          parts.push(`${col} < ?`);           params.push(f.value); break;
+            case 'gte':         parts.push(`${col} >= ?`);          params.push(f.value); break;
+            case 'lte':         parts.push(`${col} <= ?`);          params.push(f.value); break;
+            case 'is_null':     parts.push(`${col} IS NULL`);       break;
+            case 'is_not_null': parts.push(`${col} IS NOT NULL`);   break;
+            case 'between':     parts.push(`${col} BETWEEN ? AND ?`); params.push(f.value, f.value2 ?? f.value); break;
+        }
+    }
+    return { clause: parts.length ? `WHERE ${parts.join(' AND ')}` : '', params };
+}
+function _myOrder(sorts: TableSort[]): string {
+    if (!sorts.length) return '';
+    const sc = (c: string) => `\`${c.replace(/[^a-zA-Z0-9_]/g, '')}\``;
+    return 'ORDER BY ' + sorts.map(s => `${sc(s.field)} ${s.direction === 'desc' ? 'DESC' : 'ASC'}`).join(', ');
+}
+
 export async function getTableData(
     projectId: string,
     tableName: string,
     page: number = 0,
     pageSize: number = 50,
-    explicitUserId?: string
-
+    explicitUserId?: string,
+    sorts: TableSort[] = [],
+    filters: TableFilter[] = [],
 ) {
     const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
@@ -1158,81 +1222,61 @@ export async function getTableData(
     const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
     const limit = Math.min(Math.max(1, pageSize), 100);
     const offset = page * limit;
+    const hasActiveState = sorts.length > 0 || filters.length > 0;
 
     try {
         const { getCachedTableRows, setCachedTableRows } = await import('@/lib/cache');
 
-        // Check Redis Cache First
-        const cachedData = await getCachedTableRows(projectId, tableName, page);
-        if (cachedData) {
-            return cachedData;
+        // Skip cache when filters/sorts are active (dynamic queries need fresh results)
+        if (!hasActiveState) {
+            const cachedData = await getCachedTableRows(projectId, tableName, page);
+            if (cachedData) return cachedData;
         }
 
-        let rows = [];
+        let rows: any[] = [];
         let totalRows = 0;
 
         if (project.dialect?.toLowerCase() === 'mysql') {
             const { getMysqlPool } = await import('@/lib/mysql');
             const mysqlPool = getMysqlPool();
             const dbName = `project_${projectId}`;
-
-            const dataPromise = mysqlPool.query(`SELECT * FROM \`${dbName}\`.\`${safeTableName}\` LIMIT ${limit} OFFSET ${offset}`);
-            const countPromise = mysqlPool.query(`SELECT COUNT(*) as count FROM \`${dbName}\`.\`${safeTableName}\``);
-            const pkColPromise = mysqlPool.query(`
-                SELECT COLUMN_NAME as column_name
-                FROM information_schema.COLUMNS 
-                WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_KEY = 'PRI' LIMIT 1
-            `, [dbName, safeTableName]);
+            const { clause: wClause, params: wParams } = _myWhere(filters);
+            const orderBy = _myOrder(sorts);
 
             const [
                 [dataResult],
                 [countResult],
                 [pkColResult]
-            ]: any = await Promise.all([dataPromise, countPromise, pkColPromise]);
+            ]: any = await Promise.all([
+                mysqlPool.query(`SELECT * FROM \`${dbName}\`.\`${safeTableName}\` ${wClause} ${orderBy} LIMIT ${limit} OFFSET ${offset}`, wParams),
+                mysqlPool.query(`SELECT COUNT(*) as count FROM \`${dbName}\`.\`${safeTableName}\` ${wClause}`, wParams),
+                mysqlPool.query(`SELECT COLUMN_NAME as column_name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_KEY = 'PRI' LIMIT 1`, [dbName, safeTableName]),
+            ]);
 
             totalRows = parseInt(countResult[0].count);
             const pkName = pkColResult.length > 0 ? pkColResult[0].column_name : null;
-
             rows = dataResult.map((row: any, index: number) => {
-                let idField = null;
-                if (pkName && row[pkName]) idField = row[pkName];
-                else idField = row.id || row.uuid || `row_${offset + index}`;
-
-                return {
-                    ...row,
-                    id: idField,
-                    _id: idField
-                };
+                const idField = (pkName && row[pkName]) ? row[pkName] : (row.id || row.uuid || `row_${offset + index}`);
+                return { ...row, id: idField, _id: idField };
             });
 
         } else {
             const pool = getPgPool();
             const schemaName = `project_${projectId}`;
+            const { clause: wClause, params: wParams } = _pgWhere(filters, 3);
+            const orderBy = _pgOrder(sorts);
 
-            const dataPromise = pool.query(`SELECT * FROM "${schemaName}"."${safeTableName}" LIMIT $1 OFFSET $2`, [limit, offset]);
-            const countPromise = pool.query(`SELECT COUNT(*) FROM "${schemaName}"."${safeTableName}"`);
-            const pkColPromise = pool.query(`
-                SELECT kcu.column_name 
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
-                WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = $1 AND tc.table_name = $2 LIMIT 1
-            `, [schemaName, safeTableName]);
-
-            const [dataResult, countResult, pkColResult] = await Promise.all([dataPromise, countPromise, pkColPromise]);
+            const [dataResult, countResult, pkColResult] = await Promise.all([
+                pool.query(`SELECT * FROM "${schemaName}"."${safeTableName}" ${wClause} ${orderBy} LIMIT $1 OFFSET $2`, [limit, offset, ...wParams]),
+                pool.query(`SELECT COUNT(*) FROM "${schemaName}"."${safeTableName}" ${wClause}`, wParams),
+                pool.query(`SELECT kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = $1 AND tc.table_name = $2 LIMIT 1`, [schemaName, safeTableName]),
+            ]);
 
             totalRows = parseInt(countResult.rows[0].count);
             const pkName = pkColResult.rows.length > 0 ? pkColResult.rows[0].column_name : null;
-
             rows = dataResult.rows.map((row, index) => {
-                let idField = null;
-                if (pkName && row[pkName]) idField = row[pkName];
-                else idField = row.id || row.uuid || `row_${offset + index}`;
-
-                return {
-                    ...row,
-                    id: idField,
-                    _id: idField
-                };
+                const idField = (pkName && row[pkName]) ? row[pkName] : (row.id || row.uuid || `row_${offset + index}`);
+                return { ...row, id: idField, _id: idField };
             });
         }
 
@@ -1243,8 +1287,10 @@ export async function getTableData(
             hasMore: (offset + limit) < totalRows
         };
 
-        // Cache the newly fetched page
-        await setCachedTableRows(projectId, tableName, page, payload);
+        // Cache only unfiltered/unsorted pages
+        if (!hasActiveState) {
+            await setCachedTableRows(projectId, tableName, page, payload);
+        }
 
         return payload;
     } catch (error) {

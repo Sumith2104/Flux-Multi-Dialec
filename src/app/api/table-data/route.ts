@@ -1,6 +1,6 @@
-
 import { NextResponse } from 'next/server';
 import { getTableData, getProjectById, ensureNotSuspended } from '@/lib/data';
+import type { TableSort, TableFilter } from '@/lib/data';
 import { trackApiRequest } from '@/lib/analytics';
 import { getAuthContextFromRequest } from '@/lib/auth';
 
@@ -25,6 +25,19 @@ export async function GET(request: Request) {
     const page = parseInt(searchParams.get('page') || '0', 10);
     const pageSize = parseInt(searchParams.get('pageSize') || '100', 10);
 
+    // Parse server-side sort params: sortsJson=[{"field":"col","direction":"asc"}]
+    let sorts: TableSort[] = [];
+    const sortsJson = searchParams.get('sorts');
+    if (sortsJson) {
+      try { sorts = JSON.parse(sortsJson); } catch { sorts = []; }
+    }
+
+    // Parse server-side filter params: filtersJson=[{"field":"col","op":"contains","value":"test"}]
+    let filters: TableFilter[] = [];
+    const filtersJson = searchParams.get('filters');
+    if (filtersJson) {
+      try { filters = JSON.parse(filtersJson); } catch { filters = []; }
+    }
 
     // Enforce Scope
     if (allowedProjectId) {
@@ -57,7 +70,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Invalid pagination parameters.' }, { status: 400 });
     }
 
-    const data = await getTableData(projectId, tableName, page, pageSize, userId);
+    const data = await getTableData(projectId, tableName, page, pageSize, userId, sorts, filters);
 
 
     // Track analytics in the background — do NOT await, we don't want
