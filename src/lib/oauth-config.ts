@@ -11,6 +11,15 @@ export function getBaseOrigin(request: NextRequest): string {
         return process.env.RENDER_EXTERNAL_URL.replace(/\/$/, "");
     }
 
+    // 1.5. Priority 1.5: Netlify's platform-provided public URL
+    // Netlify injects `URL` (main site) and `DEPLOY_URL` (specific deploy).
+    if (process.env.NETLIFY) {
+        const netlifyUrl = process.env.URL || process.env.DEPLOY_URL;
+        if (netlifyUrl) {
+            return netlifyUrl.replace(/\/$/, "");
+        }
+    }
+
     // 2. Priority 2: Standard header detection (standard for proxies/local)
     const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
     const proto = request.headers.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https');
@@ -37,6 +46,8 @@ export function getOAuthConfig(request: NextRequest, provider: 'github' | 'googl
         envPrefix = 'VERCEL';
     } else if (host.includes('render.com')) {
         envPrefix = 'RENDER';
+    } else if (host.includes('netlify.app')) {
+        envPrefix = 'NETLIFY';
     }
 
     const redirectUri = `${baseOrigin}/api/auth/${provider}/callback`.replace('//api', '/api');
