@@ -14,6 +14,9 @@ import asyncio
 import logging
 import signal
 import sys
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from config import cfg
 from health import run_health_server, set_scaler
