@@ -545,7 +545,11 @@ export function EditorClient({
         if (result.success) {
             toast({ title: 'Success', description: `Table '${tableToDelete.table_name}' deleted successfully.` });
             
-            // The sidebar will be updated via WebSocket 'schema_update'
+            // Dispatch local schema change event to refresh explorer instantly
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('flux:schema-change', { detail: { projectId } }));
+            }
+
             refreshData();
 
             if (tableToDelete.table_id === tableId) {
@@ -589,10 +593,15 @@ export function EditorClient({
 
         if (result.success) {
             toast({ title: 'Success', description: `Column '${columnToDelete.column_name}' deleted successfully.` });
+            
+            // Dispatch local schema change event to refresh explorer instantly
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('flux:schema-change', { detail: { projectId } }));
+            }
+
             // Diff-set: track deletion ID instead of copying the full array
             setDeletedColumnIds(prev => new Set([...prev, columnToDelete.column_id]));
             
-            // The sidebar will be updated via WebSocket 'schema_update'
             refreshData();
         } else {
             toast({ variant: 'destructive', title: 'Error', description: result.error, duration: 8000 });
@@ -667,7 +676,11 @@ export function EditorClient({
 
             toast({ title: 'Success', description: 'Database has been reset.' });
             
-            // The sidebar will be updated via WebSocket 'schema_update'
+            // Dispatch local schema change event to refresh explorer instantly
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('flux:schema-change', { detail: { projectId } }));
+            }
+
             refreshData();
 
             router.refresh();
@@ -799,7 +812,12 @@ export function EditorClient({
                                                 projectId={projectId}
                                                 tableId={tableId}
                                                 tableName={tableName}
-                                                onColumnAdded={() => refreshData()}
+                                                onColumnAdded={() => {
+                                                    if (typeof window !== 'undefined') {
+                                                        window.dispatchEvent(new CustomEvent('flux:schema-change', { detail: { projectId } }));
+                                                    }
+                                                    refreshData();
+                                                }}
                                             />
                                             {/* ── Hidden file inputs for each import format ── */}
                                             <input ref={csvInputRef}  type="file" accept=".csv,text/csv"                                     className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value=''; if(f) parseForPreview(f,'csv');  }} />

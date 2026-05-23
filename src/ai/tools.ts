@@ -51,7 +51,16 @@ export const navigatePageTool = ai.defineTool({
   name: "navigatePageTool",
   description: "Physically teleport the user's browser to different pages in the application.",
   inputSchema: z.object({ 
-    path: z.enum(['/dashboard', '/dashboard/projects/create', '/settings', '/editor', '/query', '/storage']).describe("The absolute path to navigate to.") 
+    path: z.enum([
+      '/dashboard', 
+      '/dashboard/projects/create', 
+      '/settings', 
+      '/settings/api-keys', 
+      '/settings/webhooks', 
+      '/editor', 
+      '/query', 
+      '/storage'
+    ]).describe("The absolute path to navigate to.") 
   }),
   outputSchema: z.object({
     action: z.string()
@@ -62,9 +71,9 @@ export const navigatePageTool = ai.defineTool({
 
 export const clickElementTool = ai.defineTool({
   name: "clickElementTool",
-  description: "Simulates a click on a UI element designated by ID to change the visual context of the application for the user.",
+  description: "Simulates a click on a UI element designated by ID or visible text to change the visual context of the application for the user.",
   inputSchema: z.object({ 
-    elementId: z.string().describe("The DOM id or EXACT visible text of the button to click") 
+    elementId: z.string().describe("The DOM id or EXACT visible text of the button or link to click") 
   }),
   outputSchema: z.object({
     action: z.string()
@@ -73,4 +82,32 @@ export const clickElementTool = ai.defineTool({
   return { action: `[CLICK:${input.elementId}]` };
 });
 
-export const fluxTools = [getSchemaTool, runSqlTool, navigatePageTool, clickElementTool];
+export const typeInputTool = ai.defineTool({
+  name: "typeInputTool",
+  description: "Simulates typing text into a form input or textarea. Call this when you need to fill out a field (e.g. typing a project name, a table name, a query, or other inputs).",
+  inputSchema: z.object({
+    value: z.string().describe("The text value to type into the field."),
+    locator: z.string().describe("The label, placeholder text, ID, or name of the input field to type into.")
+  }),
+  outputSchema: z.object({
+    action: z.string()
+  }),
+}, async (input) => {
+  return { action: `[TYPE:${input.value}:${input.locator}]` };
+});
+
+export const createProjectTool = ai.defineTool({
+  name: "createProjectTool",
+  description: "Creates a new database project in Fluxbase. Always requires explicit user approval before creation.",
+  inputSchema: z.object({
+    projectName: z.string().describe("The name of the new project to create."),
+    dialect: z.enum(['postgresql', 'mysql']).describe("The database dialect to use ('postgresql' or 'mysql')."),
+  }),
+  outputSchema: z.object({
+    action: z.string()
+  }),
+}, async (input) => {
+  return { action: `[CONFIRM_ACTION:CREATE_PROJECT:${input.projectName}:${input.dialect}]` };
+});
+
+export const fluxTools = [getSchemaTool, runSqlTool, navigatePageTool, clickElementTool, typeInputTool, createProjectTool];

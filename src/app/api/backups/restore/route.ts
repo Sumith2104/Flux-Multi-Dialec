@@ -34,21 +34,19 @@ export async function POST(req: NextRequest) {
         const project = await requireProjectAccess(projectId, auth, ['admin']);
         const globalPool = getPgPool();
 
-        const backupRes = await globalPool.query(
-            `SELECT data FROM fluxbase_global.backups WHERE id = $1 AND project_id = $2`,
+        // Step 1: Fetch list of tables in the backup
+        const tablesListRes = await globalPool.query(
+            `SELECT jsonb_object_keys(data->'tables') as table_name 
+             FROM fluxbase_global.backups 
+             WHERE id = $1 AND project_id = $2`,
             [backupId, projectId]
         );
 
-        if (backupRes.rows.length === 0 || !backupRes.rows[0].data) {
+        if (tablesListRes.rows.length === 0) {
             return NextResponse.json({ success: false, error: 'Backup not found or has no data' }, { status: 404 });
         }
 
-        const backupData = backupRes.rows[0].data;
-        const tables = (backupData as any).tables;
-        if (!tables || typeof tables !== 'object') {
-            throw new FluxbaseError('Backup data is invalid.', ERROR_CODES.BAD_REQUEST, 400);
-        }
-
+        const tableNames = tablesListRes.rows.map(r => r.table_name);
         const isMysql = project.dialect?.toLowerCase() === 'mysql';
 
         if (isMysql) {
@@ -58,10 +56,17 @@ export async function POST(req: NextRequest) {
             await mysqlPool.query(`DROP DATABASE IF EXISTS ${schemaIdent}`);
             await mysqlPool.query(`CREATE DATABASE ${schemaIdent}`);
 
-            for (const [tableName, tableInfo] of Object.entries(tables)) {
-                const { columns, rows } = tableInfo as any;
-                if (!Array.isArray(columns) || !Array.isArray(rows)) {
-                    throw new FluxbaseError('Backup table data is invalid.', ERROR_CODES.BAD_REQUEST, 400);
+            for (const tableName of tableNames) {
+                // Fetch columns metadata for this table
+                const colRes = await globalPool.query(
+                    `SELECT data->'tables'->$3->'columns' as columns 
+                     FROM fluxbase_global.backups 
+                     WHERE id = $1 AND project_id = $2`,
+                    [backupId, projectId, tableName]
+                );
+                const columns = colRes.rows[0]?.columns;
+                if (!Array.isArray(columns)) {
+                    throw new FluxbaseError(`Backup table columns data for ${tableName} is invalid.`, ERROR_CODES.BAD_REQUEST, 400);
                 }
 
                 const tableIdent = quoteMysqlIdentifier(tableName, 'tableName');
@@ -77,17 +82,55 @@ export async function POST(req: NextRequest) {
 
                 await mysqlPool.query(`CREATE TABLE ${schemaIdent}.${tableIdent} (${colDefs})`);
 
-                if (rows.length > 0) {
+                // Fetch total rows count for this table
+                const countRes = await globalPool.query(
+                    `SELECT jsonb_array_length(data->'tables'->$3->'rows') as rows_count 
+                     FROM fluxbase_global.backups 
+                     WHERE id = $1 AND project_id = $2`,
+                    [backupId, projectId, tableName]
+                );
+                const rowsCount = countRes.rows[0]?.rows_count || 0;
+
+                if (rowsCount > 0) {
                     const colNamesArr = columns.map((c: any) => c.column_name);
                     const colNamesStr = colNamesArr.map((name: string) => quoteMysqlIdentifier(name, 'columnName')).join(', ');
 
-                    for (const rowData of rows) {
-                        const values = colNamesArr.map((name: string) => (rowData as any)[name]);
-                        const placeholders = values.map(() => '?').join(', ');
-                        await mysqlPool.query(
-                            `INSERT INTO ${schemaIdent}.${tableIdent} (${colNamesStr}) VALUES (${placeholders})`,
-                            values
+                    const BATCH_SIZE = 5000;
+                    for (let start = 1; start <= rowsCount; start += BATCH_SIZE) {
+                        const end = Math.min(rowsCount, start + BATCH_SIZE - 1);
+
+                        // Fetch slice from PostgreSQL
+                        const sliceRes = await globalPool.query(
+                            `SELECT jsonb_agg(elem) as slice
+                             FROM (
+                               SELECT elem
+                               FROM (
+                                 SELECT data->'tables'->$3->'rows' as rows_arr
+                                 FROM fluxbase_global.backups
+                                 WHERE id = $1 AND project_id = $2
+                               ) b,
+                               jsonb_array_elements(rows_arr) WITH ORDINALITY AS t(elem, ord)
+                               WHERE ord BETWEEN $4 AND $5
+                             ) sub`,
+                            [backupId, projectId, tableName, start, end]
                         );
+
+                        const batchRows = sliceRes.rows[0]?.slice || [];
+                        if (batchRows.length === 0) continue;
+
+                        const values: any[] = [];
+                        const valuePlaceholders: string[] = [];
+
+                        for (const rowData of batchRows) {
+                            const rowPlaceholders = colNamesArr.map((name: string) => {
+                                values.push((rowData as any)[name]);
+                                return '?';
+                            });
+                            valuePlaceholders.push(`(${rowPlaceholders.join(', ')})`);
+                        }
+
+                        const query = `INSERT INTO ${schemaIdent}.${tableIdent} (${colNamesStr}) VALUES ${valuePlaceholders.join(', ')}`;
+                        await mysqlPool.query(query, values);
                     }
                 }
             }
@@ -99,27 +142,73 @@ export async function POST(req: NextRequest) {
                 await client.query(`DROP SCHEMA IF EXISTS ${schemaIdent} CASCADE`);
                 await client.query(`CREATE SCHEMA ${schemaIdent}`);
 
-                for (const [tableName, tableInfo] of Object.entries(tables)) {
-                    const { columns, rows } = tableInfo as any;
-                    if (!Array.isArray(columns) || !Array.isArray(rows)) {
-                        throw new FluxbaseError('Backup table data is invalid.', ERROR_CODES.BAD_REQUEST, 400);
+                for (const tableName of tableNames) {
+                    // Fetch columns metadata for this table
+                    const colRes = await globalPool.query(
+                        `SELECT data->'tables'->$3->'columns' as columns 
+                         FROM fluxbase_global.backups 
+                         WHERE id = $1 AND project_id = $2`,
+                        [backupId, projectId, tableName]
+                    );
+                    const columns = colRes.rows[0]?.columns;
+                    if (!Array.isArray(columns)) {
+                        throw new FluxbaseError(`Backup table columns data for ${tableName} is invalid.`, ERROR_CODES.BAD_REQUEST, 400);
                     }
 
                     const tableIdent = quotePgIdentifier(tableName, 'tableName');
                     const colDefs = columns.map((c: any) => `${quotePgIdentifier(c.column_name, 'columnName')} ${safeColumnType(c.data_type)}`).join(', ');
                     await client.query(`CREATE TABLE ${schemaIdent}.${tableIdent} (${colDefs})`);
 
-                    if (rows.length > 0) {
+                    // Fetch total rows count for this table
+                    const countRes = await globalPool.query(
+                        `SELECT jsonb_array_length(data->'tables'->$3->'rows') as rows_count 
+                         FROM fluxbase_global.backups 
+                         WHERE id = $1 AND project_id = $2`,
+                        [backupId, projectId, tableName]
+                    );
+                    const rowsCount = countRes.rows[0]?.rows_count || 0;
+
+                    if (rowsCount > 0) {
                         const colNamesArr = columns.map((c: any) => c.column_name);
                         const colNamesStr = colNamesArr.map((name: string) => quotePgIdentifier(name, 'columnName')).join(', ');
 
-                        for (const rowData of rows) {
-                            const values = colNamesArr.map((name: string) => (rowData as any)[name]);
-                            const placeholders = values.map((_: any, i: number) => `$${i + 1}`).join(', ');
-                            await client.query(
-                                `INSERT INTO ${schemaIdent}.${tableIdent} (${colNamesStr}) VALUES (${placeholders})`,
-                                values
+                        const BATCH_SIZE = 5000;
+                        for (let start = 1; start <= rowsCount; start += BATCH_SIZE) {
+                            const end = Math.min(rowsCount, start + BATCH_SIZE - 1);
+
+                            // Fetch slice from PostgreSQL
+                            const sliceRes = await globalPool.query(
+                                `SELECT jsonb_agg(elem) as slice
+                                 FROM (
+                                   SELECT elem
+                                   FROM (
+                                     SELECT data->'tables'->$3->'rows' as rows_arr
+                                     FROM fluxbase_global.backups
+                                     WHERE id = $1 AND project_id = $2
+                                   ) b,
+                                   jsonb_array_elements(rows_arr) WITH ORDINALITY AS t(elem, ord)
+                                   WHERE ord BETWEEN $4 AND $5
+                                 ) sub`,
+                                [backupId, projectId, tableName, start, end]
                             );
+
+                            const batchRows = sliceRes.rows[0]?.slice || [];
+                            if (batchRows.length === 0) continue;
+
+                            const values: any[] = [];
+                            const valuePlaceholders: string[] = [];
+                            let valIdx = 1;
+
+                            for (const rowData of batchRows) {
+                                const rowPlaceholders = colNamesArr.map((name: string) => {
+                                    values.push((rowData as any)[name]);
+                                    return `$${valIdx++}`;
+                                });
+                                valuePlaceholders.push(`(${rowPlaceholders.join(', ')})`);
+                            }
+
+                            const query = `INSERT INTO ${schemaIdent}.${tableIdent} (${colNamesStr}) VALUES ${valuePlaceholders.join(', ')}`;
+                            await client.query(query, values);
                         }
                     }
                 }

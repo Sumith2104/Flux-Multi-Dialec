@@ -1,10 +1,10 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Sparkles, Trash2, Loader2, Zap, Layers } from 'lucide-react';
+import { Sparkles, Trash2, Loader2, Zap, Layers, RefreshCw } from 'lucide-react';
 import { UniversalChartRenderer } from '@/components/analytics/chart-renderer';
 import { ManualBuilder } from '@/components/analytics/manual-builder';
 import {
@@ -26,28 +26,43 @@ function AsyncWidget({ projectId, widget, onRemove }: { projectId: string, widge
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [refreshTrigger, setRefreshTrigger] = useState(0);
+    const [forceRefresh, setForceRefresh] = useState(false);
 
     useEffect(() => {
         let isMounted = true;
         const fetchData = async () => {
+            setLoading(true);
             try {
                 const res = await fetch('/api/analytics/execute', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ projectId, query: widget.query })
+                    body: JSON.stringify({ projectId, query: widget.query, refresh: forceRefresh })
                 });
                 const json = await res.json();
                 if (!res.ok) throw new Error(json.error || 'Failed to fetch data');
-                if (isMounted) setData(json.data || []);
+                if (isMounted) {
+                    setData(json.data || []);
+                    setError('');
+                }
             } catch (e: any) {
                 if (isMounted) setError(e.message);
             } finally {
-                if (isMounted) setLoading(false);
+                if (isMounted) {
+                    setLoading(false);
+                    setForceRefresh(false);
+                }
             }
         };
         fetchData();
         return () => { isMounted = false; };
-    }, [projectId, widget.query]);
+    }, [projectId, widget.query, refreshTrigger]);
+
+    const handleRefresh = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setForceRefresh(true);
+        setRefreshTrigger(prev => prev + 1);
+    };
 
     let configObj = widget.config;
     if (typeof configObj === 'string') {
@@ -59,15 +74,27 @@ function AsyncWidget({ projectId, widget, onRemove }: { projectId: string, widge
         <Card className="h-full flex flex-col overflow-hidden relative group">
             <CardHeader className="py-3 px-4 flex flex-row items-center justify-between border-b border-border/60 bg-secondary/60 cursor-move drag-handle group/header">
                 <CardTitle className="text-sm font-medium truncate pr-4 select-none">{widget.title}</CardTitle>
-                <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-6 w-6 opacity-0 group-hover/header:opacity-100 transition-opacity text-muted-foreground hover:bg-destructive/20 hover:text-destructive shrink-0" 
-                    onMouseDown={e => e.stopPropagation()} 
-                    onClick={() => onRemove(widget.id)}
-                >
-                    <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-1 opacity-0 group-hover/header:opacity-100 transition-opacity shrink-0">
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-6 w-6 text-muted-foreground hover:bg-secondary hover:text-foreground" 
+                        onMouseDown={e => e.stopPropagation()} 
+                        onClick={handleRefresh}
+                        disabled={loading}
+                    >
+                        <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+                    </Button>
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-6 w-6 text-muted-foreground hover:bg-destructive/20 hover:text-destructive shrink-0" 
+                        onMouseDown={e => e.stopPropagation()} 
+                        onClick={() => onRemove(widget.id)}
+                    >
+                        <Trash2 className="h-4 w-4" />
+                    </Button>
+                </div>
             </CardHeader>
             <CardContent className="flex-1 p-4 min-h-0 relative">
                 {loading && (

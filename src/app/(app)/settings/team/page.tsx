@@ -277,7 +277,7 @@ export default function TeamPage() {
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <p className="font-medium text-sm truncate">{invite.displayName || invite.email}</p>
-                                                <p className="text-xs text-muted-foreground truncate">Invited as {invite.role} â€¢ {format(new Date(invite.invitedAt), 'MMM d')}</p>
+                                                <p className="text-xs text-muted-foreground truncate">Invited as {invite.role} • {format(new Date(invite.invitedAt), 'MMM d')}</p>
                                             </div>
                                             {selectedProject.role === 'admin' && (
                                                 <Button variant="ghost" size="sm" className="h-8 text-xs text-red-400 hover:text-red-300 hover:bg-red-400/10"
@@ -363,8 +363,8 @@ export default function TeamPage() {
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent className="bg-card border-border">
-                                    <SelectItem value="developer">Developer â€” Can read, write, run SQL</SelectItem>
-                                    <SelectItem value="viewer">Viewer â€” Read-only access</SelectItem>
+                                    <SelectItem value="developer">Developer — Can read, write, run SQL</SelectItem>
+                                    <SelectItem value="viewer">Viewer — Read-only access</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>

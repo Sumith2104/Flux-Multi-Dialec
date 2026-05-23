@@ -26,7 +26,7 @@ const CHANGELOG: ChangelogEntry[] = [
         version: 'v2.4',
         type: 'new',
         title: 'Command Palette',
-        description: 'Press âŒ˜K to search and navigate anywhere in Fluxbase instantly.',
+        description: 'Press ⌘K to search and navigate anywhere in Fluxbase instantly.',
         icon: <Zap className="h-3.5 w-3.5" />,
     },
     {
@@ -88,7 +88,7 @@ const typeConfig = {
 
 export function ChangelogPopover() {
     const [open, setOpen] = useState(false);
-    // Track new entries (unread) â€” in a real app, persist last-seen version in localStorage
+    // Track new entries (unread) — in a real app, persist last-seen version in localStorage
     const [lastSeen, setLastSeen] = useState<string | null>(() => {
         if (typeof window !== 'undefined') return localStorage.getItem('flux_changelog_seen');
         return null;

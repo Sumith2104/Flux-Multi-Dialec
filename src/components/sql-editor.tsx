@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -6,8 +6,17 @@ import { Play, Save, Download, Loader2, Plus, AlignLeft, Activity, Share2, Uploa
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
 import { Card, CardContent, CardHeader } from './ui/card';
-import Editor from '@monaco-editor/react';
+import Editor, { loader } from '@monaco-editor/react';
 import { useToast } from '@/hooks/use-toast';
+
+// Configure Monaco Editor loader to use local assets
+if (typeof window !== 'undefined') {
+    loader.config({
+        paths: {
+            vs: '/monaco-editor/vs'
+        }
+    });
+}
 
 // â”€â”€â”€ Module-level constants â€” live outside React, never recreated â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const SQL_KEYWORDS = [
@@ -43,6 +52,9 @@ function ensureProviderRegistered(monaco: any) {
     monaco.languages.registerCompletionItemProvider('sql', {
         triggerCharacters: [' ', '\t', '\n', '.', '('],
         provideCompletionItems(model: any, position: any) {
+            if (!model || typeof model.getLineCount !== 'function' || position.lineNumber > model.getLineCount()) {
+                return { suggestions: [] };
+            }
             const word = model.getWordUntilPosition(position);
             const range = {
                 startLineNumber: position.lineNumber,
@@ -65,31 +77,35 @@ function ensureProviderRegistered(monaco: any) {
                 });
             }
 
-            // â”€â”€ Tables + Columns (live from module-level ref) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Tables + Columns (live from module-level ref) ─────────────────
             const tables = _schemaRef.current;
             if (tables) {
                 for (const tableName of Object.keys(tables)) {
-                    const cols: any[] = tables[tableName] ?? [];
+                    const cols = tables[tableName];
+                    if (!Array.isArray(cols)) continue;
+
                     suggestions.push({
                         label: tableName,
                         kind: monaco.languages.CompletionItemKind.Struct,
                         insertText: tableName,
                         detail: `Table  (${cols.length} cols)`,
                         documentation: {
-                            value: `**${tableName}**\n\n${cols.map((c: any) => `- \`${c.name}\` *${c.type}*`).join('\n')}`,
+                            value: `**${tableName}**\n\n${cols.map((c: any) => `- \`${c?.name || ''}\` *${c?.type || ''}*`).join('\n')}`,
                         },
                         sortText: 'B' + tableName,
                         range,
                     });
                     for (const col of cols) {
-                        suggestions.push({
-                            label: col.name,
-                            kind: monaco.languages.CompletionItemKind.Field,
-                            insertText: col.name,
-                            detail: `${col.type}  â†  ${tableName}`,
-                            sortText: 'C' + col.name,
-                            range,
-                        });
+                        if (col && typeof col === 'object' && col.name) {
+                            suggestions.push({
+                                label: col.name,
+                                kind: monaco.languages.CompletionItemKind.Field,
+                                insertText: col.name,
+                                detail: `${col.type || ''}  ← ${tableName}`,
+                                sortText: 'C' + col.name,
+                                range,
+                            });
+                        }
                     }
                 }
             }
@@ -113,21 +129,26 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
     const editorRef = useRef<any>(null);
     const { toast } = useToast();
 
-    // Fetch schema â€” used only to populate the module-level ref
+    // Fetch schema — used only to populate the module-level ref
     const { data: schema } = useQuery({
         queryKey: ['schema', projectId],
         queryFn: async () => {
-            const res = await fetch(`/api/schema?projectId=${projectId}&_t=${Date.now()}`);
+            const res = await fetch(`/api/schema?projectId=${projectId}&refresh=true&_t=${Date.now()}`);
             const data = await res.json();
-            return (data.success && data.tables) ? data.tables as Record<string, any[]> : null;
+            return (data.success && data.tables) ? data : null;
         },
         enabled: !!projectId,
+        staleTime: 5 * 60 * 1000,
     });
 
     // Keep the module-level ref in sync with latest schema.
     // The provider closure reads _schemaRef.current on every invocation.
     useEffect(() => {
-        _schemaRef.current = schema ?? null;
+        if (schema && schema.tables) {
+            _schemaRef.current = schema.tables;
+        } else {
+            _schemaRef.current = null;
+        }
     }, [schema]);
 
     // beforeMount â€” fires ONCE on the Monaco singleton before any editor renders.
@@ -138,23 +159,28 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
 
     const handleEditorMount = (editor: any, monaco: any) => {
         editorRef.current = editor;
+        if (typeof window !== 'undefined') {
+            (window as any)._currentMonacoEditor = editor;
+        }
 
         // Keyboard shortcuts
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => handleRunClick());
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => handleSaveQuery());
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () => handleFormatSql());
-        // Ctrl+Space â€” force-open the suggestion widget
+        // Ctrl+Space — force-open the suggestion widget
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space, () => {
             editor.trigger('keyboard', 'editor.action.triggerSuggest', {});
         });
     };
 
-    // Monaco GC â€” dispose editor model on unmount to prevent memory leaks
+    // Monaco GC — clean up editor ref on unmount
     useEffect(() => {
         return () => {
             if (editorRef.current) {
-                editorRef.current.dispose();
                 editorRef.current = null;
+            }
+            if (typeof window !== 'undefined') {
+                delete (window as any)._currentMonacoEditor;
             }
         };
     }, []);

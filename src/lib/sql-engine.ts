@@ -2,36 +2,30 @@ import { Parser } from 'node-sql-parser';
 import { type Project, getColumnsForTable, getProjectById } from '@/lib/data';
 import { getCurrentUserId } from '@/lib/auth';
 import { redis } from '@/lib/redis';
-import { Semaphore } from 'async-mutex';
-import { LRUCache } from 'lru-cache';
+import { Ratelimit } from '@upstash/ratelimit';
 import { getPgPool } from '@/lib/pg';
 import { ERROR_CODES, FluxbaseError, FluxbaseErrorCode } from '@/lib/error-codes';
 
-// --- 1. Environment-Aware Concurrency Tuning ---
-const GLOBAL_LIMIT = parseInt(process.env.FLUX_GLOBAL_IN_FLIGHT_LIMIT || '8000', 10);
-const TENANT_LIMIT = parseInt(process.env.FLUX_TENANT_IN_FLIGHT_LIMIT || '2000', 10);
-
-const GLOBAL_SEMAPHORE = new Semaphore(GLOBAL_LIMIT);
-
-// --- 2. Tenant Semaphore Eviction Safety ---
-const tenantSemaphores = new LRUCache<string, Semaphore>({
-    max: 5000,
-    ttl: 1000 * 60 * 60, // 1 hour TTL
-    dispose: (value: Semaphore, key: string, reason: string) => {
-        if (value.isLocked() || value.getValue() !== TENANT_LIMIT) {
-            console.error(`[CRITICAL] Evicting active semaphore for tenant ${key} via ${reason}. This implies an LRU sizing leak.`);
-        }
-    }
+// --- 1. Distributed Rate Limiting Configuration ---
+const tenantRateLimit = new Ratelimit({
+    redis: redis,
+    limiter: Ratelimit.tokenBucket(
+        parseInt(process.env.FLUX_TENANT_RATE_LIMIT_TOKENS || '200', 10),
+        '1 s',
+        parseInt(process.env.FLUX_TENANT_RATE_LIMIT_REFILL || '50', 10)
+    ),
+    analytics: false,
 });
 
-function getTenantSemaphore(projectId: string): Semaphore {
-    let sem = tenantSemaphores.get(projectId);
-    if (!sem) {
-        sem = new Semaphore(TENANT_LIMIT);
-        tenantSemaphores.set(projectId, sem);
-    }
-    return sem;
-}
+const globalRateLimit = new Ratelimit({
+    redis: redis,
+    limiter: Ratelimit.tokenBucket(
+        parseInt(process.env.FLUX_GLOBAL_RATE_LIMIT_TOKENS || '8000', 10),
+        '1 s',
+        parseInt(process.env.FLUX_GLOBAL_RATE_LIMIT_REFILL || '2000', 10)
+    ),
+    analytics: false,
+});
 
 export interface SqlResult {
     rows: any[];
@@ -103,12 +97,27 @@ export class SqlEngine {
         let lastResult: SqlResult = { rows: [], columns: [], explanation: [] };
         const startTime = Date.now();
 
-        // Gateway Concurrency Queuing
-        const tenantSem = getTenantSemaphore(this.projectId);
-        const [[, globalRelease], [, tenantRelease]] = await Promise.all([
-            GLOBAL_SEMAPHORE.acquire(),
-            tenantSem.acquire()
+        // Distributed rate limiting checks via Upstash Redis
+        const [globalLimitRes, tenantLimitRes] = await Promise.all([
+            globalRateLimit.limit('sql_global_rate_limit'),
+            tenantRateLimit.limit(`sql_tenant_rate_limit:${this.projectId}`)
         ]);
+
+        if (!globalLimitRes.success) {
+            throw new FluxbaseError(
+                "Too Many Requests: Global SQL execution capacity limit reached. Please try again in a few moments.", 
+                ERROR_CODES.RATE_LIMIT_EXCEEDED, 
+                429
+            );
+        }
+
+        if (!tenantLimitRes.success) {
+            throw new FluxbaseError(
+                "Too Many Requests: SQL execution rate limit exceeded for this project. Please wait a moment and try again.", 
+                ERROR_CODES.RATE_LIMIT_EXCEEDED, 
+                429
+            );
+        }
 
         try {
             // Batch all analytics tracking into ONE pipeline round-trip to Redis
@@ -290,9 +299,6 @@ export class SqlEngine {
             }
 
             throw new FluxbaseError(`AWS Database Error: ${errorMessage}`, code, status);
-        } finally {
-            tenantRelease();
-            globalRelease();
         }
 
         return lastResult;

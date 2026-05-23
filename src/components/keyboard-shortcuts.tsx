@@ -19,9 +19,9 @@ const SHORTCUTS: ShortcutGroup[] = [
     {
         title: 'Global',
         shortcuts: [
-            { keys: ['âŒ˜', 'K'], description: 'Open Command Palette' },
+            { keys: ['⌘', 'K'], description: 'Open Command Palette' },
             { keys: ['?'], description: 'Show Keyboard Shortcuts' },
-            { keys: ['âŒ˜', '/'], description: 'Toggle AI Assistant' },
+            { keys: ['⌘', '/'], description: 'Toggle AI Assistant' },
         ],
     },
     {
@@ -37,17 +37,17 @@ const SHORTCUTS: ShortcutGroup[] = [
     {
         title: 'SQL Editor',
         shortcuts: [
-            { keys: ['âŒ˜', 'Enter'], description: 'Run Query' },
-            { keys: ['âŒ˜', 'Shift', 'F'], description: 'Format SQL' },
-            { keys: ['âŒ˜', 'Z'], description: 'Undo' },
-            { keys: ['âŒ˜', 'Shift', 'Z'], description: 'Redo' },
+            { keys: ['⌘', 'Enter'], description: 'Run Query' },
+            { keys: ['⌘', 'Shift', 'F'], description: 'Format SQL' },
+            { keys: ['⌘', 'Z'], description: 'Undo' },
+            { keys: ['⌘', 'Shift', 'Z'], description: 'Redo' },
         ],
     },
     {
         title: 'Table Editor',
         shortcuts: [
             { keys: ['N'], description: 'Add New Row' },
-            { keys: ['âŒ˜', 'F'], description: 'Find in Table' },
+            { keys: ['⌘', 'F'], description: 'Find in Table' },
             { keys: ['Del'], description: 'Delete Selected Row' },
             { keys: ['Esc'], description: 'Cancel Edit' },
         ],

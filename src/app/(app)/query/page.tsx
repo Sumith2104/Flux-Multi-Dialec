@@ -16,10 +16,19 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
-
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
-import { SqlEditor } from '@/components/sql-editor';
+import dynamic from 'next/dynamic';
+import { Loader2 } from 'lucide-react';
+
+const SqlEditor = dynamic(() => import('@/components/sql-editor').then(mod => mod.SqlEditor), {
+    ssr: false,
+    loading: () => (
+        <div className="h-full w-full flex items-center justify-center bg-card text-muted-foreground font-mono text-sm min-h-[300px]">
+            <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading SQL Editor...
+        </div>
+    )
+});
 import { QueryResults } from '@/components/query-results';
 import { QueryHistory, HistoryItem } from '@/components/query-history';
 import { SchemaExplorer } from '@/components/schema-explorer';
@@ -91,6 +100,11 @@ export default function QueryPage() {
     }
   }, [query, isQueryLoaded, project?.project_id]);
 
+  // Reset query response on project switch to clear stale states
+  useEffect(() => {
+    setQueryResponse(null);
+  }, [project?.project_id]);
+
   const addToHistory = useCallback((queryStr: string, success: boolean) => {
     if (!project?.project_id) return;
     const newItem: HistoryItem = {
@@ -153,8 +167,15 @@ export default function QueryPage() {
       if (!data.success) {
         setActiveResultsTab('messages');
       } else {
-        // The sidebar and table views are now automatically synchronized via the global WebSocket listener
-        // in `useRealtimeSubscription`, which reacts to the 'schema_update' event emitted by the server.
+        // Dispatch local event on schema change to refresh explorer immediately
+        const uppercaseQuery = queryToExecute.trim().toUpperCase();
+        const isSchemaChange = uppercaseQuery.includes('CREATE ') || 
+                               uppercaseQuery.includes('DROP ') || 
+                               uppercaseQuery.includes('ALTER ') || 
+                               uppercaseQuery.includes('RENAME ');
+        if (isSchemaChange && project?.project_id && typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('flux:schema-change', { detail: { projectId: project.project_id } }));
+        }
       }
 
     } catch (e: any) {
@@ -729,7 +750,7 @@ export default function QueryPage() {
                     </Alert>
                   </div>
                 ) : queryResponse?.result?.message ? (
-                  <Alert className="bg-green-500/10 border-green-500/20 text-green-600 w-full mt-4">
+                  <Alert className="bg-green-500/10 border-green-500/20 text-emerald-400 w-full mt-4">
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 text-green-500" />
                       <AlertTitle className="font-medium">Success</AlertTitle>

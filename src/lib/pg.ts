@@ -14,7 +14,7 @@ export const pool = global._pool || new Pool({
     ssl: process.env.AWS_RDS_POSTGRES_URL?.includes('rds.amazonaws.com') 
         ? { rejectUnauthorized: false } 
         : (process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false),
-    max: 3, // Increased slightly for stability
+    max: parseInt(process.env.DATABASE_POOL_MAX || '10', 10),
     idleTimeoutMillis: 60000,
     connectionTimeoutMillis: 5000, // Increased timeout for cross-region stability
     keepAlive: true,

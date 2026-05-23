@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 
-// â”€â”€â”€ Code Block â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Code Block ─────────────────────────────────────────────────────────────
 
 function CodeBlock({ code, title }: { code: string; language?: string; title?: string }) {
     const [copied, setCopied] = useState(false);
@@ -45,7 +45,7 @@ function CodeBlock({ code, title }: { code: string; language?: string; title?: s
     );
 }
 
-// â”€â”€â”€ Section Wrapper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Section Wrapper ─────────────────────────────────────────────────────────
 
 function Section({ id, title, icon: Icon, children }: { id: string; title: string; icon: any; children: React.ReactNode }) {
     return (
@@ -63,7 +63,7 @@ function Section({ id, title, icon: Icon, children }: { id: string; title: strin
     );
 }
 
-// â”€â”€â”€ Callout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Callout ─────────────────────────────────────────────────────────────────
 
 function Callout({ type = 'info', children }: { type?: 'info' | 'warning' | 'success'; children: React.ReactNode }) {
     const styles = {
@@ -81,7 +81,7 @@ function Callout({ type = 'info', children }: { type?: 'info' | 'warning' | 'suc
     );
 }
 
-// â”€â”€â”€ Endpoint Badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Endpoint Badge ───────────────────────────────────────────────────────────
 
 function Endpoint({ method, path }: { method: 'GET' | 'POST' | 'DELETE' | 'PATCH'; path: string }) {
     const colors = { GET: 'text-emerald-400 bg-emerald-500/10', POST: 'text-orange-400 bg-orange-500/10', DELETE: 'text-red-400 bg-red-500/10', PATCH: 'text-blue-400 bg-blue-500/10' }[method];
@@ -93,7 +93,7 @@ function Endpoint({ method, path }: { method: 'GET' | 'POST' | 'DELETE' | 'PATCH
     );
 }
 
-// â”€â”€â”€ Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 const NAV_SECTIONS = [
     { id: 'getting-started', label: 'Getting Started', icon: Zap },
@@ -131,7 +131,7 @@ export default function DocsPage() {
 
     return (
         <div className="docs-mobile-safe flex min-h-screen max-w-full bg-background text-foreground/85">
-            {/* â”€â”€ Sidebar â”€â”€ */}
+            {/* ── Sidebar ── */}
             <aside className="fixed top-0 left-0 bottom-0 w-64 hidden lg:flex flex-col border-r border-border/70 bg-card/80 backdrop-blur-lg pt-20 pb-8 px-4 z-40 shrink-0">
                 <div className="flex items-center gap-2 mb-8 px-2">
                     <div className="p-1.5 rounded-lg bg-orange-500/10">
@@ -171,7 +171,7 @@ export default function DocsPage() {
                 </div>
             </aside>
 
-            {/* â”€â”€ Main â”€â”€ */}
+            {/* ── Main ── */}
             <div className="min-w-0 flex-1 lg:pl-64">
                 <div className="mx-auto w-full max-w-5xl px-5 py-14 sm:px-8 sm:py-20 lg:px-12 lg:py-28">
 
@@ -200,15 +200,15 @@ export default function DocsPage() {
 
                     <div className="max-w-full space-y-16 sm:space-y-24">
 
-                        {/* â”€â”€ 1. Getting Started â”€â”€ */}
+                        {/* ── 1. Getting Started ── */}
                         <Section id="getting-started" title="Getting Started" icon={Zap}>
                             <p>Every Fluxbase integration requires three values, found in your <strong className="text-foreground/90">Project Settings</strong>:</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
                                 {[
-                                    { label: 'API Key', desc: 'Bearer token from Settings â†’ API Keys. Scoped per project.', color: 'text-orange-400 bg-orange-500/10' },
+                                    { label: 'API Key', desc: 'Bearer token from Settings → API Keys. Scoped per project.', color: 'text-orange-400 bg-orange-500/10' },
                                     { label: 'Project ID', desc: 'Unique project identifier visible in the URL and Settings.', color: 'text-blue-400 bg-blue-500/10' },
-                                    { label: 'Base URL', desc: 'https://fluxbase.vercel.app â€” all REST endpoints live here.', color: 'text-emerald-400 bg-emerald-500/10' },
-                                    { label: 'WebSocket URL', desc: 'wss://fluxbase-realtime.onrender.com â€” for real-time events.', color: 'text-purple-400 bg-purple-500/10' },
+                                    { label: 'Base URL', desc: 'https://fluxbase.vercel.app — all REST endpoints live here.', color: 'text-emerald-400 bg-emerald-500/10' },
+                                    { label: 'WebSocket URL', desc: 'wss://fluxbase-realtime.onrender.com — for real-time events.', color: 'text-purple-400 bg-purple-500/10' },
                                 ].map((item) => (
                                     <div key={item.label} className="p-4 rounded-lg border border-border bg-secondary/60 space-y-1.5">
                                         <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-widest', item.color)}>{item.label}</span>
@@ -227,7 +227,7 @@ NEXT_PUBLIC_WS_URL=wss://fluxbase-realtime.onrender.com`} />
                             </Callout>
                         </Section>
 
-                        {/* â”€â”€ 2. Authentication â”€â”€ */}
+                        {/* ── 2. Authentication ── */}
                         <Section id="authentication" title="Authentication" icon={KeyRound}>
                             <p>All REST API requests must include an <code className="text-orange-300 bg-muted px-1.5 py-0.5 rounded text-xs">Authorization</code> header with a valid Bearer token. Requests missing this header return <code className="text-foreground/85 bg-muted px-1.5 py-0.5 rounded text-xs">401 Unauthorized</code>.</p>
 
@@ -261,11 +261,11 @@ Content-Type: application/json`} />
                             </div>
 
                             <Callout type="info">
-                                Rotate API keys any time from <strong>Settings â†’ API Keys</strong>. Old keys are invalidated immediately.
+                                Rotate API keys any time from <strong>Settings → API Keys</strong>. Old keys are invalidated immediately.
                             </Callout>
                         </Section>
 
-                        {/* â”€â”€ 3. Core SQL API â”€â”€ */}
+                        {/* ── 3. Core SQL API ── */}
                         <Section id="core-api" title="Core SQL API" icon={Database}>
                             <p>Execute any SQL statement against your project database via a single unified endpoint.</p>
 
@@ -303,7 +303,7 @@ Content-Type: application/json`} />
 }`} />
 
                             <Callout type="warning">
-                                SQL errors return HTTP <strong>200</strong> with <code className="text-xs">success: false</code>. Always check the <code className="text-xs">success</code> field â€” don't rely solely on HTTP status codes.
+                                SQL errors return HTTP <strong>200</strong> with <code className="text-xs">success: false</code>. Always check the <code className="text-xs">success</code> field — don't rely solely on HTTP status codes.
                             </Callout>
 
                             <h3 className="text-base font-bold text-white mt-6">Query Parameters</h3>
@@ -335,9 +335,9 @@ Content-Type: application/json`} />
                             </div>
                         </Section>
 
-                        {/* â”€â”€ 4. Language SDKs â”€â”€ */}
+                        {/* ── 4. Language SDKs ── */}
                         <Section id="sdks" title="Language SDKs" icon={Code2}>
-                            <p>No official SDK required â€” Fluxbase is a plain HTTP API. Here are copy-paste integration snippets for the most popular languages.</p>
+                            <p>No official SDK required — Fluxbase is a plain HTTP API. Here are copy-paste integration snippets for the most popular languages.</p>
 
                             <Tabs defaultValue="nodejs" className="w-full mt-4">
                                 <TabsList className="flex flex-wrap h-auto gap-1.5 bg-secondary border border-border p-1.5 rounded-lg">
@@ -628,18 +628,18 @@ curl -X POST "https://fluxbase.vercel.app/api/execute-sql" \\
                             </Tabs>
                         </Section>
 
-                        {/* â”€â”€ 5. Real-time (WebSocket) â”€â”€ */}
+                        {/* ── 5. Real-time (WebSocket) ── */}
                         <Section id="realtime" title="Real-time (WebSocket)" icon={Globe}>
                             <p>
                                 Fluxbase uses a persistent <strong className="text-foreground/90">WebSocket connection</strong> to push live database events to connected clients. 
-                                Subscribe once and receive row changes, schema updates, and custom broadcasts â€” with automatic reconnection.
+                                Subscribe once and receive row changes, schema updates, and custom broadcasts — with automatic reconnection.
                             </p>
 
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 my-4">
                                 {[
                                     { icon: Globe, color: 'text-orange-400 bg-orange-500/10', title: 'Connect & Subscribe', desc: 'Open one WebSocket and join a project room. All events are multiplexed over a single connection.' },
                                     { icon: Database, color: 'text-blue-400 bg-blue-500/10', title: 'Receive Events', desc: 'Get db_event messages for INSERT/UPDATE/DELETE and schema_update for DDL changes.' },
-                                    { icon: Cpu, color: 'text-emerald-400 bg-emerald-500/10', title: 'Auto-Reconnect', desc: 'Built-in exponential backoff (1s â†’ 2s â†’ 4s â†’ 15s max). Subscriptions restore automatically.' },
+                                    { icon: Cpu, color: 'text-emerald-400 bg-emerald-500/10', title: 'Auto-Reconnect', desc: 'Built-in exponential backoff (1s → 2s → 4s → 15s max). Subscriptions restore automatically.' },
                                 ].map((item, i) => (
                                     <div key={i} className="p-4 rounded-lg border border-border bg-secondary/60 space-y-2">
                                         <div className={cn('w-8 h-8 flex items-center justify-center rounded-lg', item.color)}>
@@ -697,7 +697,7 @@ function connect() {
 
       default:
         if (msg.payload?.event_type === 'schema_update') {
-          console.log('[WS] Schema changed â€” refresh your table list.');
+          console.log('[WS] Schema changed — refresh your table list.');
         }
     }
   };
@@ -738,7 +738,7 @@ async def listen():
                         p = msg.get("payload", {})
                         print(f"[{p.get('operation')}] {p.get('table')}: {p.get('record')}")
                     elif msg.get("payload", {}).get("event_type") == "schema_update":
-                        print("Schema changed â€” refresh table list.")
+                        print("Schema changed — refresh table list.")
 
         except (ConnectionClosed, OSError):
             print(f"Disconnected. Reconnecting in {delay}sâ€¦")
@@ -778,7 +778,7 @@ wscat -c wss://fluxbase-realtime.onrender.com
                                     </thead>
                                     <tbody className="divide-y divide-border/60">
                                         {[
-                                            { type: 'subscribed', event: 'â€”', when: 'Server confirmed room subscription.' },
+                                            { type: 'subscribed', event: '—', when: 'Server confirmed room subscription.' },
                                             { type: 'db_event', event: 'operation: INSERT', when: 'A row was inserted via SQL or Table Editor.' },
                                             { type: 'db_event', event: 'operation: UPDATE', when: 'A row was modified.' },
                                             { type: 'db_event', event: 'operation: DELETE', when: 'A row was removed.' },
@@ -795,7 +795,7 @@ wscat -c wss://fluxbase-realtime.onrender.com
                             </div>
                         </Section>
 
-                        {/* â”€â”€ 6. Storage v2 â”€â”€ */}
+                        {/* ── 6. Storage v2 ── */}
                         <Section id="storage" title="Storage v2" icon={HardDrive}>
                             <p>Secure AWS S3-backed file storage with logically isolated buckets, private-by-default access, and short-lived pre-signed URLs.</p>
 
@@ -823,12 +823,12 @@ wscat -c wss://fluxbase-realtime.onrender.com
                                     </tbody>
                                 </table>
                             </div>
-                            <CodeBlock language="json" title="POST /api/storage/buckets â€” Create Bucket" code={`{
+                            <CodeBlock language="json" title="POST /api/storage/buckets — Create Bucket" code={`{
   "projectId": "YOUR_PROJECT_ID",
   "name": "profile-photos",
   "isPublic": false
 }
-// Name rules: lowercase alphanumeric, hyphens, underscores, 1â€“63 chars`} />
+// Name rules: lowercase alphanumeric, hyphens, underscores, 1–63 chars`} />
 
                             {/* Files */}
                             <h3 className="text-base font-bold text-white mt-6">File Operations</h3>
@@ -856,8 +856,8 @@ wscat -c wss://fluxbase-realtime.onrender.com
                             </div>
 
                             <h3 className="text-base font-bold text-white mt-4">Upload a File</h3>
-                            <p className="text-sm">Send <code className="text-orange-300 bg-muted px-1.5 py-0.5 rounded text-xs">multipart/form-data</code> â€” required fields: <code className="text-foreground/85 bg-muted px-1.5 py-0.5 rounded text-xs">file</code>, <code className="text-foreground/85 bg-muted px-1.5 py-0.5 rounded text-xs">bucketId</code>, <code className="text-foreground/85 bg-muted px-1.5 py-0.5 rounded text-xs">projectId</code>. <code className="text-foreground/85 bg-muted px-1.5 py-0.5 rounded text-xs">bucketId</code> accepts the bucket UUID or name.</p>
-                            <CodeBlock language="bash" title="cURL â€” Multipart Upload" code={`curl -X POST "https://fluxbase.vercel.app/api/storage/upload" \\
+                            <p className="text-sm">Send <code className="text-orange-300 bg-muted px-1.5 py-0.5 rounded text-xs">multipart/form-data</code> — required fields: <code className="text-foreground/85 bg-muted px-1.5 py-0.5 rounded text-xs">file</code>, <code className="text-foreground/85 bg-muted px-1.5 py-0.5 rounded text-xs">bucketId</code>, <code className="text-foreground/85 bg-muted px-1.5 py-0.5 rounded text-xs">projectId</code>. <code className="text-foreground/85 bg-muted px-1.5 py-0.5 rounded text-xs">bucketId</code> accepts the bucket UUID or name.</p>
+                            <CodeBlock language="bash" title="cURL — Multipart Upload" code={`curl -X POST "https://fluxbase.vercel.app/api/storage/upload" \\
   -H "Authorization: Bearer $FLUXBASE_API_KEY" \\
   -F "file=@avatar.jpg" \\
   -F "bucketId=profile-photos" \\
@@ -879,7 +879,7 @@ wscat -c wss://fluxbase-realtime.onrender.com
                             </Callout>
                         </Section>
 
-                        {/* â”€â”€ 7. Team & Invitations â”€â”€ */}
+                        {/* ── 7. Team & Invitations ── */}
                         <Section id="team-api" title="Team & Invitations" icon={Users}>
                             <p>Manage project collaborators and send role-based invitations programmatically. All team endpoints require admin-level privileges.</p>
 
@@ -911,7 +911,7 @@ wscat -c wss://fluxbase-realtime.onrender.com
                                     </thead>
                                     <tbody className="divide-y divide-border/60">
                                         {[
-                                            { role: 'admin', perms: 'Full access â€” manage members, settings, billing, and data.' },
+                                            { role: 'admin', perms: 'Full access — manage members, settings, billing, and data.' },
                                             { role: 'developer', perms: 'Read/write data, manage schemas. Cannot manage billing or members.' },
                                             { role: 'viewer', perms: 'Read-only access to data and the dashboard.' },
                                         ].map(r => (
@@ -939,7 +939,7 @@ wscat -c wss://fluxbase-realtime.onrender.com
                             </Callout>
                         </Section>
 
-                        {/* â”€â”€ 8. Webhooks â”€â”€ */}
+                        {/* ── 8. Webhooks ── */}
                         <Section id="webhooks" title="Webhooks" icon={Webhook}>
                             <p>Webhooks are outbound HTTP POST requests sent from Fluxbase to your server when data events occur. Ideal for serverless functions (Vercel, AWS Lambda, Cloudflare Workers).</p>
 
@@ -1030,7 +1030,7 @@ def handle():
                             </Tabs>
                         </Section>
 
-                        {/* â”€â”€ 9. Error Codes â”€â”€ */}
+                        {/* ── 9. Error Codes ── */}
                         <Section id="error-codes" title="Error Codes" icon={AlertCircle}>
                             <p>Fluxbase uses standard HTTP status codes alongside machine-readable error codes in the response body.</p>
 
@@ -1068,17 +1068,17 @@ def handle():
                             </div>
                         </Section>
 
-                        {/* â”€â”€ 10. RLS â”€â”€ */}
+                        {/* ── 10. RLS ── */}
                         <Section id="rls-tutorial" title="Row Level Security" icon={Shield}>
                             <Callout type="warning">
-                                <strong>Row Level Security (RLS)</strong> enforces access rules at the <em>database engine</em> level. Your backend API can never return data that violates a policy â€” regardless of the SQL query sent.
+                                <strong>Row Level Security (RLS)</strong> enforces access rules at the <em>database engine</em> level. Your backend API can never return data that violates a policy — regardless of the SQL query sent.
                             </Callout>
 
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
                                 {[
                                     { icon: KeyRound, color: 'text-blue-400 bg-blue-500/10', title: 'Auth Identity', desc: 'Your logged-in user ID is injected via SET LOCAL fluxbase.auth_uid before each query.' },
                                     { icon: Lock, color: 'text-amber-400 bg-amber-500/10', title: 'Policy Evaluation', desc: 'PostgreSQL runs your USING expression (e.g. user_id = auth.uid()) before returning any row.' },
-                                    { icon: Eye, color: 'text-emerald-400 bg-emerald-500/10', title: 'Silent Filtering', desc: 'Rows that fail the policy are silently excluded â€” no errors, just scoped results.' },
+                                    { icon: Eye, color: 'text-emerald-400 bg-emerald-500/10', title: 'Silent Filtering', desc: 'Rows that fail the policy are silently excluded — no errors, just scoped results.' },
                                 ].map((item, i) => (
                                     <div key={i} className="p-4 rounded-lg border border-border bg-secondary/60 space-y-2">
                                         <div className={cn('w-8 h-8 flex items-center justify-center rounded-lg', item.color)}>
@@ -1093,10 +1093,10 @@ def handle():
                             <h3 className="text-base font-bold text-white mt-8">Step-by-Step Setup</h3>
                             <div className="space-y-3">
                                 {[
-                                    { step: '01', title: 'Open RLS Dashboard', desc: 'Navigate to Database â†’ Row Level Security in your project sidebar. All tables are listed.' },
+                                    { step: '01', title: 'Open RLS Dashboard', desc: 'Navigate to Database → Row Level Security in your project sidebar. All tables are listed.' },
                                     { step: '02', title: 'Create a Policy', desc: 'Choose a table, select command scope (ALL / SELECT / INSERT / UPDATE / DELETE), then write your USING expression.' },
                                     { step: '03', title: 'Enable the Policy', desc: 'Toggle the switch. Fluxbase immediately runs ALTER TABLE â€¦ ENABLE ROW LEVEL SECURITY and CREATE POLICY.' },
-                                    { step: '04', title: 'Test in SQL Editor', desc: 'Run SELECT * FROM your_table â€” you\'ll only see rows that pass the policy for the authenticated user.' },
+                                    { step: '04', title: 'Test in SQL Editor', desc: 'Run SELECT * FROM your_table — you\'ll only see rows that pass the policy for the authenticated user.' },
                                 ].map((item) => (
                                     <div key={item.step} className="flex gap-4 p-4 rounded-lg border border-border bg-secondary/50">
                                         <span className="text-xl font-black text-orange-500/30 font-mono shrink-0 leading-none mt-0.5">{item.step}</span>
@@ -1123,8 +1123,8 @@ def handle():
                                 <div>
                                     <div className="flex items-center gap-2 mb-1"><Eye className="h-4 w-4 text-emerald-400" /><h4 className="font-semibold text-white text-sm">Public Read, Owner Write</h4></div>
                                     <p className="text-xs text-muted-foreground/75 mb-2">Create two policies on the same table with different command scopes.</p>
-                                    <CodeBlock title="Policy 1 â€” SELECT (anyone)" language="sql" code={`true`} />
-                                    <CodeBlock title="Policy 2 â€” INSERT / UPDATE / DELETE (owner only)" language="sql" code={`author_id = auth.uid()`} />
+                                    <CodeBlock title="Policy 1 — SELECT (anyone)" language="sql" code={`true`} />
+                                    <CodeBlock title="Policy 2 — INSERT / UPDATE / DELETE (owner only)" language="sql" code={`author_id = auth.uid()`} />
                                 </div>
                                 <div>
                                     <div className="flex items-center gap-2 mb-1"><ShieldCheck className="h-4 w-4 text-red-400" /><h4 className="font-semibold text-white text-sm">Full Lockdown</h4></div>
@@ -1161,7 +1161,7 @@ def handle():
                             </div>
                         </Section>
 
-                        {/* â”€â”€ Footer CTA â”€â”€ */}
+                        {/* ── Footer CTA ── */}
                         <div className="pt-12 border-t border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
                             <div className="space-y-1">
                                 <h4 className="text-lg font-bold text-white">Still have questions?</h4>

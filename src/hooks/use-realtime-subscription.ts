@@ -269,6 +269,17 @@ export function useRealtimeSubscription(projectId: string | undefined) {
 
         const unsubscribe = subscribe(projectId, listener);
 
+        // Client-side local custom event listener fallback (handles local/serverless disconnections)
+        const handleLocalSchemaChange = (e: Event) => {
+            const customEvent = e as CustomEvent;
+            if (customEvent.detail?.projectId === projectId) {
+                console.log(`[Realtime Sync] Local schema change event received. Triggering sync...`);
+                syncDatabase({ type: 'schema_update', project_id: projectId });
+            }
+        };
+
+        window.addEventListener('flux:schema-change', handleLocalSchemaChange);
+
         // Sync status from singleton
         const state = connections.get(projectId);
         if (state) setStatus(state.status);
@@ -281,6 +292,7 @@ export function useRealtimeSubscription(projectId: string | undefined) {
 
         return () => {
             unsubscribe();
+            window.removeEventListener('flux:schema-change', handleLocalSchemaChange);
             clearInterval(statusInterval);
         };
     }, [projectId, syncDatabase]);

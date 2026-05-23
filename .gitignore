@@ -49,4 +49,7 @@ firestore-debug.log
 # AI Tooling
 .codex/
 .agents/
+
+# Generated Monaco editor assets
+public/monaco-editor/
 # End

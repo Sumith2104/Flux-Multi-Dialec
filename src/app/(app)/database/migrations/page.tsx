@@ -184,12 +184,12 @@ export default function MigrationsPage() {
                                 {expanded === m.id && (
                                     <div className="border-t border-border p-4 space-y-3">
                                         <div>
-                                            <p className="text-xs font-medium text-emerald-400 mb-1.5">â–² UP migration</p>
+                                            <p className="text-xs font-medium text-emerald-400 mb-1.5">▲ UP migration</p>
                                             <pre className="text-xs bg-secondary rounded-md p-3 overflow-x-auto text-foreground/85 border border-border font-mono">{m.upSql}</pre>
                                         </div>
                                         {m.downSql && (
                                             <div>
-                                                <p className="text-xs font-medium text-red-400 mb-1.5">â–¼ DOWN migration</p>
+                                                <p className="text-xs font-medium text-red-400 mb-1.5">▼ DOWN migration</p>
                                                 <pre className="text-xs bg-secondary rounded-md p-3 overflow-x-auto text-foreground/85 border border-border font-mono">{m.downSql}</pre>
                                             </div>
                                         )}
@@ -217,12 +217,12 @@ export default function MigrationsPage() {
                                 placeholder="e.g. add_user_roles_table" className="bg-secondary border-border/80 font-mono h-9 text-sm" id="migration-name" />
                         </div>
                         <div>
-                            <Label className="text-xs mb-1.5 flex items-center gap-1"><ArrowUp className="h-3 w-3 text-emerald-400" /> UP â€” Migrate Forward</Label>
+                            <Label className="text-xs mb-1.5 flex items-center gap-1"><ArrowUp className="h-3 w-3 text-emerald-400" /> UP — Migrate Forward</Label>
                             <Textarea value={form.upSql} onChange={e => setForm(f => ({ ...f, upSql: e.target.value }))}
                                 placeholder="ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'viewer';" className="bg-secondary border-border/80 font-mono text-sm min-h-[100px]" id="migration-up-sql" />
                         </div>
                         <div>
-                            <Label className="text-xs mb-1.5 flex items-center gap-1"><ArrowDown className="h-3 w-3 text-red-400" /> DOWN â€” Rollback (optional)</Label>
+                            <Label className="text-xs mb-1.5 flex items-center gap-1"><ArrowDown className="h-3 w-3 text-red-400" /> DOWN — Rollback (optional)</Label>
                             <Textarea value={form.downSql} onChange={e => setForm(f => ({ ...f, downSql: e.target.value }))}
                                 placeholder="ALTER TABLE users DROP COLUMN role;" className="bg-secondary border-border/80 font-mono text-sm min-h-[80px]" id="migration-down-sql" />
                         </div>

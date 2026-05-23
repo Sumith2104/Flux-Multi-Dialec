@@ -199,7 +199,7 @@ export function SignupDialog({ open, onOpenChange, onSwitchToLogin }: SignupDial
                                     id="signup-otp"
                                     name="otp"
                                     type="text"
-                                    placeholder="â€¢â€¢â€¢â€¢â€¢â€¢"
+                                    placeholder="••••••"
                                     maxLength={6}
                                     pattern="[0-9]{6}"
                                     title="Please enter a 6-digit number"

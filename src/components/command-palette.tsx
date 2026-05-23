@@ -127,7 +127,7 @@ export function CommandPalette() {
                 <Search className="h-3.5 w-3.5 shrink-0" />
                 <span className="hidden sm:block truncate">Search...</span>
                 <kbd className="hidden sm:flex ml-auto pointer-events-none items-center gap-0.5 rounded border border-border bg-background px-1 font-mono text-[10px] text-muted-foreground">
-                    <span>âŒ˜</span><span>K</span>
+                    <span>⌘</span><span>K</span>
                 </kbd>
             </button>
 
@@ -180,7 +180,7 @@ export function CommandPalette() {
                         ))}
                     </div>
                     <div className="border-t border-border px-3 py-2 flex items-center gap-3 text-[10px] text-muted-foreground/55">
-                        <span><kbd className="rounded border border-border/80 px-1 font-mono">â†‘â†“</kbd> navigate</span>
+                        <span><kbd className="rounded border border-border/80 px-1 font-mono">↑↓</kbd> navigate</span>
                         <span><kbd className="rounded border border-border/80 px-1 font-mono">â†µ</kbd> open</span>
                         <span><kbd className="rounded border border-border/80 px-1 font-mono">esc</kbd> close</span>
                     </div>

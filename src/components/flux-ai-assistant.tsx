@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Volume2, VolumeX, Loader2, ArrowUp, CheckCircle2, XCircle } from "lucide-react";
+import { X, Volume2, VolumeX, Loader2, ArrowUp, CheckCircle2, XCircle, Play } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useContext } from "react";
 import { ProjectContext } from "@/contexts/project-context";
@@ -11,12 +11,72 @@ import { createProjectAction } from "@/components/layout/actions";
 type Message = {
   role: "user" | "assistant";
   content: string;
-  pendingAction?: {
-    type: "CREATE_PROJECT" | "EXECUTE_SQL";
-    projectName?: string;
-    dialect?: string;
-    query?: string;
+  pendingWorkflow?: {
+    steps: WorkflowStep[];
   };
+};
+
+type WorkflowStep = {
+  type: "NAVIGATE" | "CLICK" | "TYPE" | "CONFIRM_ACTION";
+  path?: string;
+  elementId?: string;
+  value?: string;
+  locator?: string;
+  actionType?: "CREATE_PROJECT" | "EXECUTE_SQL";
+  projectName?: string;
+  dialect?: string;
+  query?: string;
+};
+
+type ActiveWorkflow = {
+  steps: WorkflowStep[];
+  currentStepIndex: number;
+};
+
+const parseWorkflow = (text: string): { steps: WorkflowStep[], cleanText: string } => {
+    const steps: WorkflowStep[] = [];
+    let cleanText = text;
+    
+    const regex = /\[(NAVIGATE|CLICK|TYPE|CONFIRM_ACTION):([\s\S]*?)\]/gi;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+        const type = match[1].toUpperCase();
+        const argsStr = match[2];
+        
+        if (type === 'NAVIGATE') {
+            steps.push({ type: 'NAVIGATE', path: argsStr.trim() });
+        } else if (type === 'CLICK') {
+            steps.push({ type: 'CLICK', elementId: argsStr.trim() });
+        } else if (type === 'TYPE') {
+            const colonIdx = argsStr.lastIndexOf(':');
+            if (colonIdx !== -1) {
+                const value = argsStr.substring(0, colonIdx).trim();
+                const locator = argsStr.substring(colonIdx + 1).trim();
+                steps.push({ type: 'TYPE', value, locator });
+            }
+        } else if (type === 'CONFIRM_ACTION') {
+            const parts = argsStr.split(':');
+            const actionType = parts[0].toUpperCase();
+            if (actionType === 'CREATE_PROJECT') {
+                steps.push({
+                    type: 'CONFIRM_ACTION',
+                    actionType: 'CREATE_PROJECT',
+                    projectName: parts[1]?.trim(),
+                    dialect: parts[2]?.trim() || 'postgresql'
+                });
+            } else if (actionType === 'EXECUTE_SQL') {
+                const query = argsStr.substring(argsStr.indexOf(':') + 1).trim();
+                steps.push({
+                    type: 'CONFIRM_ACTION',
+                    actionType: 'EXECUTE_SQL',
+                    query
+                });
+            }
+        }
+    }
+    
+    cleanText = text.replace(/\[(?:NAVIGATE|CLICK|TYPE|CONFIRM_ACTION):[\s\S]*?\]/gi, '').trim();
+    return { steps, cleanText };
 };
 
 const AiIcon = ({ size = 24, className = "" }: { size?: number; className?: string }) => (
@@ -28,16 +88,423 @@ const AiIcon = ({ size = 24, className = "" }: { size?: number; className?: stri
 );
 
 export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: string; isOpen: boolean; onOpenChange: (open: boolean) => void }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { project, setProject } = useContext(ProjectContext);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
   const [messages, setMessages] = useState<Message[]>([]);
   const isRestored = useRef(false);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  
-  const pathname = usePathname();
-  const router = useRouter();
-  const { project, setProject } = useContext(ProjectContext);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [activeWorkflow, setActiveWorkflow] = useState<ActiveWorkflow | null>(null);
+  const lastNavigatedPath = useRef<string | null>(null);
+
+  // Load workflow from localStorage on mount and pathname change
+  useEffect(() => {
+      lastNavigatedPath.current = null;
+      if (typeof window !== 'undefined') {
+          const saved = localStorage.getItem('flux_active_workflow');
+          if (saved) {
+              try {
+                  const wf = JSON.parse(saved) as ActiveWorkflow;
+                  setActiveWorkflow(wf);
+              } catch (e) {
+                  localStorage.removeItem('flux_active_workflow');
+              }
+          }
+      }
+  }, [pathname]);
+
+  const advanceWorkflow = () => {
+      if (!activeWorkflow) return;
+      const nextIndex = activeWorkflow.currentStepIndex + 1;
+      const updated = { ...activeWorkflow, currentStepIndex: nextIndex };
+      
+      if (nextIndex >= activeWorkflow.steps.length) {
+          localStorage.removeItem('flux_active_workflow');
+          setActiveWorkflow(null);
+          console.log('[Workflow Runner] Workflow completed successfully.');
+      } else {
+          localStorage.setItem('flux_active_workflow', JSON.stringify(updated));
+          setActiveWorkflow(updated);
+      }
+  };
+
+  // Run the current workflow step
+  useEffect(() => {
+      if (!activeWorkflow || activeWorkflow.steps.length === 0) return;
+      const { steps, currentStepIndex } = activeWorkflow;
+      if (currentStepIndex >= steps.length) {
+          localStorage.removeItem('flux_active_workflow');
+          setActiveWorkflow(null);
+          return;
+      }
+
+      const step = steps[currentStepIndex];
+      console.log(`[Workflow Runner] Running step ${currentStepIndex + 1}/${steps.length}:`, step);
+
+      let activeInterval: NodeJS.Timeout | null = null;
+
+      const cleanup = () => {
+          if (activeInterval) {
+              clearInterval(activeInterval);
+              activeInterval = null;
+          }
+      };
+
+      if (step.type === 'NAVIGATE' && step.path) {
+          const targetPath = step.path;
+          let finalPath = targetPath;
+          if (project?.project_id && !finalPath.includes('projectId')) {
+             const separator = finalPath.includes('?') ? '&' : '?';
+             finalPath += `${separator}projectId=${project.project_id}`;
+          }
+
+          if (lastNavigatedPath.current === finalPath) {
+              console.log(`[Workflow Runner] Already navigating to ${finalPath}. Skipping duplicate push.`);
+              return;
+          }
+
+          const currentUrl = new URL(window.location.href);
+          const targetUrlObj = new URL(targetPath, window.location.origin);
+          
+          if (currentUrl.pathname === targetUrlObj.pathname) {
+              console.log(`[Workflow Runner] Already on path ${targetUrlObj.pathname}. Moving to next step.`);
+              advanceWorkflow();
+          } else {
+              console.log(`[Workflow Runner] Navigating to ${targetPath}`);
+              
+              lastNavigatedPath.current = finalPath;
+
+              // Save advanced index to localStorage first so it loads on the new page,
+              // but DO NOT set activeWorkflow state on this page to prevent executing on the old page.
+              const nextIndex = currentStepIndex + 1;
+              const updated = { ...activeWorkflow, currentStepIndex: nextIndex };
+              if (nextIndex >= steps.length) {
+                  localStorage.removeItem('flux_active_workflow');
+              } else {
+                  localStorage.setItem('flux_active_workflow', JSON.stringify(updated));
+              }
+
+              // Set activeWorkflow to null immediately to stop the runner on this page
+              // while the browser handles router.push navigation asynchronously.
+              setActiveWorkflow(null);
+
+              router.push(finalPath);
+          }
+      } 
+      else if (step.type === 'CLICK' && step.elementId) {
+          const startTime = Date.now();
+          activeInterval = setInterval(() => {
+              const interactiveSelector = 'button, a, [role="button"], [type="submit"], input[type="button"], input[type="submit"], label';
+              const interactives = Array.from(document.querySelectorAll(interactiveSelector));
+              interactives.reverse();
+              let targetEl = interactives.find(el => {
+                  const text = (el.textContent || '').trim().toLowerCase();
+                  return text && text.includes(step.elementId!.toLowerCase());
+              }) as HTMLElement;
+
+              if (!targetEl) {
+                  const fallbacks = Array.from(document.querySelectorAll('li, tr, div, span'));
+                  fallbacks.reverse();
+                  targetEl = fallbacks.find(el => {
+                      const text = (el.textContent || '').trim().toLowerCase();
+                      return text && text.includes(step.elementId!.toLowerCase());
+                  }) as HTMLElement;
+              }
+
+              if (targetEl) {
+                  cleanup();
+                  simulateClickElement(targetEl, advanceWorkflow);
+              } else if (Date.now() - startTime > 10000) {
+                  cleanup();
+                  console.warn(`[Workflow Runner] Timeout waiting for element: ${step.elementId}`);
+                  // Stop the workflow to avoid hanging
+                  localStorage.removeItem('flux_active_workflow');
+                  setActiveWorkflow(null);
+              }
+          }, 200);
+      } 
+      else if (step.type === 'TYPE' && step.value && step.locator) {
+          const startTime = Date.now();
+          activeInterval = setInterval(() => {
+              const isMonaco = step.locator!.toLowerCase().includes('sql') || 
+                               step.locator!.toLowerCase().includes('query') || 
+                               step.locator!.toLowerCase().includes('editor');
+              const monacoEditor = (window as any)._currentMonacoEditor;
+              if (isMonaco && monacoEditor) {
+                  cleanup();
+                  simulateTypeIntoElement({ tagName: 'MONACO' } as any, step.value!, advanceWorkflow);
+                  return;
+              }
+
+              const inputs = Array.from(document.querySelectorAll('input, textarea')) as (HTMLInputElement | HTMLTextAreaElement)[];
+              let targetEl: HTMLInputElement | HTMLTextAreaElement | undefined;
+              const cleanLocator = step.locator!.toLowerCase().replace(/[^a-z0-9]/g, '');
+              
+              targetEl = inputs.find(el => {
+                  const placeholder = (el.placeholder || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                  const name = (el.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                  const id = (el.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                  const aria = (el.getAttribute('aria-label') || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                  if (!cleanLocator) return false;
+                  return (placeholder && (placeholder.includes(cleanLocator) || cleanLocator.includes(placeholder))) ||
+                         (name && (name.includes(cleanLocator) || cleanLocator.includes(name))) ||
+                         (id && (id.includes(cleanLocator) || cleanLocator.includes(id))) ||
+                         (aria && (aria.includes(cleanLocator) || cleanLocator.includes(aria)));
+              });
+
+              if (!targetEl) {
+                  const labels = Array.from(document.querySelectorAll('label, div, span, h2, h3, h4'));
+                  const targetLabel = labels.find(l => {
+                      const text = (l.textContent || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                      return text && (text === cleanLocator || text.includes(cleanLocator));
+                  });
+                  if (targetLabel) {
+                      if ((targetLabel as HTMLLabelElement).htmlFor) {
+                          targetEl = document.getElementById((targetLabel as HTMLLabelElement).htmlFor) as HTMLInputElement;
+                      }
+                      if (!targetEl) {
+                          let wrapper = targetLabel.parentElement;
+                          while (wrapper && !targetEl) {
+                             targetEl = wrapper.querySelector('input, textarea') as HTMLInputElement;
+                             if (!targetEl && wrapper.parentElement) wrapper = wrapper.parentElement;
+                             else break;
+                          }
+                      }
+                  }
+              }
+
+              if (targetEl) {
+                  cleanup();
+                  simulateTypeIntoElement(targetEl, step.value!, advanceWorkflow);
+              } else if (Date.now() - startTime > 10000) {
+                  cleanup();
+                  console.warn(`[Workflow Runner] Timeout waiting for input: ${step.locator}`);
+                  // Stop the workflow to avoid hanging
+                  localStorage.removeItem('flux_active_workflow');
+                  setActiveWorkflow(null);
+              }
+          }, 200);
+      }
+
+      else if (step.type === 'CONFIRM_ACTION') {
+          if (step.actionType === 'CREATE_PROJECT' && step.projectName) {
+              console.log(`[Workflow Runner] Creating project automatically: ${step.projectName}`);
+              setMessages(prev => [...prev, { role: "assistant", content: `⚙️ Creating project **${step.projectName}**... Please wait.` }]);
+              
+              const formData = new FormData();
+              formData.append('projectName', step.projectName);
+              formData.append('dialect', step.dialect || 'postgresql');
+              formData.append('timezone', Intl.DateTimeFormat().resolvedOptions().timeZone);
+              
+              createProjectAction(formData).then(result => {
+                  if (result.success && result.project) {
+                      setProject(result.project);
+                      setMessages(prev => {
+                          const filtered = prev.filter(m => !m.content.includes("Creating project"));
+                          return [...filtered, { role: "assistant", content: ` Successfully created and switched to project **${step.projectName}**!` }];
+                      });
+                      advanceWorkflow();
+                  } else {
+                      localStorage.removeItem('flux_active_workflow');
+                      setActiveWorkflow(null);
+                      setMessages(prev => {
+                          const filtered = prev.filter(m => !m.content.includes("Creating project"));
+                          return [...filtered, { role: "assistant", content: `❌ Failed to create project: ${result.error || 'Unknown error'}` }];
+                      });
+                  }
+              }).catch(err => {
+                  localStorage.removeItem('flux_active_workflow');
+                  setActiveWorkflow(null);
+                  setMessages(prev => {
+                      const filtered = prev.filter(m => !m.content.includes("Creating project"));
+                      return [...filtered, { role: "assistant", content: `❌ Error creating project: ${err.message || err}` }];
+                  });
+              });
+          }
+          else if (step.actionType === 'EXECUTE_SQL' && step.query) {
+              console.log(`[Workflow Runner] Executing SQL automatically: ${step.query}`);
+              setMessages(prev => [...prev, { role: "assistant", content: `⚙️ Executing query \`${step.query}\`... Please wait.` }]);
+              
+              const runSql = (activeProject: any) => {
+                  fetch('/api/execute-sql', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ projectId: activeProject.project_id, query: step.query })
+                  }).then(res => res.json()).then(result => {
+                      if (result.success) {
+                          if (typeof window !== 'undefined') {
+                              window.dispatchEvent(new CustomEvent('flux:schema-change', { detail: { projectId: activeProject.project_id } }));
+                          }
+                          setMessages(prev => {
+                              const filtered = prev.filter(m => !m.content.includes("Executing query"));
+                              return [...filtered, { role: "assistant", content: ` Successfully executed SQL query: \`${step.query}\`` }];
+                          });
+                          advanceWorkflow();
+                      } else {
+                          localStorage.removeItem('flux_active_workflow');
+                          setActiveWorkflow(null);
+                          setMessages(prev => {
+                              const filtered = prev.filter(m => !m.content.includes("Executing query"));
+                              return [...filtered, { role: "assistant", content: `❌ Failed to execute SQL: ${result.error?.message || 'Unknown error'}` }];
+                          });
+                      }
+                  }).catch(err => {
+                      localStorage.removeItem('flux_active_workflow');
+                      setActiveWorkflow(null);
+                      setMessages(prev => {
+                          const filtered = prev.filter(m => !m.content.includes("Executing query"));
+                          return [...filtered, { role: "assistant", content: `❌ Error executing SQL: ${err.message || err}` }];
+                      });
+                  });
+              };
+
+              if (project) {
+                  runSql(project);
+              } else {
+                  console.log(`[Workflow Runner] Waiting for project context to initialize...`);
+                  localStorage.removeItem('flux_active_workflow');
+                  setActiveWorkflow(null);
+                  setMessages(prev => {
+                      const filtered = prev.filter(m => !m.content.includes("Executing query"));
+                      return [...filtered, { role: "assistant", content: `❌ Failed to execute SQL: No project active.` }];
+                  });
+              }
+          }
+      }
+
+      return cleanup;
+  }, [activeWorkflow, pathname, project]);
+
+  const simulateClickElement = (targetEl: HTMLElement, onComplete?: () => void) => {
+      targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(() => {
+          const rect = targetEl.getBoundingClientRect();
+          
+          const ripple = document.createElement('div');
+          ripple.style.position = 'absolute';
+          ripple.style.left = `${rect.left + window.scrollX + rect.width / 2 - 30}px`;
+          ripple.style.top = `${rect.top + window.scrollY + rect.height / 2 - 30}px`;
+          ripple.style.width = '60px';
+          ripple.style.height = '60px';
+          ripple.style.borderRadius = '50%';
+          ripple.style.backgroundColor = 'rgba(249, 115, 22, 0.4)';
+          ripple.style.boxShadow = '0 0 20px rgba(249, 115, 22, 0.6)';
+          ripple.style.pointerEvents = 'none';
+          ripple.style.zIndex = '99999';
+          ripple.style.animation = 'aiClickPulse 0.5s ease-out forwards';
+          
+          if (!document.getElementById('aiClickKeyframes')) {
+             const style = document.createElement('style');
+             style.id = 'aiClickKeyframes';
+             style.innerHTML = `
+               @keyframes aiClickPulse {
+                  0% { transform: scale(0.5); opacity: 1; }
+                  50% { opacity: 0.8; }
+                  100% { transform: scale(2.5); opacity: 0; }
+               }
+             `;
+             document.head.appendChild(style);
+          }
+
+          document.body.appendChild(ripple);
+
+          const originalTransition = targetEl.style.transition;
+          const originalBoxShadow = targetEl.style.boxShadow;
+          targetEl.style.transition = 'all 0.3s';
+          targetEl.style.boxShadow = '0 0 15px 5px rgba(249,115,22,0.5)';
+          
+          setTimeout(() => {
+              targetEl.click();
+              targetEl.style.boxShadow = originalBoxShadow;
+              targetEl.style.transition = originalTransition;
+              setTimeout(() => {
+                  if (ripple.parentNode) ripple.parentNode.removeChild(ripple);
+                  onComplete?.();
+              }, 500);
+          }, 300);
+      }, 400);
+  };
+
+  const simulateTypeIntoElement = (targetEl: HTMLInputElement | HTMLTextAreaElement, value: string, onComplete?: () => void) => {
+      if ((targetEl as any).tagName === 'MONACO') {
+          const monacoEditor = (window as any)._currentMonacoEditor;
+          if (monacoEditor) {
+              console.log('[Workflow Runner] Typing character-by-character into Monaco Editor...');
+              
+              // Temporarily disable suggestions to prevent autocomplete crashes during fast automated typing
+              monacoEditor.updateOptions({
+                  quickSuggestions: false,
+                  suggestOnTriggerCharacters: false
+              });
+
+              let i = 0;
+              const typeChar = () => {
+                  if (i <= value.length) {
+                      monacoEditor.setValue(value.substring(0, i));
+                      i++;
+                      setTimeout(typeChar, 30);
+                  } else {
+                      // Re-enable quick suggestions after automated typing completes
+                      monacoEditor.updateOptions({
+                          quickSuggestions: { other: true, comments: false, strings: true },
+                          suggestOnTriggerCharacters: true
+                      });
+                      onComplete?.();
+                  }
+              };
+              typeChar();
+          } else {
+              onComplete?.();
+          }
+          return;
+      }
+
+      targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(() => {
+          const originalBoxShadow = targetEl.style.boxShadow;
+          const originalTransition = targetEl.style.transition;
+          targetEl.style.transition = 'all 0.3s';
+          targetEl.style.boxShadow = '0 0 15px 5px rgba(249,115,22,0.5)';
+          targetEl.focus();
+          
+          let i = 0;
+          const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+          const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+          
+          const typeChar = () => {
+              if (targetEl && i <= value.length) {
+                  const currentVal = value.substring(0, i);
+                  if (targetEl.tagName === 'TEXTAREA' && nativeTextAreaValueSetter) {
+                      nativeTextAreaValueSetter.call(targetEl, currentVal);
+                  } else if (nativeInputValueSetter) {
+                      nativeInputValueSetter.call(targetEl, currentVal);
+                  } else {
+                      targetEl.value = currentVal;
+                  }
+                  targetEl.dispatchEvent(new Event('input', { bubbles: true }));
+                  targetEl.dispatchEvent(new Event('change', { bubbles: true }));
+                  i++;
+                  if (i <= value.length) {
+                      setTimeout(typeChar, 30);
+                  } else {
+                      setTimeout(() => {
+                          targetEl.style.boxShadow = originalBoxShadow;
+                          targetEl.style.transition = originalTransition;
+                          onComplete?.();
+                      }, 500);
+                  }
+              } else {
+                  onComplete?.();
+              }
+          };
+          typeChar();
+      }, 400);
+  };
+
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -60,7 +527,7 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
   useEffect(() => {
     if (isRestored.current) {
         // Phase 5: Cap message history at 50 messages with 512 KB size limit.
-        // localStorage.setItem is synchronous â€” large payloads hurt main thread on every render.
+        // localStorage.setItem is synchronous — large payloads hurt main thread on every render.
         const MAX_MESSAGES = 50;
         const MAX_STORAGE_BYTES = 512 * 1024; // 512 KB
 
@@ -130,69 +597,29 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
           messages: currentMsgs,
           currentPath: pathname
         })
-      });
-
-      const data = await res.json();
+      });      const data = await res.json();
       if (data.success) {
         let responseText = data.text;
         
-        // Intercept Agentic Navigation Commands
-        const navMatch = responseText.match(/\[NAVIGATE:\s*(.+?)\s*\]/i);
-        if (navMatch) {
-          let targetUrl = navMatch[1].trim();
-          
-          // Automatically inject projectId to preserve dashboard context
-          if (project?.project_id && !targetUrl.includes('projectId')) {
-             const separator = targetUrl.includes('?') ? '&' : '?';
-             targetUrl += `${separator}projectId=${project.project_id}`;
-          }
-          
-          router.push(targetUrl);
-          // Clean the hidden command from the visible text bubble
-          responseText = responseText.replace(/\[NAVIGATE:\s*.+?\s*\]/ig, '').trim();
-        }
-
-        // Intercept UI Clicks
-        const clickMatch = responseText.match(/\[CLICK:\s*(.+?)\s*\]/i);
-        if (clickMatch) {
-            const targetText = clickMatch[1].trim();
-            simulateClick(targetText);
-            responseText = responseText.replace(/\[CLICK:\s*.+?\s*\]/ig, '').trim();
-        }
-
-        // Intercept UI Types
-        const typeMatch = responseText.match(/\[TYPE:\s*(.+?)\s*:\s*(.+?)\s*\]/i);
-        if (typeMatch) {
-            const value = typeMatch[1].trim();
-            const locator = typeMatch[2].trim();
-            simulateType(value, locator);
-            responseText = responseText.replace(/\[TYPE:\s*.+?\s*:\s*.+?\s*\]/ig, '').trim();
-        }
-
-        // Intercept Dangerous Agentic Execution Commands
-        const projectMatch = responseText.match(/\[CONFIRM_ACTION:CREATE_PROJECT:(.+?):(.+?)\]/i);
-        const sqlMatch = responseText.match(/\[CONFIRM_ACTION:EXECUTE_SQL:(.+?)\]/i);
+        // Parse workflow steps from response
+        const { steps, cleanText } = parseWorkflow(responseText);
         
-        let pendingActionObj = undefined;
-        if (projectMatch) {
-          const projectName = projectMatch[1].trim();
-          const dialect = projectMatch[2].trim() || 'postgresql';
-          pendingActionObj = { type: "CREATE_PROJECT", projectName, dialect } as any;
-          responseText = responseText.replace(/\[CONFIRM_ACTION:CREATE_PROJECT:.+?\]/ig, '').trim();
-        } else if (sqlMatch) {
-          const query = sqlMatch[1].trim();
-          pendingActionObj = { type: "EXECUTE_SQL", query } as any;
-          responseText = responseText.replace(/\[CONFIRM_ACTION:EXECUTE_SQL:[\s\S]+?\]/ig, '').trim();
-        }
-
         setMessages(prev => [...prev, {
              role: "assistant",
-             content: responseText,
-             pendingAction: pendingActionObj
+             content: cleanText,
+             pendingWorkflow: steps.length > 0 ? { steps } : undefined
         }]);
 
+        if (steps.length > 0) {
+            const workflowObj: ActiveWorkflow = {
+                steps,
+                currentStepIndex: 0
+            };
+            localStorage.setItem('flux_active_workflow', JSON.stringify(workflowObj));
+            setActiveWorkflow(workflowObj);
+        }
 
-        speak(responseText);
+        speak(cleanText);
       } else {
         setMessages(prev => [...prev, { role: "assistant", content: "Oops, my brain disconnected. Please try asking again." }]);
       }
@@ -201,205 +628,6 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
     } finally {
       setIsTyping(false);
     }
-  };
-
-
-
-  const simulateType = (value: string, locator: string) => {
-      setTimeout(() => {
-          const inputs = Array.from(document.querySelectorAll('input, textarea')) as (HTMLInputElement | HTMLTextAreaElement)[];
-          
-          let targetEl: HTMLInputElement | HTMLTextAreaElement | undefined;
-          const cleanLocator = locator.toLowerCase().replace(/[^a-z0-9]/g, '');
-          
-          targetEl = inputs.find(el => {
-              const placeholder = (el.placeholder || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-              const name = (el.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-              const id = (el.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-              const aria = (el.getAttribute('aria-label') || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-              if (!cleanLocator) return false;
-              return (placeholder && (placeholder.includes(cleanLocator) || cleanLocator.includes(placeholder))) ||
-                     (name && (name.includes(cleanLocator) || cleanLocator.includes(name))) ||
-                     (id && (id.includes(cleanLocator) || cleanLocator.includes(id))) ||
-                     (aria && (aria.includes(cleanLocator) || cleanLocator.includes(aria)));
-          });
-
-          if (!targetEl) {
-              const labels = Array.from(document.querySelectorAll('label, div, span, h2, h3, h4'));
-              const targetLabel = labels.find(l => {
-                  const text = (l.textContent || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-                  return text && (text === cleanLocator || text.includes(cleanLocator));
-              });
-              if (targetLabel) {
-                  if ((targetLabel as HTMLLabelElement).htmlFor) {
-                      targetEl = document.getElementById((targetLabel as HTMLLabelElement).htmlFor) as HTMLInputElement;
-                  }
-                  if (!targetEl) {
-                      let wrapper = targetLabel.parentElement;
-                      while (wrapper && !targetEl) {
-                         targetEl = wrapper.querySelector('input, textarea') as HTMLInputElement;
-                         if (!targetEl && wrapper.parentElement) wrapper = wrapper.parentElement;
-                         else break;
-                      }
-                  }
-              }
-          }
-
-          if (targetEl) {
-              targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              setTimeout(() => {
-                  const originalBoxShadow = targetEl!.style.boxShadow;
-                  const originalTransition = targetEl!.style.transition;
-                  targetEl!.style.transition = 'all 0.3s';
-                  targetEl!.style.boxShadow = '0 0 15px 5px rgba(249,115,22,0.5)';
-                  targetEl!.focus();
-                  
-                  let i = 0;
-                  // For React 16+, we need to set the value using the native setter to trigger onChange properly
-                  const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
-                  const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
-                  
-                  const typeChar = () => {
-                      if (targetEl && i <= value.length) {
-                          const currentVal = value.substring(0, i);
-                          if (targetEl.tagName === 'TEXTAREA' && nativeTextAreaValueSetter) {
-                              nativeTextAreaValueSetter.call(targetEl, currentVal);
-                          } else if (nativeInputValueSetter) {
-                              nativeInputValueSetter.call(targetEl, currentVal);
-                          }
-                          targetEl.dispatchEvent(new Event('input', { bubbles: true }));
-                          i++;
-                          if (i <= value.length) {
-                              setTimeout(typeChar, 30);
-                          } else {
-                              setTimeout(() => {
-                                  targetEl!.style.boxShadow = originalBoxShadow;
-                                  targetEl!.style.transition = originalTransition;
-                              }, 500);
-                          }
-                      }
-                  };
-                  typeChar();
-              }, 400);
-          } else {
-              console.warn('Could not find input for:', locator);
-          }
-      }, 100);
-  };
-
-  const simulateClick = (targetText: string) => {
-    setTimeout(() => {
-        const elements = Array.from(document.querySelectorAll('button, a, [role="button"]'));
-        const targetEl = elements.find(el => {
-            const text = (el.textContent || '').trim().toLowerCase();
-            return text && text.includes(targetText.toLowerCase());
-        }) as HTMLElement;
-
-        if (targetEl) {
-            targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            setTimeout(() => {
-                const rect = targetEl.getBoundingClientRect();
-                
-                // Magical Ripple Effect
-                const ripple = document.createElement('div');
-                ripple.style.position = 'absolute'; // Changed to absolute for reliable positioning
-                ripple.style.left = `${rect.left + window.scrollX + rect.width / 2 - 30}px`;
-                ripple.style.top = `${rect.top + window.scrollY + rect.height / 2 - 30}px`;
-                ripple.style.width = '60px';
-                ripple.style.height = '60px';
-                ripple.style.borderRadius = '50%';
-                ripple.style.backgroundColor = 'rgba(249, 115, 22, 0.4)';
-                ripple.style.boxShadow = '0 0 20px rgba(249, 115, 22, 0.6)';
-                ripple.style.pointerEvents = 'none';
-                ripple.style.zIndex = '99999';
-                ripple.style.animation = 'aiClickPulse 0.5s ease-out forwards';
-                
-                if (!document.getElementById('aiClickKeyframes')) {
-                   const style = document.createElement('style');
-                   style.id = 'aiClickKeyframes';
-                   style.innerHTML = `
-                     @keyframes aiClickPulse {
-                        0% { transform: scale(0.5); opacity: 1; }
-                        50% { opacity: 0.8; }
-                        100% { transform: scale(2.5); opacity: 0; }
-                     }
-                   `;
-                   document.head.appendChild(style);
-                }
-
-                document.body.appendChild(ripple);
-
-                // Add magical glow to button temporarily
-                const originalTransition = targetEl.style.transition;
-                const originalBoxShadow = targetEl.style.boxShadow;
-                targetEl.style.transition = 'all 0.3s';
-                targetEl.style.boxShadow = '0 0 15px 5px rgba(249,115,22,0.5)';
-                
-                setTimeout(() => {
-                    targetEl.click();
-                    targetEl.style.boxShadow = originalBoxShadow;
-                    targetEl.style.transition = originalTransition;
-                    setTimeout(() => document.body.removeChild(ripple), 500);
-                }, 300);
-            }, 400);
-        }
-    }, 100);
-  };
-
-  const executePendingAction = (msgIndex: number, action: any) => {
-      // Remove buttons from message and add execution loader
-      setMessages(prev => {
-          const newMsgs = [...prev];
-          delete newMsgs[msgIndex].pendingAction;
-          return [...newMsgs, { role: "assistant", content: "âš™ï¸ Executing action... Please wait." }];
-      });
-
-      if (action.type === "CREATE_PROJECT") {
-          const formData = new FormData();
-          formData.append('projectName', action.projectName);
-          formData.append('dialect', action.dialect);
-          formData.append('timezone', Intl.DateTimeFormat().resolvedOptions().timeZone);
-          
-          createProjectAction(formData).then(result => {
-             setMessages(prev => {
-                 const newMsgs = prev.filter(m => m.content !== "âš™ï¸ Executing action... Please wait.");
-                 if (result.success && result.project) {
-                     setProject(result.project);
-                     router.push('/dashboard/projects');
-                     return [...newMsgs, { role: "assistant", content: `Successfully created and switched to project **${action.projectName}**!` }];
-                 } else {
-                     return [...newMsgs, { role: "assistant", content: `âŒ Failed to execute action: ${result.error}` }];
-                 }
-             });
-          });
-      } else if (action.type === "EXECUTE_SQL") {
-          if (!project) {
-             setMessages(prev => prev.filter(m => m.content !== "âš™ï¸ Executing action... Please wait.").concat({ role: "assistant", content: `âŒ Failed: No project selected.` }));
-             return;
-          }
-          fetch('/api/execute-sql', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ projectId: project.project_id, query: action.query })
-          }).then(res => res.json()).then(result => {
-             setMessages(prev => {
-                 const newMsgs = prev.filter(m => m.content !== "âš™ï¸ Executing action... Please wait.");
-                 if (result.success) {
-                     return [...newMsgs, { role: "assistant", content: `Successfully executed SQL query: \`${action.query}\`` }];
-                 } else {
-                     return [...newMsgs, { role: "assistant", content: `âŒ Failed to execute SQL: ${result.error?.message || 'Unknown error'}` }];
-                 }
-             });
-          });
-      }
-  };
-
-  const cancelPendingAction = (msgIndex: number) => {
-      setMessages(prev => {
-          const newMsgs = [...prev];
-          delete newMsgs[msgIndex].pendingAction;
-          return [...newMsgs, { role: "assistant", content: "Action cancelled stringently. What else can I help with?" }];
-      });
   };
 
   // ── Professional markdown renderer ──────────────────────────────────────────
@@ -558,20 +786,23 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
                     }`}
                   >
                     {formatText(msg.content)}
-                    {msg.pendingAction && (
-                      <div className="mt-3 pt-3 border-t border-border/40 flex gap-2">
-                        <button
-                          onClick={() => executePendingAction(idx, msg.pendingAction)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-medium border border-emerald-500/20 transition-colors"
-                        >
-                          <CheckCircle2 size={11} /> Approve
-                        </button>
-                        <button
-                          onClick={() => cancelPendingAction(idx)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-destructive/10 hover:bg-destructive/20 text-destructive text-xs font-medium border border-destructive/20 transition-colors"
-                        >
-                          <XCircle size={11} /> Cancel
-                        </button>
+                    {msg.pendingWorkflow && (
+                      <div className="mt-3 pt-3 border-t border-border/40 space-y-2">
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider font-mono">Suggested Actions:</p>
+                        <div className="space-y-1 pl-1">
+                          {msg.pendingWorkflow.steps.map((step, sIdx) => (
+                            <div key={sIdx} className="text-xs flex items-center gap-1.5 text-foreground/85">
+                              <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                              <span className="leading-tight">
+                                {step.type === 'NAVIGATE' && `Navigate to ${step.path}`}
+                                {step.type === 'CLICK' && `Click "${step.elementId}"`}
+                                {step.type === 'TYPE' && `Type "${step.value}" into "${step.locator}"`}
+                                {step.type === 'CONFIRM_ACTION' && step.actionType === 'CREATE_PROJECT' && `Create project "${step.projectName}"`}
+                                {step.type === 'CONFIRM_ACTION' && step.actionType === 'EXECUTE_SQL' && `Execute SQL: "${step.query}"`}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>

@@ -21,7 +21,7 @@ interface Backup {
 }
 
 const formatBytes = (bytes?: number) => {
-    if (!bytes) return 'â€”';
+    if (!bytes) return '—';
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -144,14 +144,14 @@ export default function BackupsPage() {
                 <div className="flex items-center gap-3 bg-destructive/10 border border-destructive/30 text-destructive rounded-lg px-4 py-3 text-sm">
                     <AlertCircle className="h-4 w-4 shrink-0" />
                     <span className="flex-1">{actionError}</span>
-                    <button onClick={() => setActionError(null)} className="ml-auto opacity-70 hover:opacity-100"><span>âœ•</span></button>
+                    <button onClick={() => setActionError(null)} className="ml-auto opacity-70 hover:opacity-100"><span>✖</span></button>
                 </div>
             )}
             {actionSuccess && (
                 <div className="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-lg px-4 py-3 text-sm">
                     <CheckCircle2 className="h-4 w-4 shrink-0" />
                     <span className="flex-1">{actionSuccess}</span>
-                    <button onClick={() => setActionSuccess(null)} className="ml-auto opacity-70 hover:opacity-100"><span>âœ•</span></button>
+                    <button onClick={() => setActionSuccess(null)} className="ml-auto opacity-70 hover:opacity-100"><span>✖</span></button>
                 </div>
             )}
 
@@ -227,7 +227,7 @@ export default function BackupsPage() {
                             This will restore your database to the state at <strong className="text-foreground">{confirmRestore && format(new Date(confirmRestore.createdAt), 'MMM d, yyyy HH:mm')}</strong>.
                         </p>
                         <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 text-xs text-yellow-300">
-                            âš ï¸ This action is irreversible. All data changes made after this backup snapshot will be permanently lost.
+                            ⚠️ This action is irreversible. All data changes made after this backup snapshot will be permanently lost.
                         </div>
                     </div>
                     <DialogFooter>

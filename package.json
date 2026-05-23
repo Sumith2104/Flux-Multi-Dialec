@@ -11,7 +11,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "postinstall": "npx playwright install chromium"
+    "postinstall": "npx playwright install chromium && node scripts/copy-monaco.js"
   },
   "dependencies": {
     "@aws-sdk/client-cloudwatch": "^3.1002.0",

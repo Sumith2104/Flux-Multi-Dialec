@@ -240,7 +240,7 @@ export default function StoragePage() {
                         <HardDrive className="h-7 w-7 shrink-0 text-primary sm:h-8 sm:w-8" /> Storage
                     </h1>
                     <p className="mt-1 text-sm leading-6 text-muted-foreground sm:text-base">
-                        Secure file storage backed by AWS S3 â€” private by default, signed URLs on demand.
+                        Secure file storage backed by AWS S3 — private by default, signed URLs on demand.
                     </p>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                         <Badge variant="outline" className="bg-primary/5 border-primary/20 text-primary font-mono text-xs px-2.5 py-1">
