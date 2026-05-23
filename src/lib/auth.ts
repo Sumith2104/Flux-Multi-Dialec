@@ -74,6 +74,7 @@ export async function createSessionCookie(uid: string, isMfaVerified: boolean = 
             path: '/',
             sameSite: 'lax',
         });
+
     } catch (error) {
         console.error("Failed to create session cookie:", error);
         throw new Error("Authentication failed");
@@ -114,12 +115,24 @@ export async function getAuthContextFromRequest(request: Request): Promise<AuthC
              return { status, email };
         }
         try {
+            const { redis } = await import('@/lib/redis');
+            const redisKey = `user_status:${uid}`;
+            const redisCached = await redis.get<string>(redisKey);
+            if (redisCached) {
+                const [status, email] = redisCached.split(':');
+                _userStatusCache.set(uid, redisCached);
+                return { status, email };
+            }
+
             const { getPgPool } = await import('@/lib/pg');
             const pool = getPgPool();
             const res = await pool.query('SELECT status, email FROM fluxbase_global.users WHERE id = $1', [uid]);
             const status = res.rows[0]?.status || 'active';
             const email = res.rows[0]?.email || '';
-            _userStatusCache.set(uid, `${status}:${email}`);
+            const valStr = `${status}:${email}`;
+            
+            _userStatusCache.set(uid, valStr);
+            await redis.set(redisKey, valStr, { ex: 300 }); // Cache in Redis for 5 minutes
             return { status, email };
         } catch {
             return { status: 'active', email: '' };
@@ -193,6 +206,13 @@ export async function getAuthContextFromRequest(request: Request): Promise<AuthC
 export async function invalidateAuthCache(userId: string) {
     _userStatusCache.delete(userId);
     _authContextCache.delete(`cookie:${userId}`);
+    
+    try {
+        const { redis } = await import('@/lib/redis');
+        await redis.del(`user_status:${userId}`);
+    } catch (e) {
+        console.warn('[Redis Error] invalidateAuthCache Redis delete failed:', e);
+    }
     
     if (_authContextCache.size === 0) return;
 

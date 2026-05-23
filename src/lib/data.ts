@@ -191,6 +191,14 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
     if (cached !== undefined) return cached;
 
     try {
+        const { redis } = await import('@/lib/redis');
+        const redisKey = `project_meta:${projectId}:${userId}`;
+        const redisCached = await redis.get<Project>(redisKey);
+        if (redisCached) {
+            _projectCache.set(cacheKey, redisCached);
+            return redisCached;
+        }
+
         const pool = getPgPool();
         const result = await pool.query(`
             SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.user_id as owner_id, p.ai_allow_destructive, p.ai_schema_inference, p.status,
@@ -217,6 +225,7 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
             status: row.status || 'active'
         };
         _projectCache.set(cacheKey, project);
+        await redis.set(redisKey, project, { ex: 300 }); // Cache in Redis for 5 minutes
         return project;
     } catch (error) {
         console.error("Error fetching project:", error);
@@ -231,13 +240,24 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
 export async function invalidateProjectCache(projectId: string) {
     // Since cache keys are composite (projectId:userId), we iterate and clear all for this projectId.
     // Optimization: Only iterate if we have entries.
-    if (_projectCache.size === 0) return;
-    
-    const keys = _projectCache.keys();
-    for (const key of keys) {
-        if (key.startsWith(`${projectId}:`)) {
-            _projectCache.delete(key);
+    if (_projectCache.size > 0) {
+        const keys = _projectCache.keys();
+        for (const key of keys) {
+            if (key.startsWith(`${projectId}:`)) {
+                _projectCache.delete(key);
+            }
         }
+    }
+
+    // Invalidate Redis cache
+    try {
+        const { redis } = await import('@/lib/redis');
+        const keys = await redis.keys(`project_meta:${projectId}:*`);
+        if (keys && keys.length > 0) {
+            await redis.del(...keys);
+        }
+    } catch (e) {
+        console.warn('[Redis Error] invalidateProjectCache failed:', e);
     }
 }
 

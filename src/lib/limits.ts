@@ -153,6 +153,23 @@ export async function checkProjectTrafficLimits(projectId: string): Promise<void
         return; // Success is cached
     }
 
+    const redisKey = `traffic_limit_check:${projectId}`;
+    try {
+        const { redis } = await import('@/lib/redis');
+        const redisCached = await redis.get<string | null>(redisKey);
+        if (redisCached !== null && redisCached !== undefined) {
+            if (redisCached === 'OK') {
+                trafficLimitCache.set(projectId, { timestamp: now, error: null });
+                return;
+            } else {
+                trafficLimitCache.set(projectId, { timestamp: now, error: redisCached });
+                throw new LimitExceededError(redisCached);
+            }
+        }
+    } catch (e) {
+        console.warn('[Redis Error] checkProjectTrafficLimits cache read failed:', e);
+    }
+
     try {
         const pool = getPgPool();
         const pRes = await pool.query(`
@@ -162,6 +179,10 @@ export async function checkProjectTrafficLimits(projectId: string): Promise<void
         
         if (pRes.rows.length === 0) {
             trafficLimitCache.set(projectId, { timestamp: now, error: null });
+            try {
+                const { redis } = await import('@/lib/redis');
+                await redis.set(redisKey, 'OK', { ex: 300 });
+            } catch {}
             return;
         }
         const pConfig = pRes.rows[0];
@@ -171,6 +192,10 @@ export async function checkProjectTrafficLimits(projectId: string): Promise<void
         const stats = await getAnalyticsStatsAction(projectId);
         if (!stats) {
             trafficLimitCache.set(projectId, { timestamp: now, error: null });
+            try {
+                const { redis } = await import('@/lib/redis');
+                await redis.set(redisKey, 'OK', { ex: 300 });
+            } catch {}
             return;
         }
 
@@ -178,6 +203,10 @@ export async function checkProjectTrafficLimits(projectId: string): Promise<void
         if (pConfig.custom_request_limit && stats.total_requests > pConfig.custom_request_limit) {
             const err = `Rate limit exceeded. Project has exceeded its custom total request limit of ${pConfig.custom_request_limit}.`;
             trafficLimitCache.set(projectId, { timestamp: now, error: err });
+            try {
+                const { redis } = await import('@/lib/redis');
+                await redis.set(redisKey, err, { ex: 300 });
+            } catch {}
             throw new LimitExceededError(err);
         }
 
@@ -186,6 +215,10 @@ export async function checkProjectTrafficLimits(projectId: string): Promise<void
         if (pConfig.custom_api_limit && totalApi > pConfig.custom_api_limit) {
             const err = `Rate limit exceeded. Project has exceeded its custom API/Query limit of ${pConfig.custom_api_limit}.`;
             trafficLimitCache.set(projectId, { timestamp: now, error: err });
+            try {
+                const { redis } = await import('@/lib/redis');
+                await redis.set(redisKey, err, { ex: 300 });
+            } catch {}
             throw new LimitExceededError(err);
         }
 
@@ -209,6 +242,10 @@ export async function checkProjectTrafficLimits(projectId: string): Promise<void
 
         // Cache the successful check
         trafficLimitCache.set(projectId, { timestamp: now, error: null });
+        try {
+            const { redis } = await import('@/lib/redis');
+            await redis.set(redisKey, 'OK', { ex: 300 }); // Cache for 5 minutes
+        } catch {}
 
     } catch (error) {
         if (error instanceof LimitExceededError) throw error;

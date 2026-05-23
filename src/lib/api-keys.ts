@@ -1,5 +1,6 @@
 import { getPgPool } from '@/lib/pg';
 import { randomBytes, createHash } from 'crypto';
+import { redis } from '@/lib/redis';
 
 export interface ApiKey {
     id: string; // The document ID (which is the hash of the key)
@@ -46,22 +47,45 @@ export async function generateApiKey(userId: string, name: string, projectId?: s
 
 export async function validateApiKey(rawKey: string): Promise<{ userId: string, projectId?: string, scopes: string[] } | null> {
     const hash = createHash('sha256').update(rawKey).digest('hex');
+    const redisKey = `val_api_key:${hash}`;
+
+    try {
+        const cached = await redis.get<any>(redisKey);
+        if (cached) {
+            // Async update last used (non-blocking)
+            const pool = getPgPool();
+            pool.query('UPDATE fluxbase_global.api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE id = $1', [hash]).catch(err =>
+                console.error('Failed to update API key stats:', err)
+            );
+            return cached;
+        }
+    } catch (e) {
+        console.warn('[Redis Error] validateApiKey cache read failed:', e);
+    }
 
     const pool = getPgPool();
     const result = await pool.query('SELECT user_id, project_id, scopes FROM fluxbase_global.api_keys WHERE id = $1', [hash]);
 
     if (result.rows.length === 0) return null;
 
+    const apiKeyInfo = {
+        userId: result.rows[0].user_id,
+        projectId: result.rows[0].project_id || undefined,
+        scopes: result.rows[0].scopes || ['read']
+    };
+
+    try {
+        await redis.set(redisKey, apiKeyInfo, { ex: 300 }); // Cache in Redis for 5 minutes
+    } catch (e) {
+        console.warn('[Redis Error] validateApiKey cache write failed:', e);
+    }
+
     // Async update last used
     pool.query('UPDATE fluxbase_global.api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE id = $1', [hash]).catch(err =>
         console.error('Failed to update API key stats:', err)
     );
 
-    return {
-        userId: result.rows[0].user_id,
-        projectId: result.rows[0].project_id,
-        scopes: result.rows[0].scopes || ['read']
-    };
+    return apiKeyInfo;
 }
 
 export async function listApiKeys(userId: string): Promise<ApiKey[]> {
@@ -87,5 +111,13 @@ export async function revokeApiKey(userId: string, keyId: string): Promise<void>
 
     if (result.rowCount === 0) {
         throw new Error("Key not found or unauthorized");
+    }
+
+    // Invalidate Redis cache
+    const redisKey = `val_api_key:${keyId}`;
+    try {
+        await redis.del(redisKey);
+    } catch (e) {
+        console.warn('[Redis Error] revokeApiKey cache delete failed:', e);
     }
 }

@@ -7,6 +7,9 @@ declare global {
     var _pool: Pool | undefined;
 }
 
+const isServerless = process.env.VERCEL === '1' || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+const defaultPoolMax = isServerless ? '2' : '15';
+
 export const pool = global._pool || new Pool({
     connectionString: process.env.AWS_RDS_POSTGRES_URL,
     // [STABILITY FIX]: Enable SSL automatically if connecting to RDS, even in local dev.
@@ -14,8 +17,8 @@ export const pool = global._pool || new Pool({
     ssl: process.env.AWS_RDS_POSTGRES_URL?.includes('rds.amazonaws.com') 
         ? { rejectUnauthorized: false } 
         : (process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false),
-    max: parseInt(process.env.DATABASE_POOL_MAX || '10', 10),
-    idleTimeoutMillis: 60000,
+    max: parseInt(process.env.DATABASE_POOL_MAX || defaultPoolMax, 10),
+    idleTimeoutMillis: 30000, // Close idle connections faster in serverless
     connectionTimeoutMillis: 5000, // Increased timeout for cross-region stability
     keepAlive: true,
 });
