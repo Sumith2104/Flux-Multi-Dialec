@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Play, Save, Download, Loader2, Plus, AlignLeft, Activity, Share2, Upload } from 'lucide-react';
 import { Button } from './ui/button';
@@ -128,6 +128,7 @@ interface SqlEditorProps {
 export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, results }: SqlEditorProps) {
     const editorRef = useRef<any>(null);
     const { toast } = useToast();
+    const [editorInstance, setEditorInstance] = useState<any>(null);
 
     // Fetch schema — used only to populate the module-level ref
     const { data: schema } = useQuery({
@@ -159,9 +160,7 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
 
     const handleEditorMount = (editor: any, monaco: any) => {
         editorRef.current = editor;
-        if (typeof window !== 'undefined') {
-            (window as any)._currentMonacoEditor = editor;
-        }
+        setEditorInstance(editor);
 
         // Keyboard shortcuts
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => handleRunClick());
@@ -173,8 +172,11 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
         });
     };
 
-    // Monaco GC — clean up editor ref on unmount
+    // Monaco GC & Global Ref Sync
     useEffect(() => {
+        if (typeof window !== 'undefined' && editorInstance) {
+            (window as any)._currentMonacoEditor = editorInstance;
+        }
         return () => {
             if (editorRef.current) {
                 editorRef.current = null;
@@ -183,7 +185,7 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
                 delete (window as any)._currentMonacoEditor;
             }
         };
-    }, []);
+    }, [editorInstance]);
 
     const handleRunClick = () => {
         if (editorRef.current) {
