@@ -47,7 +47,7 @@ export function SchemaExplorer({ projectId, onInsertQuery }: { projectId?: strin
             return data as SchemaData;
         },
         enabled: !!projectId,
-        staleTime: 5 * 60 * 1000, // 5 minute stale time, rely on RT invalidation
+        staleTime: 0,
         gcTime: 30 * 60 * 1000, 
     });
 

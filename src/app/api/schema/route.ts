@@ -4,6 +4,8 @@ import { SqlEngine } from '@/lib/sql-engine';
 import { getProjectById } from '@/lib/data';
 import { redis } from '@/lib/redis';
 
+import { getProjectDbAndSchema } from '@/lib/tenant-pools';
+
 // Response Schema: { tables: { tableName: ["col1", "col2"] } }
 export async function GET(request: Request) {
     try {
@@ -51,7 +53,8 @@ export async function GET(request: Request) {
             }
         }
 
-        const engine = new SqlEngine(projectId, auth.userId);
+        const { dbName, schemaName } = getProjectDbAndSchema(project);
+        const engine = new SqlEngine(projectId, auth.userId, undefined, undefined, project);
 
         // Fetch tables and their columns efficiently
         // We do not use the AST here because we want raw information_schema querying
@@ -60,18 +63,18 @@ export async function GET(request: Request) {
         
         if (project.dialect === 'mysql') {
             [resultTables, resultViews, resultIndexes, resultFunctions] = await Promise.all([
-                engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'project_${projectId}' AND table_name NOT LIKE '\_flux\_internal\_%';`),
-                engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = 'project_${projectId}' AND table_name NOT LIKE '\_flux\_internal\_%';`),
-                engine.execute(`SELECT index_name, table_name FROM information_schema.statistics WHERE table_schema = 'project_${projectId}';`),
-                engine.execute(`SELECT routine_name FROM information_schema.routines WHERE routine_schema = 'project_${projectId}' AND routine_type = 'FUNCTION';`)
+                engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = ? AND table_name NOT LIKE '\\_flux\\_internal\\_%';`, [dbName]),
+                engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = ? AND table_name NOT LIKE '\\_flux\\_internal\\_%';`, [dbName]),
+                engine.execute(`SELECT index_name, table_name FROM information_schema.statistics WHERE table_schema = ?;`, [dbName]),
+                engine.execute(`SELECT routine_name FROM information_schema.routines WHERE routine_schema = ? AND routine_type = 'FUNCTION';`, [dbName])
             ]);
             resultExtensions = { rows: [] }; // MySQL doesn't natively use Extensions in this standard format
         } else {
             [resultTables, resultViews, resultIndexes, resultFunctions, resultExtensions] = await Promise.all([
-                engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'project_${projectId}' AND table_name NOT LIKE '\_flux\_internal\_%' ORDER BY table_name, ordinal_position;`),
-                engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = 'project_${projectId}' AND table_name NOT LIKE '\_flux\_internal\_%';`),
-                engine.execute(`SELECT indexname, tablename FROM pg_indexes WHERE schemaname = 'project_${projectId}';`),
-                engine.execute(`SELECT routine_name FROM information_schema.routines WHERE routine_schema = 'project_${projectId}' AND routine_type = 'FUNCTION';`),
+                engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = $1 AND table_name NOT LIKE '\\_flux\\_internal\\_%' ORDER BY table_name, ordinal_position;`, [schemaName]),
+                engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = $1 AND table_name NOT LIKE '\\_flux\\_internal\\_%';`, [schemaName]),
+                engine.execute(`SELECT indexname, tablename FROM pg_indexes WHERE schemaname = $1;`, [schemaName]),
+                engine.execute(`SELECT routine_name FROM information_schema.routines WHERE routine_schema = $1 AND routine_type = 'FUNCTION';`, [schemaName]),
                 engine.execute(`SELECT extname FROM pg_extension;`)
             ]);
         }

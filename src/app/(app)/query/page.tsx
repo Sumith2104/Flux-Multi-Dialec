@@ -367,13 +367,14 @@ export default function QueryPage() {
 
           <TabsContent value="schema" className="m-0 min-h-0 flex-1 overflow-hidden rounded-lg bg-card">
             <div className="h-[calc(100dvh-145px)] overflow-hidden">
-              <SchemaExplorer projectId={project?.project_id} onInsertQuery={setQuery} />
+              <SchemaExplorer key={project?.project_id || 'no-project'} projectId={project?.project_id} onInsertQuery={setQuery} />
             </div>
           </TabsContent>
 
           <TabsContent value="editor" className="m-0 min-h-0 flex-1 overflow-hidden rounded-lg bg-card">
             <div className="h-[calc(100dvh-145px)] overflow-hidden">
               <SqlEditor
+                key={project?.project_id || 'no-project'}
                 projectId={project?.project_id}
                 query={query}
                 setQuery={setQuery}
@@ -517,7 +518,7 @@ export default function QueryPage() {
 
             {/* 1. LEFT SIDEBAR: Schema Explorer */}
             <ResizablePanel defaultSize={20} minSize={15} className="flex flex-col border-r bg-muted/5 min-w-[200px]">
-              <SchemaExplorer projectId={project?.project_id} onInsertQuery={setQuery} />
+              <SchemaExplorer key={project?.project_id || 'no-project'} projectId={project?.project_id} onInsertQuery={setQuery} />
             </ResizablePanel>
 
             <ResizableHandle withHandle />
@@ -559,6 +560,7 @@ export default function QueryPage() {
               </div>
               <div className="flex-grow overflow-hidden relative">
                 <SqlEditor
+                  key={project?.project_id || 'no-project'}
                   projectId={project?.project_id}
                   query={query}
                   setQuery={setQuery}

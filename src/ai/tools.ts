@@ -14,8 +14,22 @@ export const getSchemaTool = ai.defineTool({
   try {
     const { SqlEngine } = await import('@/lib/sql-engine');
     const { getCurrentUserId } = await import('@/lib/auth');
-    const engine = new SqlEngine(input.projectId, await getCurrentUserId() || 'system_ai'); 
-    const tables = await engine.execute(`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'project_${input.projectId}' AND table_name NOT LIKE '\\_flux\\_internal\\_%';`);
+    const { getProjectById } = await import('@/lib/data');
+    const { getProjectDbAndSchema } = await import('@/lib/tenant-pools');
+
+    const userId = await getCurrentUserId() || 'system_ai';
+    const project = await getProjectById(input.projectId, userId);
+    if (!project) throw new Error("Project not found");
+
+    const { dbName, schemaName } = getProjectDbAndSchema(project);
+    const targetSchemaOrDb = project.dialect === 'mysql' ? dbName : schemaName;
+    const engine = new SqlEngine(input.projectId, userId, undefined, undefined, project); 
+
+    const query = project.dialect === 'mysql'
+      ? `SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = ? AND table_name NOT LIKE '\\_flux\\_internal\\_%';`
+      : `SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name NOT LIKE '\\_flux\\_internal\\_%';`;
+
+    const tables = await engine.execute(query, [targetSchemaOrDb]);
     
     if (tables && tables.rows) {
         const schemaGraph: Record<string, string[]> = {};

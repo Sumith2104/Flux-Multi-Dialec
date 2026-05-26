@@ -150,7 +150,7 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
             return (data.success && data.tables) ? data : null;
         },
         enabled: !!projectId,
-        staleTime: 5 * 60 * 1000,
+        staleTime: 0,
     });
 
     // Keep the module-level ref in sync with latest schema.
