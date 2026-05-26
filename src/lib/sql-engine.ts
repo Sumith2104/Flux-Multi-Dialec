@@ -5,6 +5,7 @@ import { redis } from '@/lib/redis';
 import { Ratelimit } from '@upstash/ratelimit';
 import { getPgPool } from '@/lib/pg';
 import { ERROR_CODES, FluxbaseError, FluxbaseErrorCode } from '@/lib/error-codes';
+import { getTenantPgPool, getTenantMysqlPool, getProjectDbAndSchema } from '@/lib/tenant-pools';
 
 // --- 1. Distributed Rate Limiting Configuration ---
 const tenantRateLimit = new Ratelimit({
@@ -59,8 +60,11 @@ export class SqlEngine {
         }
         if (!this.userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
+        if (!this.projectObj) {
+            this.projectObj = await getProjectById(this.projectId, this.userId);
+        }
+        const project = this.projectObj;
         if (!this.projectTimezone || !this.projectDialect) {
-            const project = this.projectObj || await getProjectById(this.projectId, this.userId);
             if (project?.timezone) {
                 this.projectTimezone = project.timezone;
             }
@@ -149,12 +153,12 @@ export class SqlEngine {
             }
 
             if (this.projectDialect?.toLowerCase() === 'mysql') {
-                const { getMysqlPool } = await import('@/lib/mysql');
-                const mysqlPool = getMysqlPool();
+                const mysqlPool = await getTenantMysqlPool(this.projectObj!);
+                const { dbName } = getProjectDbAndSchema(this.projectObj!);
                 const connection = await mysqlPool.getConnection();
 
                 try {
-                    await connection.query(`USE \`project_${this.projectId}\``);
+                    await connection.query(`USE \`${dbName}\``);
                     
                     if (this.projectTimezone) {
                         connection.query(`SET time_zone = ?`, [this.projectTimezone]).catch(() => {});
@@ -215,7 +219,8 @@ export class SqlEngine {
                 }
 
             } else {
-                const pool = getPgPool();
+                const pool = await getTenantPgPool(this.projectObj!);
+                const { schemaName } = getProjectDbAndSchema(this.projectObj!);
                 const client = await pool.connect();
 
                 try {
@@ -224,7 +229,7 @@ export class SqlEngine {
                                set_config('fluxbase.auth_uid', $2, true), 
                                set_config('timezone', $3, false);
                     `;
-                    const sessionParams = [`project_${this.projectId}`, this.userId || '', this.projectTimezone || 'UTC'];
+                    const sessionParams = [schemaName, this.userId || '', this.projectTimezone || 'UTC'];
                     
                     await client.query(sessionSetupSql, sessionParams);
                     const result = await client.query(queryCleaned, params || []);
@@ -312,9 +317,8 @@ export class SqlEngine {
             let generatedCount = 0;
 
             if (this.projectDialect?.toLowerCase() === 'mysql') {
-                const { getMysqlPool } = await import('@/lib/mysql');
-                const mysqlPool = getMysqlPool();
-                const dbName = 'project_' + this.projectId;
+                const mysqlPool = await getTenantMysqlPool(this.projectObj!);
+                const { dbName } = getProjectDbAndSchema(this.projectObj!);
                 const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
 
                 for (let i = 0; i < count; i++) {
@@ -359,8 +363,8 @@ export class SqlEngine {
                 };
 
             } else {
-                const pool = getPgPool();
-                const schemaName = 'project_' + this.projectId;
+                const pool = await getTenantPgPool(this.projectObj!);
+                const { schemaName } = getProjectDbAndSchema(this.projectObj!);
                 const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
 
                 for (let i = 0; i < count; i++) {

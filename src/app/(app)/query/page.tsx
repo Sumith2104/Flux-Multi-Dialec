@@ -204,8 +204,9 @@ export default function QueryPage() {
     // Smart Refresh: Check if the affected table name exists in the current query string
     // This prevents unnecessary refreshes for unrelated background tasks.
     const isRelevant = new RegExp(`\\b${affectedTable}\\b`, 'i').test(query);
+    const isReadOnly = /^\s*(SELECT|WITH)\b/i.test(query);
 
-    if (isRelevant) {
+    if (isRelevant && isReadOnly) {
       console.log(`[Realtime SQL] Detected change in '${affectedTable}'. Refreshing results...`);
       handleRunQuery();
     }

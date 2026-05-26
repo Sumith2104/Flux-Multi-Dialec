@@ -10,8 +10,36 @@ export async function createWidgetAction(projectId: string, title: string, chart
     const userId = await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
     
-    await saveDashboardWidget(projectId, userId, title, chartType, query, config);
+    const id = await saveDashboardWidget(projectId, userId, title, chartType, query, config);
     revalidatePath('/analytics');
+    return {
+        id,
+        title,
+        chart_type: chartType,
+        query,
+        config: typeof config === 'string' ? config : JSON.stringify(config),
+        created_at: new Date().toISOString()
+    };
+}
+
+export async function createWidgetsAction(projectId: string, widgets: Array<{ title: string, chartType: string, query: string, config: any }>) {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error("Unauthorized");
+
+    const createdWidgets = [];
+    for (const w of widgets) {
+        const id = await saveDashboardWidget(projectId, userId, w.title, w.chartType, w.query, w.config);
+        createdWidgets.push({
+            id,
+            title: w.title,
+            chart_type: w.chartType,
+            query: w.query,
+            config: typeof w.config === 'string' ? w.config : JSON.stringify(w.config),
+            created_at: new Date().toISOString()
+        });
+    }
+    revalidatePath('/analytics');
+    return createdWidgets;
 }
 
 export async function removeWidgetAction(projectId: string, widgetId: string) {

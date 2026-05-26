@@ -130,6 +130,17 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
     const { toast } = useToast();
     const [editorInstance, setEditorInstance] = useState<any>(null);
 
+    // Stale closure guards for Monaco and event listeners
+    const onRunRef = useRef(onRun);
+    const queryRef = useRef(query);
+    const setQueryRef = useRef(setQuery);
+
+    useEffect(() => {
+        onRunRef.current = onRun;
+        queryRef.current = query;
+        setQueryRef.current = setQuery;
+    }, [onRun, query, setQuery]);
+
     // Fetch schema — used only to populate the module-level ref
     const { data: schema } = useQuery({
         queryKey: ['schema', projectId],
@@ -152,7 +163,7 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
         }
     }, [schema]);
 
-    // beforeMount â€” fires ONCE on the Monaco singleton before any editor renders.
+    // beforeMount — fires ONCE on the Monaco singleton before any editor renders.
     // This is the correct place to register global providers.
     const handleBeforeMount = (monaco: any) => {
         ensureProviderRegistered(monaco);
@@ -192,18 +203,18 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
             const selection = editorRef.current.getSelection();
             if (selection && !selection.isEmpty()) {
                 const selected = editorRef.current.getModel().getValueInRange(selection).trim();
-                if (selected) { onRun(selected); return; }
+                if (selected) { onRunRef.current(selected); return; }
             }
-            onRun(editorRef.current.getModel().getValue().trim());
+            onRunRef.current(editorRef.current.getModel().getValue().trim());
             return;
         }
-        onRun();
+        onRunRef.current();
     };
 
-    const handleNewQuery = () => { setQuery(''); editorRef.current?.focus(); };
+    const handleNewQuery = () => { setQueryRef.current(''); editorRef.current?.focus(); };
 
     const handleFormatSql = () => {
-        const q = editorRef.current?.getModel().getValue() || query;
+        const q = editorRef.current?.getModel().getValue() || queryRef.current;
         if (!q.trim()) return;
         const formatted = q
             .replace(/\s+/g, ' ')
@@ -211,7 +222,7 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
             .replace(/WHERE/gi, '\nWHERE').replace(/GROUP BY/gi, '\nGROUP BY')
             .replace(/ORDER BY/gi, '\nORDER BY').replace(/LIMIT/gi, '\nLIMIT')
             .trim();
-        setQuery(formatted);
+        setQueryRef.current(formatted);
         toast({ title: 'SQL Formatted', description: 'Query has been pretty-printed.' });
     };
 
@@ -222,7 +233,7 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
             const file = e.target.files?.[0]; if (!file) return;
             const reader = new FileReader();
             reader.onload = (ev) => {
-                setQuery(ev.target?.result as string);
+                setQueryRef.current(ev.target?.result as string);
                 toast({ title: 'SQL Imported', description: `Loaded ${file.name}` });
             };
             reader.readAsText(file);
@@ -230,10 +241,10 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
         input.click();
     };
 
-    const handleExplainQuery = () => onRun(`EXPLAIN ANALYZE ${query}`);
+    const handleExplainQuery = () => onRunRef.current(`EXPLAIN ANALYZE ${queryRef.current}`);
     const handleSaveQuery = () => toast({ title: 'Query Saved', description: 'Saved to Project Workspace.' });
     const handleShareQuery = () => {
-        navigator.clipboard.writeText(query);
+        navigator.clipboard.writeText(queryRef.current);
         toast({ title: 'Copied', description: 'Query copied to clipboard.' });
     };
 

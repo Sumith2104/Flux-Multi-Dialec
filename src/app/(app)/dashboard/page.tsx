@@ -1,11 +1,11 @@
 
 'use client';
 
-import { useContext } from 'react';
+import { useContext, useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Plus, Edit } from "lucide-react"
+import { Plus, Edit, Sparkles } from "lucide-react"
 import Link from "next/link"
 import { getTablesForProject, Table as DbTable, getProjectAnalytics, ProjectAnalytics } from "@/lib/data";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,57 @@ import { ProjectContext } from '@/contexts/project-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRealtimeAnalytics } from '@/hooks/use-realtime-analytics';
 import { useProjectHistory } from '@/hooks/use-project-history';
+import { getDashboardWidgetsAction } from './analytics-actions';
+import { AsyncWidget } from '@/app/(app)/analytics/client';
+import { Responsive as ResponsiveGridLayout } from 'react-grid-layout';
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
+
+const ResponsiveGrid = ResponsiveGridLayout as any;
+
+function DashboardCustomWidgetsGrid({ widgets, projectId }: { widgets: any[], projectId: string }) {
+    const [width, setWidth] = useState(1200);
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!ref.current) return;
+        const observer = new ResizeObserver(entries => {
+            if (entries[0]) {
+                setWidth(entries[0].contentRect.width);
+            }
+        });
+        observer.observe(ref.current);
+        return () => observer.disconnect();
+    }, []);
+
+    const layoutMap = widgets.map((w, i) => {
+        const configObj = typeof w.config === 'string' ? JSON.parse(w.config || '{}') : (w.config || {});
+        return configObj.layout || { i: w.id, x: (i * 4) % 12, y: Infinity, w: 4, h: 10 };
+    });
+
+    return (
+        <div ref={ref} className="w-full pb-6">
+            <ResponsiveGrid
+                className="layout"
+                width={width}
+                layouts={{ lg: layoutMap }}
+                breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+                cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
+                rowHeight={30}
+                compactType="vertical"
+                preventCollision={false}
+                isDraggable={false}
+                isResizable={false}
+            >
+                {widgets.map((widget: any) => (
+                    <div key={widget.id}>
+                        <AsyncWidget projectId={projectId} widget={widget} />
+                    </div>
+                ))}
+            </ResponsiveGrid>
+        </div>
+    );
+}
 
 export default function DashboardPage() {
     const { project: selectedProject } = useContext(ProjectContext);
@@ -47,6 +98,16 @@ export default function DashboardPage() {
         staleTime: 30 * 1000,
         gcTime: 5 * 60 * 1000,
     });
+
+    // Custom Pinned Widgets
+    const { data: widgets = [], isLoading: widgetsLoading } = useQuery({
+        queryKey: ['dashboard-widgets', selectedProject?.project_id],
+        queryFn: () => getDashboardWidgetsAction(selectedProject!.project_id),
+        enabled: !!selectedProject,
+        staleTime: 30 * 1000,
+        gcTime: 5 * 60 * 1000,
+    });
+
 
     const loading = tablesLoading || analyticsLoading;
 
@@ -158,6 +219,49 @@ export default function DashboardPage() {
                         )}
                     </div>
                 </div>
+
+
+                {/* Custom Widgets Section */}
+                {widgetsLoading ? (
+                    <Card className="border border-border/50 bg-background/50 relative overflow-hidden">
+                        <CardHeader className="py-4 px-6 flex flex-row items-center justify-between border-b border-border/60 bg-secondary/30">
+                            <div>
+                                <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                                    <Sparkles className="w-4 h-4 text-orange-500 animate-pulse" />
+                                    Custom Analytics Widgets
+                                </CardTitle>
+                                <CardDescription>Loading custom widgets...</CardDescription>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="p-6 grid gap-4 grid-cols-1 md:grid-cols-3">
+                            <Skeleton className="h-60 w-full" />
+                            <Skeleton className="h-60 w-full" />
+                            <Skeleton className="h-60 w-full" />
+                        </CardContent>
+                    </Card>
+                ) : widgets && widgets.length > 0 ? (
+                    <Card className="border border-border/50 bg-background/50 relative overflow-hidden">
+                        <CardHeader className="py-4 px-6 flex flex-row items-center justify-between border-b border-border/60 bg-secondary/30">
+                            <div>
+                                <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                                    <Sparkles className="w-4 h-4 text-orange-500" />
+                                    Custom Analytics Widgets
+                                </CardTitle>
+                                <CardDescription>Pinned query charts and insights for this project</CardDescription>
+                            </div>
+                            <Button asChild size="sm" variant="outline" className="border-zinc-700 text-zinc-300 hover:bg-zinc-800">
+                                <Link href={`/analytics?projectId=${selectedProject.project_id}`}>
+                                    <Edit className="w-4 h-4 mr-2" />
+                                    Manage Widgets
+                                </Link>
+                            </Button>
+                        </CardHeader>
+                        <CardContent className="p-6">
+                            <DashboardCustomWidgetsGrid widgets={widgets} projectId={selectedProject.project_id} />
+                        </CardContent>
+                    </Card>
+                ) : null}
+
 
 
 

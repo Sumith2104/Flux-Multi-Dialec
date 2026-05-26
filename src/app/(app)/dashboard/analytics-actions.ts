@@ -3,6 +3,7 @@
 import { getPgPool } from '@/lib/pg';
 import { getCurrentUserId } from '@/lib/auth';
 import { redis } from '@/lib/redis';
+import { getDashboardWidgets } from '@/lib/dashboards';
 
 export async function getAnalyticsStatsAction(projectId: string) {
     const userId = await getCurrentUserId();
@@ -316,3 +317,10 @@ export async function getProjectHistoryAction(projectId: string) {
         };
     }
 }
+
+export async function getDashboardWidgetsAction(projectId: string) {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error("Unauthorized");
+    return await getDashboardWidgets(projectId, userId);
+}
+

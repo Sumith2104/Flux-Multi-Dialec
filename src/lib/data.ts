@@ -2,6 +2,7 @@
 
 import { getPgPool } from '@/lib/pg';
 import { getCurrentUserId } from '@/lib/auth';
+import { getTenantPgPool, getTenantMysqlPool, getProjectDbAndSchema } from '@/lib/tenant-pools';
 
 // --- Types ---
 
@@ -16,6 +17,9 @@ export interface Project {
     ai_allow_destructive?: boolean;
     ai_schema_inference?: boolean;
     status?: 'active' | 'suspended';
+    connection_type?: 'internal' | 'external_db' | 'external_server';
+    connection_config?: any;
+    active_db?: string;
 }
 
 export interface Table {
@@ -180,6 +184,20 @@ export async function getPendingInvitationsForCurrentUser(): Promise<any[]> {
         return [];
     }
 }
+let migrationRun = false;
+async function ensureMigration(pool: any) {
+    if (migrationRun) return;
+    try {
+        await pool.query(`
+            ALTER TABLE fluxbase_global.projects 
+            ADD COLUMN IF NOT EXISTS connection_type VARCHAR(50) DEFAULT 'internal',
+            ADD COLUMN IF NOT EXISTS connection_config JSONB DEFAULT '{}'::jsonb;
+        `);
+        migrationRun = true;
+    } catch (err) {
+        console.error("[Migration Error] Failed to alter projects table:", err);
+    }
+}
 
 export async function getProjectById(projectId: string, explicitUserId?: string): Promise<Project | null> {
     const userId = explicitUserId || await getCurrentUserId();
@@ -188,49 +206,74 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
     // Cache key includes userId so role (admin/developer/member) is correctly scoped per user.
     const cacheKey = `${projectId}:${userId}`;
     const cached = _projectCache.get(cacheKey);
-    if (cached !== undefined) return cached;
+    let project: Project | null = null;
 
-    try {
-        const { redis } = await import('@/lib/redis');
-        const redisKey = `project_meta:${projectId}:${userId}`;
-        const redisCached = await redis.get<Project>(redisKey);
-        if (redisCached) {
-            _projectCache.set(cacheKey, redisCached);
-            return redisCached;
-        }
+    if (cached !== undefined) {
+        project = cached;
+    } else {
+        try {
+            const { redis } = await import('@/lib/redis');
+            const redisKey = `project_meta:${projectId}:${userId}`;
+            const redisCached = await redis.get<Project>(redisKey);
+            if (redisCached) {
+                _projectCache.set(cacheKey, redisCached);
+                project = redisCached;
+            } else {
+                const pool = getPgPool();
+                await ensureMigration(pool);
+                const result = await pool.query(`
+                    SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.user_id as owner_id, p.ai_allow_destructive, p.ai_schema_inference, p.status,
+                           p.connection_type, p.connection_config,
+                           COALESCE(pm.role, CASE WHEN p.user_id = $2::text THEN 'admin' ELSE NULL END) as role
+                    FROM fluxbase_global.projects p
+                    LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $2::text
+                    WHERE p.project_id = $1 AND (p.user_id = $2::text OR pm.user_id = $2::text)
+                `, [projectId, userId]);
+                if (result.rows.length === 0) {
+                    return null;
+                }
 
-        const pool = getPgPool();
-        const result = await pool.query(`
-            SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.user_id as owner_id, p.ai_allow_destructive, p.ai_schema_inference, p.status,
-                   COALESCE(pm.role, CASE WHEN p.user_id = $2::text THEN 'admin' ELSE NULL END) as role
-            FROM fluxbase_global.projects p
-            LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $2::text
-            WHERE p.project_id = $1 AND (p.user_id = $2::text OR pm.user_id = $2::text)
-        `, [projectId, userId]);
-        if (result.rows.length === 0) {
+                const row = result.rows[0];
+                const newProject: Project = {
+                    project_id: row.project_id,
+                    user_id: row.owner_id,
+                    display_name: row.display_name,
+                    created_at: row.created_at.toISOString(),
+                    dialect: row.dialect,
+                    timezone: row.timezone,
+                    role: row.role,
+                    ai_allow_destructive: row.ai_allow_destructive ?? false,
+                    ai_schema_inference: row.ai_schema_inference ?? true,
+                    status: row.status || 'active',
+                    connection_type: row.connection_type || 'internal',
+                    connection_config: row.connection_config || {}
+                };
+                _projectCache.set(cacheKey, newProject);
+                await redis.set(redisKey, newProject, { ex: 300 }); // Cache in Redis for 5 minutes
+                project = newProject;
+            }
+        } catch (error) {
+            console.error("Error fetching project:", error);
             return null;
         }
-
-        const row = result.rows[0];
-        const project: Project = {
-            project_id: row.project_id,
-            user_id: row.owner_id,
-            display_name: row.display_name,
-            created_at: row.created_at.toISOString(),
-            dialect: row.dialect,
-            timezone: row.timezone,
-            role: row.role,
-            ai_allow_destructive: row.ai_allow_destructive ?? false,
-            ai_schema_inference: row.ai_schema_inference ?? true,
-            status: row.status || 'active'
-        };
-        _projectCache.set(cacheKey, project);
-        await redis.set(redisKey, project, { ex: 300 }); // Cache in Redis for 5 minutes
-        return project;
-    } catch (error) {
-        console.error("Error fetching project:", error);
-        return null;
     }
+
+    if (project) {
+        // Clone project object so we don't mutate the cached entry shared across other request threads
+        project = { ...project };
+        try {
+            const { cookies } = require('next/headers');
+            const cookieStore = await cookies();
+            const activeDb = cookieStore.get(`fluxbase_active_db_${projectId}`)?.value;
+            if (activeDb) {
+                project.active_db = activeDb;
+            }
+        } catch (e) {
+            // ignore: not in request context
+        }
+    }
+
+    return project;
 }
 
 /**
@@ -374,11 +417,19 @@ export async function ensureUserProfile(userId: string, email: string, displayNa
 }
 
 
-export async function createProject(name: string, description: string, dialect: string = 'mysql', timezone?: string): Promise<Project> {
+export async function createProject(
+    name: string, 
+    description: string, 
+    dialect: string = 'mysql', 
+    timezone?: string,
+    connectionType: 'internal' | 'external_db' | 'external_server' = 'internal',
+    connectionConfig: any = {}
+): Promise<Project> {
     const userId = await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
     const pool = getPgPool();
+    await ensureMigration(pool);
 
     // Fetch Subscription Plan from DB
     const userSnapshot = await pool.query('SELECT plan_type FROM fluxbase_global.users WHERE id = $1::text', [userId]);
@@ -399,8 +450,8 @@ export async function createProject(name: string, description: string, dialect: 
     const finalTimezone = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     await pool.query(
-        'INSERT INTO fluxbase_global.projects (project_id, user_id, display_name, dialect, timezone) VALUES ($1, $2::text, $3, $4, $5)',
-        [projectId, userId, name, dialect, finalTimezone]
+        'INSERT INTO fluxbase_global.projects (project_id, user_id, display_name, dialect, timezone, connection_type, connection_config) VALUES ($1, $2::text, $3, $4, $5, $6, $7)',
+        [projectId, userId, name, dialect, finalTimezone, connectionType, typeof connectionConfig === 'string' ? connectionConfig : JSON.stringify(connectionConfig)]
     );
 
     const project: Project = {
@@ -409,23 +460,27 @@ export async function createProject(name: string, description: string, dialect: 
         display_name: name,
         created_at: new Date().toISOString(),
         dialect: dialect as any,
-        timezone: finalTimezone
+        timezone: finalTimezone,
+        connection_type: connectionType,
+        connection_config: connectionConfig
     };
 
     // [AWS NATIVE MIGRATION] Automatically provision a dedicated Schema/DB for this tenant.
-    try {
-        if (dialect.toLowerCase() === 'mysql') {
-            const { getMysqlPool } = await import('@/lib/mysql');
-            const mysqlPool = getMysqlPool();
-            await mysqlPool.query(`CREATE DATABASE \`project_${projectId}\``);
-            console.log(`[Fluxbase Native] Successfully provisioned MySQL DB: project_${projectId}`);
-        } else {
-            // Default PostgreSQL Schema approach
-            await pool.query(`CREATE SCHEMA IF NOT EXISTS "project_${projectId}"`);
-            console.log(`[Fluxbase Native] Successfully provisioned PG Schema: project_${projectId}`);
+    if (connectionType === 'internal') {
+        try {
+            if (dialect.toLowerCase() === 'mysql') {
+                const { getMysqlPool } = await import('@/lib/mysql');
+                const mysqlPool = getMysqlPool();
+                await mysqlPool.query(`CREATE DATABASE \`project_${projectId}\``);
+                console.log(`[Fluxbase Native] Successfully provisioned MySQL DB: project_${projectId}`);
+            } else {
+                // Default PostgreSQL Schema approach
+                await pool.query(`CREATE SCHEMA IF NOT EXISTS "project_${projectId}"`);
+                console.log(`[Fluxbase Native] Successfully provisioned PG Schema: project_${projectId}`);
+            }
+        } catch (dbError) {
+            console.error(`[Fluxbase Native] Failed to provision native environment for project_${projectId}`, dbError);
         }
-    } catch (dbError) {
-        console.error(`[Fluxbase Native] Failed to provision native environment for project_${projectId}`, dbError);
     }
 
     return project;
@@ -480,14 +535,21 @@ export async function deleteProject(projectId: string) {
     const pool = getPgPool();
 
     if (project.dialect?.toLowerCase() === 'mysql') {
-        const { getMysqlPool } = await import('@/lib/mysql');
-        const mysqlPool = getMysqlPool();
-        await mysqlPool.query(`DROP DATABASE IF EXISTS \`project_${projectId}\``);
+        if (project.connection_type === 'internal') {
+            const { getMysqlPool } = await import('@/lib/mysql');
+            const mysqlPool = getMysqlPool();
+            await mysqlPool.query(`DROP DATABASE IF EXISTS \`project_${projectId}\``);
+        }
     } else {
-        // Drop the tenant's isolated schema
-        const schemaName = `project_${projectId}`;
-        await pool.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+        if (project.connection_type === 'internal') {
+            const schemaName = `project_${projectId}`;
+            await pool.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+        }
     }
+
+    // Close tenant pool if it is cached
+    const { closeTenantPool } = await import('@/lib/tenant-pools');
+    await closeTenantPool(projectId);
 
     // Remove the catalog entry
     const res = await pool.query('DELETE FROM fluxbase_global.projects WHERE project_id = $1 AND user_id = $2::text', [projectId, userId]);
@@ -513,15 +575,14 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
 
     try {
         if (project.dialect?.toLowerCase() === 'mysql') {
-            const { getMysqlPool } = await import('@/lib/mysql');
-            const mysqlPool = getMysqlPool();
-            const dbName = `project_${projectId}`;
+            const mysqlPool = await getTenantMysqlPool(project);
+            const { dbName } = getProjectDbAndSchema(project);
 
             const [rows]: any = await mysqlPool.query(`
                 SELECT table_name 
                 FROM information_schema.tables 
                 WHERE table_schema = ? AND table_type = 'BASE TABLE' 
-                AND table_name NOT LIKE '\_flux\_internal\_%'
+                AND table_name NOT LIKE '\\_flux\\_internal\\_%'
             `, [dbName]);
 
             return rows.map((row: any) => ({
@@ -534,14 +595,14 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
             }));
 
         } else {
-            const pool = getPgPool();
-            const schemaName = `project_${projectId}`;
+            const pool = await getTenantPgPool(project);
+            const { schemaName } = getProjectDbAndSchema(project);
 
             const result = await pool.query(`
                 SELECT table_name 
                 FROM information_schema.tables 
                 WHERE table_schema = $1 AND table_type = 'BASE TABLE'
-                AND table_name NOT LIKE '\_flux\_internal\_%'
+                AND table_name NOT LIKE '\\_flux\\_internal\\_%'
             `, [schemaName]);
 
             return result.rows.map(row => ({
@@ -572,9 +633,8 @@ export async function createTable(projectId: string, tableName: string, descript
     const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
 
     if (project.dialect?.toLowerCase() === 'mysql') {
-        const { getMysqlPool } = await import('@/lib/mysql');
-        const mysqlPool = getMysqlPool();
-        const dbName = `project_${projectId}`;
+        const mysqlPool = await getTenantMysqlPool(project);
+        const { dbName } = getProjectDbAndSchema(project);
 
         const columnDefs = [];
         for (const col of columns) {
@@ -612,8 +672,8 @@ export async function createTable(projectId: string, tableName: string, descript
         await mysqlPool.query(ddl);
 
     } else {
-        const pool = getPgPool();
-        const schemaName = `project_${projectId}`;
+        const pool = await getTenantPgPool(project);
+        const { schemaName } = getProjectDbAndSchema(project);
 
         const columnDefs = [];
         for (const col of columns) {
@@ -642,42 +702,46 @@ export async function createTable(projectId: string, tableName: string, descript
         await pool.query(ddl);
 
         // --- Phase 2: PostgreSQL Realtime Event Trigger ---
-        const triggerFunctionSql = `
-            CREATE OR REPLACE FUNCTION "${schemaName}".notify_table_change()
-            RETURNS trigger AS $$
-            DECLARE
-              payload JSON;
-              row_data RECORD;
-            BEGIN
-              IF TG_OP = 'DELETE' THEN
-                row_data := OLD;
-              ELSE
-                row_data := NEW;
-              END IF;
+        try {
+            const triggerFunctionSql = `
+                CREATE OR REPLACE FUNCTION "${schemaName}".notify_table_change()
+                RETURNS trigger AS $$
+                DECLARE
+                  payload JSON;
+                  row_data RECORD;
+                BEGIN
+                  IF TG_OP = 'DELETE' THEN
+                    row_data := OLD;
+                  ELSE
+                    row_data := NEW;
+                  END IF;
 
-              payload := json_build_object(
-                'table', TG_TABLE_NAME,
-                'project_id', '${projectId}',
-                'operation', TG_OP,
-                'data', row_to_json(row_data)
-              );
+                  payload := json_build_object(
+                    'table', TG_TABLE_NAME,
+                    'project_id', '${projectId}',
+                    'operation', TG_OP,
+                    'data', row_to_json(row_data)
+                  );
 
-              PERFORM pg_notify('fluxbase_changes', payload::text);
-              RETURN row_data;
-            END;
-            $$ LANGUAGE plpgsql;
-        `;
-        await pool.query(triggerFunctionSql);
+                  PERFORM pg_notify('fluxbase_changes', payload::text);
+                  RETURN row_data;
+                END;
+                $$ LANGUAGE plpgsql;
+            `;
+            await pool.query(triggerFunctionSql);
 
-        const attachTriggerSql = `
-            DROP TRIGGER IF EXISTS "${safeTableName}_ws_trigger" ON "${schemaName}"."${safeTableName}";
-            CREATE TRIGGER "${safeTableName}_ws_trigger"
-            AFTER INSERT OR UPDATE OR DELETE
-            ON "${schemaName}"."${safeTableName}"
-            FOR EACH ROW
-            EXECUTE FUNCTION "${schemaName}".notify_table_change();
-        `;
-        await pool.query(attachTriggerSql);
+            const attachTriggerSql = `
+                DROP TRIGGER IF EXISTS "${safeTableName}_ws_trigger" ON "${schemaName}"."${safeTableName}";
+                CREATE TRIGGER "${safeTableName}_ws_trigger"
+                AFTER INSERT OR UPDATE OR DELETE
+                ON "${schemaName}"."${safeTableName}"
+                FOR EACH ROW
+                EXECUTE FUNCTION "${schemaName}".notify_table_change();
+            `;
+            await pool.query(attachTriggerSql);
+        } catch (triggerError) {
+            console.warn(`[Realtime Trigger Warning] Failed to provision triggers on external database for project ${projectId}:`, triggerError);
+        }
     }
 
     const { invalidateTableCache } = await import('@/lib/cache');
@@ -702,13 +766,12 @@ export async function deleteTable(projectId: string, tableId: string, explicitUs
     const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
 
     if (project.dialect?.toLowerCase() === 'mysql') {
-        const { getMysqlPool } = await import('@/lib/mysql');
-        const mysqlPool = getMysqlPool();
-        const dbName = `project_${projectId}`;
+        const mysqlPool = await getTenantMysqlPool(project);
+        const { dbName } = getProjectDbAndSchema(project);
         await mysqlPool.query(`DROP TABLE IF EXISTS \`${dbName}\`.\`${safeTableName}\``);
     } else {
-        const pool = getPgPool();
-        const schemaName = `project_${projectId}`;
+        const pool = await getTenantPgPool(project);
+        const { schemaName } = getProjectDbAndSchema(project);
         await pool.query(`DROP TABLE IF EXISTS "${schemaName}"."${safeTableName}" CASCADE`);
     }
 
@@ -730,9 +793,8 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
 
     try {
         if (project.dialect?.toLowerCase() === 'mysql') {
-            const { getMysqlPool } = await import('@/lib/mysql');
-            const mysqlPool = getMysqlPool();
-            const dbName = `project_${projectId}`;
+            const mysqlPool = await getTenantMysqlPool(project);
+            const { dbName } = getProjectDbAndSchema(project);
 
             const [result]: any = await mysqlPool.query(`
                 SELECT 
@@ -758,8 +820,8 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
             }));
 
         } else {
-            const pool = getPgPool();
-            const schemaName = `project_${projectId}`;
+            const pool = await getTenantPgPool(project);
+            const { schemaName } = getProjectDbAndSchema(project);
 
             // Fetch columns and identify primary keys
             const result = await pool.query(`
@@ -809,9 +871,8 @@ export async function addColumn(projectId: string, tableId: string, column: Omit
     const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
 
     if (project.dialect?.toLowerCase() === 'mysql') {
-        const { getMysqlPool } = await import('@/lib/mysql');
-        const mysqlPool = getMysqlPool();
-        const dbName = `project_${projectId}`;
+        const mysqlPool = await getTenantMysqlPool(project);
+        const { dbName } = getProjectDbAndSchema(project);
 
         let type = column.data_type.toUpperCase();
         if (type === 'NUMBER') type = 'DOUBLE';
@@ -829,8 +890,8 @@ export async function addColumn(projectId: string, tableId: string, column: Omit
         await mysqlPool.query(`ALTER TABLE \`${dbName}\`.\`${safeTableName}\` ${def}`);
 
     } else {
-        const pool = getPgPool();
-        const schemaName = `project_${projectId}`;
+        const pool = await getTenantPgPool(project);
+        const { schemaName } = getProjectDbAndSchema(project);
 
         let type = column.data_type.toUpperCase();
         if (type === 'NUMBER') type = 'NUMERIC';
@@ -862,13 +923,12 @@ export async function deleteColumn(projectId: string, tableId: string, columnId:
     const safeColName = columnId.replace(/[^a-zA-Z0-9_]/g, '');
 
     if (project.dialect?.toLowerCase() === 'mysql') {
-        const { getMysqlPool } = await import('@/lib/mysql');
-        const mysqlPool = getMysqlPool();
-        const dbName = `project_${projectId}`;
+        const mysqlPool = await getTenantMysqlPool(project);
+        const { dbName } = getProjectDbAndSchema(project);
         await mysqlPool.query(`ALTER TABLE \`${dbName}\`.\`${safeTableName}\` DROP COLUMN \`${safeColName}\``);
     } else {
-        const pool = getPgPool();
-        const schemaName = `project_${projectId}`;
+        const pool = await getTenantPgPool(project);
+        const { schemaName } = getProjectDbAndSchema(project);
         await pool.query(`ALTER TABLE "${schemaName}"."${safeTableName}" DROP COLUMN "${safeColName}" CASCADE`);
     }
 
@@ -886,9 +946,8 @@ export async function updateColumn(projectId: string, tableId: string, columnId:
     const safeColName = columnId.replace(/[^a-zA-Z0-9_]/g, '');
 
     if (project.dialect?.toLowerCase() === 'mysql') {
-        const { getMysqlPool } = await import('@/lib/mysql');
-        const mysqlPool = getMysqlPool();
-        const dbName = `project_${projectId}`;
+        const mysqlPool = await getTenantMysqlPool(project);
+        const { dbName } = getProjectDbAndSchema(project);
 
         if (updates.column_name && updates.column_name !== columnId) {
             const newName = updates.column_name.replace(/[^a-zA-Z0-9_]/g, '');
@@ -908,8 +967,8 @@ export async function updateColumn(projectId: string, tableId: string, columnId:
         }
 
     } else {
-        const pool = getPgPool();
-        const schemaName = `project_${projectId}`;
+        const pool = await getTenantPgPool(project);
+        const { schemaName } = getProjectDbAndSchema(project);
 
         // Changing column types/names natively with ALTER TABLE
         if (updates.column_name && updates.column_name !== columnId) {
@@ -944,9 +1003,8 @@ export async function getConstraintsForProject(projectId: string): Promise<Const
 
     try {
         if (project.dialect?.toLowerCase() === 'mysql') {
-            const { getMysqlPool } = await import('@/lib/mysql');
-            const mysqlPool = getMysqlPool();
-            const dbName = `project_${projectId}`;
+            const mysqlPool = await getTenantMysqlPool(project);
+            const { dbName } = getProjectDbAndSchema(project);
 
             const [result]: any = await mysqlPool.query(`
                 SELECT 
@@ -968,8 +1026,8 @@ export async function getConstraintsForProject(projectId: string): Promise<Const
 
             return result;
         } else {
-            const pool = getPgPool();
-            const schemaName = `project_${projectId}`;
+            const pool = await getTenantPgPool(project);
+            const { schemaName } = getProjectDbAndSchema(project);
 
             const result = await pool.query(`
                 SELECT 
@@ -1006,9 +1064,8 @@ export async function getConstraintsForTable(projectId: string, tableId: string)
 
     try {
         if (project.dialect?.toLowerCase() === 'mysql') {
-            const { getMysqlPool } = await import('@/lib/mysql');
-            const mysqlPool = getMysqlPool();
-            const dbName = `project_${projectId}`;
+            const mysqlPool = await getTenantMysqlPool(project);
+            const { dbName } = getProjectDbAndSchema(project);
 
             const [result]: any = await mysqlPool.query(`
                 SELECT 
@@ -1039,8 +1096,8 @@ export async function getConstraintsForTable(projectId: string, tableId: string)
                 on_update: row.on_update as any
             }));
         } else {
-            const pool = getPgPool();
-            const schemaName = `project_${projectId}`;
+            const pool = await getTenantPgPool(project);
+            const { schemaName } = getProjectDbAndSchema(project);
             const result = await pool.query(`
                 SELECT 
                     tc.constraint_name as constraint_id,
@@ -1088,9 +1145,8 @@ export async function addConstraint(projectId: string, constraint: Omit<Constrai
     const colName = constraint.column_names.replace(/[^a-zA-Z0-9_]/g, '');
 
     if (project.dialect?.toLowerCase() === 'mysql') {
-        const { getMysqlPool } = await import('@/lib/mysql');
-        const mysqlPool = getMysqlPool();
-        const dbName = `project_${projectId}`;
+        const mysqlPool = await getTenantMysqlPool(project);
+        const { dbName } = getProjectDbAndSchema(project);
 
         let ddl = `ALTER TABLE \`${dbName}\`.\`${safeTableName}\` ADD CONSTRAINT \`${safeTableName}_${colName}_${Date.now()}\` `;
 
@@ -1107,8 +1163,8 @@ export async function addConstraint(projectId: string, constraint: Omit<Constrai
 
         await mysqlPool.query(ddl);
     } else {
-        const pool = getPgPool();
-        const schemaName = `project_${projectId}`;
+        const pool = await getTenantPgPool(project);
+        const { schemaName } = getProjectDbAndSchema(project);
 
         let ddl = `ALTER TABLE "${schemaName}"."${safeTableName}" ADD CONSTRAINT "${safeTableName}_${colName}_${Date.now()}" `;
 
@@ -1139,15 +1195,14 @@ export async function deleteConstraint(projectId: string, constraintId: string, 
     const safeConstraint = constraintId.replace(/[^a-zA-Z0-9_]/g, '');
 
     if (project.dialect?.toLowerCase() === 'mysql') {
-        const { getMysqlPool } = await import('@/lib/mysql');
-        const mysqlPool = getMysqlPool();
-        const dbName = `project_${projectId}`;
+        const mysqlPool = await getTenantMysqlPool(project);
+        const { dbName } = getProjectDbAndSchema(project);
 
         // Use DROP FOREIGN KEY / DROP INDEX depending on constraint type if possible, or try standard DROP CONSTRAINT (MySQL 8.0.19+)
         await mysqlPool.query(`ALTER TABLE \`${dbName}\`.\`${safeTableName}\` DROP CONSTRAINT \`${safeConstraint}\``);
     } else {
-        const pool = getPgPool();
-        const schemaName = `project_${projectId}`;
+        const pool = await getTenantPgPool(project);
+        const { schemaName } = getProjectDbAndSchema(project);
 
         await pool.query(`ALTER TABLE "${schemaName}"."${safeTableName}" DROP CONSTRAINT "${safeConstraint}"`);
     }
@@ -1257,9 +1312,8 @@ export async function getTableData(
         let totalRows = 0;
 
         if (project.dialect?.toLowerCase() === 'mysql') {
-            const { getMysqlPool } = await import('@/lib/mysql');
-            const mysqlPool = getMysqlPool();
-            const dbName = `project_${projectId}`;
+            const mysqlPool = await getTenantMysqlPool(project);
+            const { dbName } = getProjectDbAndSchema(project);
             const { clause: wClause, params: wParams } = _myWhere(filters);
             const orderBy = _myOrder(sorts);
 
@@ -1281,8 +1335,8 @@ export async function getTableData(
             });
 
         } else {
-            const pool = getPgPool();
-            const schemaName = `project_${projectId}`;
+            const pool = await getTenantPgPool(project);
+            const { schemaName } = getProjectDbAndSchema(project);
             const { clause: wClause, params: wParams } = _pgWhere(filters, 3);
             const orderBy = _pgOrder(sorts);
 
@@ -1356,9 +1410,8 @@ export async function insertRow(projectId: string, tableId: string, rowData: Rec
         let insertedRow;
 
         if (project.dialect?.toLowerCase() === 'mysql') {
-            const { getMysqlPool } = await import('@/lib/mysql');
-            const mysqlPool = getMysqlPool();
-            const dbName = `project_${projectId}`;
+            const mysqlPool = await getTenantMysqlPool(project);
+            const { dbName } = getProjectDbAndSchema(project);
 
             // MySQL does not naturally support RETURNING *. We do an INSERT then a SELECT of the last insert if needed, 
             // but for simple webhook fire, we'll try to reconstruct the object locally since this is a basic interface.
@@ -1373,8 +1426,8 @@ export async function insertRow(projectId: string, tableId: string, rowData: Rec
             }
 
         } else {
-            const pool = getPgPool();
-            const schemaName = `project_${projectId}`;
+            const pool = await getTenantPgPool(project);
+            const { schemaName } = getProjectDbAndSchema(project);
             const ddl = `INSERT INTO "${schemaName}"."${safeTableName}" (${cols.join(', ')}) VALUES (${vals.join(', ')}) RETURNING *`;
 
             try {
@@ -1432,9 +1485,8 @@ export async function updateRow(projectId: string, tableId: string, rowId: strin
         let oldData;
 
         if (project.dialect?.toLowerCase() === 'mysql') {
-            const { getMysqlPool } = await import('@/lib/mysql');
-            const mysqlPool = getMysqlPool();
-            const dbName = `project_${projectId}`;
+            const mysqlPool = await getTenantMysqlPool(project);
+            const { dbName } = getProjectDbAndSchema(project);
 
             const [oldDataResult]: any = await mysqlPool.query(`SELECT * FROM \`${dbName}\`.\`${safeTableName}\` WHERE \`${pkCol.column_name}\` = ?`, [rowId]);
             if (oldDataResult.length === 0) throw new Error(`Row with PK '${rowId}' not found.`);
@@ -1447,8 +1499,8 @@ export async function updateRow(projectId: string, tableId: string, rowId: strin
             updatedRow = { ...oldData, ...updates };
 
         } else {
-            const pool = getPgPool();
-            const schemaName = `project_${projectId}`;
+            const pool = await getTenantPgPool(project);
+            const { schemaName } = getProjectDbAndSchema(project);
 
             const oldDataResult = await pool.query(`SELECT * FROM "${schemaName}"."${safeTableName}" WHERE "${pkCol.column_name}"::text = $1`, [rowId]);
             if (oldDataResult.rows.length === 0) throw new Error(`Row with PK '${rowId}' not found.`);
@@ -1489,9 +1541,8 @@ export async function deleteRow(projectId: string, tableId: string, rowId: strin
         let oldData = null;
 
         if (project.dialect?.toLowerCase() === 'mysql') {
-            const { getMysqlPool } = await import('@/lib/mysql');
-            const mysqlPool = getMysqlPool();
-            const dbName = `project_${projectId}`;
+            const mysqlPool = await getTenantMysqlPool(project);
+            const { dbName } = getProjectDbAndSchema(project);
 
             const [oldDataResult]: any = await mysqlPool.query(`SELECT * FROM \`${dbName}\`.\`${safeTableName}\` WHERE \`${pkCol.column_name}\` = ?`, [rowId]);
             oldData = oldDataResult.length > 0 ? oldDataResult[0] : null;
@@ -1500,8 +1551,8 @@ export async function deleteRow(projectId: string, tableId: string, rowId: strin
                 await mysqlPool.query(`DELETE FROM \`${dbName}\`.\`${safeTableName}\` WHERE \`${pkCol.column_name}\` = ?`, [rowId]);
             }
         } else {
-            const pool = getPgPool();
-            const schemaName = `project_${projectId}`;
+            const pool = await getTenantPgPool(project);
+            const { schemaName } = getProjectDbAndSchema(project);
 
             // Fetch old data for webhook
             const oldDataResult = await pool.query(`SELECT * FROM "${schemaName}"."${safeTableName}" WHERE "${pkCol.column_name}"::text = $1`, [rowId]);
@@ -1548,14 +1599,13 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
             let rowCount = 0;
 
             if (project?.dialect?.toLowerCase() === 'mysql') {
-                const { getMysqlPool } = await import('@/lib/mysql');
-                const mysqlPool = getMysqlPool();
-                const dbName = `project_${projectId}`;
+                const mysqlPool = await getTenantMysqlPool(project);
+                const { dbName } = getProjectDbAndSchema(project);
                 const [countResult]: any = await mysqlPool.query(`SELECT COUNT(*) as count FROM \`${dbName}\`.\`${safeTableName}\``);
                 rowCount = parseInt(countResult[0].count);
             } else {
-                const pool = getPgPool();
-                const schemaName = `project_${projectId}`;
+                const pool = await getTenantPgPool(project!);
+                const { schemaName } = getProjectDbAndSchema(project!);
                 const countResult = await pool.query(`SELECT COUNT(*) FROM "${schemaName}"."${safeTableName}"`);
                 rowCount = parseInt(countResult.rows[0].count);
             }

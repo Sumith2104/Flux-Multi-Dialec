@@ -76,6 +76,8 @@ interface EditorClientProps {
 
     allProjectConstraints: DbConstraint[];
     dialect: string;
+    connectionType?: string;
+    activeDatabase?: string;
 }
 
 export function EditorClient({
@@ -88,6 +90,8 @@ export function EditorClient({
     initialConstraints,
     allProjectConstraints,
     dialect,
+    connectionType,
+    activeDatabase,
 }: EditorClientProps) {
     const { toast } = useToast();
     const router = useRouter();
@@ -108,6 +112,41 @@ export function EditorClient({
     const [importProgress, setImportProgress] = useState<string | null>(null);
     const [importPreview, setImportPreview] = useState<ImportPreviewData | null>(null);
     const [tableSearchQuery, setTableSearchQuery] = useState('');
+
+    // Multi-database / external server states
+    const [databases, setDatabases] = useState<string[]>([]);
+    const [isLoadingDbs, setIsLoadingDbs] = useState(false);
+    const [currentDb, setCurrentDb] = useState(activeDatabase || '');
+
+    useEffect(() => {
+        if (connectionType === 'external_server') {
+            setIsLoadingDbs(true);
+            import('@/components/layout/actions').then(actions => {
+                actions.getProjectDatabasesAction(projectId).then(res => {
+                    if (res.success && res.databases) {
+                        setDatabases(res.databases);
+                    } else {
+                        console.warn("Failed to load project databases:", res.error);
+                    }
+                    setIsLoadingDbs(false);
+                });
+            });
+        }
+    }, [connectionType, projectId]);
+
+    const handleDatabaseChange = (newDb: string) => {
+        setCurrentDb(newDb);
+        document.cookie = `fluxbase_active_db_${projectId}=${newDb}; path=/; max-age=31536000`;
+        
+        toast({
+            title: 'Switching Database',
+            description: `Switched database to: ${newDb}. Refreshing tables...`,
+        });
+
+        // Trigger router pushes to refresh editor contents
+        router.push(`/editor?projectId=${projectId}`);
+        router.refresh();
+    };
     const csvInputRef = useRef<HTMLInputElement>(null);
     const jsonInputRef = useRef<HTMLInputElement>(null);
     const xlsxInputRef = useRef<HTMLInputElement>(null);
@@ -707,10 +746,33 @@ export function EditorClient({
                     <div className="p-4 hidden md:block">
                         <h2 className="text-lg font-semibold">Table Editor</h2>
                     </div>
-                    <div className="p-2">
+                    <div className="p-2 space-y-2">
                         <Button variant="outline" className="w-full justify-start text-muted-foreground pointer-events-none">
-                            <span className="truncate">Database <strong>{dialect.toUpperCase()}</strong></span>
+                            <span className="truncate">Dialect: <strong>{dialect.toUpperCase()}</strong></span>
                         </Button>
+
+                        {connectionType === 'external_server' && (
+                            <div className="space-y-1">
+                                <label className="text-[10px] uppercase font-bold text-muted-foreground/60 tracking-wider px-1 block">Active Database</label>
+                                {isLoadingDbs ? (
+                                    <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground bg-muted/40 rounded-md border border-white/5">
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                                        <span className="truncate">Scanning catalogs...</span>
+                                    </div>
+                                ) : (
+                                    <select
+                                        value={currentDb}
+                                        onChange={(e) => handleDatabaseChange(e.target.value)}
+                                        className="w-full h-10 px-3 rounded-md border border-white/10 bg-background text-sm text-foreground/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary disabled:opacity-50 cursor-pointer"
+                                    >
+                                        <option value="" disabled>Select database...</option>
+                                        {databases.map(db => (
+                                            <option key={db} value={db}>{db}</option>
+                                        ))}
+                                    </select>
+                                )}
+                            </div>
+                        )}
                     </div>
                     <div className="p-2 relative">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

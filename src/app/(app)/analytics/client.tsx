@@ -17,12 +17,12 @@ import 'react-resizable/css/styles.css';
 import { SystemMetrics } from '@/components/analytics/system-metrics';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
-import { createWidgetAction, removeWidgetAction, updateWidgetConfigAction } from './actions';
+import { createWidgetAction, createWidgetsAction, removeWidgetAction, updateWidgetConfigAction } from './actions';
 import { useToast } from "@/hooks/use-toast";
 
 const ResponsiveGrid = ResponsiveGridLayout as any;
 
-function AsyncWidget({ projectId, widget, onRemove }: { projectId: string, widget: any, onRemove: (id: string) => void }) {
+export function AsyncWidget({ projectId, widget, onRemove }: { projectId: string, widget: any, onRemove?: (id: string) => void }) {
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -85,15 +85,17 @@ function AsyncWidget({ projectId, widget, onRemove }: { projectId: string, widge
                     >
                         <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
                     </Button>
-                    <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-6 w-6 text-muted-foreground hover:bg-destructive/20 hover:text-destructive shrink-0" 
-                        onMouseDown={e => e.stopPropagation()} 
-                        onClick={() => onRemove(widget.id)}
-                    >
-                        <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {onRemove && (
+                        <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-6 w-6 text-muted-foreground hover:bg-destructive/20 hover:text-destructive shrink-0" 
+                            onMouseDown={e => e.stopPropagation()} 
+                            onClick={() => onRemove(widget.id)}
+                        >
+                            <Trash2 className="h-4 w-4" />
+                        </Button>
+                    )}
                 </div>
             </CardHeader>
             <CardContent className="flex-1 p-4 min-h-0 relative">
@@ -183,10 +185,24 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
             if (!res.ok) throw new Error(json.error || 'Generation failed');
             if (!json.widgets || !Array.isArray(json.widgets)) throw new Error('Invalid AI response format');
 
-            for (const widget of json.widgets) {
+            const widgetsToSave = json.widgets.map((widget: any) => {
                 const safeTitle = widget.title.length > 40 ? widget.title.substring(0, 40) + '...' : widget.title;
-                await createWidgetAction(projectId, safeTitle, widget.chart_type, widget.query, widget.config);
-            }
+                return {
+                    title: safeTitle,
+                    chartType: widget.chart_type,
+                    query: widget.query,
+                    config: widget.config
+                };
+            });
+
+            const savedWidgets = await createWidgetsAction(projectId, widgetsToSave);
+            
+            const mappedSaved = savedWidgets.map((w, idx) => ({
+                ...w,
+                configObj: widgetsToSave[idx].config
+            }));
+
+            setWidgets(prev => [...prev, ...mappedSaved]);
             
             toast({ title: 'Success', description: `Generated ${json.widgets.length} widget(s) successfully!` });
             setAiOpen(false);
@@ -198,6 +214,7 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
             setGenerating(false);
         }
     };
+
 
     const handleRemove = async (id: string) => {
         try {
@@ -367,8 +384,8 @@ function AutoSizedGrid({ layoutMap, handleLayoutChange, widgets, projectId, hand
                 rowHeight={30}
                 onLayoutChange={handleLayoutChange}
                 draggableHandle=".drag-handle"
-                compactType={null}
-                preventCollision={true}
+                compactType="vertical"
+                preventCollision={false}
                 isResizable={true}
             >
                 {widgets.map((widget: any) => (

@@ -19,12 +19,14 @@ async function Editor({ projectId, tableId, tableName }: { projectId: string; ta
     let constraints: any[] = [];
     let allProjectConstraints: any[] = [];
 
-
     if (currentTable && tableId) {
         columns = await getColumnsForTable(projectId, tableId);
         constraints = await getConstraintsForTable(projectId, tableId);
         allProjectConstraints = await getConstraintsForProject(projectId);
     }
+
+    const { getProjectDbAndSchema } = await import('@/lib/tenant-pools');
+    const { dbName: activeDatabase } = project ? getProjectDbAndSchema(project) : { dbName: '' };
 
     // Rows are now fetched on the client-side
     return (
@@ -38,6 +40,8 @@ async function Editor({ projectId, tableId, tableName }: { projectId: string; ta
             initialConstraints={constraints}
             allProjectConstraints={allProjectConstraints}
             dialect={dialect}
+            connectionType={project?.connection_type}
+            activeDatabase={activeDatabase}
         />
     );
 }
