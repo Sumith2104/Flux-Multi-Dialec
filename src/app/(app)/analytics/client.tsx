@@ -17,7 +17,7 @@ import 'react-resizable/css/styles.css';
 import { SystemMetrics } from '@/components/analytics/system-metrics';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
-import { createWidgetAction, createWidgetsAction, removeWidgetAction, updateWidgetConfigAction } from './actions';
+import { createWidgetsAction, removeWidgetAction, updateWidgetConfigAction } from './actions';
 import { useToast } from "@/hooks/use-toast";
 
 const ResponsiveGrid = ResponsiveGridLayout as any;
@@ -56,6 +56,7 @@ export function AsyncWidget({ projectId, widget, onRemove }: { projectId: string
         };
         fetchData();
         return () => { isMounted = false; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectId, widget.query, refreshTrigger]);
 
     const handleRefresh = (e: React.MouseEvent) => {
@@ -138,8 +139,17 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
     const [suggestions, setSuggestions] = useState<string[]>([]);
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
     const [suggestionsError, setSuggestionsError] = useState(false);
+    const [modelTrigger, setModelTrigger] = useState(0);
 
-    // Fetch Suggestions whenever modal opens
+    useEffect(() => {
+        const handleModelChange = () => {
+            setModelTrigger(prev => prev + 1);
+        };
+        window.addEventListener('flux_ai:model-change', handleModelChange);
+        return () => window.removeEventListener('flux_ai:model-change', handleModelChange);
+    }, []);
+
+    // Fetch Suggestions whenever modal opens or model changes
     useEffect(() => {
         if (!aiOpen) return;
         
@@ -147,9 +157,10 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
             setLoadingSuggestions(true);
             setSuggestionsError(false);
             try {
+                const selectedModel = typeof window !== 'undefined' ? localStorage.getItem('flux_ai_selected_model') || '' : '';
                 const res = await fetch('/api/analytics/suggestions', {
                     method: 'POST',
-                    body: JSON.stringify({ projectId }),
+                    body: JSON.stringify({ projectId, model: selectedModel }),
                     headers: { 'Content-Type': 'application/json' }
                 });
                 const data = await res.json();
@@ -168,7 +179,7 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
         }
         
         fetchSuggestions();
-    }, [aiOpen, projectId]);
+    }, [aiOpen, projectId, modelTrigger]);
     const [aiPrompt, setAiPrompt] = useState('');
     const [generating, setGenerating] = useState(false);
 
@@ -176,10 +187,11 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
         if (!aiPrompt.trim()) return;
         setGenerating(true);
         try {
+            const selectedModel = typeof window !== 'undefined' ? localStorage.getItem('flux_ai_selected_model') || '' : '';
             const res = await fetch('/api/analytics/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ projectId, prompt: aiPrompt })
+                body: JSON.stringify({ projectId, prompt: aiPrompt, model: selectedModel })
             });
             const json = await res.json();
             if (!res.ok) throw new Error(json.error || 'Generation failed');

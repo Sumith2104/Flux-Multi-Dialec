@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     if (!userId) return new NextResponse('Unauthorized', { status: 401 });
 
     try {
-        const { prompt, projectId } = await req.json();
+        const { prompt, projectId, model } = await req.json();
         if (!prompt || !projectId) return NextResponse.json({ error: 'Missing prompt or projectId' }, { status: 400 });
 
         const project = await getProjectById(projectId, userId);
@@ -55,6 +55,7 @@ ${schemaString}
 4. Ensure alias names in the query EXACTLY match the xAxisKey and dataKeys in your config.`;
 
         const response = await ai.generate({
+            model: model || 'googleai/gemini-2.5-flash',
             prompt: fullPrompt,
             output: { schema: OutputSchema }
         });

@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/incompatible-library */
 'use client';
 
 import * as React from 'react';

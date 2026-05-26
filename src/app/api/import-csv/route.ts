@@ -202,7 +202,6 @@ export async function POST(req: NextRequest) {
 
             // Build per-row column lists: if a column has a server default AND its value is
             // empty/null in this row, omit it from the INSERT so the default fires.
-            const colCount = insertableHeaders.length;
 
 
             // Collect valid rows (skip blanks).

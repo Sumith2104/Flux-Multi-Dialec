@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Volume2, VolumeX, Loader2, ArrowUp, CheckCircle2, XCircle, Play } from "lucide-react";
+import { X, Volume2, VolumeX, ArrowUp } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useContext } from "react";
 import { ProjectContext } from "@/contexts/project-context";
@@ -98,7 +98,27 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [selectedModel, setSelectedModel] = useState("googleai/gemini-2.5-flash");
   const [activeWorkflow, setActiveWorkflow] = useState<ActiveWorkflow | null>(null);
+
+  // Load selected model from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedModel = localStorage.getItem("flux_ai_selected_model");
+      if (savedModel) {
+        setSelectedModel(savedModel);
+      }
+    }
+  }, []);
+
+  const handleModelChange = (model: string) => {
+    setSelectedModel(model);
+    localStorage.setItem("flux_ai_selected_model", model);
+    // Dispatch custom event to notify other UI components of model change (e.g. suggestions caching)
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("flux_ai:model-change", { detail: { model } }));
+    }
+  };
   const lastNavigatedPath = useRef<string | null>(null);
 
   // Load workflow from localStorage on mount and pathname change
@@ -110,8 +130,8 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
               try {
                   const wf = JSON.parse(saved) as ActiveWorkflow;
                   setActiveWorkflow(wf);
-              } catch (e) {
-                  localStorage.removeItem('flux_active_workflow');
+                } catch {
+                    localStorage.removeItem('flux_active_workflow');
               }
           }
       }
@@ -377,6 +397,7 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
       }
 
       return cleanup;
+      // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkflow, pathname, project]);
 
   const simulateClickElement = (targetEl: HTMLElement, onComplete?: () => void) => {
@@ -595,11 +616,12 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: currentMsgs,
-          currentPath: pathname
+          currentPath: pathname,
+          model: selectedModel
         })
       });      const data = await res.json();
       if (data.success) {
-        let responseText = data.text;
+        const responseText = data.text;
         
         // Parse workflow steps from response
         const { steps, cleanText } = parseWorkflow(responseText);
@@ -745,6 +767,19 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
                 </div>
               </div>
               <div className="flex items-center gap-0.5">
+                <select
+                  value={selectedModel}
+                  onChange={(e) => handleModelChange(e.target.value)}
+                  className="h-7 px-1.5 mr-1.5 rounded border border-border bg-background text-[10.5px] font-medium text-foreground/80 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer max-w-[130px] truncate select-none shadow-sm"
+                  title="Select AI Model"
+                >
+                  <option value="googleai/gemini-2.5-flash">Gemini 2.5 Flash</option>
+                  <option value="googleai/gemini-1.5-pro">Gemini 1.5 Pro</option>
+                  <option value="openai">GPT-4o Mini (OpenAI)</option>
+                  <option value="groq">Llama 3.3 (Groq)</option>
+                  <option value="xai">Grok 2 (xAI)</option>
+                  <option value="nvidia">Llama 3.1 (Nvidia)</option>
+                </select>
                 <button
                   onClick={toggleVoice}
                   className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"

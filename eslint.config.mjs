@@ -13,6 +13,9 @@ export default [
       'node_modules/**',
       'next-env.d.ts',
       'tsconfig.tsbuildinfo',
+      'public/**',
+      'realtime-viewer.js',
+      'realtime-server/**',
     ],
   },
   {

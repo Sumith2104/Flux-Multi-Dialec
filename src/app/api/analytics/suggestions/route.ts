@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     if (!userId) return new NextResponse('Unauthorized', { status: 401 });
 
     try {
-        const { projectId } = await req.json();
+        const { projectId, model } = await req.json();
         if (!projectId) return NextResponse.json({ error: 'Missing projectId' }, { status: 400 });
 
         const project = await getProjectById(projectId, userId);
@@ -70,6 +70,7 @@ If the schema only has 'users', ask about user counts.
 Do not suggest queries for tables that do not exist.`;
 
         const response = await ai.generate({
+            model: model || 'googleai/gemini-2.5-flash',
             prompt: prompt,
             output: { schema: SuggestionSchema }
         });

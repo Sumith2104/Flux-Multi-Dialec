@@ -11,7 +11,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { messages, currentPath } = await req.json();
+        const { messages, currentPath, model } = await req.json();
 
         // Load Integration Guide for context
         let docsContext = '';
@@ -77,6 +77,7 @@ Provide your response in Markdown formatting. Do NOT use HTML. Keep code snippet
         const { fluxTools } = await import('@/ai/tools');
 
         const response = await ai.generate({
+            model: model || 'googleai/gemini-2.5-flash',
             prompt: fullPrompt,
             tools: fluxTools,
             config: {

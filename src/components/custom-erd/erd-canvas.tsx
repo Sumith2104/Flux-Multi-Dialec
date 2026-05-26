@@ -5,7 +5,7 @@ import { type Table, type Column, type Constraint } from '@/lib/data';
 import dagre from 'dagre';
 import { TableNode } from './table-node';
 import { RelationshipEdges } from './relationship-edges';
-import { LayoutGrid, Maximize2, ArrowRight, ArrowDown, Grid, CircleDot, Layers } from 'lucide-react';
+import { Maximize2, ArrowRight, ArrowDown, Grid, CircleDot, Layers } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export type LayoutMode = 'LR' | 'TB' | 'GRID' | 'TIERED' | 'RADIAL';

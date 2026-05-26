@@ -126,48 +126,75 @@ export const ai = new Proxy(baseAi, {
     if (prop === 'generate') {
       return async (options: any) => {
         let lastError: any = null;
-        
-        // 1. Try Gemini Models first
         const requestedModel = options.model || 'googleai/gemini-2.5-flash';
 
-        const modelsToTry = [
-          requestedModel,
-          ...FALLBACK_MODELS.filter(m => m !== requestedModel)
-        ];
+        console.log(`[AI] Requested model/provider: ${requestedModel}`);
 
-        for (const model of modelsToTry) {
-          try {
-            console.log(`[AI] Attempting generation with model: ${model}`);
-            return await target.generate({
-              ...options,
-              model,
-            });
-          } catch (err: any) {
-            console.error(`[AI] Model ${model} failed:`, err.message || err);
-            lastError = err;
-          }
+        // We will build a prioritized chain of actions to try:
+        // Each item in the chain is an async function that returns the result or throws.
+        const chain: Array<{ name: string; run: () => Promise<any> }> = [];
+
+        // 1. If it's a third-party provider, put it first in the chain
+        if (THIRD_PARTY_PROVIDERS.includes(requestedModel)) {
+          chain.push({
+            name: `Third-Party: ${requestedModel}`,
+            run: () => tryThirdPartyProvider(requestedModel, options.prompt, options.output?.schema),
+          });
+        } 
+        // 2. Else if it's a known Gemini model, put it first in the chain
+        else if (requestedModel.startsWith('googleai/')) {
+          chain.push({
+            name: `Gemini: ${requestedModel}`,
+            run: () => target.generate({ ...options, model: requestedModel }),
+          });
+        }
+        // If it's some other custom string, try it as a Gemini model first
+        else {
+          chain.push({
+            name: `Custom Gemini: ${requestedModel}`,
+            run: () => target.generate({ ...options, model: requestedModel }),
+          });
         }
 
-        // 2. Try Third Party Providers
-        for (const provider of THIRD_PARTY_PROVIDERS) {
+        // 3. Add Gemini fallback models
+        const remainingGemini = FALLBACK_MODELS.filter(m => m !== requestedModel);
+        for (const model of remainingGemini) {
+          chain.push({
+            name: `Gemini Fallback: ${model}`,
+            run: () => target.generate({ ...options, model }),
+          });
+        }
+
+        // 4. Add remaining third-party providers
+        const remainingProviders = THIRD_PARTY_PROVIDERS.filter(p => p !== requestedModel);
+        for (const provider of remainingProviders) {
           const keys: Record<string, string | undefined> = {
             groq: process.env.GROQ_API_KEY,
             xai: process.env.XAI_API_KEY,
             openai: process.env.OPENAI_API_KEY,
             nvidia: process.env.NVIDIA_API_KEY
           };
-          const key = keys[provider];
-          if (key) {
-            try {
-              return await tryThirdPartyProvider(provider, options.prompt, options.output?.schema);
-            } catch (err: any) {
-              console.error(`[AI] Provider ${provider} failed:`, err.message || err);
-              lastError = err;
-            }
+          if (keys[provider]) {
+            chain.push({
+              name: `Third-Party Fallback: ${provider}`,
+              run: () => tryThirdPartyProvider(provider, options.prompt, options.output?.schema),
+            });
           }
         }
 
-        
+        // Execute the chain in order
+        for (const step of chain) {
+          try {
+            console.log(`[AI] Attempting ${step.name}`);
+            const res = await step.run();
+            console.log(`[AI] Success with ${step.name}`);
+            return res;
+          } catch (err: any) {
+            console.error(`[AI] ${step.name} failed:`, err.message || err);
+            lastError = err;
+          }
+        }
+
         throw lastError || new Error("All fallback models and providers failed.");
       };
     }
