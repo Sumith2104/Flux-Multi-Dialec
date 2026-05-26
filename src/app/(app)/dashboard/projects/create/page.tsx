@@ -439,7 +439,10 @@ export default function CreateProjectPage() {
 
                                             {serverDatabases.length > 0 && (
                                                 <div className="grid gap-2 animate-in slide-in-from-top duration-300">
-                                                    <Label htmlFor="discovered-db" className="text-sm font-medium">Target Database Folder</Label>
+                                                    <Label htmlFor="discovered-db" className="text-sm font-medium">Initial Default Database</Label>
+                                                    <span className="text-[11px] text-muted-foreground/80 leading-normal block -mt-1">
+                                                        Select the starting database catalog to load first. Inside the editor sidebar, you will be able to dynamically switch to **any** other database catalog on this server at any time.
+                                                    </span>
                                                     <Select value={fetchedDbSelected} onValueChange={setFetchedDbSelected} required>
                                                         <SelectTrigger className="h-12">
                                                             <SelectValue placeholder="Choose a database from the server..." />
