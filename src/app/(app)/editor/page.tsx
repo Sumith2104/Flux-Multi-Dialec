@@ -31,6 +31,7 @@ async function Editor({ projectId, tableId, tableName }: { projectId: string; ta
     // Rows are now fetched on the client-side
     return (
         <EditorClient
+            key={`${projectId}_${activeDatabase || ''}`}
             projectId={projectId}
             tableId={tableId}
             tableName={tableName}

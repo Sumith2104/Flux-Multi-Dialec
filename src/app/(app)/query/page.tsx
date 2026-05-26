@@ -356,7 +356,7 @@ export default function QueryPage() {
 
   if (isMobile) {
     return (
-      <div className="min-h-[calc(100dvh-57px)] w-full overflow-x-hidden bg-background p-2 pb-24">
+      <div key={project?.project_id || 'no-project'} className="min-h-[calc(100dvh-57px)] w-full overflow-x-hidden bg-background p-2 pb-24">
         <Tabs defaultValue="editor" className="flex min-h-[calc(100dvh-73px)] flex-col gap-2">
           <TabsList className="grid h-auto w-full grid-cols-4 gap-1 rounded-lg bg-secondary/60 p-1">
             <TabsTrigger value="schema" className="h-9 px-1 text-[11px]">Schema</TabsTrigger>
@@ -505,7 +505,7 @@ export default function QueryPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-57px)] w-full p-2 bg-background">
+    <div key={project?.project_id || 'no-project'} className="h-[calc(100vh-57px)] w-full p-2 bg-background">
       <ResizablePanelGroup
         direction="vertical"
         className="h-full w-full rounded-md border bg-card shadow-sm overflow-hidden"

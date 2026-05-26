@@ -29,7 +29,18 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
         try {
             const item = window.localStorage.getItem('selectedProject');
             if (item) {
-                setProjectState(JSON.parse(item));
+                const parsed = JSON.parse(item);
+                setProjectState(parsed);
+                // Keep cookies in sync on mount
+                import('js-cookie').then(mod => {
+                    const Cookies = mod.default;
+                    Cookies.set('selectedProject', JSON.stringify(parsed), { path: '/' });
+                });
+                import('@/app/actions').then(actions => {
+                    const formData = new FormData();
+                    formData.append('project', JSON.stringify(parsed));
+                    actions.selectProjectAction(formData);
+                });
             }
         } catch (error) {
             console.error("Failed to parse project from localStorage", error);
@@ -44,11 +55,29 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
         try {
             if (project) {
                 window.localStorage.setItem('selectedProject', JSON.stringify(project));
+                import('js-cookie').then(mod => {
+                    const Cookies = mod.default;
+                    Cookies.set('selectedProject', JSON.stringify(project), { path: '/' });
+                });
+                import('@/app/actions').then(actions => {
+                    const formData = new FormData();
+                    formData.append('project', JSON.stringify(project));
+                    actions.selectProjectAction(formData);
+                });
             } else {
                 window.localStorage.removeItem('selectedProject');
+                import('js-cookie').then(mod => {
+                    const Cookies = mod.default;
+                    Cookies.remove('selectedProject', { path: '/' });
+                });
+                import('@/app/actions').then(actions => {
+                    const formData = new FormData();
+                    formData.append('project', '');
+                    actions.selectProjectAction(formData);
+                });
             }
         } catch (error) {
-            console.error("Failed to save project to localStorage", error);
+            console.error("Failed to save project to localStorage/cookies", error);
         }
     }, []);
 
