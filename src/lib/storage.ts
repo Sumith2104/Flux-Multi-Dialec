@@ -85,3 +85,11 @@ export const PLAN_STORAGE_LIMITS = {
     pro: 500 * 1024 * 1024,   // 500 MB per file
     max: 2 * 1024 * 1024 * 1024, // 2 GB per file
 } as const;
+
+// Plan-based total storage limits (in bytes)
+export const PLAN_STORAGE_TOTAL_LIMITS = {
+    free: 1 * 1024 * 1024 * 1024,      // 1 GB total storage
+    pro: 10 * 1024 * 1024 * 1024,      // 10 GB total storage
+    max: 100 * 1024 * 1024 * 1024,     // 100 GB total storage
+} as const;
+

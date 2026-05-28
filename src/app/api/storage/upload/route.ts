@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { getProjectById } from '@/lib/data';
-import { uploadToS3, buildS3Key, PLAN_STORAGE_LIMITS } from '@/lib/storage';
+import { uploadToS3, buildS3Key, PLAN_STORAGE_LIMITS, PLAN_STORAGE_TOTAL_LIMITS } from '@/lib/storage';
 import { ERROR_CODES } from '@/lib/error-codes';
 import crypto from 'crypto';
 
@@ -60,6 +60,30 @@ export async function POST(req: NextRequest) {
                 code: ERROR_CODES.FILE_SIZE_EXCEEDED
             }
         }, { status: 413 });
+    }
+
+    // Validate total storage limit
+    const totalLimit = PLAN_STORAGE_TOTAL_LIMITS[planType] ?? PLAN_STORAGE_TOTAL_LIMITS.free;
+    const sizeRes = await pool2.query(
+        `SELECT COALESCE(SUM(size), 0) as total_size 
+         FROM fluxbase_global.storage_objects 
+         WHERE project_id IN (
+             SELECT project_id FROM fluxbase_global.projects WHERE user_id = $1
+         )`,
+        [auth.userId]
+    );
+    const currentTotalSize = parseInt(sizeRes.rows[0].total_size, 10);
+
+    if (currentTotalSize + file.size > totalLimit) {
+        const currentMB = (currentTotalSize / 1024 / 1024).toFixed(1);
+        const limitGB = (totalLimit / 1024 / 1024 / 1024).toFixed(0);
+        return NextResponse.json({
+            success: false,
+            error: {
+                message: `Storage limit exceeded. You are using ${currentMB} MB of your ${limitGB} GB limit. Upgrading your plan will increase this limit.`,
+                code: ERROR_CODES.STORAGE_QUOTA_EXCEEDED
+            }
+        }, { status: 403 });
     }
 
     // Upload to S3

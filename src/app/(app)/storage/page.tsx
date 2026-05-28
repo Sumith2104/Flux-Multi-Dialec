@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useContext, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -91,17 +91,63 @@ export default function StoragePage() {
     const uploadFile = async (file: File) => {
         if (!projectId || !selectedBucket) return;
         setUploading(true);
-        setUploadProgress(`Uploading ${file.name}â€¦`);
+        setUploadProgress(`Uploading ${file.name}...`);
         setError(null);
         try {
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('bucketId', selectedBucket.id);
-            formData.append('projectId', projectId);
-            const res = await fetch('/api/storage/upload', { method: 'POST', body: formData });
-            const data = await res.json();
-            if (!data.success) { setError(typeof data.error === 'object' ? data.error.message : (data.error || 'Upload failed')); return; }
+            // 1. Get S3 Presigned URL (validates size limits and quotas)
+            const presignRes = await fetch('/api/storage/upload/presign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fileName: file.name,
+                    fileSize: file.size,
+                    mimeType: file.type || 'application/octet-stream',
+                    bucketId: selectedBucket.id,
+                    projectId
+                })
+            });
+            const presignData = await presignRes.json();
+            if (!presignData.success) {
+                setError(typeof presignData.error === 'object' ? presignData.error.message : (presignData.error || 'Failed to get upload URL'));
+                return;
+            }
+
+            const { uploadUrl, s3Key, actualBucketId } = presignData;
+
+            // 2. Direct upload to AWS S3 using PUT and Content-Type
+            const s3UploadRes = await fetch(uploadUrl, {
+                method: 'PUT',
+                body: file,
+                headers: {
+                    'Content-Type': file.type || 'application/octet-stream'
+                }
+            });
+
+            if (!s3UploadRes.ok) {
+                throw new Error(`S3 direct upload failed with status ${s3UploadRes.status}`);
+            }
+
+            // 3. Finalize upload metadata in DB
+            const finalizeRes = await fetch('/api/storage/upload/finalize', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fileName: file.name,
+                    fileSize: file.size,
+                    mimeType: file.type || 'application/octet-stream',
+                    bucketId: actualBucketId,
+                    projectId,
+                    s3Key
+                })
+            });
+            const finalizeData = await finalizeRes.json();
+            if (!finalizeData.success) {
+                setError(typeof finalizeData.error === 'object' ? finalizeData.error.message : (finalizeData.error || 'Failed to finalize upload'));
+                return;
+            }
+
             queryClient.invalidateQueries({ queryKey: ['storage-files', projectId, selectedBucket.id] });
+            queryClient.invalidateQueries({ queryKey: ['storage-buckets', projectId] });
         } catch (e: any) {
             setError(e.message);
         } finally {
