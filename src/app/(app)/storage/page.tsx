@@ -114,42 +114,68 @@ export default function StoragePage() {
 
             const { uploadUrl, s3Key, actualBucketId } = presignData;
 
-            // 2. Direct upload to AWS S3 using PUT and Content-Type
-            const s3UploadRes = await fetch(uploadUrl, {
-                method: 'PUT',
-                body: file,
-                headers: {
-                    'Content-Type': file.type || 'application/octet-stream'
-                }
-            });
+            let uploadSucceeded = false;
+            try {
+                // 2. Direct upload to AWS S3 using PUT and Content-Type
+                const s3UploadRes = await fetch(uploadUrl, {
+                    method: 'PUT',
+                    body: file,
+                    headers: {
+                        'Content-Type': file.type || 'application/octet-stream'
+                    }
+                });
 
-            if (!s3UploadRes.ok) {
-                throw new Error(`S3 direct upload failed with status ${s3UploadRes.status}`);
+                if (!s3UploadRes.ok) {
+                    throw new Error(`S3 direct upload failed with status ${s3UploadRes.status}`);
+                }
+                uploadSucceeded = true;
+            } catch (s3Error: any) {
+                console.error("Direct S3 upload failed, checking fallback:", s3Error);
+                if (file.size <= 4 * 1024 * 1024) {
+                    setUploadProgress(`Retrying via fallback server upload...`);
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('bucketId', actualBucketId);
+                    formData.append('projectId', projectId);
+
+                    const fallbackRes = await fetch('/api/storage/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const fallbackData = await fallbackRes.json();
+                    if (!fallbackData.success) {
+                        throw new Error(typeof fallbackData.error === 'object' ? fallbackData.error.message : (fallbackData.error || 'Fallback upload failed'));
+                    }
+                } else {
+                    throw s3Error;
+                }
             }
 
-            // 3. Finalize upload metadata in DB
-            const finalizeRes = await fetch('/api/storage/upload/finalize', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    fileName: file.name,
-                    fileSize: file.size,
-                    mimeType: file.type || 'application/octet-stream',
-                    bucketId: actualBucketId,
-                    projectId,
-                    s3Key
-                })
-            });
-            const finalizeData = await finalizeRes.json();
-            if (!finalizeData.success) {
-                setError(typeof finalizeData.error === 'object' ? finalizeData.error.message : (finalizeData.error || 'Failed to finalize upload'));
-                return;
+            if (uploadSucceeded) {
+                // 3. Finalize upload metadata in DB (only if direct upload succeeded)
+                const finalizeRes = await fetch('/api/storage/upload/finalize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fileName: file.name,
+                        fileSize: file.size,
+                        mimeType: file.type || 'application/octet-stream',
+                        bucketId: actualBucketId,
+                        projectId,
+                        s3Key
+                    })
+                });
+                const finalizeData = await finalizeRes.json();
+                if (!finalizeData.success) {
+                    setError(typeof finalizeData.error === 'object' ? finalizeData.error.message : (finalizeData.error || 'Failed to finalize upload'));
+                    return;
+                }
             }
 
             queryClient.invalidateQueries({ queryKey: ['storage-files', projectId, selectedBucket.id] });
             queryClient.invalidateQueries({ queryKey: ['storage-buckets', projectId] });
         } catch (e: any) {
-            setError(e.message);
+            setError(e.message || 'An unexpected error occurred during upload');
         } finally {
             setUploading(false);
             setUploadProgress(null);
