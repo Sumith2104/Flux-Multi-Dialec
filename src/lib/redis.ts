@@ -55,6 +55,7 @@ export const redis = new Proxy({} as Redis, {
             if (!client) {
                 // Safe default returns
                 if (prop === 'ping') return Promise.resolve('PONG');
+                if (prop === 'eval' || prop === 'evalsha') return Promise.resolve([1, 100, Date.now() + 10000, 100]);
                 if (prop === 'keys' || prop === 'smembers') return Promise.resolve([]);
                 if (prop === 'scard' || prop === 'llen') return Promise.resolve(0);
                 if (prop === 'hgetall') return Promise.resolve({});
@@ -69,6 +70,7 @@ export const redis = new Proxy({} as Redis, {
                             console.error(`[Redis] Error during "${String(prop)}" operation:`, err);
                             // Safe fallbacks on promise rejection
                             if (prop === 'ping') throw err;
+                            if (prop === 'eval' || prop === 'evalsha') return [1, 100, Date.now() + 10000, 100];
                             if (prop === 'keys' || prop === 'smembers') return [];
                             if (prop === 'scard' || prop === 'llen') return 0;
                             if (prop === 'hgetall') return {};
@@ -81,6 +83,7 @@ export const redis = new Proxy({} as Redis, {
             } catch (err) {
                 console.error(`[Redis] Error accessing property/method "${String(prop)}":`, err);
                 if (prop === 'ping') throw err;
+                if (prop === 'eval' || prop === 'evalsha') return [1, 100, Date.now() + 10000, 100];
                 if (prop === 'keys' || prop === 'smembers') return [];
                 if (prop === 'scard' || prop === 'llen') return 0;
                 if (prop === 'hgetall') return {};
