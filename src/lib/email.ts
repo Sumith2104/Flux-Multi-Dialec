@@ -276,6 +276,83 @@ export async function sendFeedbackEmail(to: string, mood: number | null, message
     return sendEmail(to, `[Fluxbase Feedback] New response from ${userId}`, html, getBrandAttachments());
 }
 
+/**
+ * Sends a branded email report for user feedback, including AI classification details.
+ */
+export async function sendClassifiedFeedbackEmail(
+    to: string,
+    message: string,
+    intent: string,
+    priority: string,
+    intentConfidence: number,
+    priorityConfidence: number,
+    flagged: boolean,
+    userId: string = 'Anonymous',
+    mood: number | null = null,
+    page: string | null = null
+) {
+    const moodMap: Record<number, { label: string, color: string }> = {
+        1: { label: 'Bad ☹️', color: '#f87171' },
+        2: { label: 'Okay 😐', color: '#fbbf24' },
+        3: { label: 'Good 🙂', color: '#34d399' },
+        4: { label: 'Love it! 🤩', color: '#60a5fa' },
+    };
+
+    const moodData = mood ? moodMap[mood] : { label: 'None', color: '#71717a' };
+    
+    const priorityColors: Record<string, string> = {
+        low: '#34d399',      // Emerald
+        medium: '#fbbf24',   // Amber
+        high: '#f97316',     // Orange
+        critical: '#ef4444'  // Red
+    };
+    const priorityColor = priorityColors[priority.toLowerCase()] || '#71717a';
+
+    const html = buildEmailHtml({
+        title: "New Classified Feedback Received",
+        greeting: "Hello, a new feedback query has been processed and classified by AI.",
+        instruction: "Below are the query details and AI classification results.",
+        contentHtml: `
+            <div style="text-align: left; background: rgba(255,255,255,0.03); border-radius: 12px; padding: 24px; border: 1px solid #27272a;">
+                <p style="margin: 0 0 4px 0; font-size: 11px; color: #71717a; text-transform: uppercase; letter-spacing: 1px;">User Identity</p>
+                <p style="margin: 0 0 20px 0; font-size: 14px; color: #ffffff; font-family: monospace;">${userId}</p>
+                
+                <p style="margin: 0 0 4px 0; font-size: 11px; color: #71717a; text-transform: uppercase; letter-spacing: 1px;">Experience Mood</p>
+                <p style="margin: 0 0 20px 0; font-size: 14px; font-weight: 600; color: ${moodData.color};">${moodData.label}</p>
+                
+                <p style="margin: 0 0 4px 0; font-size: 11px; color: #71717a; text-transform: uppercase; letter-spacing: 1px;">Feedback Message</p>
+                <p style="margin: 0 0 20px 0; font-size: 15px; color: #e4e4e7; line-height: 1.6; white-space: pre-wrap;">${message || 'No written message provided.'}</p>
+                
+                <hr style="border: 0; border-top: 1px solid #27272a; margin: 20px 0;" />
+                
+                <p style="margin: 0 0 12px 0; font-size: 12px; font-weight: bold; color: #ff8224; text-transform: uppercase; letter-spacing: 1px;">🤖 AI Classification Results</p>
+                
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 6px 0; font-size: 13px; color: #71717a; width: 40%;">Intent:</td>
+                        <td style="padding: 6px 0; font-size: 13px; color: #ffffff; font-weight: 600;">${intent.toUpperCase()} (${(intentConfidence * 100).toFixed(0)}% confidence)</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0; font-size: 13px; color: #71717a;">Priority:</td>
+                        <td style="padding: 6px 0; font-size: 13px; color: ${priorityColor}; font-weight: 600;">${priority.toUpperCase()} (${(priorityConfidence * 100).toFixed(0)}% confidence)</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0; font-size: 13px; color: #71717a;">Flagged Policy Violation:</td>
+                        <td style="padding: 6px 0; font-size: 13px; color: ${flagged ? '#ef4444' : '#34d399'}; font-weight: 600;">${flagged ? 'YES 🚨' : 'NO ✅'}</td>
+                    </tr>
+                </table>
+                
+                <hr style="border: 0; border-top: 1px solid #27272a; margin: 20px 0;" />
+                
+                <p style="margin: 0 0 4px 0; font-size: 11px; color: #71717a; text-transform: uppercase; letter-spacing: 1px;">Source Page</p>
+                <p style="margin: 0; font-size: 12px; color: #a1a1aa; font-family: monospace; word-break: break-all;">${page || 'Unknown'}</p>
+            </div>
+        `
+    });
+
+    return sendEmail(to, `[Fluxbase AI Feedback] [${priority.toUpperCase()}] ${intent.toUpperCase()} from ${userId}`, html, getBrandAttachments());
+}
+
 export async function sendTeamInviteEmail(to: string, inviterName: string, projectName: string, role: string) {
     const url = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const html = buildEmailHtml({
