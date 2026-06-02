@@ -1,9 +1,21 @@
+<table align="center">
+  <tr>
+    <td valign="middle">
+      <img src="src/app/favicon.ico" alt="Fluxbase Logo" width="100" />
+    </td>
+    <td valign="middle">
+      <h1 style="margin: 0;">Fluxbase ⚡</h1>
+    </td>
+  </tr>
+</table>
+
 <p align="center">
-  <img src="public/logo.png" alt="Fluxbase Logo" width="180" />
+  <strong>The Serverless SQL Platform Built for Speed, Scale, and Developers.</strong>
 </p>
 
-<h1 align="center">Fluxbase ⚡</h1>
-<p align="center"><strong>The Serverless SQL Platform Built for Speed, Scale, and Developers.</strong></p>
+<p align="center">
+  The Serverless SQL Platform Built for Speed, Scale, and Developers.
+</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-2.1.0-6366f1.svg?style=for-the-badge" alt="Version">
