@@ -90,10 +90,17 @@ async def _insert_table_batch(
     Inserts a batch of rows into one table.
     Returns True on success, False if sent to DLQ.
     """
+    if not rows:
+        return True
+
     t_start = time.monotonic()
 
     try:
-        result = await _with_retry(lambda: db.bulk_insert(table, rows))
+        if cfg.database_url:
+            await db.ensure_table_exists(table, rows[0])
+            result = await _with_retry(lambda: db.bulk_copy(table, rows))
+        else:
+            result = await _with_retry(lambda: db.bulk_insert(table, rows))
         latency_ms = (time.monotonic() - t_start) * 1000
 
         metrics.record_success(len(rows), latency_ms)

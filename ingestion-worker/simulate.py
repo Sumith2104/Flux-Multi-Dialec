@@ -19,6 +19,7 @@ import uuid
 import random
 import logging
 import sys
+import os
 
 import httpx
 
@@ -36,16 +37,38 @@ REGIONS   = ["us-east", "us-west", "eu-west", "ap-south", "ap-northeast"]
 STATUSES  = ["pending", "processing", "shipped", "delivered"]
 
 
+def uuid7() -> uuid.UUID:
+    """
+    Generate a time-ordered UUIDv7 according to RFC 9562.
+    """
+    ts_ms = int(time.time() * 1000)
+    rand_bytes = bytearray(os.urandom(10))
+    
+    # Version 7: 0111xxxx
+    b6 = 0x70 | (rand_bytes[0] & 0x0f)
+    # Variant 2: 10xxxxxx
+    b8 = 0x80 | (rand_bytes[2] & 0x3f)
+    
+    raw = bytearray(16)
+    raw[0:6] = ts_ms.to_bytes(6, 'big')
+    raw[6] = b6
+    raw[7] = rand_bytes[1]
+    raw[8] = b8
+    raw[9:] = rand_bytes[3:]
+    
+    return uuid.UUID(bytes=bytes(raw))
+
+
 def _make_order() -> dict:
     return {
-        "id":          str(uuid.uuid4()),
+        "id":          str(uuid7()),
         "product":     random.choice(PRODUCTS),
         "quantity":    random.randint(1, 10),
         "unit_price":  round(random.uniform(9.99, 999.99), 2),
         "currency":    "USD",
         "region":      random.choice(REGIONS),
         "status":      random.choice(STATUSES),
-        "customer_id": str(uuid.uuid4()),
+        "customer_id": str(uuid7()),
         "created_at":  time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
 

@@ -31,6 +31,8 @@ class Config:
     ))
     fluxbase_api_key: str = field(default_factory=lambda: os.environ["FLUXBASE_API_KEY"])
     fluxbase_project_id: str = field(default_factory=lambda: os.environ["FLUXBASE_PROJECT_ID"])
+    database_url: str = field(default_factory=lambda: os.environ.get("AWS_RDS_POSTGRES_URL", ""))
+    use_unlogged_tables: bool = field(default_factory=lambda: os.environ.get("INGESTION_UNLOGGED_TABLES", "false").lower() == "true")
 
     # ── Worker tuning ────────────────────────────────────────────────────────
     worker_id: str = field(default_factory=lambda: os.environ.get("WORKER_ID", "worker-1"))

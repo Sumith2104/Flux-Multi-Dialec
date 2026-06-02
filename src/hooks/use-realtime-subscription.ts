@@ -214,6 +214,9 @@ export function useRealtimeSubscription(projectId: string | undefined) {
     const projectIdRef = useRef(projectId);
     projectIdRef.current = projectId;
 
+    const lastRefetchTimeRef = useRef<number>(0);
+    const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     // --- INSTANT CACHE SYNC LAYER ---
     const syncDatabase = useCallback((event: RealtimeEvent) => {
         if (!projectId) return;
@@ -240,19 +243,44 @@ export function useRealtimeSubscription(projectId: string | undefined) {
         // 2. Handle Data Changes (Rows deleted/inserted/updated)
         if (event.type === 'update' || event.action || event.operation) {
             const table = event.table;
-            console.log(`[Realtime Sync] Data mutation in project ${projectId}. Table: ${table || 'generic'}`);
 
-            // Surgical Refetch: targeted table refresh
-            // The event.table is the physical table name, but the queryKey uses the internal tableId UUID.
-            // By using a predicate, we can simply refetch any active table-data queries for this project.
-            queryClient.refetchQueries({
-                predicate: (query) => query.queryKey[0] === 'table-data' && query.queryKey[1] === projectId,
-                type: 'active'
-            });
+            const doRefetch = () => {
+                console.log(`[Realtime Sync] Data mutation in project ${projectId}. Table: ${table || 'generic'}`);
+                
+                // Surgical Refetch: targeted table refresh
+                // The event.table is the physical table name, but the queryKey uses the internal tableId UUID.
+                // By using a predicate, we can simply refetch any active table-data queries for this project.
+                queryClient.refetchQueries({
+                    predicate: (query) => query.queryKey[0] === 'table-data' && query.queryKey[1] === projectId,
+                    type: 'active'
+                });
 
-            // Invalidate analytics
-            queryClient.invalidateQueries({ queryKey: ['analytics_stats', projectId] });
-            queryClient.invalidateQueries({ queryKey: ['analytics_history', projectId] });
+                // Invalidate analytics
+                queryClient.invalidateQueries({ queryKey: ['analytics_stats', projectId] });
+                queryClient.invalidateQueries({ queryKey: ['analytics_history', projectId] });
+
+                lastRefetchTimeRef.current = Date.now();
+                throttleTimerRef.current = null;
+            };
+
+            const now = Date.now();
+            const timeSinceLastRefetch = now - lastRefetchTimeRef.current;
+            const THROTTLE_WINDOW = 1500;
+
+            if (timeSinceLastRefetch >= THROTTLE_WINDOW) {
+                // Leading edge: execute immediately
+                if (throttleTimerRef.current) {
+                    clearTimeout(throttleTimerRef.current);
+                    throttleTimerRef.current = null;
+                }
+                doRefetch();
+            } else {
+                // Trailing edge: schedule if not already scheduled
+                if (!throttleTimerRef.current) {
+                    const remaining = THROTTLE_WINDOW - timeSinceLastRefetch;
+                    throttleTimerRef.current = setTimeout(doRefetch, remaining);
+                }
+            }
         }
     }, [projectId, queryClient]);
 
@@ -294,6 +322,9 @@ export function useRealtimeSubscription(projectId: string | undefined) {
             unsubscribe();
             window.removeEventListener('flux:schema-change', handleLocalSchemaChange);
             clearInterval(statusInterval);
+            if (throttleTimerRef.current) {
+                clearTimeout(throttleTimerRef.current);
+            }
         };
     }, [projectId, syncDatabase]);
 

@@ -12,7 +12,7 @@ import json
 import logging
 import time
 from typing import Any
-
+import asyncpg
 import httpx
 
 from config import cfg
@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Keep one persistent async client (connection pool) per process
 _http_client: httpx.AsyncClient | None = None
+_pg_pool: asyncpg.Pool | None = None
 
 
 def get_http_client() -> httpx.AsyncClient:
@@ -44,29 +45,116 @@ def get_http_client() -> httpx.AsyncClient:
     return _http_client
 
 
+async def get_pg_pool() -> asyncpg.Pool:
+    global _pg_pool
+    if _pg_pool is None:
+        if not cfg.database_url:
+            raise ValueError("AWS_RDS_POSTGRES_URL environment variable is required for direct DB COPY ingestion.")
+        
+        logger.info("[Fluxbase Pool] Initialising asyncpg connection pool to RDS database...")
+        # AWS RDS db.t4g.2xlarge supports up to ~3600 connections.
+        # We cap max_size at num_workers * 2 to leave plenty of pool headroom.
+        _pg_pool = await asyncpg.create_pool(
+            dsn=cfg.database_url,
+            min_size=2,
+            max_size=max(5, cfg.num_workers * 2),
+            timeout=10.0,
+            command_timeout=15.0,
+            # Ensure SSL is configured correctly for AWS RDS
+            ssl="require" if "rds.amazonaws.com" in cfg.database_url else None
+        )
+    return _pg_pool
+
+
 async def close_http_client():
     global _http_client
     if _http_client:
         await _http_client.aclose()
         _http_client = None
 
+    global _pg_pool
+    if _pg_pool:
+        logger.info("[Fluxbase Pool] Closing asyncpg connection pool...")
+        await _pg_pool.close()
+        _pg_pool = None
+
 
 class FluxbaseClient:
     """
-    Wraps the Fluxbase /api/execute-sql endpoint.
+    Wraps both high-speed direct PostgreSQL connection (COPY stream)
+    and fallback HTTP REST API (/api/execute-sql) operations.
 
-    Core operation: bulk INSERT using multi-row VALUES.
-    Idempotency: ON CONFLICT (id) DO NOTHING
-
-    The caller is responsible for retry logic.
-    This class raises FluxbaseError on non-retriable failures
-    and FluxbaseRetryError on throttling / transient errors.
+    Core operations:
+      - Direct database connection via asyncpg using COPY protocol (Fastest, 100k+ rows/sec)
+      - Parameterised INSERT queries over HTTP (Fallback)
     """
 
     def __init__(self):
         self.client = get_http_client()
 
-    # ── Bulk insert ───────────────────────────────────────────────────────────
+    # ── High-Speed PostgreSQL COPY Ingestion ──────────────────────────────────
+    async def bulk_copy(
+        self,
+        table: str,
+        rows: list[dict[str, Any]],
+    ) -> dict:
+        """
+        Ingests a batch of rows directly into the PostgreSQL database using the native
+        COPY protocol. Optimised with SET LOCAL synchronous_commit = off.
+        """
+        if not rows:
+            return {"success": True, "rowsAffected": 0}
+
+        # 1. Extract canonical schema from union of all keys in this batch
+        all_keys = set()
+        for r in rows:
+            all_keys.update(r.keys())
+        columns = sorted(list(all_keys))
+
+        if not columns:
+            return {"success": True, "rowsAffected": 0}
+
+        # 2. Form aligned tuple records
+        records = []
+        for r in rows:
+            records.append(tuple(r.get(c) for c in columns))
+
+        start = time.monotonic()
+        try:
+            pool = await get_pg_pool()
+            schema_name = f"project_{cfg.fluxbase_project_id}"
+
+            async with pool.acquire() as conn:
+                async with conn.transaction():
+                    # Turn off synchronous commit at the session level for maximum disk write speed
+                    await conn.execute("SET LOCAL synchronous_commit = OFF;")
+                    
+                    # Stream records using binary COPY stream
+                    await conn.copy_records_to_table(
+                        table_name=table,
+                        schema_name=schema_name,
+                        columns=columns,
+                        records=records
+                    )
+
+            elapsed = (time.monotonic() - start) * 1000
+            return {
+                "success": True,
+                "rowsAffected": len(rows),
+                "_latency_ms": elapsed
+            }
+
+        except Exception as exc:
+            latency_ms = (time.monotonic() - start) * 1000
+            # Identify transient connection reset or timeout issues
+            err_msg = str(exc).lower()
+            is_transient = "timeout" in err_msg or "connection" in err_msg or "pool" in err_msg
+            if is_transient:
+                raise FluxbaseRetryError(f"Database direct COPY connection error: {exc}", latency_ms=latency_ms) from exc
+            else:
+                raise FluxbaseError(f"Database direct COPY permanent failure: {exc}", latency_ms=latency_ms) from exc
+
+    # ── Bulk insert (HTTP Fallback) ───────────────────────────────────────────
     async def bulk_insert(
         self,
         table: str,
@@ -194,8 +282,8 @@ class FluxbaseClient:
     # ── Helper: check table exists ────────────────────────────────────────────
     async def ensure_table_exists(self, table: str, sample_row: dict) -> bool:
         """
-        Issues a CREATE TABLE IF NOT EXISTS based on the sample row schema.
-        Column types are inferred heuristically.
+        Issues a CREATE TABLE (or UNLOGGED TABLE) IF NOT EXISTS based on the sample row schema.
+        Supports direct DB execution or API execution fallback.
         """
         col_defs = []
         for key, val in sample_row.items():
@@ -205,12 +293,32 @@ class FluxbaseClient:
             pg_type = _infer_pg_type(val)
             col_defs.append(f'"{key}" {pg_type}')
 
+        table_type = "UNLOGGED TABLE" if cfg.use_unlogged_tables else "TABLE"
+        schema_name = f"project_{cfg.fluxbase_project_id}"
+        
+        # Direct DB DDL when database_url is provided
+        if cfg.database_url:
+            ddl = (
+                f'CREATE {table_type} IF NOT EXISTS "{schema_name}"."{table}" (\n  '
+                + ",\n  ".join(col_defs)
+                + "\n)"
+            )
+            try:
+                pool = await get_pg_pool()
+                async with pool.acquire() as conn:
+                    await conn.execute(ddl)
+                logger.info("[Fluxbase] Direct DB table check successful: %s.%s (%s)", schema_name, table, table_type)
+                return True
+            except Exception as e:
+                logger.error("[Fluxbase] Direct DB table check failed: %s", e)
+                return False
+
+        # Fallback DDL over HTTP API (note: API handles project isolation schema mapping)
         ddl = (
             f'CREATE TABLE IF NOT EXISTS "{table}" (\n  '
             + ",\n  ".join(col_defs)
             + "\n)"
         )
-
         try:
             resp = await self.client.post(
                 "/api/execute-sql",
@@ -242,3 +350,4 @@ class FluxbaseRetryError(Exception):
     def __init__(self, message: str, latency_ms: float = 0.0):
         super().__init__(message)
         self.latency_ms = latency_ms
+
