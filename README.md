@@ -1,8 +1,9 @@
-# Fluxbase ⚡
+<p align="center">
+  <img src="public/logo.png" alt="Fluxbase Logo" width="180" />
+</p>
 
-> **The Serverless SQL Platform Built for Speed, Scale, and Developers.**
-
-Fluxbase is a next-generation Database-as-a-Service (DBaaS) engineered for high-growth startups. It wraps AWS RDS (PostgreSQL & MySQL) in a premium web dashboard, a zero-dependency REST API, and a battle-hardened async ingestion pipeline capable of sustaining **80,000+ rows/second** throughput without freezing your UI.
+<h1 align="center">Fluxbase ⚡</h1>
+<p align="center"><strong>The Serverless SQL Platform Built for Speed, Scale, and Developers.</strong></p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-2.1.0-6366f1.svg?style=for-the-badge" alt="Version">
@@ -16,221 +17,66 @@ Fluxbase is a next-generation Database-as-a-Service (DBaaS) engineered for high-
 
 ---
 
-## 📋 Table of Contents
+Fluxbase is a next-generation **Database-as-a-Service (DBaaS)** built for high-growth startups. It wraps AWS RDS (PostgreSQL & MySQL) in a premium web dashboard, a zero-dependency REST API, and a battle-hardened async ingestion pipeline capable of sustaining **80,000+ rows/second** throughput without freezing your UI.
 
-- [Overview](#-overview)
-- [What's New in v2.1](#-whats-new-in-v21)
-- [Architecture](#-architecture)
-- [Key Features](#-key-features)
-- [Environment Variables Reference](#-environment-variables-reference)
-- [API Reference](#-api-reference)
-- [Ingestion Worker](#-ingestion-worker)
-- [Real-time Subscriptions](#-real-time-subscriptions)
-- [Performance Deep Dive](#-performance-deep-dive)
-- [Client Integration Examples](#-client-integration-examples)
-- [Monitoring & Observability](#-monitoring--observability)
-- [Deployment Guide](#-deployment-guide)
-- [Contributing](#-contributing)
-- [License](#-license)
+Every project gets its own **isolated schema namespace** — cross-tenant data leakage is structurally impossible. You write plain SQL, we handle the rest.
 
----
-
-## 🚀 Overview
-
-Fluxbase is a **custom server-based SQL engine** that natively connects to AWS RDS instances, allowing you to instantly spin up isolated environments for PostgreSQL and MySQL — all managed through a stunning premium dashboard.
-
-You get the familiar, relational querying power of PostgreSQL and MySQL **without the operational overhead**, combined with:
-
-- A visual **Table Editor** and **ERD Visualizer**
-- A **raw SQL scratchpad** with syntax highlighting and query history
-- A **real-time event stream** via Server-Sent Events (SSE)
-- A **high-throughput async ingestion pipeline** for bulk data workloads
-- A **scoped API key system** for safely embedding your database in any client
-
----
-
-## 🆕 What's New in v2.1
-
-### 🏎️ Ingestion Engine Overhaul
-
-| Improvement | Before | After |
-|---|---|---|
-| Insert method | `INSERT INTO ... VALUES (...)` | PostgreSQL `COPY` binary protocol via `asyncpg` |
-| ID generation | UUID v4 (random) | **UUID v7** (time-ordered, avoids B-tree page splits) |
-| Write durability | Synchronous commits | `synchronous_commit = off` per-session (async WAL) |
-| Table write mode | Logged (WAL overhead) | Optional **UNLOGGED** tables via `INGESTION_UNLOGGED_TABLES=true` |
-| Worker model | Single worker loop | **Multi-instance parallel workers** (configurable via `NUM_WORKERS`) |
-| Throughput | ~5,000 rows/sec | **80,907 rows/sec** (10M row benchmark) |
-
-### 🖥️ UI Freeze Fix
-
-- Implemented **1,500 ms trailing-edge throttle** on realtime SSE cache invalidations
-- React Query refetches are now debounced — bulk ingestion no longer hammers the UI
-- SSE connection upgraded to **singleton per project** — N components share ONE connection
-
-### 🔌 Connection Stability
-
-- AWS RDS connection pool with **`min_size=2, max_size=num_workers×2`** via `asyncpg`
-- Automatic reconnection with exponential backoff (100ms → 200ms → 400ms → 800ms, up to 5 retries)
-- HTTP/2 multiplexing enabled on the REST fallback client
-- **Timeout hardening**: connect=5s, read=30s, write=10s
-
-### 🔐 Authentication Speed
-
-- Session cold-start latency reduced from ~2-3s to <500ms via Google OAuth optimisation
-- Auth middleware rewritten to avoid redundant DB round-trips on every request
-
----
-
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        CLIENT APPLICATIONS                          │
-│        Next.js App  /  Python Script  /  Any HTTP Client            │
-└────────────────────────────┬────────────────────────────────────────┘
-                             │ HTTPS / HTTP2
-                             ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                         FLUXBASE ENGINE                             │
-│                       (Next.js 15 on Vercel)                        │
-│                                                                     │
-│  ┌─────────────────┐   ┌────────────────┐   ┌────────────────────┐ │
-│  │   Auth Layer    │   │  Execute SQL   │   │   Ingest API       │ │
-│  │  (Google OAuth) │   │  /api/execute- │   │  POST /api/ingest  │ │
-│  │                 │   │  sql           │   │  (queue → Redis)   │ │
-│  └────────┬────────┘   └───────┬────────┘   └─────────┬──────────┘ │
-│           │                   │                       │            │
-│  ┌────────▼────────────────────▼───────────────────────▼──────────┐ │
-│  │              Connection Pool Router                              │ │
-│  │      pg.ts (PostgreSQL)  ·  mysql.ts (MySQL)                   │ │
-│  └────────────────────────────┬───────────────────────────────────┘ │
-└───────────────────────────────┼─────────────────────────────────────┘
-                                │
-            ┌───────────────────┴──────────────────┐
-            ▼                                      ▼
- ┌──────────────────────┐              ┌──────────────────────┐
- │   AWS RDS PostgreSQL │              │   AWS RDS MySQL      │
- │   (search_path       │              │   (USE project_xxx   │
- │    per tenant)       │              │    per tenant)       │
- └──────────────────────┘              └──────────────────────┘
-                                ▲
-                                │ asyncpg COPY / REST fallback
-               ┌────────────────┴──────────────────┐
-               │         INGESTION WORKER           │
-               │         (Python / Fly.io)          │
-               │                                   │
-               │  ┌──────────┐  ┌───────────────┐  │
-               │  │  Worker  │  │   Adaptive    │  │
-               │  │  Pool    │  │   Throttle    │  │
-               │  │ (N async │  │  (batch size  │  │
-               │  │  tasks)  │  │   + concurr.) │  │
-               │  └──────────┘  └───────────────┘  │
-               │         ▲                         │
-               │         │                         │
-               │  ┌──────┴──────┐                  │
-               │  │  Upstash    │                  │
-               │  │  Redis      │                  │
-               │  │  (Queue +   │                  │
-               │  │   DLQ)      │                  │
-               │  └─────────────┘                  │
-               └───────────────────────────────────┘
-```
-
-### Tenant Isolation
-
-Every project in Fluxbase gets its own **isolated schema namespace**:
-
-| Engine | Isolation mechanism |
-|--------|---------------------|
+| Engine | Tenant isolation |
+|--------|-----------------|
 | PostgreSQL | `SET search_path TO project_<id>` per query |
 | MySQL | `USE project_<id>` per connection |
-
-This means cross-tenant data leakage is structurally impossible — tenants never share a schema.
 
 ---
 
 ## ✨ Key Features
 
-### 🔥 Native SQL Execution
-Zero abstraction layers. Write raw `SELECT`, `JOIN`, `UPDATE`, `INSERT`, `CREATE TABLE` — executed directly on bare-metal database drivers (`pg` for PostgreSQL, `mysql2` for MySQL). Your SQL is your SQL.
+### 🔥 Native SQL Execution — Multi-Dialect
+Zero abstraction layers. Write raw `SELECT`, `JOIN`, `UPDATE`, `INSERT`, `CREATE TABLE` executed directly on bare-metal database drivers. Choose your engine per project:
+
+| Dialect | Driver | Notes |
+|---------|--------|-------|
+| **PostgreSQL 16+** | `pg` (node-postgres) | Full SQL, JSON, arrays, CTEs |
+| **MySQL 8.0+** | `mysql2` | Full SQL, window functions, JSON |
+
+Your API key encodes which engine your project uses — same REST API, zero config changes on your end.
 
 ### ⚡ High-Throughput Ingestion Pipeline
-Fluxbase ships a dedicated **async Python worker** (deployable on Fly.io or any container runtime) that can ingest data at **80,000+ rows/second** using:
-- **PostgreSQL `COPY` protocol** (binary stream, 5–10× faster than `INSERT`)
-- **UUID v7** time-ordered IDs (eliminates B-tree page splits under high-write workloads)
-- **Async WAL** (`synchronous_commit = off`) for maximum write throughput
-- **Adaptive concurrency throttling** (auto-scales batch size, concurrency, and inter-batch delay based on live error rates and queue depth)
+A dedicated async Python worker that ingests data at **80,000+ rows/second** using:
+- **PostgreSQL `COPY` protocol** — binary stream, 5–10× faster than `INSERT`
+- **UUID v7** time-ordered IDs — eliminates B-tree page splits under high-write workloads
+- **Async WAL** (`synchronous_commit = off`) — maximum write throughput
+- **Adaptive throttle** — auto-scales batch size, concurrency, and delay based on live error rates
 
 ### 🎛️ Premium Dashboard
-A dark-mode-first, glassmorphism-styled dashboard built with Tailwind CSS and Radix UI:
 - **Table Editor** — view, filter, and edit rows inline with live pagination
 - **SQL Scratchpad** — multi-tab editor with syntax highlighting and query history
-- **ERD Visualizer** — auto-generated entity-relationship diagram from live schema
+- **ERD Visualizer** — auto-generated entity-relationship diagram from your live schema
 - **Analytics** — Vercel-style query traffic charts and event timelines
 - **API Key Manager** — granular, per-project scoped keys with usage tracking
 
 ### 📡 Real-Time Subscriptions
-Every data change is streamed to connected dashboard clients via **Server-Sent Events (SSE)**. The frontend uses a **module-level singleton connection** — all React components on the page share exactly one SSE stream, preventing connection storms during rapid ingestion.
+Every data change streamed to your dashboard via **SSE**. A module-level singleton ensures N components share exactly one connection — no connection storms.
 
 ### 🔐 Scoped API Keys
-Generate project-scoped Bearer tokens that carry your project context. Embed them safely in client-side apps — no `projectId` required in every API call.
+Project-scoped Bearer tokens. Embed safely in any client — no `projectId` needed per request.
 
 ### ☁️ Webhooks
-Register HTTP endpoints to receive `POST` notifications whenever rows are inserted, updated, or deleted in a specific table.
+Register HTTP endpoints to receive `POST` notifications on `INSERT`, `UPDATE`, or `DELETE`.
 
 ### 📦 CSV Import
-Drag-and-drop CSV upload with automatic schema detection and type inference. Zero SQL required.
+Drag-and-drop CSV upload with automatic schema detection and type inference.
 
 ### 🤖 AI SQL Assistant
-Natural language to SQL — describe what data you want in plain English, get executable SQL.
+Natural language → executable SQL. Describe what you want, get a query back.
 
 ### 🔒 Row-Level Security (RLS)
-Define per-table row-level security policies directly from the dashboard.
+Define per-table RLS policies directly from the dashboard.
 
 ### 💾 Backups & Snapshots
 One-click schema and data snapshots, stored and restorable from the dashboard.
 
 ### 🕷️ Web Scraper Integration
-Built-in scraper runner — schedule scrapers that write their output directly into your Fluxbase tables.
-
----
-
-
-## 🔧 Environment Variables Reference
-
-### Dashboard (`.env.local`)
-
-| Variable | Required | Description |
-|---|---|---|
-| `AWS_RDS_POSTGRES_URL` | ✅ | PostgreSQL master connection string |
-| `AWS_RDS_MYSQL_URL` | ⚠️ | MySQL master connection (required for MySQL projects) |
-| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | ✅ | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | ✅ | Google OAuth client secret |
-| `NEXTAUTH_SECRET` | ✅ | NextAuth.js session secret (min 32 chars) |
-| `NEXTAUTH_URL` | ✅ | Canonical URL of your deployment |
-| `SMTP_HOST` | ⚠️ | SMTP server hostname |
-| `SMTP_PORT` | ⚠️ | SMTP port (usually 587) |
-| `SMTP_USER` | ⚠️ | SMTP username |
-| `SMTP_PASS` | ⚠️ | SMTP password / app password |
-| `SMTP_FROM` | ⚠️ | Sender display name and address |
-| `UPSTASH_REDIS_REST_URL` | ⚠️ | Upstash Redis REST URL (for ingestion queue) |
-| `UPSTASH_REDIS_REST_TOKEN` | ⚠️ | Upstash Redis REST token |
-
-### Ingestion Worker (`.env` in `/ingestion-worker/`)
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `UPSTASH_REDIS_REST_URL` | ✅ | — | Upstash Redis REST URL |
-| `UPSTASH_REDIS_REST_TOKEN` | ✅ | — | Upstash Redis REST token |
-| `FLUXBASE_API_KEY` | ✅ | — | Project-scoped API key from dashboard |
-| `FLUXBASE_PROJECT_ID` | ✅ | — | Target project ID |
-| `FLUXBASE_API_URL` | ❌ | `https://fluxbase.vercel.app` | Base URL of your Fluxbase deployment |
-| `AWS_RDS_POSTGRES_URL` | ⚠️ | — | Direct DB URL for high-throughput COPY mode |
-| `INGESTION_UNLOGGED_TABLES` | ❌ | `false` | Set `true` to use UNLOGGED tables (max speed, no crash recovery) |
-| `NUM_WORKERS` | ❌ | `5` | Number of concurrent async worker coroutines |
-| `WORKER_ID` | ❌ | `worker-1` | Unique identifier for this worker instance |
-| `PORT` | ❌ | `8080` | Health check HTTP server port |
+Built-in scraper runner — schedule scrapers that write output directly into your Fluxbase tables.
 
 ---
 
@@ -238,28 +84,20 @@ Built-in scraper runner — schedule scrapers that write their output directly i
 
 ### Authentication
 
-All API requests require a **project-scoped API key** in the `Authorization` header:
+All requests require a project-scoped API key:
 
 ```http
 Authorization: Bearer <YOUR_API_KEY>
 ```
 
-To generate an API key:
-1. Open your Fluxbase Dashboard
-2. Select your **Project**
-3. Go to **API Keys** in the sidebar
-4. Click **"Create API Key"** → copy the key immediately (shown only once)
+Generate one: **Dashboard → Project → API Keys → Create API Key**
 
 ---
 
 ### `POST /api/execute-sql` — Execute SQL
 
-Execute any SQL statement against your project's database.
-
-#### Request
-
 ```http
-POST https://your-deployment.com/api/execute-sql
+POST /api/execute-sql
 Content-Type: application/json
 Authorization: Bearer <API_KEY>
 ```
@@ -270,34 +108,24 @@ Authorization: Bearer <API_KEY>
 }
 ```
 
-> Your API key already encodes the `projectId` — you never need to pass it in the request body.
-
-#### Successful Response (`200 OK`)
+**Success (`200`)**
 
 ```json
 {
   "success": true,
   "result": {
     "rows": [
-      {
-        "id": "018f4a2b-1234-7abc-8def-000000000001",
-        "name": "Jane Doe",
-        "email": "jane@example.com",
-        "created_at": "2026-06-01T10:00:00.000Z"
-      }
+      { "id": "018f4a2b-...", "name": "Jane Doe", "email": "jane@example.com" }
     ],
-    "columns": ["id", "name", "email", "created_at"],
+    "columns": ["id", "name", "email"],
     "message": "Affected 1 rows"
   },
   "explanation": ["Executed via Native AWS PostgreSQL in 12.40ms"],
-  "executionInfo": {
-    "time": "14ms",
-    "rowCount": 1
-  }
+  "executionInfo": { "time": "14ms", "rowCount": 1 }
 }
 ```
 
-#### Error Response (`200 OK` with `success: false`)
+**Error (`200` with `success: false`)**
 
 ```json
 {
@@ -310,79 +138,48 @@ Authorization: Bearer <API_KEY>
 }
 ```
 
-> **Note**: Query-level errors always return HTTP `200` with `success: false`. HTTP `4xx`/`5xx` codes indicate infrastructure-level failures (auth, network, etc.).
+> Query-level errors always return HTTP `200` with `success: false`. HTTP `4xx`/`5xx` indicate infrastructure failures.
 
 ---
 
 ### `POST /api/ingest` — Queue Rows for Ingestion
 
-Enqueue a batch of rows for high-throughput async ingestion via the worker pipeline.
-
-#### Request
-
-```http
-POST https://your-deployment.com/api/ingest
-Content-Type: application/json
-Authorization: Bearer <API_KEY>
-```
+Enqueue rows for high-throughput async ingestion via the worker pipeline.
 
 ```json
 {
   "table": "orders",
   "rows": [
-    {
-      "id": "018f4a2b-1234-7abc-8def-000000000001",
-      "product": "laptop",
-      "quantity": 2,
-      "unit_price": 999.99,
-      "status": "pending"
-    }
+    { "id": "018f4a2b-...", "product": "laptop", "quantity": 2, "unit_price": 999.99 }
   ]
 }
 ```
 
-#### Response (`202 Accepted`)
+**Response (`202 Accepted`)**
 
 ```json
-{
-  "success": true,
-  "queued": 1,
-  "batchId": "batch_abc123"
-}
+{ "success": true, "queued": 1, "batchId": "batch_abc123" }
 ```
 
 ---
 
 ### `POST /api/bulk-fast-insert` — Direct Bulk Insert
 
-Synchronous bulk insert bypassing the queue. Use for moderate volumes (<10k rows) where you need immediate confirmation.
-
-#### Request
+Synchronous bulk insert bypassing the queue. Use for moderate volumes (<10k rows).
 
 ```json
-{
-  "table": "orders",
-  "rows": [ ... ]
-}
+{ "table": "orders", "rows": [ ... ] }
 ```
 
-#### Response (`200 OK`)
+**Response (`200 OK`)**
 
 ```json
-{
-  "success": true,
-  "inserted": 500,
-  "executionTime": "120ms"
-}
+{ "success": true, "inserted": 500, "executionTime": "120ms" }
 ```
 
 ---
 
 ### `GET /api/health` — Health Check
-
-```http
-GET /api/health
-```
 
 ```json
 {
@@ -397,17 +194,13 @@ GET /api/health
 
 ### `GET /api/realtime` — SSE Stream
 
-Opens a **Server-Sent Events** stream for your project. Events are emitted whenever a row is inserted, updated, or deleted.
-
 ```http
 GET /api/realtime?projectId=<PROJECT_ID>
 Accept: text/event-stream
 Authorization: Bearer <API_KEY>
 ```
 
-**Event types:**
-
-| Type | Description |
+| Event type | Description |
 |---|---|
 | `connected` | SSE handshake confirmed |
 | `db_event` | Row-level change (`INSERT`, `UPDATE`, `DELETE`) |
@@ -418,60 +211,43 @@ Authorization: Bearer <API_KEY>
 
 ## 🏭 Ingestion Worker
 
-The ingestion worker is a **standalone Python service** optimised for extreme write throughput. It reads from an **Upstash Redis queue** and writes to AWS RDS using native PostgreSQL `COPY` protocol — bypassing the HTTP API entirely for maximum speed.
-
-### Architecture
+A standalone Python service for extreme write throughput. Reads from an **Upstash Redis queue**, writes directly to AWS RDS using the native `COPY` protocol — bypassing the HTTP API entirely.
 
 ```
-Producer(s)
-  │  POST /api/ingest  (batches of rows)
-  ▼
-Upstash Redis
-  ├── orders_queue         (standard priority)
-  ├── orders_queue:high    (high priority — processed first)
-  └── orders_dlq           (dead-letter queue for failed batches)
-  ▼
-Ingestion Worker (Python/asyncio on Fly.io)
-  ├── worker-1 ──► asyncpg COPY ──► AWS RDS PostgreSQL
-  ├── worker-2 ──► asyncpg COPY ──► AWS RDS PostgreSQL
-  ├── ...
-  └── worker-N ──► asyncpg COPY ──► AWS RDS PostgreSQL
+Producer(s)  →  POST /api/ingest  →  Upstash Redis
+                                         │
+                          ┌──────────────┼──────────────┐
+                       worker-1       worker-2       worker-N
+                          │              │              │
+                     asyncpg COPY   asyncpg COPY   asyncpg COPY
+                          └──────────────┴──────────────┘
+                                         │
+                                  AWS RDS PostgreSQL
 ```
 
 ### Setup
 
 ```bash
 cd ingestion-worker
-
-# Create virtual environment
 python -m venv .venv
-.venv\Scripts\activate          # Windows
-source .venv/bin/activate       # macOS/Linux
+source .venv/bin/activate      # macOS/Linux
+.venv\Scripts\activate         # Windows
 
-# Install dependencies
 pip install -r requirements.txt
-
-# Copy and fill in environment variables
 cp .env.example .env
-# Edit .env with your credentials
+# Fill in your credentials in .env
 
-# Start the worker
 python main.py
 ```
 
-
-
 ### How the COPY Protocol Works
 
-When `AWS_RDS_POSTGRES_URL` is set, the worker:
-
-1. **Creates the target table** if it doesn't exist (schema is inferred from the first row in the batch)
-2. **Streams rows** to PostgreSQL using `asyncpg`'s `COPY ... FROM STDIN` — no SQL parsing, no value escaping, pure binary protocol
-3. **Resolves conflicts** with `ON CONFLICT (id) DO NOTHING` (idempotent ingestion)
-4. **Sets `synchronous_commit = off`** per session for async WAL — writes are acknowledged immediately without waiting for disk flush
+1. **Auto-creates the target table** if it doesn't exist (schema inferred from first row)
+2. **Streams rows** via `asyncpg` `COPY ... FROM STDIN` — no SQL parsing, pure binary
+3. **Idempotent** — `ON CONFLICT (id) DO NOTHING`
+4. **Async WAL** — `SET synchronous_commit = off` per session
 
 ```python
-# Pseudocode for what happens inside bulk_copy()
 async with pool.acquire() as conn:
     await conn.execute("SET synchronous_commit = off")
     await conn.copy_records_to_table(
@@ -483,19 +259,17 @@ async with pool.acquire() as conn:
 
 ### UUID v7 — Why It Matters
 
-Fluxbase's simulator and recommended client libraries generate **UUID v7** IDs (RFC 9562). Unlike UUID v4 (purely random), UUID v7 embeds a **millisecond-precision Unix timestamp** in the high bits:
-
 ```
 018f4a2b-1234-7abc-8def-000000000001
 └─────────────────┘
    48-bit ms timestamp (monotonically increasing)
 ```
 
-This makes IDs **monotonically increasing** within a millisecond. PostgreSQL's B-tree index appends new entries to the **rightmost leaf page** instead of splitting random interior pages — eliminating the most common cause of index bloat and write amplification under high-insert workloads.
+UUID v7 IDs are time-ordered — new rows always land on the **rightmost B-tree leaf page**. Zero page splits, zero index fragmentation, consistent performance at 100M+ rows.
 
 ### Adaptive Throttle
 
-The worker runs a background **adaptive throttle loop** (every 30 seconds) that automatically tunes three parameters:
+Background loop (every 30s) auto-tunes three parameters:
 
 | Parameter | Range | Rule |
 |---|---|---|
@@ -503,28 +277,15 @@ The worker runs a background **adaptive throttle loop** (every 30 seconds) that 
 | `concurrency` | 1–10 | ↓ 1 when avg latency >2,000ms |
 | `delay_ms` | 0–500ms | ↑ 200ms on failures · ↓ 25ms when stable |
 
-You can observe these adjustments in real time in the worker logs:
-
-```
-[Throttle] ↑ Backlog 1500 → batch=180 concurrency=7
-[Throttle] ↓ High latency 2350ms → concurrency=6
-[Throttle] State change: batch=100→110 concurrency=3→3 delay=0→0ms
-```
-
-### Load Testing
-
-Use the included `simulate.py` to stress-test your pipeline:
+### Load Testing — Real Benchmark
 
 ```bash
-# Push 10,000,000 rows at 20 concurrent producers
 python simulate.py \
   --url https://your-deployment.com \
   --count 10000000 \
   --concurrency 20 \
   --batch 500
 ```
-
-**Real-world benchmark (10M rows):**
 
 ```
 ═══════════════════════════════════════════════════════
@@ -541,7 +302,7 @@ python simulate.py \
 
 ### Dead-Letter Queue (DLQ)
 
-Batches that fail after **5 retries** (exponential backoff: 100ms → 1,600ms) are pushed to `orders_dlq` in Redis. You can inspect and requeue them:
+Batches that fail after 5 retries (100ms → 1,600ms backoff) go to `orders_dlq`. Requeue with:
 
 ```bash
 python requeue.py --limit 100
@@ -551,89 +312,79 @@ python requeue.py --limit 100
 
 ## 📡 Real-Time Subscriptions
 
-### How It Works
-
-Fluxbase uses **Server-Sent Events (SSE)** for real-time data streaming. The frontend hook `useRealtimeSubscription` maintains a **module-level singleton connection** per project — regardless of how many React components call the hook, only **one SSE connection** is ever opened.
+Fluxbase uses **Server-Sent Events (SSE)**. The `useRealtimeSubscription` hook maintains a **module-level singleton** per project — N components, one connection.
 
 ```typescript
-// Any number of components can call this — only ONE SSE stream is created
+// All components share ONE SSE stream
 const { lastEvent, status } = useRealtimeSubscription(projectId);
 ```
 
 ### Throttled Cache Invalidation
 
-Under high-speed ingestion (50k+ rows/sec), the SSE stream fires events at extreme rates. Without throttling, React Query would refetch on every single event — freezing the UI.
+At 80k+ rows/sec, the SSE stream fires events at extreme rates. Without throttling, React Query would refetch on every event — freezing the UI.
 
 Fluxbase applies **1,500ms trailing-edge throttling**:
 
 ```
-Events: ──●──●──●──●──●──●──────────────────●──●──●──●
-                                    ▲                   ▲
-                              Refetch fires        Refetch fires
-                             (trailing edge)      (trailing edge)
+Events:  ──●──●──●──●──●──●────────────────●──●──●──●
+                                   ▲                  ▲
+                             Refetch fires       Refetch fires
+                            (trailing edge)     (trailing edge)
 ```
-
-The UI stays responsive regardless of ingestion speed. Once the event flood subsides, the latest state is fetched in a single, clean refetch.
 
 ### Connection Resilience
 
 | Feature | Detail |
 |---|---|
 | Auto-reconnect | Exponential backoff: 1s → 2s → 4s → 8s → 16s (max 30s) |
-| Watchdog | 45-second heartbeat — reconnects if no event received |
-| Jitter | ±500ms random jitter on reconnect to prevent thundering herd |
-| Max retries | 10 attempts before entering `closed` state |
+| Watchdog | 45s heartbeat — reconnects if no event received |
+| Jitter | ±500ms on reconnect to prevent thundering herd |
+| Max retries | 10 attempts before `closed` state |
 
 ---
 
 ## ⚡ Performance Deep Dive
 
-### Why COPY Is So Much Faster Than INSERT
+### COPY vs INSERT
 
-| Method | Overhead | Throughput (estimate) |
+| Method | Overhead | Throughput |
 |---|---|---|
 | `INSERT INTO ... VALUES (...)` | SQL parse + plan + lock + WAL per row | ~2,000–5,000 rows/sec |
 | `COPY ... FROM STDIN` | Bulk lock + single WAL write per batch | **80,000–200,000 rows/sec** |
 
-### Why UUID v7 Beats UUID v4 Under Load
+### UUID v7 vs UUID v4 Under Load
 
-With UUID v4, each new row has a **random** primary key. PostgreSQL must insert it into a random position in the B-tree index — frequently causing **page splits**, which:
-- Fragment the index (increasing disk I/O)
-- Generate more WAL data
-- Slow down both reads and writes as the index grows
+UUID v4 is purely random — every insert lands at a random B-tree position causing **page splits**:
+- Index fragmentation → more disk I/O
+- Extra WAL data
+- Performance degrades as table grows
 
-With UUID v7, the timestamp prefix ensures **monotonically increasing** keys. New rows always go to the **rightmost leaf** of the index tree — zero page splits, zero fragmentation, consistent performance even at 100M+ rows.
+UUID v7 is time-ordered — inserts always go to the **rightmost leaf**:
+- Zero page splits
+- Zero fragmentation
+- Consistent speed at any scale
 
 ### Synchronous Commit Off
-
-By default, PostgreSQL waits for WAL data to be flushed to disk before acknowledging each `INSERT`. For bulk ingestion:
 
 ```sql
 SET synchronous_commit = off;
 ```
 
-This tells PostgreSQL: "Acknowledge the write immediately — flush to disk asynchronously." In the event of a crash, you might lose up to ~60ms of writes (the `wal_writer_delay`). For most ingestion workloads (where the queue is the source of truth), this is an acceptable trade-off for 5–10× write throughput improvement.
+PostgreSQL acknowledges writes immediately, flushes WAL async. Worst-case data loss: ~60ms (one `wal_writer_delay` cycle). For ingestion workloads backed by a Redis queue, this is a safe 5–10× throughput gain.
 
 ### UNLOGGED Tables
-
-Unlogged tables skip WAL entirely — writes go directly to the data files:
 
 ```sql
 CREATE UNLOGGED TABLE orders (...);
 ```
 
-**Trade-off**: Unlogged tables are **truncated** on crash recovery. Use them for:
-- Staging tables (before moving to permanent storage)
-- Scratch/analytics aggregation tables
-- Any workload where data can be re-ingested from the queue
-
-Enable via: `INGESTION_UNLOGGED_TABLES=true`
+Skips WAL entirely. **Truncated on crash recovery** — ideal for staging tables and re-ingestible scratch data. Enable: `INGESTION_UNLOGGED_TABLES=true`
 
 ---
 
 ## 🧑‍💻 Client Integration Examples
 
-### JavaScript / TypeScript (Fetch)
+### JavaScript / TypeScript
 
 ```typescript
 const FLUXBASE_URL = process.env.FLUXBASE_API_URL!;
@@ -649,16 +400,10 @@ async function query<T>(sql: string): Promise<T[]> {
     body: JSON.stringify({ query: sql }),
     next: { revalidate: 15 }, // Next.js data cache
   });
-
   const data = await res.json();
   if (!data.success) throw new Error(data.error?.message);
   return data.result.rows as T[];
 }
-
-// Usage
-const users = await query<{ id: string; email: string }>(
-  "SELECT id, email FROM users WHERE active = true"
-);
 ```
 
 ### Next.js — Deduplicated Server Component
@@ -667,18 +412,16 @@ const users = await query<{ id: string; email: string }>(
 import { cache } from 'react';
 import { query } from '@/lib/fluxbase';
 
-// React cache() ensures this only runs ONCE per request,
-// even if called from multiple server components
-export const getUsers = cache(async () => {
-  return await query("SELECT * FROM users ORDER BY created_at DESC LIMIT 50");
-});
+// Runs only ONCE per request even if called from many components
+export const getUsers = cache(async () =>
+  query("SELECT * FROM users ORDER BY created_at DESC LIMIT 50")
+);
 ```
 
-### Python (httpx — async)
+### Python (async)
 
 ```python
-import httpx
-import asyncio
+import httpx, asyncio
 
 FLUXBASE_URL = "https://your-deployment.com"
 FLUXBASE_KEY = "fb_live_xxxxxxxxxxxxxxxxxxxx"
@@ -696,71 +439,44 @@ async def query(sql: str) -> list[dict]:
             raise Exception(data["error"]["message"])
         return data["result"]["rows"]
 
-async def main():
-    rows = await query("SELECT name, email FROM users WHERE role = 'admin'")
-    print(f"Found {len(rows)} admins")
-    for row in rows:
-        print(f"  {row['name']} <{row['email']}>")
-
-asyncio.run(main())
+asyncio.run(query("SELECT * FROM orders LIMIT 10"))
 ```
 
-### Python (requests — synchronous)
+### Python (sync)
 
 ```python
 import requests
 
-FLUXBASE_URL = "https://your-deployment.com"
-FLUXBASE_KEY = "fb_live_xxxxxxxxxxxxxxxxxxxx"
-
 def query(sql: str) -> list[dict]:
-    resp = requests.post(
-        f"{FLUXBASE_URL}/api/execute-sql",
-        headers={
-            "Authorization": f"Bearer {FLUXBASE_KEY}",
-            "Content-Type": "application/json",
-        },
+    data = requests.post(
+        "https://your-deployment.com/api/execute-sql",
+        headers={"Authorization": "Bearer fb_live_xxxxxxxxxxxxxxxxxxxx"},
         json={"query": sql},
         timeout=30,
-    )
-    data = resp.json()
+    ).json()
     if not data["success"]:
         raise Exception(data["error"]["message"])
     return data["result"]["rows"]
-
-rows = query("SELECT * FROM orders WHERE status = 'pending' LIMIT 100")
-print(f"Pending orders: {len(rows)}")
 ```
 
-### Bulk Ingestion (Python — high throughput)
-
-For inserting millions of rows, use the `/api/ingest` endpoint with the ingestion worker:
+### Bulk Ingestion (Python)
 
 ```python
-import asyncio
-import httpx
-
-async def ingest_batch(client: httpx.AsyncClient, url: str, key: str,
-                       table: str, rows: list[dict]) -> bool:
-    resp = await client.post(
-        f"{url}/api/ingest",
-        headers={"Authorization": f"Bearer {key}"},
-        json={"table": table, "rows": rows},
-        timeout=15.0,
-    )
-    return resp.status_code == 202
+import asyncio, httpx
 
 async def bulk_ingest(rows: list[dict], batch_size: int = 500):
-    url = "https://your-deployment.com"
-    key = "fb_live_xxxxxxxxxxxxxxxxxxxx"
-    
     async with httpx.AsyncClient(http2=True) as client:
         batches = [rows[i:i+batch_size] for i in range(0, len(rows), batch_size)]
-        tasks = [ingest_batch(client, url, key, "orders", b) for b in batches]
-        results = await asyncio.gather(*tasks)
-    
-    success = sum(results)
-    print(f"Queued {success}/{len(batches)} batches ({success * batch_size} rows)")
+        results = await asyncio.gather(*[
+            client.post(
+                "https://your-deployment.com/api/ingest",
+                headers={"Authorization": "Bearer fb_live_xxxxxxxxxxxxxxxxxxxx"},
+                json={"table": "orders", "rows": b},
+                timeout=15.0,
+            )
+            for b in batches
+        ])
+    print(f"Queued {sum(r.status_code == 202 for r in results)}/{len(batches)} batches")
 ```
 
 ---
@@ -769,141 +485,32 @@ async def bulk_ingest(rows: list[dict], batch_size: int = 500):
 
 ### Prometheus Metrics
 
-The ingestion worker exposes a `/metrics` endpoint (Prometheus format) on port `8080`:
+The ingestion worker exposes `/metrics` (Prometheus format) on port `8080`:
 
 | Metric | Type | Description |
 |---|---|---|
-| `rows_ingested_total` | Counter | Total rows successfully written |
-| `rows_failed_total` | Counter | Total rows that failed after retries |
-| `rows_dlq_total` | Counter | Total rows sent to dead-letter queue |
-| `batches_total` | Counter | Total batches processed (by status) |
-| `insert_latency_ms` | Histogram | Per-batch insert latency distribution |
+| `rows_ingested_total` | Counter | Rows successfully written |
+| `rows_failed_total` | Counter | Rows failed after all retries |
+| `rows_dlq_total` | Counter | Rows sent to dead-letter queue |
+| `batches_total` | Counter | Batches processed (by status) |
+| `insert_latency_ms` | Histogram | Per-batch insert latency |
 
 ### Grafana Dashboard
 
-Import the included `grafana_dashboard.json` for a pre-built dashboard showing:
-- Real-time rows/second ingestion rate
+Import `ingestion-worker/grafana_dashboard.json` for a pre-built dashboard:
+- Real-time rows/sec ingestion rate
 - Error rate and DLQ depth
-- Worker latency percentiles (P50, P95, P99)
+- Latency percentiles (P50, P95, P99)
 - Redis queue depth over time
-- Adaptive throttle state (batch size, concurrency)
+- Adaptive throttle state
 
 ### Alerting
 
-The included `alert_rules.yml` (Prometheus Alertmanager format) configures alerts for:
-- High DLQ depth (>100 items)
-- Worker error rate >5%
-- P99 latency >5,000ms
-- Redis queue depth >10,000 (backpressure warning)
-
----
-
-## 🚢 Deployment Guide
-
-### Dashboard — Vercel (Recommended)
-
-```bash
-# Install Vercel CLI
-npm i -g vercel
-
-# Deploy
-vercel deploy --prod
-```
-
-Set all environment variables in the Vercel dashboard under **Settings → Environment Variables**.
-
-### Ingestion Worker — Fly.io (Recommended)
-
-The worker ships with a `fly.toml` and `Dockerfile`:
-
-```bash
-cd ingestion-worker
-
-# Install Fly CLI and authenticate
-fly auth login
-
-# Create the app
-fly launch --name fluxbase-worker --no-deploy
-
-# Set secrets
-fly secrets set UPSTASH_REDIS_REST_URL="..."
-fly secrets set UPSTASH_REDIS_REST_TOKEN="..."
-fly secrets set FLUXBASE_API_KEY="..."
-fly secrets set FLUXBASE_PROJECT_ID="..."
-fly secrets set AWS_RDS_POSTGRES_URL="..."
-
-# Deploy
-fly deploy
-```
-
-**Scaling across multiple regions:**
-
-```bash
-# Run 3 workers in 3 regions for geo-distributed ingestion
-fly scale count 3 --region iad,fra,sin
-```
-
-### Ingestion Worker — Docker
-
-```bash
-cd ingestion-worker
-docker build -t fluxbase-worker .
-
-docker run -d \
-  --name fluxbase-worker \
-  -e UPSTASH_REDIS_REST_URL="..." \
-  -e UPSTASH_REDIS_REST_TOKEN="..." \
-  -e FLUXBASE_API_KEY="..." \
-  -e FLUXBASE_PROJECT_ID="..." \
-  -e AWS_RDS_POSTGRES_URL="..." \
-  -e NUM_WORKERS=10 \
-  -p 8080:8080 \
-  fluxbase-worker
-```
-
-### AWS RDS Recommended Configuration
-
-For maximum ingestion performance, apply these PostgreSQL parameters to your RDS parameter group:
-
-```sql
--- In RDS Parameter Group (requires reboot)
-shared_buffers                = 25% of RAM       -- e.g., 4GB on db.r6g.2xlarge
-effective_cache_size          = 75% of RAM
-maintenance_work_mem          = 512MB
-checkpoint_completion_target  = 0.9
-wal_buffers                   = 64MB
-default_statistics_target     = 100
-max_connections               = 200
-
--- Applied per-session by the worker (no reboot needed)
-synchronous_commit            = off
-work_mem                      = 64MB
-```
-
----
-
-## 🧪 Development & Testing
-
-```bash
-# Type-check frontend
-npm run typecheck
-
-# Lint frontend
-npm run lint
-
-# Build for production
-npm run build
-
-# Run ingestion worker tests
-cd ingestion-worker
-python test_pipeline.py
-
-# Run quick DB connectivity test
-python quick_test.py
-
-# Load test the ingestion pipeline
-python simulate.py --url http://localhost:3000 --count 100000 --concurrency 10
-```
+`ingestion-worker/alert_rules.yml` (Prometheus Alertmanager) fires on:
+- DLQ depth > 100
+- Worker error rate > 5%
+- P99 latency > 5,000ms
+- Redis queue depth > 10,000
 
 ---
 
@@ -916,53 +523,47 @@ Fluxbase/
 │   │   ├── (app)/                 # Authenticated dashboard routes
 │   │   │   ├── analytics/         # Query traffic analytics
 │   │   │   ├── dashboard/         # Project overview
-│   │   │   ├── database/          # Table editor + ERD
+│   │   │   ├── database/          # Table editor + ERD visualizer
 │   │   │   ├── editor/            # SQL scratchpad
 │   │   │   ├── query/             # Query history
 │   │   │   ├── scraper/           # Web scraper runner
-│   │   │   ├── settings/          # Project settings, API keys, webhooks
+│   │   │   ├── settings/          # API keys, webhooks, RLS
 │   │   │   └── storage/           # File/blob storage
-│   │   ├── api/
-│   │   │   ├── execute-sql/       # Core SQL execution endpoint
-│   │   │   ├── ingest/            # High-throughput row ingestion
-│   │   │   ├── bulk-fast-insert/  # Synchronous bulk insert
-│   │   │   ├── realtime/          # SSE event stream
-│   │   │   ├── webhooks/          # Webhook management
-│   │   │   ├── schema/            # Schema introspection
-│   │   │   ├── analytics/         # Usage analytics
-│   │   │   ├── backups/           # Backup & restore
-│   │   │   ├── rls/               # Row-level security policies
-│   │   │   ├── auth/              # Authentication
-│   │   │   ├── health/            # Health check
-│   │   │   └── ...                # 29 total API routes
-│   │   └── ...
+│   │   └── api/
+│   │       ├── execute-sql/       # Core SQL execution endpoint
+│   │       ├── ingest/            # High-throughput async ingestion
+│   │       ├── bulk-fast-insert/  # Synchronous bulk insert
+│   │       ├── realtime/          # SSE event stream
+│   │       ├── webhooks/          # Webhook management
+│   │       ├── schema/            # Schema introspection
+│   │       ├── analytics/         # Usage analytics
+│   │       ├── backups/           # Backup & restore
+│   │       ├── rls/               # Row-level security
+│   │       ├── health/            # Health check
+│   │       └── ...                # 29 total API routes
 │   ├── hooks/
-│   │   └── use-realtime-subscription.ts  # SSE singleton hook (throttled)
-│   ├── lib/
-│   │   ├── pg.ts                  # PostgreSQL connection pool
-│   │   └── mysql.ts               # MySQL connection pool
-│   └── components/                # Shared UI components
+│   │   └── use-realtime-subscription.ts  # SSE singleton + 1500ms throttle
+│   └── lib/
+│       ├── pg.ts                  # PostgreSQL connection pool
+│       └── mysql.ts               # MySQL connection pool
 │
 ├── ingestion-worker/
 │   ├── main.py                    # Entry point + worker orchestration
-│   ├── worker.py                  # Core worker loop (dequeue → insert)
+│   ├── worker.py                  # Core loop (dequeue → COPY → metrics)
 │   ├── fluxbase_client.py         # asyncpg COPY + HTTP fallback client
 │   ├── throttle.py                # Adaptive throughput controller
-│   ├── queue_client.py            # Upstash Redis queue interface
-│   ├── config.py                  # Centralised configuration
+│   ├── queue_client.py            # Upstash Redis interface
 │   ├── metrics.py                 # In-process metrics aggregator
-│   ├── prometheus_metrics.py      # Prometheus counter/histogram exports
+│   ├── prometheus_metrics.py      # Prometheus exports
 │   ├── health.py                  # Health check HTTP server
 │   ├── scaler.py                  # Auto-scaling logic
 │   ├── simulate.py                # Load test producer
-│   ├── test_pipeline.py           # Integration tests
 │   ├── requeue.py                 # DLQ requeue tool
-│   ├── Dockerfile                 # Container image
-│   ├── fly.toml                   # Fly.io deployment config
-│   ├── alert_rules.yml            # Prometheus alerting rules
-│   └── grafana_dashboard.json     # Pre-built Grafana dashboard
+│   ├── Dockerfile
+│   ├── fly.toml
+│   ├── alert_rules.yml
+│   └── grafana_dashboard.json
 │
-├── .env.local                     # Dashboard environment variables (gitignored)
 ├── package.json
 ├── next.config.ts
 └── README.md
@@ -982,12 +583,4 @@ Contributions are welcome! Please open an issue first to discuss significant cha
 
 ---
 
-## 📄 License
-
-This project is licensed under the **MIT License**. See [LICENSE](LICENSE) for details.
-
----
-
-<p align="center">
-  Built with ❤️ for developers who refuse to compromise on performance.
-</p>
+<p align="center">Built with ❤️ for developers who refuse to compromise on performance.</p>
