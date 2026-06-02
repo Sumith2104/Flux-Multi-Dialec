@@ -2,7 +2,7 @@
 
 > **The Serverless SQL Platform Built for Speed, Scale, and Developers.**
 
-Fluxbase is a next-generation Database-as-a-Service (DBaaS) engineered for high-growth startups. It wraps AWS RDS (PostgreSQL & MySQL) in a premium web dashboard, a zero-dependency REST API, and a battle-hardened async ingestion pipeline capable of sustaining **50,000+ rows/second** throughput without freezing your UI.
+Fluxbase is a next-generation Database-as-a-Service (DBaaS) engineered for high-growth startups. It wraps AWS RDS (PostgreSQL & MySQL) in a premium web dashboard, a zero-dependency REST API, and a battle-hardened async ingestion pipeline capable of sustaining **80,000+ rows/second** throughput without freezing your UI.
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-2.1.0-6366f1.svg?style=for-the-badge" alt="Version">
@@ -61,7 +61,7 @@ You get the familiar, relational querying power of PostgreSQL and MySQL **withou
 | Write durability | Synchronous commits | `synchronous_commit = off` per-session (async WAL) |
 | Table write mode | Logged (WAL overhead) | Optional **UNLOGGED** tables via `INGESTION_UNLOGGED_TABLES=true` |
 | Worker model | Single worker loop | **Multi-instance parallel workers** (configurable via `NUM_WORKERS`) |
-| Throughput | ~5,000 rows/sec | **50,000+ rows/sec** |
+| Throughput | ~5,000 rows/sec | **80,907 rows/sec** (10M row benchmark) |
 
 ### 🖥️ UI Freeze Fix
 
@@ -157,7 +157,7 @@ This means cross-tenant data leakage is structurally impossible — tenants neve
 Zero abstraction layers. Write raw `SELECT`, `JOIN`, `UPDATE`, `INSERT`, `CREATE TABLE` — executed directly on bare-metal database drivers (`pg` for PostgreSQL, `mysql2` for MySQL). Your SQL is your SQL.
 
 ### ⚡ High-Throughput Ingestion Pipeline
-Fluxbase ships a dedicated **async Python worker** (deployable on Fly.io or any container runtime) that can ingest data at **50,000+ rows/second** using:
+Fluxbase ships a dedicated **async Python worker** (deployable on Fly.io or any container runtime) that can ingest data at **80,000+ rows/second** using:
 - **PostgreSQL `COPY` protocol** (binary stream, 5–10× faster than `INSERT`)
 - **UUID v7** time-ordered IDs (eliminates B-tree page splits under high-write workloads)
 - **Async WAL** (`synchronous_commit = off`) for maximum write throughput
@@ -529,31 +529,7 @@ cp .env.example .env
 python main.py
 ```
 
-### Configuration
 
-#### `requirements.txt`
-
-```
-httpx[http2]
-upstash-redis
-asyncpg
-python-dotenv
-prometheus-client
-aiohttp
-```
-
-#### Key environment variables for maximum throughput
-
-```env
-# Enable direct COPY mode (bypasses REST API — 10× faster)
-AWS_RDS_POSTGRES_URL="postgresql://user:pass@rds-endpoint:5432/postgres"
-
-# Use UNLOGGED tables for scratch/staging data (no WAL overhead)
-INGESTION_UNLOGGED_TABLES=true
-
-# Scale up worker coroutines
-NUM_WORKERS=10
-```
 
 ### How the COPY Protocol Works
 
@@ -610,27 +586,25 @@ You can observe these adjustments in real time in the worker logs:
 Use the included `simulate.py` to stress-test your pipeline:
 
 ```bash
-# Push 1,000,000 rows at 20 concurrent producers
+# Push 10,000,000 rows at 20 concurrent producers
 python simulate.py \
   --url https://your-deployment.com \
-  --count 1000000 \
+  --count 10000000 \
   --concurrency 20 \
   --batch 500
 ```
 
-**Sample output:**
+**Real-world benchmark (10M rows):**
 
 ```
 ═══════════════════════════════════════════════════════
   SIMULATION RESULTS
 ═══════════════════════════════════════════════════════
-  Total rows requested : 1,000,000
-  Successfully queued  : 1,000,000
+  Total rows requested : 10,000,000
+  Successfully queued  : 10,000,000
   Failed requests      : 0
-  Elapsed              : 19.4s
-  Throughput           : 51,546 rows/sec
-  Avg latency          : 87ms
-  P99 latency          : 312ms
+  Elapsed              : 123.60s
+  Throughput           : 80,907 rows/sec
   Data loss            : NONE ✓
 ═══════════════════════════════════════════════════════
 ```
@@ -689,7 +663,7 @@ The UI stays responsive regardless of ingestion speed. Once the event flood subs
 | Method | Overhead | Throughput (estimate) |
 |---|---|---|
 | `INSERT INTO ... VALUES (...)` | SQL parse + plan + lock + WAL per row | ~2,000–5,000 rows/sec |
-| `COPY ... FROM STDIN` | Bulk lock + single WAL write per batch | **50,000–200,000 rows/sec** |
+| `COPY ... FROM STDIN` | Bulk lock + single WAL write per batch | **80,000–200,000 rows/sec** |
 
 ### Why UUID v7 Beats UUID v4 Under Load
 
