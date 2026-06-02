@@ -19,7 +19,7 @@ export const pool = global._pool || new Pool({
         : (process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false),
     max: parseInt(process.env.DATABASE_POOL_MAX || defaultPoolMax, 10),
     idleTimeoutMillis: isServerless ? 10000 : 600000, // 10s in serverless, 10m in local dev
-    connectionTimeoutMillis: 5000, // Increased timeout for cross-region stability
+    connectionTimeoutMillis: 30000, // Safe 30s timeout to prevent failures during bulk ingestion loads
     keepAlive: true,
 });
 
