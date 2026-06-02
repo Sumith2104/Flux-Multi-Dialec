@@ -1053,30 +1053,32 @@ export function EditorClient({
                                          <Button variant="outline" size="sm" onClick={() => { setShowColumnPanel(p => !p); setShowFilterPanel(false); }} className={hiddenColumns.size ? 'bg-primary/10 border-primary/20 text-primary' : ''}>
                                              <Columns className="mr-2 h-4 w-4" /> Columns {hiddenColumns.size > 0 && <Badge className="ml-1.5 h-4 text-[10px]">{hiddenColumns.size} hidden</Badge>}
                                          </Button>
-                                         {showColumnPanel && (
-                                             <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-lg border border-border bg-card shadow-xl p-3 space-y-1">
-                                                 <div className="flex items-center justify-between mb-2">
-                                                     <span className="text-sm font-semibold">Columns</span>
-                                                     <div className="flex gap-2 text-xs">
-                                                         <button onClick={() => setHiddenColumns(new Set())} className="text-muted-foreground hover:text-foreground">Show all</button>
-                                                         <button onClick={() => setHiddenColumns(new Set(columns.map(c => c.field)))} className="text-muted-foreground hover:text-foreground">Hide all</button>
-                                                     </div>
-                                                 </div>
-                                                 {localColumns.map(col => (
-                                                     <label key={col.column_name} className="flex items-center gap-2 text-sm cursor-pointer rounded px-1 py-0.5 hover:bg-muted">
-                                                         <input type="checkbox" checked={!hiddenColumns.has(col.column_name)}
-                                                             onChange={e => setHiddenColumns(prev => {
-                                                                 const next = new Set(prev);
-                                                                 if (e.target.checked) next.delete(col.column_name); else next.add(col.column_name);
-                                                                 return next;
-                                                             })}
-                                                             className="accent-primary"
-                                                         />
-                                                         <span className="font-mono truncate">{col.column_name}</span>
-                                                     </label>
-                                                 ))}
-                                             </div>
-                                         )}
+                                          {showColumnPanel && (
+                                              <div className="absolute right-0 top-full mt-1 z-50 w-56 max-h-[350px] flex flex-col rounded-lg border border-border bg-card shadow-xl p-3">
+                                                  <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-border/50 shrink-0">
+                                                      <span className="text-sm font-semibold">Columns</span>
+                                                      <div className="flex gap-2 text-xs">
+                                                          <button onClick={() => setHiddenColumns(new Set())} className="text-muted-foreground hover:text-foreground">Show all</button>
+                                                          <button onClick={() => setHiddenColumns(new Set(columns.map(c => c.field)))} className="text-muted-foreground hover:text-foreground">Hide all</button>
+                                                      </div>
+                                                  </div>
+                                                  <div className="overflow-y-auto pr-1 space-y-1 flex-1 custom-scrollbar">
+                                                      {localColumns.map(col => (
+                                                          <label key={col.column_name} className="flex items-center gap-2 text-sm cursor-pointer rounded px-1 py-0.5 hover:bg-muted">
+                                                              <input type="checkbox" checked={!hiddenColumns.has(col.column_name)}
+                                                                  onChange={e => setHiddenColumns(prev => {
+                                                                      const next = new Set(prev);
+                                                                      if (e.target.checked) next.delete(col.column_name); else next.add(col.column_name);
+                                                                      return next;
+                                                                  })}
+                                                                  className="accent-primary"
+                                                              />
+                                                              <span className="font-mono truncate">{col.column_name}</span>
+                                                          </label>
+                                                      ))}
+                                                  </div>
+                                              </div>
+                                          )}
                                      </div>
                                      {/* Export dropdown */}
                                      <DropdownMenu>
