@@ -117,7 +117,7 @@ export async function loginAction(formData: FormData) {
 
   try {
     const pool = getPgPool();
-    const result = await pool.query('SELECT id, password_hash FROM fluxbase_global.users WHERE email = $1', [email]);
+    const result = await pool.query('SELECT id, password_hash, two_factor_enabled FROM fluxbase_global.users WHERE email = $1', [email]);
 
     if (result.rows.length === 0) {
       return { error: "No account found with this email." };
@@ -135,13 +135,8 @@ export async function loginAction(formData: FormData) {
       return { error: "Invalid password." };
     }
 
-    // Check for 2FA
-    const { rows: userSettings } = await pool.query(
-      'SELECT two_factor_enabled FROM fluxbase_global.users WHERE id = $1::text',
-      [user.id]
-    );
-
-    if (userSettings[0]?.two_factor_enabled) {
+    // Check for 2FA (retrieved in initial query)
+    if (user.two_factor_enabled) {
       return { success: true, requires2FA: true, userId: user.id };
     }
 
