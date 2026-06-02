@@ -126,8 +126,9 @@ class FluxbaseClient:
 
             async with pool.acquire() as conn:
                 async with conn.transaction():
-                    # Turn off synchronous commit at the session level for maximum disk write speed
+                    # Turn off synchronous commit and disable realtime triggers at the session level
                     await conn.execute("SET LOCAL synchronous_commit = OFF;")
+                    await conn.execute("SET LOCAL fluxbase.skip_realtime_triggers = 'true';")
                     
                     # Stream records using binary COPY stream
                     await conn.copy_records_to_table(

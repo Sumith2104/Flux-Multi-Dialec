@@ -43,6 +43,11 @@ async function retrofitTriggers() {
                     row_data := NEW;
                   END IF;
 
+                  -- Support skipping triggers for bulk operations
+                  IF current_setting('fluxbase.skip_realtime_triggers', true) = 'true' THEN
+                    RETURN row_data;
+                  END IF;
+
                   payload := json_build_object(
                     'table', TG_TABLE_NAME,
                     'project_id', '${projectId}',

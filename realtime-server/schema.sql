@@ -5,6 +5,11 @@ RETURNS TRIGGER AS $$
 DECLARE
   payload JSON;
 BEGIN
+  -- Support skipping triggers for bulk operations
+  IF current_setting('fluxbase.skip_realtime_triggers', true) = 'true' THEN
+    RETURN NEW;
+  END IF;
+
   -- Build a robust JSON envelope containing the impacted table name, operation, and full row body
   payload = json_build_object(
     'table', TG_TABLE_NAME,

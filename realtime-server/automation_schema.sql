@@ -15,6 +15,11 @@ BEGIN
             row_data := NEW;
           END IF;
 
+          -- Support skipping triggers for bulk operations
+          IF current_setting(''fluxbase.skip_realtime_triggers'', true) = ''true'' THEN
+            RETURN row_data;
+          END IF;
+
           payload := json_build_object(
             ''table'', TG_TABLE_NAME,
             ''project_id'', (CASE WHEN %L = ''fluxbase_global'' THEN ''global'' ELSE REPLACE(%L, ''project_'', '''') END),
