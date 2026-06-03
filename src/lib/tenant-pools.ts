@@ -5,13 +5,42 @@ import { type Project } from '@/lib/data';
 // Declare global cache for external database pools to avoid leaking connections
 declare global {
   var _externalPools: Record<string, any> | undefined;
+  var _poolReaperStarted: boolean | undefined;
 }
 
 function getExternalPools(): Record<string, any> {
   if (!globalThis._externalPools) {
     globalThis._externalPools = {};
   }
+  startPoolReaper();
   return globalThis._externalPools;
+}
+
+function startPoolReaper() {
+  if (typeof window !== 'undefined') return;
+  if (globalThis._poolReaperStarted) return;
+  globalThis._poolReaperStarted = true;
+
+  console.log('[TenantPools] Starting Pool Reaper...');
+  const EVICTION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+  setInterval(async () => {
+    const pools = globalThis._externalPools || {};
+    const now = Date.now();
+    for (const [poolId, entry] of Object.entries(pools)) {
+      if (entry && entry.pool && entry.lastUsed) {
+        if (now - entry.lastUsed > EVICTION_TIMEOUT_MS) {
+          console.log(`[TenantPools] Reaper: Evicting inactive pool ${poolId} (unused for ${Math.round((now - entry.lastUsed) / 1000)}s)`);
+          try {
+            await entry.pool.end();
+          } catch (e) {
+            console.error(`[TenantPools] Reaper: Error closing inactive pool ${poolId}:`, e);
+          }
+          delete pools[poolId];
+        }
+      }
+    }
+  }, 60000); // Check every minute
 }
 
 export function getProjectDbAndSchema(project: Project) {
@@ -59,7 +88,7 @@ export async function getTenantPgPool(project: Project): Promise<Pool> {
 
     console.log(`[TenantPools] Creating new Postgres pool for external project ${project.project_id} (Host: ${config.host}, Database: ${dbName})`);
     
-    pools[poolId] = new Pool({
+    const pool = new Pool({
       host: config.host,
       port: parseInt(config.port, 10) || 5432,
       user: config.user,
@@ -70,8 +99,24 @@ export async function getTenantPgPool(project: Project): Promise<Pool> {
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
     });
+
+    pools[poolId] = {
+      pool,
+      lastUsed: Date.now(),
+      type: 'pg'
+    };
+  } else {
+    if (!pools[poolId].pool) {
+      pools[poolId] = {
+        pool: pools[poolId],
+        lastUsed: Date.now(),
+        type: 'pg'
+      };
+    } else {
+      pools[poolId].lastUsed = Date.now();
+    }
   }
-  return pools[poolId];
+  return pools[poolId].pool;
 }
 
 /**
@@ -93,7 +138,7 @@ export async function getTenantMysqlPool(project: Project): Promise<mysql.Pool> 
 
     console.log(`[TenantPools] Creating new MySQL pool for external project ${project.project_id} (Host: ${config.host}, Database: ${dbName})`);
 
-    pools[poolId] = mysql.createPool({
+    const pool = mysql.createPool({
       host: config.host,
       port: parseInt(config.port, 10) || 3306,
       user: config.user,
@@ -102,12 +147,28 @@ export async function getTenantMysqlPool(project: Project): Promise<mysql.Pool> 
       connectionLimit: 5,
       waitForConnections: true,
       queueLimit: 0,
-      enableKeepAlive: true,
-      keepAliveInitialDelay: 10000,
+      enableKeepAlive: false, // Turn off TCP keep-alive to allow idle connections to close
+      idleTimeout: 30000,     // Close idle connections after 30 seconds
       ssl: config.ssl ? { rejectUnauthorized: false } : undefined,
     });
+
+    pools[poolId] = {
+      pool,
+      lastUsed: Date.now(),
+      type: 'mysql'
+    };
+  } else {
+    if (!pools[poolId].pool) {
+      pools[poolId] = {
+        pool: pools[poolId],
+        lastUsed: Date.now(),
+        type: 'mysql'
+      };
+    } else {
+      pools[poolId].lastUsed = Date.now();
+    }
   }
-  return pools[poolId];
+  return pools[poolId].pool;
 }
 
 /**
@@ -121,7 +182,9 @@ export async function closeTenantPool(projectId: string): Promise<void> {
     if (key.startsWith(`pg_${projectId}_`) || key === `pg_${projectId}`) {
       console.log(`[TenantPools] Releasing Postgres pool: ${key}`);
       try {
-        await pools[key].end();
+        const entry = pools[key];
+        const pool = entry && entry.pool ? entry.pool : entry;
+        await pool.end();
       } catch (e) {
         console.error('[TenantPools] Error closing Postgres pool:', e);
       }
@@ -130,7 +193,9 @@ export async function closeTenantPool(projectId: string): Promise<void> {
     if (key.startsWith(`mysql_${projectId}_`) || key === `mysql_${projectId}`) {
       console.log(`[TenantPools] Releasing MySQL pool: ${key}`);
       try {
-        await pools[key].end();
+        const entry = pools[key];
+        const pool = entry && entry.pool ? entry.pool : entry;
+        await pool.end();
       } catch (e) {
         console.error('[TenantPools] Error closing MySQL pool:', e);
       }
