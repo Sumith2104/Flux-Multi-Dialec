@@ -75,12 +75,13 @@ export class SqlEngine {
         }
     }
 
-    public async execute(query: string, params?: any[], options: { skipTracking?: boolean } = {}): Promise<SqlResult> {
+    public async execute(
+        query: string, 
+        params?: any[], 
+        options: { skipTracking?: boolean; allowMulti?: boolean } = {}
+    ): Promise<SqlResult> {
         await this.init();
         if (!this.userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
-
-        const firstWord = query.trim().split(/\s+/)[0].toUpperCase();
-        this.validateScope(firstWord);
 
         const queryCleaned = query
             .replace(/--.*$/gm, '') // Remove single-line comments
@@ -89,6 +90,10 @@ export class SqlEngine {
             .replace(/project_[a-zA-Z0-9_]+\./g, ''); // Ensure users don't hardcode other tenant IDs
 
         if (!queryCleaned.trim()) return { rows: [], columns: [] };
+
+        this.validateAstScope(queryCleaned, options.allowMulti);
+
+        const firstWord = queryCleaned.trim().split(/\s+/)[0].toUpperCase();
 
         // Bypass parser for custom GENERATE_DATA command
         const generateMatch = queryCleaned.match(/^CALL\s+GENERATE_DATA\s*\(\s*'([^']+)'\s*,\s*(\d+)\s*\)/i);
@@ -158,18 +163,18 @@ export class SqlEngine {
                 const connection = await mysqlPool.getConnection();
 
                 try {
-                    await connection.query(`USE \`${dbName}\``);
+                    await connection.query(`USE \`${dbName}\`` as any);
                     
                     if (this.projectTimezone) {
-                        connection.query(`SET time_zone = ?`, [this.projectTimezone]).catch(() => {});
+                        connection.query(`SET time_zone = ?` as any, [this.projectTimezone]).catch(() => {});
                     }
 
-                    const [queryResult, fields]: any = await connection.query(queryCleaned, params || []);
+                    const [queryResult, fields]: any = await connection.query(queryCleaned as any, params || []);
 
                     const executionTime = Date.now() - startTime;
                     const explanation = [`Executed via Native AWS MySQL in ${executionTime}ms`];
 
-                    let formattedRows = [];
+                    let formattedRows: any[] = [];
                     let formattedColumns: string[] = [];
                     let rowCount = 0;
 
@@ -227,9 +232,17 @@ export class SqlEngine {
                     const sessionSetupSql = `
                         SELECT set_config('search_path', $1, false), 
                                set_config('fluxbase.auth_uid', $2, true), 
-                               set_config('timezone', $3, false);
+                               set_config('timezone', $3, false),
+                               set_config('role', 'authenticated', true),
+                               set_config('request.jwt.claims', $4, true);
                     `;
-                    const sessionParams = [schemaName, this.userId || '', this.projectTimezone || 'UTC'];
+                    const claimsJson = JSON.stringify({ sub: this.userId || '', role: 'authenticated' });
+                    const sessionParams = [
+                        schemaName, 
+                        this.userId || '', 
+                        this.projectTimezone || 'UTC', 
+                        claimsJson
+                    ];
                     
                     await client.query(sessionSetupSql, sessionParams);
                     const result = await client.query(queryCleaned, params || []);
@@ -350,7 +363,7 @@ export class SqlEngine {
 
                     if (ObjectCols.length > 0) {
                         const ddl = `INSERT INTO \`${dbName}\`.\`${safeTableName}\` (${ObjectCols.join(', ')}) VALUES (${ObjectVals.join(', ')})`;
-                        await mysqlPool.query(ddl, ObjectParams);
+                        await mysqlPool.query(ddl as any, ObjectParams);
                         generatedCount++;
                     }
                 }
@@ -397,7 +410,7 @@ export class SqlEngine {
 
                     if (ObjectCols.length > 0) {
                         const ddl = `INSERT INTO "${schemaName}"."${safeTableName}" (${ObjectCols.join(', ')}) VALUES (${ObjectVals.join(', ')})`;
-                        await pool.query(ddl, ObjectParams);
+                        await pool.query(ddl as any, ObjectParams);
                         generatedCount++;
                     }
                 }
@@ -415,34 +428,77 @@ export class SqlEngine {
         }
     }
 
-    private validateScope(firstWord: string) {
-        const readOps = ['SELECT', 'SHOW', 'DESCRIBE', 'EXPLAIN'];
-        const writeOps = ['INSERT', 'UPDATE', 'DELETE', 'CALL'];
-        const adminOps = ['CREATE', 'DROP', 'ALTER', 'TRUNCATE', 'RENAME', 'GRANT', 'REVOKE'];
-
-        if (this.role === 'viewer') {
-            if (!readOps.includes(firstWord)) {
-                throw new FluxbaseError(`Insufficient Permissions: Your role (Viewer) is restricted to read-only operations. You cannot execute ${firstWord} commands.`, ERROR_CODES.FORBIDDEN, 403);
-            }
+    private validateAstScope(queryCleaned: string, allowMulti = false) {
+        let ast: any;
+        try {
+            ast = this.parser.astify(queryCleaned, {
+                database: this.projectDialect?.toLowerCase() === 'mysql' ? 'MySQL' : 'Postgresql',
+            } as any);
+        } catch (e: any) {
+            throw new FluxbaseError(`SQL Parsing/Syntax Error: ${e.message}`, ERROR_CODES.SQL_SYNTAX, 400);
         }
 
-        if (!this.scopes) return; 
+        const statements = Array.isArray(ast) ? ast : [ast];
 
-        if (readOps.includes(firstWord)) {
-            if (!this.scopes.includes('read') && !this.scopes.includes('write') && !this.scopes.includes('admin')) {
-                throw new FluxbaseError(`Insufficient Permissions: Scope 'read' is required for ${firstWord} operations. Please update your API key in the Fluxbase settings.`, ERROR_CODES.FORBIDDEN, 403);
+        if (statements.length > 1 && !allowMulti) {
+            throw new FluxbaseError(
+                "Multi-statement queries are not authorized for execution.", 
+                ERROR_CODES.FORBIDDEN, 
+                403
+            );
+        }
+
+        const readOps = ['select', 'show', 'desc', 'describe', 'explain'];
+        const writeOps = ['insert', 'update', 'delete', 'call', 'replace'];
+        const adminOps = ['create', 'drop', 'alter', 'truncate', 'rename', 'grant', 'revoke'];
+
+        for (const stmt of statements) {
+            const stmtType = (stmt.type || '').toLowerCase();
+
+            if (this.role === 'viewer') {
+                if (!readOps.includes(stmtType)) {
+                    throw new FluxbaseError(
+                        `Insufficient Permissions: Your role (Viewer) is restricted to read-only operations. You cannot execute ${stmtType.toUpperCase()} commands.`,
+                        ERROR_CODES.FORBIDDEN,
+                        403
+                    );
+                }
             }
-        } else if (writeOps.includes(firstWord)) {
-            if (!this.scopes.includes('write') && !this.scopes.includes('admin')) {
-                throw new FluxbaseError(`Insufficient Permissions: Scope 'write' is required for ${firstWord} operations. Please update your API key in the Fluxbase settings.`, ERROR_CODES.FORBIDDEN, 403);
-            }
-        } else if (adminOps.includes(firstWord)) {
-            if (!this.scopes.includes('admin')) {
-                throw new FluxbaseError(`Insufficient Permissions: Scope 'admin' is required for ${firstWord} operations. Please update your API key in the Fluxbase settings.`, ERROR_CODES.FORBIDDEN, 403);
-            }
-        } else {
-            if (!this.scopes.includes('admin')) {
-                throw new FluxbaseError(`Insufficient Permissions: Scope 'admin' is required for the unknown operation: ${firstWord}. Please update your API key in the Fluxbase settings.`, ERROR_CODES.FORBIDDEN, 403);
+
+            if (!this.scopes) continue;
+
+            if (readOps.includes(stmtType)) {
+                if (!this.scopes.includes('read') && !this.scopes.includes('write') && !this.scopes.includes('admin')) {
+                    throw new FluxbaseError(
+                        `Insufficient Permissions: Scope 'read' is required for ${stmtType.toUpperCase()} operations. Please update your API key in the Fluxbase settings.`,
+                        ERROR_CODES.FORBIDDEN,
+                        403
+                    );
+                }
+            } else if (writeOps.includes(stmtType)) {
+                if (!this.scopes.includes('write') && !this.scopes.includes('admin')) {
+                    throw new FluxbaseError(
+                        `Insufficient Permissions: Scope 'write' is required for ${stmtType.toUpperCase()} operations. Please update your API key in the Fluxbase settings.`,
+                        ERROR_CODES.FORBIDDEN,
+                        403
+                    );
+                }
+            } else if (adminOps.includes(stmtType)) {
+                if (!this.scopes.includes('admin')) {
+                    throw new FluxbaseError(
+                        `Insufficient Permissions: Scope 'admin' is required for ${stmtType.toUpperCase()} operations. Please update your API key in the Fluxbase settings.`,
+                        ERROR_CODES.FORBIDDEN,
+                        403
+                    );
+                }
+            } else {
+                if (!this.scopes.includes('admin')) {
+                    throw new FluxbaseError(
+                        `Insufficient Permissions: Scope 'admin' is required for the unknown operation: ${stmtType.toUpperCase()}. Please update your API key in the Fluxbase settings.`,
+                        ERROR_CODES.FORBIDDEN,
+                        403
+                    );
+                }
             }
         }
     }

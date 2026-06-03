@@ -410,7 +410,7 @@ export async function replicateExternalDatabase(
         }
 
         const createTableSql = `CREATE TABLE \`${intDb}\`.\`${table}\` (\n  ${colDefinitions.join(',\n  ')}\n);`;
-        await internalPool.query(createTableSql);
+        await internalPool.query(createTableSql as any);
 
         // 4. Fetch data from remote
         const [dataRes]: any = await externalConnection.query(`SELECT * FROM \`${extDb}\`.\`${table}\``);
@@ -440,7 +440,7 @@ export async function replicateExternalDatabase(
             }
 
             const insertSql = `INSERT INTO \`${intDb}\`.\`${table}\` (${quotedColNames}) VALUES ${valueClauses.join(', ')}`;
-            await internalPool.query(insertSql, flatValues);
+            await internalPool.query(insertSql as any, flatValues);
           }
         }
       }
@@ -448,7 +448,7 @@ export async function replicateExternalDatabase(
       console.error(`[Replication Error] Failed to import MySQL schema/data for ${projectId}:`, err);
       // Cleanup partially created DB
       try {
-        await internalPool.query(`DROP DATABASE IF EXISTS \`project_${projectId}\``);
+        await internalPool.query(`DROP DATABASE IF EXISTS \`project_${projectId}\`` as any);
       } catch (cleanErr) {
         console.error('[Replication Cleanup Error]', cleanErr);
       }

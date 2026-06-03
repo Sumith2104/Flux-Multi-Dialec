@@ -44,7 +44,7 @@ export async function middleware(request: NextRequest) {
 
     const isAuthPage = ['/login', '/signup', '/reset-password'].includes(pathname);
 
-    let userId = null;
+    let userId: any = null;
     let isMfaVerified = false;
 
     if (sessionCookie) {
@@ -90,11 +90,17 @@ export async function middleware(request: NextRequest) {
 
     // 2. Auth Logic
     if (userId) {
-        // [STABILITY FIX]: Removed strict redirect to root for unverified MFA.
-        // During dev/testing, this was causing infinite loops on /dashboard.
-        // MFA verification should be handled by components, not by killing the session.
-        if (!isMfaVerified && pathname.startsWith('/api/admin')) {
-             return NextResponse.json({ success: false, error: 'MFA Required' }, { status: 403 });
+        if (!isMfaVerified) {
+             const isMutationRoute = 
+                 pathname.startsWith('/api/execute-sql') || 
+                 pathname.startsWith('/api/projects') || 
+                 pathname.startsWith('/api/webhooks') || 
+                 pathname.startsWith('/api/backups') ||
+                 pathname.startsWith('/api/admin');
+
+             if (isMutationRoute && request.method !== 'GET') {
+                 return NextResponse.json({ success: false, error: 'MFA Required' }, { status: 403 });
+             }
         }
 
         // and tries to access an auth page (login/signup), redirect to dashboard if fully verified

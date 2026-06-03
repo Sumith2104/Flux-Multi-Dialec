@@ -53,8 +53,8 @@ export async function POST(req: NextRequest) {
             const mysqlPool = getMysqlPool();
             const schemaIdent = quoteMysqlProjectSchema(projectId);
 
-            await mysqlPool.query(`DROP DATABASE IF EXISTS ${schemaIdent}`);
-            await mysqlPool.query(`CREATE DATABASE ${schemaIdent}`);
+            await mysqlPool.query(`DROP DATABASE IF EXISTS ${schemaIdent}` as any);
+            await mysqlPool.query(`CREATE DATABASE ${schemaIdent}` as any);
 
             for (const tableName of tableNames) {
                 // Fetch columns metadata for this table
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
                     return `${quoteMysqlIdentifier(c.column_name, 'columnName')} ${type}`;
                 }).join(', ');
 
-                await mysqlPool.query(`CREATE TABLE ${schemaIdent}.${tableIdent} (${colDefs})`);
+                await mysqlPool.query(`CREATE TABLE ${schemaIdent}.${tableIdent} (${colDefs})` as any);
 
                 // Fetch total rows count for this table
                 const countRes = await globalPool.query(
@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
                         }
 
                         const query = `INSERT INTO ${schemaIdent}.${tableIdent} (${colNamesStr}) VALUES ${valuePlaceholders.join(', ')}`;
-                        await mysqlPool.query(query, values);
+                        await mysqlPool.query(query as any, values);
                     }
                 }
             }

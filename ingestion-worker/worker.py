@@ -96,8 +96,24 @@ async def _insert_table_batch(
     t_start = time.monotonic()
 
     try:
+        import re
+        identifier_pattern = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+        # Validate table name
+        if not identifier_pattern.match(table):
+            raise FluxbaseError(f"Invalid table name identifier: '{table}'")
+
+        # Construct unified row representing the union of all keys, and validate column keys
+        unified_row = {}
+        for r in rows:
+            for k, v in r.items():
+                if not identifier_pattern.match(k):
+                    raise FluxbaseError(f"Invalid column key identifier: '{k}'")
+                if k not in unified_row or unified_row[k] is None:
+                    unified_row[k] = v
+
         if cfg.database_url:
-            await db.ensure_table_exists(table, rows[0])
+            await db.ensure_table_exists(table, unified_row)
             result = await _with_retry(lambda: db.bulk_copy(table, rows))
         else:
             result = await _with_retry(lambda: db.bulk_insert(table, rows))

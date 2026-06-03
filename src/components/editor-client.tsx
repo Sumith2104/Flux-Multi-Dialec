@@ -839,14 +839,14 @@ export function EditorClient({
                 <main className="flex-1 flex flex-col overflow-hidden w-full">
                     {currentTable && tableId && tableName ? (
                         <>
-                            <header className="flex flex-col sm:flex-row min-h-14 py-2 h-auto items-start sm:items-center gap-4 border-b bg-background px-4 sm:px-6 flex-shrink-0 overflow-x-auto">
+                            <header className="flex flex-col sm:flex-row min-h-14 py-2 h-auto items-start sm:items-center gap-4 border-b bg-background px-4 sm:px-6 flex-shrink-0">
                                   <div className="flex items-center gap-2 text-sm text-muted-foreground shrink-0">
                                        <Table className="h-4 w-4" />
                                        <span className="font-semibold text-foreground">{currentTable.table_name}</span>
                                        <span className="ml-3 text-xs text-muted-foreground font-medium">({rowCount.toLocaleString()} rows)</span>
                                   </div>
-                                <Separator orientation="vertical" className="h-6" />
-                                <div className="flex items-center gap-2 shrink-0">
+                                <Separator orientation="vertical" className="hidden sm:block h-6" />
+                                <div className="flex items-center gap-2 shrink-0 flex-wrap">
                                     {tableId && tableName && projectId && initialColumns && (
                                         <>
                                             <AddRowDialog

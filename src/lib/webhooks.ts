@@ -60,8 +60,8 @@ export async function createWebhook(projectId: string, userId: string, webhook: 
 
 export async function updateWebhook(projectId: string, userId: string, webhookId: string, updates: Partial<Omit<Webhook, 'webhook_id' | 'project_id' | 'user_id' | 'created_at'>>): Promise<void> {
     const pool = getPgPool();
-    const setClauses = [];
-    const params = [];
+    const setClauses: any[] = [];
+    const params: any[] = [];
     let i = 1;
 
     for (const [key, value] of Object.entries(updates)) {

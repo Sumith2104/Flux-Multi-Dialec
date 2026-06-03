@@ -19,7 +19,7 @@ export async function createTable(
         const { getMysqlPool } = await import('@/lib/mysql');
         const mysqlPool = getMysqlPool();
 
-        const defs = [];
+        const defs: string[] = [];
         for (const c of columns) {
             defs.push(`\`${c.columnName}\` LONGTEXT`);
         }
@@ -34,8 +34,8 @@ export async function createTable(
             );
         `;
         console.log(`[Scraper Ingestion] Ensuring MySQL Database and table \`${schemaName}\`.\`${tableName}\` exist...`);
-        await mysqlPool.query(createDbDdl);
-        await mysqlPool.query(createTableDdl);
+        await mysqlPool.query(createDbDdl as any);
+        await mysqlPool.query(createTableDdl as any);
     } else {
         const definitions = columns.map(c => c.sqlDefinition).join(',\n                ');
 
@@ -97,7 +97,7 @@ export async function insertRows(
             });
 
             const insertSql = `INSERT INTO \`${schemaName}\`.\`${tableName}\` (${colsStr}) VALUES ${placeholders.join(', ')}`;
-            await mysqlPool.query(insertSql, values);
+            await mysqlPool.query(insertSql as any, values);
         }
     } else {
         const colsStr = safeKeys.map(k => `"${k}"`).join(', ');

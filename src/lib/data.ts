@@ -3,6 +3,15 @@
 import { getPgPool } from '@/lib/pg';
 import { getCurrentUserId } from '@/lib/auth';
 import { getTenantPgPool, getTenantMysqlPool, getProjectDbAndSchema } from '@/lib/tenant-pools';
+import { 
+    safeSql, 
+    toSafeSql, 
+    quotePgIdentifierSafe, 
+    quoteMysqlIdentifierSafe, 
+    quotePgProjectSchemaSafe, 
+    quoteMysqlProjectSchemaSafe,
+    type SafeSqlFragment
+} from '@/lib/safe-sql';
 
 // --- Types ---
 
@@ -471,11 +480,13 @@ export async function createProject(
             if (dialect.toLowerCase() === 'mysql') {
                 const { getMysqlPool } = await import('@/lib/mysql');
                 const mysqlPool = getMysqlPool();
-                await mysqlPool.query(`CREATE DATABASE \`project_${projectId}\``);
+                const safeDbName = quoteMysqlProjectSchemaSafe(projectId);
+                await mysqlPool.query(safeSql`CREATE DATABASE ${safeDbName}`);
                 console.log(`[Fluxbase Native] Successfully provisioned MySQL DB: project_${projectId}`);
             } else {
                 // Default PostgreSQL Schema approach
-                await pool.query(`CREATE SCHEMA IF NOT EXISTS "project_${projectId}"`);
+                const safeSchemaName = quotePgProjectSchemaSafe(projectId);
+                await pool.query(safeSql`CREATE SCHEMA IF NOT EXISTS ${safeSchemaName}`);
                 console.log(`[Fluxbase Native] Successfully provisioned PG Schema: project_${projectId}`);
             }
         } catch (dbError) {
@@ -496,13 +507,14 @@ export async function resetProjectData(projectId: string) {
     if (project.dialect?.toLowerCase() === 'mysql') {
         const { getMysqlPool } = await import('@/lib/mysql');
         const mysqlPool = getMysqlPool();
-        await mysqlPool.query(`DROP DATABASE IF EXISTS \`project_${projectId}\``);
-        await mysqlPool.query(`CREATE DATABASE \`project_${projectId}\``);
+        const safeDbName = quoteMysqlProjectSchemaSafe(projectId);
+        await mysqlPool.query(safeSql`DROP DATABASE IF EXISTS ${safeDbName}`);
+        await mysqlPool.query(safeSql`CREATE DATABASE ${safeDbName}`);
     } else {
-        const schemaName = `project_${projectId}`;
+        const safeSchemaName = quotePgProjectSchemaSafe(projectId);
         // Drop and recreate schema to wipe all data natively
-        await pool.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
-        await pool.query(`CREATE SCHEMA "${schemaName}"`);
+        await pool.query(safeSql`DROP SCHEMA IF EXISTS ${safeSchemaName} CASCADE`);
+        await pool.query(safeSql`CREATE SCHEMA ${safeSchemaName}`);
     }
 
     try {
@@ -538,12 +550,13 @@ export async function deleteProject(projectId: string) {
         if (project.connection_type === 'internal') {
             const { getMysqlPool } = await import('@/lib/mysql');
             const mysqlPool = getMysqlPool();
-            await mysqlPool.query(`DROP DATABASE IF EXISTS \`project_${projectId}\``);
+            const safeDbName = quoteMysqlProjectSchemaSafe(projectId);
+            await mysqlPool.query(safeSql`DROP DATABASE IF EXISTS ${safeDbName}`);
         }
     } else {
         if (project.connection_type === 'internal') {
-            const schemaName = `project_${projectId}`;
-            await pool.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+            const safeSchemaName = quotePgProjectSchemaSafe(projectId);
+            await pool.query(safeSql`DROP SCHEMA IF EXISTS ${safeSchemaName} CASCADE`);
         }
     }
 
@@ -636,7 +649,7 @@ export async function createTable(projectId: string, tableName: string, descript
         const mysqlPool = await getTenantMysqlPool(project);
         const { dbName } = getProjectDbAndSchema(project);
 
-        const columnDefs = [];
+        const columnDefs: SafeSqlFragment[] = [];
         for (const col of columns) {
             let type = col.data_type.toUpperCase();
             if (type === 'NUMBER') type = 'DOUBLE';
@@ -647,64 +660,87 @@ export async function createTable(projectId: string, tableName: string, descript
             else if (type === 'JSONB') type = 'JSON';
             else if (type.includes('[]')) type = 'JSON';
 
-            let def = `\`${col.column_name}\` ${type}`;
+            if (!/^[A-Z0-9_()]+$/.test(type)) {
+                throw new Error("Invalid data type: " + type);
+            }
+
+            const safeColName = quoteMysqlIdentifierSafe(col.column_name);
+            let defStr = `${safeColName} ${type}`;
 
             if (col.is_primary_key) {
-                if (type.includes('VARCHAR')) def = `\`${col.column_name}\` VARCHAR(255) PRIMARY KEY`;
-                else def += ' PRIMARY KEY';
+                if (type.includes('VARCHAR')) defStr = `${safeColName} VARCHAR(255) PRIMARY KEY`;
+                else defStr += ' PRIMARY KEY';
             } else if (!col.is_nullable) {
-                def += ' NOT NULL';
+                defStr += ' NOT NULL';
             }
 
             if (col.default_value) {
                 if (col.default_value.includes('now()')) {
-                    if (type === 'DATE') def += ' DEFAULT (CURRENT_DATE)';
-                    else if (type === 'TIME') def += ' DEFAULT (CURRENT_TIME)';
-                    else def += ' DEFAULT CURRENT_TIMESTAMP';
+                    if (type === 'DATE') defStr += ' DEFAULT (CURRENT_DATE)';
+                    else if (type === 'TIME') defStr += ' DEFAULT (CURRENT_TIME)';
+                    else defStr += ' DEFAULT CURRENT_TIMESTAMP';
                 }
-                else if (col.default_value.includes('uuid()')) def += ' DEFAULT (UUID())';
-                else def += ` DEFAULT '${col.default_value}'`;
+                else if (col.default_value.includes('uuid()')) defStr += ' DEFAULT (UUID())';
+                else {
+                    const sanitizedDefault = col.default_value.replace(/'/g, "''");
+                    defStr += ` DEFAULT '${sanitizedDefault}'`;
+                }
             }
-            columnDefs.push(def);
+            columnDefs.push(toSafeSql(defStr));
         }
 
-        const ddl = `CREATE TABLE \`${dbName}\`.\`${safeTableName}\` (${columnDefs.join(', ')})`;
+        const safeDb = quoteMysqlProjectSchemaSafe(projectId);
+        const safeTable = quoteMysqlIdentifierSafe(tableName);
+        const joinedDefs = toSafeSql(columnDefs.join(', '));
+        const ddl = safeSql`CREATE TABLE ${safeDb}.${safeTable} (${joinedDefs})`;
         await mysqlPool.query(ddl);
 
     } else {
         const pool = await getTenantPgPool(project);
         const { schemaName } = getProjectDbAndSchema(project);
 
-        const columnDefs = [];
+        const columnDefs: SafeSqlFragment[] = [];
         for (const col of columns) {
             let type = col.data_type.toUpperCase();
             if (type === 'NUMBER') type = 'NUMERIC';
             else if (type === 'VARCHAR') type = 'VARCHAR(255)';
 
-            let def = `"${col.column_name}" ${type}`;
+            if (!/^[A-Z0-9_()]+$/.test(type)) {
+                throw new Error("Invalid data type: " + type);
+            }
+
+            const safeColName = quotePgIdentifierSafe(col.column_name);
+            let defStr = `${safeColName} ${type}`;
 
             if (col.is_primary_key) {
-                if (type === 'VARCHAR(255)') def = `"${col.column_name}" VARCHAR(128) PRIMARY KEY`;
-                else def += ' PRIMARY KEY';
+                if (type === 'VARCHAR(255)') defStr = `${safeColName} VARCHAR(128) PRIMARY KEY`;
+                else defStr += ' PRIMARY KEY';
             } else if (!col.is_nullable) {
-                def += ' NOT NULL';
+                defStr += ' NOT NULL';
             }
 
             if (col.default_value) {
-                if (col.default_value.includes('now()')) def += ' DEFAULT CURRENT_TIMESTAMP';
-                else if (col.default_value.includes('uuid()')) def += ' DEFAULT gen_random_uuid()';
-                else def += ` DEFAULT '${col.default_value}'`;
+                if (col.default_value.includes('now()')) defStr += ' DEFAULT CURRENT_TIMESTAMP';
+                else if (col.default_value.includes('uuid()')) defStr += ' DEFAULT gen_random_uuid()';
+                else {
+                    const sanitizedDefault = col.default_value.replace(/'/g, "''");
+                    defStr += ` DEFAULT '${sanitizedDefault}'`;
+                }
             }
-            columnDefs.push(def);
+            columnDefs.push(toSafeSql(defStr));
         }
 
-        const ddl = `CREATE TABLE "${schemaName}"."${safeTableName}" (${columnDefs.join(', ')})`;
+        const safeSchema = quotePgProjectSchemaSafe(projectId);
+        const safeTable = quotePgIdentifierSafe(tableName);
+        const joinedDefs = toSafeSql(columnDefs.join(', '));
+        const ddl = safeSql`CREATE TABLE ${safeSchema}.${safeTable} (${joinedDefs})`;
         await pool.query(ddl);
 
         // --- Phase 2: PostgreSQL Realtime Event Trigger ---
         try {
-            const triggerFunctionSql = `
-                CREATE OR REPLACE FUNCTION "${schemaName}".notify_table_change()
+            const safeTriggerName = quotePgIdentifierSafe(`${safeTableName}_ws_trigger`);
+            const triggerFunctionSql = safeSql`
+                CREATE OR REPLACE FUNCTION ${safeSchema}.notify_table_change()
                 RETURNS trigger AS $$
                 DECLARE
                   payload JSON;
@@ -718,7 +754,7 @@ export async function createTable(projectId: string, tableName: string, descript
 
                   payload := json_build_object(
                     'table', TG_TABLE_NAME,
-                    'project_id', '${projectId}',
+                    'project_id', '${toSafeSql(projectId.replace(/'/g, "''"))}',
                     'operation', TG_OP,
                     'data', row_to_json(row_data)
                   );
@@ -730,13 +766,13 @@ export async function createTable(projectId: string, tableName: string, descript
             `;
             await pool.query(triggerFunctionSql);
 
-            const attachTriggerSql = `
-                DROP TRIGGER IF EXISTS "${safeTableName}_ws_trigger" ON "${schemaName}"."${safeTableName}";
-                CREATE TRIGGER "${safeTableName}_ws_trigger"
+            const attachTriggerSql = safeSql`
+                DROP TRIGGER IF EXISTS ${safeTriggerName} ON ${safeSchema}.${safeTable};
+                CREATE TRIGGER ${safeTriggerName}
                 AFTER INSERT OR UPDATE OR DELETE
-                ON "${schemaName}"."${safeTableName}"
+                ON ${safeSchema}.${safeTable}
                 FOR EACH ROW
-                EXECUTE FUNCTION "${schemaName}".notify_table_change();
+                EXECUTE FUNCTION ${safeSchema}.notify_table_change();
             `;
             await pool.query(attachTriggerSql);
         } catch (triggerError) {
@@ -767,12 +803,14 @@ export async function deleteTable(projectId: string, tableId: string, explicitUs
 
     if (project.dialect?.toLowerCase() === 'mysql') {
         const mysqlPool = await getTenantMysqlPool(project);
-        const { dbName } = getProjectDbAndSchema(project);
-        await mysqlPool.query(`DROP TABLE IF EXISTS \`${dbName}\`.\`${safeTableName}\``);
+        const safeDb = quoteMysqlProjectSchemaSafe(projectId);
+        const safeTable = quoteMysqlIdentifierSafe(tableId);
+        await mysqlPool.query(safeSql`DROP TABLE IF EXISTS ${safeDb}.${safeTable}`);
     } else {
         const pool = await getTenantPgPool(project);
-        const { schemaName } = getProjectDbAndSchema(project);
-        await pool.query(`DROP TABLE IF EXISTS "${schemaName}"."${safeTableName}" CASCADE`);
+        const safeSchema = quotePgProjectSchemaSafe(projectId);
+        const safeTable = quotePgIdentifierSafe(tableId);
+        await pool.query(safeSql`DROP TABLE IF EXISTS ${safeSchema}.${safeTable} CASCADE`);
     }
 
     const { invalidateTableCache } = await import('@/lib/cache');
@@ -879,15 +917,26 @@ export async function addColumn(projectId: string, tableId: string, column: Omit
         else if (type === 'VARCHAR') type = 'VARCHAR(255)';
         else if (type === 'BOOLEAN') type = 'TINYINT(1)';
 
-        let def = `ADD COLUMN \`${column.column_name}\` ${type}`;
-        if (!column.is_nullable && !column.is_primary_key) def += ' NOT NULL';
-        if (column.default_value) {
-            if (column.default_value.includes('now()')) def += ' DEFAULT CURRENT_TIMESTAMP';
-            else if (column.default_value.includes('uuid()')) def += ' DEFAULT (UUID())';
-            else def += ` DEFAULT '${column.default_value}'`;
+        if (!/^[A-Z0-9_()]+$/.test(type)) {
+            throw new Error("Invalid data type: " + type);
         }
 
-        await mysqlPool.query(`ALTER TABLE \`${dbName}\`.\`${safeTableName}\` ${def}`);
+        const safeColName = quoteMysqlIdentifierSafe(column.column_name);
+        let defStr = `ADD COLUMN ${safeColName} ${type}`;
+        if (!column.is_nullable && !column.is_primary_key) defStr += ' NOT NULL';
+        if (column.default_value) {
+            if (column.default_value.includes('now()')) defStr += ' DEFAULT CURRENT_TIMESTAMP';
+            else if (column.default_value.includes('uuid()')) defStr += ' DEFAULT (UUID())';
+            else {
+                const sanitizedDefault = column.default_value.replace(/'/g, "''");
+                defStr += ` DEFAULT '${sanitizedDefault}'`;
+            }
+        }
+
+        const safeDb = quoteMysqlProjectSchemaSafe(projectId);
+        const safeTable = quoteMysqlIdentifierSafe(tableId);
+        const def = toSafeSql(defStr);
+        await mysqlPool.query(safeSql`ALTER TABLE ${safeDb}.${safeTable} ${def}`);
 
     } else {
         const pool = await getTenantPgPool(project);
@@ -897,15 +946,26 @@ export async function addColumn(projectId: string, tableId: string, column: Omit
         if (type === 'NUMBER') type = 'NUMERIC';
         else if (type === 'VARCHAR') type = 'VARCHAR(255)';
 
-        let def = `ADD COLUMN "${column.column_name}" ${type}`;
-        if (!column.is_nullable && !column.is_primary_key) def += ' NOT NULL';
-        if (column.default_value) {
-            if (column.default_value.includes('now()')) def += ' DEFAULT CURRENT_TIMESTAMP';
-            else if (column.default_value.includes('uuid()')) def += ' DEFAULT gen_random_uuid()';
-            else def += ` DEFAULT '${column.default_value}'`;
+        if (!/^[A-Z0-9_()]+$/.test(type)) {
+            throw new Error("Invalid data type: " + type);
         }
 
-        await pool.query(`ALTER TABLE "${schemaName}"."${safeTableName}" ${def}`);
+        const safeColName = quotePgIdentifierSafe(column.column_name);
+        let defStr = `ADD COLUMN ${safeColName} ${type}`;
+        if (!column.is_nullable && !column.is_primary_key) defStr += ' NOT NULL';
+        if (column.default_value) {
+            if (column.default_value.includes('now()')) defStr += ' DEFAULT CURRENT_TIMESTAMP';
+            else if (column.default_value.includes('uuid()')) defStr += ' DEFAULT gen_random_uuid()';
+            else {
+                const sanitizedDefault = column.default_value.replace(/'/g, "''");
+                defStr += ` DEFAULT '${sanitizedDefault}'`;
+            }
+        }
+
+        const safeSchema = quotePgProjectSchemaSafe(projectId);
+        const safeTable = quotePgIdentifierSafe(tableId);
+        const def = toSafeSql(defStr);
+        await pool.query(safeSql`ALTER TABLE ${safeSchema}.${safeTable} ${def}`);
     }
 
     const { invalidateTableCache } = await import('@/lib/cache');
@@ -924,12 +984,16 @@ export async function deleteColumn(projectId: string, tableId: string, columnId:
 
     if (project.dialect?.toLowerCase() === 'mysql') {
         const mysqlPool = await getTenantMysqlPool(project);
-        const { dbName } = getProjectDbAndSchema(project);
-        await mysqlPool.query(`ALTER TABLE \`${dbName}\`.\`${safeTableName}\` DROP COLUMN \`${safeColName}\``);
+        const safeDb = quoteMysqlProjectSchemaSafe(projectId);
+        const safeTable = quoteMysqlIdentifierSafe(tableId);
+        const safeCol = quoteMysqlIdentifierSafe(columnId);
+        await mysqlPool.query(safeSql`ALTER TABLE ${safeDb}.${safeTable} DROP COLUMN ${safeCol}`);
     } else {
         const pool = await getTenantPgPool(project);
-        const { schemaName } = getProjectDbAndSchema(project);
-        await pool.query(`ALTER TABLE "${schemaName}"."${safeTableName}" DROP COLUMN "${safeColName}" CASCADE`);
+        const safeSchema = quotePgProjectSchemaSafe(projectId);
+        const safeTable = quotePgIdentifierSafe(tableId);
+        const safeCol = quotePgIdentifierSafe(columnId);
+        await pool.query(safeSql`ALTER TABLE ${safeSchema}.${safeTable} DROP COLUMN ${safeCol} CASCADE`);
     }
 
     const { invalidateTableCache } = await import('@/lib/cache');
@@ -947,12 +1011,13 @@ export async function updateColumn(projectId: string, tableId: string, columnId:
 
     if (project.dialect?.toLowerCase() === 'mysql') {
         const mysqlPool = await getTenantMysqlPool(project);
-        const { dbName } = getProjectDbAndSchema(project);
+        const safeDb = quoteMysqlProjectSchemaSafe(projectId);
+        const safeTable = quoteMysqlIdentifierSafe(tableId);
+        const safeCol = quoteMysqlIdentifierSafe(columnId);
 
         if (updates.column_name && updates.column_name !== columnId) {
-            const newName = updates.column_name.replace(/[^a-zA-Z0-9_]/g, '');
-            // MySQL requires specifying the type again when renaming, but for simplicity we'll just rename
-            await mysqlPool.query(`ALTER TABLE \`${dbName}\`.\`${safeTableName}\` RENAME COLUMN \`${safeColName}\` TO \`${newName}\``);
+            const newName = quoteMysqlIdentifierSafe(updates.column_name);
+            await mysqlPool.query(safeSql`ALTER TABLE ${safeDb}.${safeTable} RENAME COLUMN ${safeCol} TO ${newName}`);
         }
 
         if (updates.data_type) {
@@ -961,19 +1026,24 @@ export async function updateColumn(projectId: string, tableId: string, columnId:
             else if (type === 'VARCHAR') type = 'VARCHAR(255)';
             else if (type === 'BOOLEAN') type = 'TINYINT(1)';
 
-            // Note: IF renamed above, safeColName variable might not perfectly align in one transaction, but assuming sequential for now or only one update at a time from frontend.
-            const targetCol = (updates.column_name && updates.column_name !== columnId) ? updates.column_name.replace(/[^a-zA-Z0-9_]/g, '') : safeColName;
-            await mysqlPool.query(`ALTER TABLE \`${dbName}\`.\`${safeTableName}\` MODIFY COLUMN \`${targetCol}\` ${type}`);
+            if (!/^[A-Z0-9_()]+$/.test(type)) {
+                throw new Error("Invalid data type: " + type);
+            }
+
+            const targetCol = (updates.column_name && updates.column_name !== columnId) ? quoteMysqlIdentifierSafe(updates.column_name) : safeCol;
+            const safeType = toSafeSql(type);
+            await mysqlPool.query(safeSql`ALTER TABLE ${safeDb}.${safeTable} MODIFY COLUMN ${targetCol} ${safeType}`);
         }
 
     } else {
         const pool = await getTenantPgPool(project);
-        const { schemaName } = getProjectDbAndSchema(project);
+        const safeSchema = quotePgProjectSchemaSafe(projectId);
+        const safeTable = quotePgIdentifierSafe(tableId);
+        const safeCol = quotePgIdentifierSafe(columnId);
 
-        // Changing column types/names natively with ALTER TABLE
         if (updates.column_name && updates.column_name !== columnId) {
-            const newName = updates.column_name.replace(/[^a-zA-Z0-9_]/g, '');
-            await pool.query(`ALTER TABLE "${schemaName}"."${safeTableName}" RENAME COLUMN "${safeColName}" TO "${newName}"`);
+            const newName = quotePgIdentifierSafe(updates.column_name);
+            await pool.query(safeSql`ALTER TABLE ${safeSchema}.${safeTable} RENAME COLUMN ${safeCol} TO ${newName}`);
         }
 
         if (updates.data_type) {
@@ -981,8 +1051,13 @@ export async function updateColumn(projectId: string, tableId: string, columnId:
             if (type === 'NUMBER') type = 'NUMERIC';
             else if (type === 'VARCHAR') type = 'VARCHAR(255)';
 
-            const targetCol = (updates.column_name && updates.column_name !== columnId) ? updates.column_name.replace(/[^a-zA-Z0-9_]/g, '') : safeColName;
-            await pool.query(`ALTER TABLE "${schemaName}"."${safeTableName}" ALTER COLUMN "${targetCol}" TYPE ${type} USING "${targetCol}"::${type}`);
+            if (!/^[A-Z0-9_()]+$/.test(type)) {
+                throw new Error("Invalid data type: " + type);
+            }
+
+            const targetCol = (updates.column_name && updates.column_name !== columnId) ? quotePgIdentifierSafe(updates.column_name) : safeCol;
+            const safeType = toSafeSql(type);
+            await pool.query(safeSql`ALTER TABLE ${safeSchema}.${safeTable} ALTER COLUMN ${targetCol} TYPE ${safeType} USING ${targetCol}::${safeType}`);
         }
     }
 
@@ -1146,40 +1221,58 @@ export async function addConstraint(projectId: string, constraint: Omit<Constrai
 
     if (project.dialect?.toLowerCase() === 'mysql') {
         const mysqlPool = await getTenantMysqlPool(project);
-        const { dbName } = getProjectDbAndSchema(project);
+        const safeDb = quoteMysqlProjectSchemaSafe(projectId);
+        const safeTable = quoteMysqlIdentifierSafe(constraint.table_id);
+        const safeCol = quoteMysqlIdentifierSafe(constraint.column_names);
+        const safeConstraintName = quoteMysqlIdentifierSafe(`${safeTableName}_${colName}_${Date.now()}`);
 
-        let ddl = `ALTER TABLE \`${dbName}\`.\`${safeTableName}\` ADD CONSTRAINT \`${safeTableName}_${colName}_${Date.now()}\` `;
+        let ddlStr = `ALTER TABLE ${safeDb}.${safeTable} ADD CONSTRAINT ${safeConstraintName} `;
 
         if (constraint.type === 'PRIMARY KEY') {
-            ddl += `PRIMARY KEY (\`${colName}\`)`;
+            ddlStr += `PRIMARY KEY (${safeCol})`;
         } else if (constraint.type === 'FOREIGN KEY' && constraint.referenced_table_id && constraint.referenced_column_names) {
-            const refTable = constraint.referenced_table_id.replace(/[^a-zA-Z0-9_]/g, '');
-            const refCol = constraint.referenced_column_names.replace(/[^a-zA-Z0-9_]/g, '');
-            ddl += `FOREIGN KEY (\`${colName}\`) REFERENCES \`${dbName}\`.\`${refTable}\` (\`${refCol}\`)`;
+            const safeRefTable = quoteMysqlIdentifierSafe(constraint.referenced_table_id);
+            const safeRefCol = quoteMysqlIdentifierSafe(constraint.referenced_column_names);
+            ddlStr += `FOREIGN KEY (${safeCol}) REFERENCES ${safeDb}.${safeRefTable} (${safeRefCol})`;
 
-            if (constraint.on_delete) ddl += ` ON DELETE ${constraint.on_delete}`;
-            if (constraint.on_update) ddl += ` ON UPDATE ${constraint.on_update}`;
+            if (constraint.on_delete) {
+                if (!/^[A-Z ]+$/.test(constraint.on_delete)) throw new Error("Invalid action");
+                ddlStr += ` ON DELETE ${constraint.on_delete}`;
+            }
+            if (constraint.on_update) {
+                if (!/^[A-Z ]+$/.test(constraint.on_update)) throw new Error("Invalid action");
+                ddlStr += ` ON UPDATE ${constraint.on_update}`;
+            }
         }
 
-        await mysqlPool.query(ddl);
+        await mysqlPool.query(toSafeSql(ddlStr));
     } else {
         const pool = await getTenantPgPool(project);
-        const { schemaName } = getProjectDbAndSchema(project);
+        const safeSchema = quotePgProjectSchemaSafe(projectId);
+        const safeTable = quotePgIdentifierSafe(constraint.table_id);
+        const safeCol = quotePgIdentifierSafe(constraint.column_names);
+        const safeConstraintName = quotePgIdentifierSafe(`${safeTableName}_${colName}_${Date.now()}`);
 
-        let ddl = `ALTER TABLE "${schemaName}"."${safeTableName}" ADD CONSTRAINT "${safeTableName}_${colName}_${Date.now()}" `;
+        let ddlStr = `ALTER TABLE ${safeSchema}.${safeTable} ADD CONSTRAINT ${safeConstraintName} `;
 
         if (constraint.type === 'PRIMARY KEY') {
-            ddl += `PRIMARY KEY ("${colName}")`;
+            ddlStr += `PRIMARY KEY (${safeCol})`;
         } else if (constraint.type === 'FOREIGN KEY' && constraint.referenced_table_id && constraint.referenced_column_names) {
-            const refTable = constraint.referenced_table_id.replace(/[^a-zA-Z0-9_]/g, '');
-            const refCol = constraint.referenced_column_names.replace(/[^a-zA-Z0-9_]/g, '');
-            ddl += `FOREIGN KEY ("${colName}") REFERENCES "${schemaName}"."${refTable}" ("${refCol}")`;
+            const safeRefTable = quotePgIdentifierSafe(constraint.referenced_table_id);
+            const safeRefCol = quotePgIdentifierSafe(constraint.referenced_column_names);
+            ddlStr += `FOREIGN KEY (${safeCol}) REFERENCES ${safeSchema}.${safeRefTable} (${safeRefCol})`;
 
-            if (constraint.on_delete) ddl += ` ON DELETE ${constraint.on_delete}`;
-            if (constraint.on_update) ddl += ` ON UPDATE ${constraint.on_update}`;
+            if (constraint.on_delete) {
+                if (!/^[A-Z ]+$/.test(constraint.on_delete)) throw new Error("Invalid action");
+                ddlStr += ` ON DELETE ${constraint.on_delete}`;
+            }
+            if (constraint.on_update) {
+                if (!/^[A-Z ]+$/.test(constraint.on_update)) throw new Error("Invalid action");
+                ddlStr += ` ON UPDATE ${constraint.on_update}`;
+            }
         }
 
-        await pool.query(ddl);
+        await pool.query(toSafeSql(ddlStr));
     }
 }
 
@@ -1196,15 +1289,16 @@ export async function deleteConstraint(projectId: string, constraintId: string, 
 
     if (project.dialect?.toLowerCase() === 'mysql') {
         const mysqlPool = await getTenantMysqlPool(project);
-        const { dbName } = getProjectDbAndSchema(project);
-
-        // Use DROP FOREIGN KEY / DROP INDEX depending on constraint type if possible, or try standard DROP CONSTRAINT (MySQL 8.0.19+)
-        await mysqlPool.query(`ALTER TABLE \`${dbName}\`.\`${safeTableName}\` DROP CONSTRAINT \`${safeConstraint}\``);
+        const safeDb = quoteMysqlProjectSchemaSafe(projectId);
+        const safeTable = quoteMysqlIdentifierSafe(tableId);
+        const safeConstraint = quoteMysqlIdentifierSafe(constraintId);
+        await mysqlPool.query(safeSql`ALTER TABLE ${safeDb}.${safeTable} DROP CONSTRAINT ${safeConstraint}`);
     } else {
         const pool = await getTenantPgPool(project);
-        const { schemaName } = getProjectDbAndSchema(project);
-
-        await pool.query(`ALTER TABLE "${schemaName}"."${safeTableName}" DROP CONSTRAINT "${safeConstraint}"`);
+        const safeSchema = quotePgProjectSchemaSafe(projectId);
+        const safeTable = quotePgIdentifierSafe(tableId);
+        const safeConstraint = quotePgIdentifierSafe(constraintId);
+        await pool.query(safeSql`ALTER TABLE ${safeSchema}.${safeTable} DROP CONSTRAINT ${safeConstraint}`);
     }
 }
 
@@ -1384,9 +1478,9 @@ export async function insertRow(projectId: string, tableId: string, rowData: Rec
 
     const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
 
-    const cols = [];
-    const vals = [];
-    const params = [];
+    const cols: any[] = [];
+    const vals: any[] = [];
+    const params: any[] = [];
     let i = 1;
 
     for (const [key, value] of Object.entries(rowData)) {
@@ -1418,7 +1512,7 @@ export async function insertRow(projectId: string, tableId: string, rowData: Rec
             const ddl = `INSERT INTO \`${dbName}\`.\`${safeTableName}\` (${cols.join(', ')}) VALUES (${vals.join(', ')})`;
 
             try {
-                const [result]: any = await mysqlPool.query(ddl, params);
+                const [result]: any = await mysqlPool.query(ddl as any, params);
                 insertedRow = { ...rowData, _internal_last_id: result.insertId }; // Approximation
             } catch (mysqlError: any) {
                 if (mysqlError.code === 'ER_DUP_ENTRY') throw new FluxbaseError(`Duplicate entry for unique/primary key constraint.`, ERROR_CODES.BAD_REQUEST, 400);
@@ -1464,8 +1558,8 @@ export async function updateRow(projectId: string, tableId: string, rowId: strin
     }
 
     const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
-    const setClauses = [];
-    const params = [];
+    const setClauses: any[] = [];
+    const params: any[] = [];
     let i = 1;
 
     for (const [key, value] of Object.entries(updates)) {
@@ -1488,12 +1582,12 @@ export async function updateRow(projectId: string, tableId: string, rowId: strin
             const mysqlPool = await getTenantMysqlPool(project);
             const { dbName } = getProjectDbAndSchema(project);
 
-            const [oldDataResult]: any = await mysqlPool.query(`SELECT * FROM \`${dbName}\`.\`${safeTableName}\` WHERE \`${pkCol.column_name}\` = ?`, [rowId]);
+            const [oldDataResult]: any = await mysqlPool.query(`SELECT * FROM \`${dbName}\`.\`${safeTableName}\` WHERE \`${pkCol.column_name}\` = ?` as any, [rowId]);
             if (oldDataResult.length === 0) throw new Error(`Row with PK '${rowId}' not found.`);
             oldData = oldDataResult[0];
 
             const ddl = `UPDATE \`${dbName}\`.\`${safeTableName}\` SET ${setClauses.join(', ')} WHERE \`${pkCol.column_name}\` = ?`;
-            await mysqlPool.query(ddl, params);
+            await mysqlPool.query(ddl as any, params);
 
             // MySQL lacks RETURNING *, grab it again or approximate
             updatedRow = { ...oldData, ...updates };

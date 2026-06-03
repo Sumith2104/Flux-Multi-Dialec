@@ -42,10 +42,10 @@ export async function POST(req: Request) {
             const mysqlPool = getMysqlPool();
             const connection = await mysqlPool.getConnection();
             try {
-                await connection.query(`USE ${quoteMysqlProjectSchema(projectId)}`);
-                await connection.query('START TRANSACTION READ ONLY');
-                const [rows]: any = await connection.query(query);
-                await connection.query('COMMIT');
+                await connection.query(`USE ${quoteMysqlProjectSchema(projectId)}` as any);
+                await connection.query('START TRANSACTION READ ONLY' as any);
+                const [rows]: any = await connection.query(query as any);
+                await connection.query('COMMIT' as any);
                 resultRows = Array.isArray(rows) ? rows : [rows];
             } catch (error) {
                 await connection.query('ROLLBACK').catch(() => undefined);

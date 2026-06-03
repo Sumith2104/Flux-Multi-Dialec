@@ -26,7 +26,7 @@ export async function createWidgetsAction(projectId: string, widgets: Array<{ ti
     const userId = await getCurrentUserId();
     if (!userId) throw new Error("Unauthorized");
 
-    const createdWidgets = [];
+    const createdWidgets: any[] = [];
     for (const w of widgets) {
         const id = await saveDashboardWidget(projectId, userId, w.title, w.chartType, w.query, w.config);
         createdWidgets.push({

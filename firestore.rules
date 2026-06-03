@@ -3,8 +3,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Existing rules (assumed default locked or similar, but we add specific overrides)
-    
     // User Profiles
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
@@ -12,22 +10,38 @@ service cloud.firestore {
 
     // Projects
     match /projects/{projectId} {
-      allow read: if request.auth != null && (resource.data.user_id == request.auth.uid || resource.data.userId == request.auth.uid);
-      allow write: if request.auth != null && (resource.data.user_id == request.auth.uid || resource.data.userId == request.auth.uid); // or cleaner logic
+      allow read: if request.auth != null && (
+        resource.data.user_id == request.auth.uid || 
+        resource.data.userId == request.auth.uid
+      );
       
-      // Project Stats (Read-only for owner, Write-only for Admin SDK)
+      allow write: if request.auth != null && (
+        (resource == null && (request.resource.data.user_id == request.auth.uid || request.resource.data.userId == request.auth.uid)) ||
+        (resource != null && (resource.data.user_id == request.auth.uid || resource.data.userId == request.auth.uid))
+      );
+      
+      // Project Stats
       match /stats/{statId} {
-        allow read: if request.auth != null; // Ideally check parent project ownership, but this is a quick fix for the dashboard
+        allow read: if request.auth != null && (
+          get(/databases/$(database)/documents/projects/$(projectId)).data.user_id == request.auth.uid ||
+          get(/databases/$(database)/documents/projects/$(projectId)).data.userId == request.auth.uid
+        );
       }
       
       // Hourly History Buckets
       match /stats_history/{historyId} {
-        allow read: if request.auth != null; 
+        allow read: if request.auth != null && (
+          get(/databases/$(database)/documents/projects/$(projectId)).data.user_id == request.auth.uid ||
+          get(/databases/$(database)/documents/projects/$(projectId)).data.userId == request.auth.uid
+        );
       }
       
       // Minute Real-time Buckets
       match /stats_realtime/{realtimeId} {
-        allow read: if request.auth != null;
+        allow read: if request.auth != null && (
+          get(/databases/$(database)/documents/projects/$(projectId)).data.user_id == request.auth.uid ||
+          get(/databases/$(database)/documents/projects/$(projectId)).data.userId == request.auth.uid
+        );
       }
     }
   }

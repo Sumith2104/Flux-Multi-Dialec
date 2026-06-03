@@ -38,7 +38,7 @@ function DatabaseSkeleton() {
 export default async function DatabasePage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
     const cookieStore = await cookies();
     const selectedProjectCookie = cookieStore.get('selectedProject');
-    let selectedProject = null;
+    let selectedProject: any = null;
     try {
         selectedProject = selectedProjectCookie ? JSON.parse(selectedProjectCookie.value) : null;
     } catch (e) {

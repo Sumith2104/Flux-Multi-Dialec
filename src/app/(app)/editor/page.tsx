@@ -78,7 +78,7 @@ export default async function EditorPage({
 }) {
     const cookieStore = await cookies();
     const selectedProjectCookie = cookieStore.get('selectedProject');
-    let selectedProject = null;
+    let selectedProject: any = null;
     try {
         selectedProject = selectedProjectCookie ? JSON.parse(selectedProjectCookie.value) : null;
     } catch (e) {
