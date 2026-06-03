@@ -137,16 +137,18 @@ export default function ApiPage() {
 
     return (
         <div className="space-y-6 w-full">
-            <div className="flex items-center gap-4">
-                <BackButton />
-                <div>
-                    <h1 className="text-3xl font-bold">API & Settings</h1>
-                    <p className="text-muted-foreground">
-                        Manage your API access, keys, and project settings.
-                    </p>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 justify-between w-full">
+                <div className="flex items-center gap-4">
+                    <BackButton />
+                    <div>
+                        <h1 className="text-3xl font-bold">API & Settings</h1>
+                        <p className="text-muted-foreground">
+                            Manage your API access, keys, and project settings.
+                        </p>
+                    </div>
                 </div>
                 {planType && (
-                    <span className={`ml-auto inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${planType === 'max'
+                    <span className={`sm:ml-auto inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${planType === 'max'
                             ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
                             : planType === 'pro'
                                 ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'

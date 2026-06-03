@@ -13,9 +13,14 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
     Folder, FolderOpen, Upload, Plus, Trash2, Copy, Check, Edit2,
-    File, Image as ImageIcon, FileText, FileArchive, Loader2, HardDrive, X
+    File, Image as ImageIcon, FileText, FileArchive, Loader2, HardDrive, X, Menu
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+    Sheet as SheetRoot,
+    SheetContent,
+    SheetTrigger,
+} from '@/components/ui/sheet';
 
 interface Bucket { id: string; name: string; is_public: boolean; created_at: string; total_size?: number; }
 interface StorageFile {
@@ -55,6 +60,7 @@ export default function StoragePage() {
     const [bucketToDelete, setBucketToDelete] = useState<Bucket | null>(null);
     const [fileToDelete, setFileToDelete] = useState<StorageFile | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [isMobileBucketsOpen, setIsMobileBucketsOpen] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const projectId = project?.project_id;
@@ -303,6 +309,120 @@ export default function StoragePage() {
         );
     }
 
+    const bucketsSidebarContent = (
+        <Card className="h-full relative overflow-hidden group border-border/80 bg-secondary/60 backdrop-blur-md shadow-lg transition-colors hover:bg-secondary/70">
+            <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Buckets</CardTitle>
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); setShowNewBucket(v => !v); }}>
+                        <Plus className="h-3.5 w-3.5" />
+                    </Button>
+                </div>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-1">
+                {showNewBucket && (
+                    <div className="flex gap-2 mb-3" onClick={(e) => e.stopPropagation()}>
+                        <Input
+                            value={newBucketName}
+                            onChange={e => setNewBucketName(e.target.value)}
+                            placeholder="bucket-name"
+                            className="h-8 text-xs"
+                            onKeyDown={e => e.key === 'Enter' && createBucket()}
+                            autoFocus
+                        />
+                        <Button size="sm" className="h-8 px-2" onClick={createBucket} disabled={creatingBucket}>
+                            {creatingBucket ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                        </Button>
+                    </div>
+                )}
+                {loadingBuckets ? (
+                    <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                ) : buckets.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                        <Folder className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                        <p className="text-xs">No buckets yet.<br />Click + to create one.</p>
+                    </div>
+                ) : buckets.map(bucket => (
+                    <div
+                        key={bucket.id}
+                        className={cn(
+                            'w-full flex justify-between items-center group px-3 py-2 rounded-lg text-sm transition-colors text-left cursor-pointer',
+                            selectedBucket?.id === bucket.id
+                                ? 'bg-primary/15 text-primary border border-primary/20'
+                                : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground/90'
+                        )}
+                        onClick={() => {
+                            if (editingBucketId !== bucket.id) {
+                                setSelectedBucket(bucket);
+                                setIsMobileBucketsOpen(false);
+                            }
+                        }}
+                    >
+                        {editingBucketId === bucket.id ? (
+                            <div className="flex gap-2 w-full" onClick={e => e.stopPropagation()}>
+                                <Input
+                                    value={editBucketName}
+                                    onChange={e => setEditBucketName(e.target.value)}
+                                    className="h-7 text-xs flex-1"
+                                    autoFocus
+                                    onKeyDown={e => {
+                                        if (e.key === 'Enter') updateBucket(bucket);
+                                        if (e.key === 'Escape') setEditingBucketId(null);
+                                    }}
+                                    onClick={e => e.stopPropagation()}
+                                />
+                                <Button size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); updateBucket(bucket); }}>
+                                    <Check className="h-3 w-3" />
+                                </Button>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="flex items-center gap-2.5 overflow-hidden flex-1">
+                                    {selectedBucket?.id === bucket.id
+                                        ? <FolderOpen className="h-4 w-4 shrink-0" />
+                                        : <Folder className="h-4 w-4 shrink-0" />}
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="truncate font-medium">{bucket.name}</span>
+                                        <span className="text-[10px] opacity-60 font-mono">{formatBytes(Number(bucket.total_size) || 0)}</span>
+                                    </div>
+                                </div>
+                                
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Button
+                                        variant="ghost" 
+                                        size="icon" 
+                                        className="h-6 w-6 hover:bg-muted/80 hover:text-white"
+                                        title="Rename bucket"
+                                        onClick={(e) => { 
+                                            e.stopPropagation(); 
+                                            setEditingBucketId(bucket.id); 
+                                            setEditBucketName(bucket.name); 
+                                        }}
+                                    >
+                                        <Edit2 className="h-3 w-3" />
+                                    </Button>
+                                    <Button
+                                        variant="ghost" 
+                                        size="icon" 
+                                        className="h-6 w-6 hover:bg-red-500/20 hover:text-red-400"
+                                        title="Delete bucket"
+                                        disabled={deletingBucketId === bucket.id}
+                                        onClick={(e) => { 
+                                            e.stopPropagation(); 
+                                            setBucketToDelete(bucket);
+                                        }}
+                                    >
+                                        {deletingBucketId === bucket.id ? <Loader2 className="h-3 w-3 animate-spin text-red-400" /> : <Trash2 className="h-3 w-3" />}
+                                    </Button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                ))}
+            </CardContent>
+        </Card>
+    );
+
     return (
         <div className="max-w-full space-y-5 overflow-x-hidden sm:space-y-6">
             {/* Header */}
@@ -341,116 +461,32 @@ export default function StoragePage() {
             )}
 
             <div className="flex min-h-[500px] max-w-full flex-col gap-4 lg:flex-row">
-                {/* Bucket Sidebar */}
-                <div className="w-full shrink-0 lg:w-[20%]">
-                    <Card className="h-full relative overflow-hidden group border-border/80 bg-secondary/60 backdrop-blur-md shadow-lg transition-colors hover:bg-secondary/70">
-                        <CardHeader className="pb-3">
-                            <div className="flex items-center justify-between">
-                                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Buckets</CardTitle>
-                                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowNewBucket(v => !v)}>
-                                    <Plus className="h-3.5 w-3.5" />
-                                </Button>
+                {/* Bucket Sidebar Desktop */}
+                <div className="hidden lg:block lg:w-[20%] shrink-0">
+                    {bucketsSidebarContent}
+                </div>
+
+                {/* Mobile/Tablet Drawer Trigger */}
+                <div className="lg:hidden w-full">
+                    <SheetRoot open={isMobileBucketsOpen} onOpenChange={setIsMobileBucketsOpen}>
+                        <SheetTrigger asChild>
+                            <Button variant="outline" className="w-full flex justify-between items-center gap-2 mb-2 bg-secondary/60 border-border/80 text-sm">
+                                <span className="flex items-center gap-2">
+                                    <Folder className="h-4 w-4 text-primary" />
+                                    <span>{selectedBucket ? `Bucket: ${selectedBucket.name}` : 'Select a Bucket'}</span>
+                                </span>
+                                <Menu className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                        </SheetTrigger>
+                        <SheetContent side="left" className="p-0 w-72 flex flex-col h-full bg-background border-r">
+                            <div className="p-4 border-b">
+                                <h2 className="text-lg font-semibold">Buckets</h2>
                             </div>
-                        </CardHeader>
-                        <CardContent className="pt-0 space-y-1">
-                            {showNewBucket && (
-                                <div className="flex gap-2 mb-3">
-                                    <Input
-                                        value={newBucketName}
-                                        onChange={e => setNewBucketName(e.target.value)}
-                                        placeholder="bucket-name"
-                                        className="h-8 text-xs"
-                                        onKeyDown={e => e.key === 'Enter' && createBucket()}
-                                        autoFocus
-                                    />
-                                    <Button size="sm" className="h-8 px-2" onClick={createBucket} disabled={creatingBucket}>
-                                        {creatingBucket ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                                    </Button>
-                                </div>
-                            )}
-                            {loadingBuckets ? (
-                                <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-                            ) : buckets.length === 0 ? (
-                                <div className="text-center py-8 text-muted-foreground">
-                                    <Folder className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                                    <p className="text-xs">No buckets yet.<br />Click + to create one.</p>
-                                </div>
-                            ) : buckets.map(bucket => (
-                                <div
-                                    key={bucket.id}
-                                    className={cn(
-                                        'w-full flex justify-between items-center group px-3 py-2 rounded-lg text-sm transition-colors text-left cursor-pointer',
-                                        selectedBucket?.id === bucket.id
-                                            ? 'bg-primary/15 text-primary border border-primary/20'
-                                            : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground/90'
-                                    )}
-                                    onClick={() => {
-                                        if (editingBucketId !== bucket.id) setSelectedBucket(bucket);
-                                    }}
-                                >
-                                    {editingBucketId === bucket.id ? (
-                                        <div className="flex gap-2 w-full">
-                                            <Input
-                                                value={editBucketName}
-                                                onChange={e => setEditBucketName(e.target.value)}
-                                                className="h-7 text-xs flex-1"
-                                                autoFocus
-                                                onKeyDown={e => {
-                                                    if (e.key === 'Enter') updateBucket(bucket);
-                                                    if (e.key === 'Escape') setEditingBucketId(null);
-                                                }}
-                                                onClick={e => e.stopPropagation()}
-                                            />
-                                            <Button size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); updateBucket(bucket); }}>
-                                                <Check className="h-3 w-3" />
-                                            </Button>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <div className="flex items-center gap-2.5 overflow-hidden flex-1">
-                                                {selectedBucket?.id === bucket.id
-                                                    ? <FolderOpen className="h-4 w-4 shrink-0" />
-                                                    : <Folder className="h-4 w-4 shrink-0" />}
-                                                <div className="flex flex-col min-w-0">
-                                                    <span className="truncate font-medium">{bucket.name}</span>
-                                                    <span className="text-[10px] opacity-60 font-mono">{formatBytes(Number(bucket.total_size) || 0)}</span>
-                                                </div>
-                                            </div>
-                                            
-                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <Button
-                                                    variant="ghost" 
-                                                    size="icon" 
-                                                    className="h-6 w-6 hover:bg-muted/80 hover:text-white"
-                                                    title="Rename bucket"
-                                                    onClick={(e) => { 
-                                                        e.stopPropagation(); 
-                                                        setEditingBucketId(bucket.id); 
-                                                        setEditBucketName(bucket.name); 
-                                                    }}
-                                                >
-                                                    <Edit2 className="h-3 w-3" />
-                                                </Button>
-                                                <Button
-                                                    variant="ghost" 
-                                                    size="icon" 
-                                                    className="h-6 w-6 hover:bg-red-500/20 hover:text-red-400"
-                                                    title="Delete bucket"
-                                                    disabled={deletingBucketId === bucket.id}
-                                                    onClick={(e) => { 
-                                                        e.stopPropagation(); 
-                                                        setBucketToDelete(bucket);
-                                                    }}
-                                                >
-                                                    {deletingBucketId === bucket.id ? <Loader2 className="h-3 w-3 animate-spin text-red-400" /> : <Trash2 className="h-3 w-3" />}
-                                                </Button>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                            ))}
-                        </CardContent>
-                    </Card>
+                            <div className="flex-grow overflow-y-auto p-4">
+                                {bucketsSidebarContent}
+                            </div>
+                        </SheetContent>
+                    </SheetRoot>
                 </div>
 
                 {/* File Browser */}

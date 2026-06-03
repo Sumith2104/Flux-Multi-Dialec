@@ -53,6 +53,18 @@ function DashboardCustomWidgetsGrid({ widgets, projectId }: { widgets: any[], pr
         return configObj.layout || { i: w.id, x: (i * 4) % 12, y: Infinity, w: 4, h: 10 };
     });
 
+    if (width < 768) {
+        return (
+            <div ref={ref} className="w-full pb-6 space-y-4 flex flex-col">
+                {widgets.map((widget: any) => (
+                    <div key={widget.id} className="w-full">
+                        <AsyncWidget projectId={projectId} widget={widget} />
+                    </div>
+                ))}
+            </div>
+        );
+    }
+
     return (
         <div ref={ref} className="w-full pb-6">
             <ResponsiveGrid
@@ -143,7 +155,7 @@ export default function DashboardPage() {
 
     return (
         <div className="container mx-auto px-0">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center mb-6">
                 <h1 className="text-3xl font-bold flex items-center gap-3">
                     Dashboard
                     <span className="relative flex h-2 w-2">

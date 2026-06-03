@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useCallback, useContext } from 'react';
 import { ProjectContext } from '@/contexts/project-context';
@@ -223,17 +223,19 @@ export default function TeamPage() {
                             {members.map(member => (
                                 <Card key={member.userId} className="border-border">
                                     {/* ... member card content ... */}
-                                    <CardContent className="flex items-center gap-4 p-4">
-                                        <Avatar className="h-9 w-9 shrink-0">
-                                            <AvatarFallback className="bg-muted text-sm">
-                                                {(member.displayName || member.email).charAt(0).toUpperCase()}
-                                            </AvatarFallback>
-                                        </Avatar>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="font-medium text-sm truncate">{member.displayName || member.email}</p>
-                                            <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+                                    <CardContent className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 justify-between w-full">
+                                        <div className="flex items-center gap-3 w-full sm:w-auto min-w-0">
+                                            <Avatar className="h-9 w-9 shrink-0">
+                                                <AvatarFallback className="bg-muted text-sm">
+                                                    {(member.displayName || member.email).charAt(0).toUpperCase()}
+                                                </AvatarFallback>
+                                            </Avatar>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-medium text-sm truncate">{member.displayName || member.email}</p>
+                                                <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-2 shrink-0">
+                                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto w-full sm:w-auto justify-end">
                                             <Select 
                                                 value={member.role} 
                                                 onValueChange={v => handleRoleChange(member.userId, v)} 

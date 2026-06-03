@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -109,7 +109,7 @@ export default function RLSPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
                         <Shield className="h-6 w-6 text-amber-400" />
@@ -119,7 +119,7 @@ export default function RLSPage() {
                         Define SQL-based access policies to control which rows each user can access
                     </p>
                 </div>
-                <Button onClick={() => setShowAdd(true)} className="bg-orange-600 hover:bg-orange-500" id="add-rls-policy">
+                <Button onClick={() => setShowAdd(true)} className="bg-orange-600 hover:bg-orange-500 w-full sm:w-auto" id="add-rls-policy">
                     <Plus className="h-4 w-4 mr-2" />
                     New Policy
                 </Button>

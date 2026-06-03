@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -143,26 +143,28 @@ export default function MigrationsPage() {
                         const isRunning = runningId === m.id;
                         return (
                             <Card key={m.id} className="border-border">
-                                <div className="flex items-center p-4 gap-4">
-                                    <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-muted-foreground/75 text-xs font-mono shrink-0">
-                                        {m.version}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-medium text-sm">{m.name}</span>
-                                            <Badge variant="outline" className={cn('text-[10px] h-4 px-1.5', className)}>
-                                                <Icon className="h-2.5 w-2.5 mr-1" />
-                                                {label}
-                                            </Badge>
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center p-4 gap-3 sm:gap-4 justify-between w-full">
+                                    <div className="flex items-center gap-3 w-full sm:w-auto min-w-0">
+                                        <div className="h-8 min-w-[32px] px-2 rounded-full bg-muted flex items-center justify-center text-muted-foreground/75 text-xs font-mono shrink-0">
+                                            {m.version}
                                         </div>
-                                        {m.appliedAt && (
-                                            <p className="text-xs text-muted-foreground mt-0.5">
-                                                Applied {format(new Date(m.appliedAt), 'MMM d, yyyy HH:mm')}
-                                            </p>
-                                        )}
-                                        {m.error && <p className="text-xs text-red-400 mt-0.5 truncate">{m.error}</p>}
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="font-medium text-sm truncate">{m.name}</span>
+                                                <Badge variant="outline" className={cn('text-[10px] h-4 px-1.5 shrink-0', className)}>
+                                                    <Icon className="h-2.5 w-2.5 mr-1" />
+                                                    {label}
+                                                </Badge>
+                                            </div>
+                                            {m.appliedAt && (
+                                                <p className="text-xs text-muted-foreground mt-0.5">
+                                                    Applied {format(new Date(m.appliedAt), 'MMM d, yyyy HH:mm')}
+                                                </p>
+                                            )}
+                                            {m.error && <p className="text-xs text-red-400 mt-0.5 truncate">{m.error}</p>}
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-2 shrink-0">
+                                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto w-full sm:w-auto justify-end">
                                         <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground"
                                             onClick={() => setExpanded(prev => prev === m.id ? null : m.id)}
                                             id={`migration-expand-${m.id}`}>
