@@ -1295,17 +1295,61 @@ export function EditorClient({
                             </div>
                         </>
                     ) : (
-                        <div className="flex flex-col items-center justify-center h-full text-center p-6">
-                            <Table className="h-16 w-16 text-muted-foreground" />
-                            <h2 className="mt-4 text-xl font-semibold">Select a table to begin</h2>
-                            <p className="mt-2 text-muted-foreground">Choose a table from the sidebar to view its data and structure.</p>
-                            <Button asChild className="mt-4">
-                                <Link href={projectId ? `/dashboard/tables/create?projectId=${projectId}` : '#'}>
-                                    <Plus className="mr-2 h-4 w-4" />
-                                    Create New Table
-                                </Link>
-                            </Button>
-                        </div>
+                        <>
+                            <header className="flex flex-col sm:flex-row min-h-14 py-2 h-auto items-start sm:items-center gap-4 border-b bg-background px-4 sm:px-6 flex-shrink-0 md:hidden">
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground shrink-0">
+                                    <SheetRoot open={isMobileExplorerOpen} onOpenChange={setIsMobileExplorerOpen}>
+                                        <SheetTrigger asChild>
+                                            <Button variant="outline" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground mr-1">
+                                                <Menu className="h-4 w-4" />
+                                            </Button>
+                                        </SheetTrigger>
+                                        <SheetContent side="left" className="p-0 w-72 flex flex-col h-full bg-background border-r">
+                                            <div className="p-4 border-b">
+                                                <h2 className="text-lg font-semibold">Table Explorer</h2>
+                                            </div>
+                                            <div className="flex-1 overflow-hidden">
+                                                {sidebarExplorerContent}
+                                            </div>
+                                        </SheetContent>
+                                    </SheetRoot>
+                                    <span className="font-semibold text-foreground">Table Editor</span>
+                                </div>
+                            </header>
+                            <div className="flex-grow flex flex-col justify-center items-center overflow-hidden">
+                                <div className="flex flex-col items-center justify-center text-center p-6">
+                                    <Table className="h-16 w-16 text-muted-foreground" />
+                                    <h2 className="mt-4 text-xl font-semibold">Select a table to begin</h2>
+                                    <p className="mt-2 text-muted-foreground max-w-sm">
+                                        Choose a table from the <span className="hidden md:inline">sidebar</span><span className="md:hidden">menu</span> to view its data and structure.
+                                    </p>
+                                    <div className="flex flex-col sm:flex-row items-center gap-3 mt-4 w-full justify-center">
+                                        <SheetRoot open={isMobileExplorerOpen} onOpenChange={setIsMobileExplorerOpen}>
+                                            <SheetTrigger asChild>
+                                                <Button variant="outline" className="md:hidden w-full sm:w-auto">
+                                                    <Menu className="mr-2 h-4 w-4" />
+                                                    Open Table List
+                                                </Button>
+                                            </SheetTrigger>
+                                            <SheetContent side="left" className="p-0 w-72 flex flex-col h-full bg-background border-r">
+                                                <div className="p-4 border-b">
+                                                    <h2 className="text-lg font-semibold">Table Explorer</h2>
+                                                </div>
+                                                <div className="flex-1 overflow-hidden">
+                                                    {sidebarExplorerContent}
+                                                </div>
+                                            </SheetContent>
+                                        </SheetRoot>
+                                        <Button asChild className="w-full sm:w-auto">
+                                            <Link href={projectId ? `/dashboard/tables/create?projectId=${projectId}` : '#'}>
+                                                <Plus className="mr-2 h-4 w-4" />
+                                                Create New Table
+                                            </Link>
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        </>
                     )}
                 </main>
             </div>
