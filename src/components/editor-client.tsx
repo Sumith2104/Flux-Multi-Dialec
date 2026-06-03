@@ -1142,7 +1142,7 @@ export function EditorClient({
                                             {rowCount.toLocaleString()} Rows
                                         </div>
                                     </div>
-                                    <TabsContent value="data" className="mt-6 flex-1 flex flex-col min-h-0 relative overflow-hidden">
+                                    <TabsContent value="data" className="mt-6 md:flex-1 md:flex md:flex-col md:min-h-0 h-[600px] md:h-auto relative overflow-hidden">
                                         <div className="relative flex-1 min-h-0" onClick={() => { setShowFilterPanel(false); setShowColumnPanel(false); }}>
                                             <DataTable
                                                 columns={columns}
@@ -1162,7 +1162,7 @@ export function EditorClient({
                                             />
                                         </div>
                                     </TabsContent>
-                                    <TabsContent value="structure" className="mt-4 space-y-6 overflow-y-auto flex-1 min-h-0 pb-24 pr-2">
+                                    <TabsContent value="structure" className="mt-4 space-y-6 md:overflow-y-auto md:flex-1 md:min-h-0 pb-24 pr-2">
                                         <Card>
                                          <CardHeader>
                                              <CardTitle>Table Structure</CardTitle>
