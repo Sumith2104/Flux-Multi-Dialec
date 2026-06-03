@@ -359,9 +359,9 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                 )}
             </header>
             <div className="relative flex min-w-0 flex-1 overflow-hidden">
-                <main className={cn("flex-1 overflow-auto bg-background pb-24", {
-                    "p-0": isEditorOrDbPage,
-                    "p-3 sm:p-4 md:p-6": !isEditorOrDbPage,
+                <main className={cn("flex-1 overflow-auto bg-background", {
+                    "p-0 pb-36 md:pb-0": isEditorOrDbPage,
+                    "p-3 sm:p-4 md:p-6 pb-36 md:pb-24": !isEditorOrDbPage,
                 })}>
                     {userId && <InvitationAlerts initialInvites={invitations} />}
                     {children}
