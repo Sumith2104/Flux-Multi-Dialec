@@ -7,7 +7,25 @@ import { quotePgIdentifier, quotePgProjectSchema } from "@/lib/sql-safety";
 
 export const dynamic = 'force-dynamic';
 
+const CORS_HEADERS = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-project-id, x-api-key, apiKey, projectId',
+    'Access-Control-Max-Age': '86400',
+};
 
+function sendResponse(body: string | null, init?: ResponseInit) {
+    const headers = new Headers(init?.headers);
+    Object.entries(CORS_HEADERS).forEach(([k, v]) => headers.set(k, v));
+    return new Response(body, { ...init, headers });
+}
+
+export async function OPTIONS() {
+    return new Response(null, {
+        status: 204,
+        headers: CORS_HEADERS,
+    });
+}
 
 export async function POST(req: NextRequest) {
     let body;
@@ -15,7 +33,7 @@ export async function POST(req: NextRequest) {
     try {
         body = await req.json();
     } catch {
-        return new Response("Invalid JSON", { status: 400 });
+        return sendResponse("Invalid JSON", { status: 400 });
     }
 
     const { customer_id, order_date, status, projectId: bodyProjectId } = body;
@@ -23,22 +41,22 @@ export async function POST(req: NextRequest) {
     const projectId = bodyProjectId || headerProjectId;
 
     if (!projectId) {
-        return new Response("projectId is required", { status: 400 });
+        return sendResponse("projectId is required", { status: 400 });
     }
 
     // Security Check
     try {
         const auth = await getAuthContextFromRequest(req);
-        if (!auth?.userId) return new Response("Unauthorized", { status: 401 });
+        if (!auth?.userId) return sendResponse("Unauthorized", { status: 401 });
 
         const project = await requireProjectAccess(projectId, auth, ['admin', 'developer']);
         if (project.dialect?.toLowerCase() === 'mysql') {
-            return new Response("fast-insert is only supported for PostgreSQL projects", { status: 400 });
+            return sendResponse("fast-insert is only supported for PostgreSQL projects", { status: 400 });
         }
 
         await ensureNotSuspended(project);
     } catch (err: any) {
-        return new Response(err.message || "Forbidden", { status: err.status || 403 });
+        return sendResponse(err.message || "Forbidden", { status: err.status || 403 });
     }
 
     // Fast-fail validation
@@ -47,7 +65,7 @@ export async function POST(req: NextRequest) {
         typeof order_date !== "string" ||
         typeof status !== "string"
     ) {
-        return new Response("Invalid payload: customer_id (int), order_date (str), status (str) required.", { status: 400 });
+        return sendResponse("Invalid payload: customer_id (int), order_date (str), status (str) required.", { status: 400 });
     }
 
     // DB Watchdog
@@ -68,7 +86,7 @@ export async function POST(req: NextRequest) {
         const duration = Date.now() - start;
 
         // Minimal Response
-        return new Response(
+        return sendResponse(
             JSON.stringify({ 
                 success: true, 
                 t: duration,
@@ -82,10 +100,10 @@ export async function POST(req: NextRequest) {
 
     } catch (err: any) {
         if (err.name === 'AbortError') {
-            return new Response("Database Timeout", { status: 504 });
+            return sendResponse("Database Timeout", { status: 504 });
         }
         console.error('[Fast Insert Error]', err);
-        return new Response("Database Error", { status: 500 });
+        return sendResponse("Database Error", { status: 500 });
     } finally {
         clearTimeout(timeout);
     }

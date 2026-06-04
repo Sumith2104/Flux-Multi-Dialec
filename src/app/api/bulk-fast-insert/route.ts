@@ -18,6 +18,26 @@ import { quotePgIdentifier, quotePgProjectSchema } from "@/lib/sql-safety";
 export const runtime = 'nodejs'; // Use Node.js for persistent pool support
 export const dynamic = 'force-dynamic';
 
+const CORS_HEADERS = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-project-id, x-api-key, apiKey, projectId',
+    'Access-Control-Max-Age': '86400',
+};
+
+function sendResponse(body: string | null, init?: ResponseInit) {
+    const headers = new Headers(init?.headers);
+    Object.entries(CORS_HEADERS).forEach(([k, v]) => headers.set(k, v));
+    return new Response(body, { ...init, headers });
+}
+
+export async function OPTIONS() {
+    return new Response(null, {
+        status: 204,
+        headers: CORS_HEADERS,
+    });
+}
+
 export async function POST(req: NextRequest) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s watchdog
@@ -27,29 +47,29 @@ export async function POST(req: NextRequest) {
         const data = await req.json();
         
         if (!Array.isArray(data)) {
-            return new Response('Payload must be a JSON array', { status: 400 });
+            return sendResponse('Payload must be a JSON array', { status: 400 });
         }
 
         const { searchParams } = new URL(req.url);
         const projectId = req.headers.get('x-project-id') || searchParams.get('projectId');
 
         if (!projectId) {
-            return new Response("projectId is required (header or param)", { status: 400 });
+            return sendResponse("projectId is required (header or param)", { status: 400 });
         }
 
         // Security Check
         const auth = await getAuthContextFromRequest(req);
-        if (!auth?.userId) return new Response("Unauthorized", { status: 401 });
+        if (!auth?.userId) return sendResponse("Unauthorized", { status: 401 });
 
         const project = await requireProjectAccess(projectId, auth, ['admin', 'developer']);
         if (project.dialect?.toLowerCase() === 'mysql') {
-            return new Response("bulk-fast-insert is only supported for PostgreSQL projects", { status: 400 });
+            return sendResponse("bulk-fast-insert is only supported for PostgreSQL projects", { status: 400 });
         }
 
         await ensureNotSuspended(project);
 
         if (data.length === 0) {
-            return new Response(null, { status: 204 });
+            return sendResponse(null, { status: 204 });
         }
 
         // 2. Execute Bulk Insert using jsonb_to_recordset
@@ -66,14 +86,14 @@ export async function POST(req: NextRequest) {
         await pool.query(query, [JSON.stringify(data)]);
 
         // 3. Minimal Success Response
-        return new Response(null, { status: 200 });
+        return sendResponse(null, { status: 200 });
 
     } catch (error: any) {
         if (error.name === 'AbortError') {
-            return new Response('Request Timeout', { status: 504 });
+            return sendResponse('Request Timeout', { status: 504 });
         }
         console.error('[Bulk Fast Insert Error]:', error.message);
-        return new Response(error.message || 'Internal Error', { status: 500 });
+        return sendResponse(error.message || 'Internal Error', { status: 500 });
     } finally {
         clearTimeout(timeoutId);
     }

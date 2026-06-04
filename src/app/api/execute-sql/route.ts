@@ -13,6 +13,13 @@ import { assertProjectScope } from '@/lib/project-auth';
 
 export const dynamic = 'force-dynamic';
 
+const CORS_HEADERS = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-project-id, x-api-key, apiKey, projectId',
+    'Access-Control-Max-Age': '86400',
+};
+
 const CACHE_TTL_SECONDS = 30; // 30s burst cache for identical SELECTs
 
 interface CacheEntry {
@@ -285,29 +292,25 @@ export async function POST(req: NextRequest) {
         Promise.all(backgroundTasks).catch(e => console.error('[Background Task Group Error]', e));
 
         return NextResponse.json(responseData, {
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-            }
+            headers: CORS_HEADERS
         });
 
     } catch (error: any) {
         console.error('SQL Execution Failed:', error);
-        if (error instanceof FluxbaseError) {
-            return NextResponse.json(error.toJSON(), { status: error.status });
-        }
-        return handleDatabaseError(error);
+        const response = error instanceof FluxbaseError
+            ? NextResponse.json(error.toJSON(), { status: error.status })
+            : handleDatabaseError(error);
+
+        Object.entries(CORS_HEADERS).forEach(([key, val]) => {
+            response.headers.set(key, val);
+        });
+        return response;
     }
 }
 
 export async function OPTIONS() {
     return new Response(null, {
         status: 204,
-        headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
-        },
+        headers: CORS_HEADERS,
     });
 }
