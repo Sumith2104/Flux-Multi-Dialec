@@ -233,7 +233,6 @@ export class SqlEngine {
                         SELECT set_config('search_path', $1, false), 
                                set_config('fluxbase.auth_uid', $2, true), 
                                set_config('timezone', $3, false),
-                               set_config('role', 'authenticated', true),
                                set_config('request.jwt.claims', $4, true);
                     `;
                     const claimsJson = JSON.stringify({ sub: this.userId || '', role: 'authenticated' });
@@ -245,6 +244,16 @@ export class SqlEngine {
                     ];
                     
                     await client.query(sessionSetupSql, sessionParams);
+
+                    // Safely try to set the role to 'authenticated' (only if the role exists).
+                    // This is standard for Supabase-style RLS policies but might fail on standard PG RDS.
+                    try {
+                        await client.query(`SELECT set_config('role', 'authenticated', true)`);
+                    } catch (roleErr) {
+                        // Ignore if role does not exist
+                        console.warn('[SqlEngine] "authenticated" role does not exist on this database, skipping role config.');
+                    }
+
                     const result = await client.query(queryCleaned, params || []);
 
                     const executionTime = Date.now() - startTime;
