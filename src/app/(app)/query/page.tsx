@@ -48,6 +48,12 @@ export default function QueryPage() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [activeResultsTab, setActiveResultsTab] = useState('results');
 
+  // Pagination State
+  const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState(0);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [executedQuery, setExecutedQuery] = useState('');
+
   // AI State
   const [aiInput, setAiInput] = useState('');
   const [isGeneratingSQL, setIsGeneratingSQL] = useState(false);
@@ -152,17 +158,29 @@ export default function QueryPage() {
     setIsExecuting(true);
     setQueryResponse(null);
     setActiveResultsTab('results');
+    setPage(0);
+    setHasMore(false);
+    setExecutedQuery(queryToExecute);
 
     try {
       const response = await fetch('/api/execute-sql', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: project?.project_id, query: queryToExecute })
+        body: JSON.stringify({ 
+          projectId: project?.project_id, 
+          query: queryToExecute,
+          paginate: true,
+          page: 0,
+          pageSize: 50
+        })
       });
 
       const data = await response.json();
       addToHistory(queryToExecute, data.success);
       setQueryResponse(data);
+      if (data.success && data.result) {
+        setHasMore(!!data.result.hasMore);
+      }
 
       if (!data.success) {
         setActiveResultsTab('messages');
@@ -190,6 +208,55 @@ export default function QueryPage() {
     setIsExecuting(false);
 
   }, [query, project, toast, addToHistory]);
+
+  const fetchNextPage = useCallback(async () => {
+    if (isFetchingMore || !hasMore || !project?.project_id || !queryResponse?.success) return;
+
+    setIsFetchingMore(true);
+    const nextPage = page + 1;
+
+    try {
+      const response = await fetch('/api/execute-sql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: project.project_id,
+          query: executedQuery,
+          paginate: true,
+          page: nextPage,
+          pageSize: 50
+        })
+      });
+
+      const data = await response.json();
+      if (data.success && data.result) {
+        setQueryResponse((prev: any) => {
+          if (!prev || !prev.result) return prev;
+          return {
+            ...prev,
+            result: {
+              ...prev.result,
+              rows: [...prev.result.rows, ...(data.result.rows || [])],
+              hasMore: !!data.result.hasMore
+            },
+            executionInfo: {
+              ...prev.executionInfo,
+              time: data.executionInfo?.time || prev.executionInfo?.time,
+              rowCount: prev.result.rows.length + (data.result.rows?.length || 0)
+            }
+          };
+        });
+        setPage(nextPage);
+        setHasMore(!!data.result.hasMore);
+      } else {
+        toast({ variant: 'destructive', title: 'Failed to load more rows', description: data.error?.message || 'Unknown error' });
+      }
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Failed to load more rows', description: e.message });
+    } finally {
+      setIsFetchingMore(false);
+    }
+  }, [isFetchingMore, hasMore, project?.project_id, queryResponse, page, executedQuery, toast]);
 
   const { lastEvent } = useRealtimeSubscription(project?.project_id);
 
@@ -318,25 +385,25 @@ export default function QueryPage() {
   };
 
   const exportData = (type: 'json' | 'csv') => {
-    if (!queryResponse?.result || !Array.isArray(queryResponse.result)) return;
+    if (!queryResponse?.result?.rows || !Array.isArray(queryResponse.result.rows)) return;
 
     let content = '';
     let fileName = `query_export_${Date.now()}`;
     let mimeType = '';
 
     if (type === 'json') {
-      content = JSON.stringify(queryResponse.result, null, 2);
+      content = JSON.stringify(queryResponse.result.rows, null, 2);
       fileName += '.json';
       mimeType = 'application/json';
     } else {
-      const rows = queryResponse.result;
+      const rows = queryResponse.result.rows;
       if (rows.length === 0) return;
-      const headers = Object.keys(rows[0]);
+      const headers = queryResponse.result.columns || Object.keys(rows[0]);
       content = [
         headers.join(','),
         ...rows.map((row: Record<string, any>) => headers.map(h => {
           const val = row[h];
-          return typeof val === 'string' ? `"${val.replace(/"/g, '""')}"` : val;
+          return val === null || val === undefined ? '' : typeof val === 'string' ? `"${val.replace(/"/g, '""')}"` : String(val);
         }).join(','))
       ].join('\n');
       fileName += '.csv';
@@ -453,7 +520,14 @@ export default function QueryPage() {
               <div className="relative min-h-0 flex-1 overflow-hidden">
                 <TabsContent value="results" className="absolute inset-0 m-0">
                   {queryResponse?.success ? (
-                    <QueryResults results={queryResponse.result} error={null} isGenerating={false} />
+                    <QueryResults 
+                      results={queryResponse.result} 
+                      error={null} 
+                      isGenerating={false} 
+                      hasMore={hasMore}
+                      isFetchingMore={isFetchingMore}
+                      onLoadMore={fetchNextPage}
+                    />
                   ) : (
                     <div className="flex h-full flex-col items-center justify-center p-8 text-center text-muted-foreground">
                       <Table2 className="mb-3 h-10 w-10 opacity-20" />
@@ -543,7 +617,7 @@ export default function QueryPage() {
                   <Separator orientation="vertical" className="h-4 mx-0.5" />
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground" disabled={!queryResponse?.success || !Array.isArray(queryResponse.result)}>
+                      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground" disabled={!queryResponse?.success || !Array.isArray(queryResponse?.result?.rows)}>
                         <Upload className="h-3 w-3 rotate-180" /> Export
                       </Button>
                     </DropdownMenuTrigger>
@@ -702,7 +776,14 @@ export default function QueryPage() {
             <div className="flex-grow overflow-hidden relative bg-muted/5">
               <TabsContent value="results" className="h-full m-0 p-0 absolute inset-0">
                 {queryResponse?.success ? (
-                  <QueryResults results={queryResponse.result} error={null} isGenerating={false} />
+                  <QueryResults 
+                    results={queryResponse.result} 
+                    error={null} 
+                    isGenerating={false} 
+                    hasMore={hasMore}
+                    isFetchingMore={isFetchingMore}
+                    onLoadMore={fetchNextPage}
+                  />
                 ) : (
                   <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8 opacity-40">
                     <Table2 className="h-10 w-10 mb-3 opacity-20" />

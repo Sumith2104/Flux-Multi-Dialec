@@ -33,6 +33,7 @@ export interface SqlResult {
     columns: string[];
     message?: string;
     explanation?: string[];
+    hasMore?: boolean;
 }
 
 export class SqlEngine {
@@ -78,7 +79,7 @@ export class SqlEngine {
     public async execute(
         query: string, 
         params?: any[], 
-        options: { skipTracking?: boolean; allowMulti?: boolean } = {}
+        options: { skipTracking?: boolean; allowMulti?: boolean; paginate?: boolean; page?: number; pageSize?: number } = {}
     ): Promise<SqlResult> {
         await this.init();
         if (!this.userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
@@ -90,6 +91,22 @@ export class SqlEngine {
             .replace(/project_[a-zA-Z0-9_]+\./g, ''); // Ensure users don't hardcode other tenant IDs
 
         if (!queryCleaned.trim()) return { rows: [], columns: [] };
+
+        const isSelectOrWith = /^\s*(SELECT|WITH)\b/i.test(queryCleaned);
+        let finalQuery = queryCleaned;
+
+        if (options.paginate && isSelectOrWith) {
+            const limit = (options.pageSize || 50) + 1;
+            const offset = (options.page || 0) * (options.pageSize || 50);
+            
+            let strippedQuery = queryCleaned.trim();
+            if (strippedQuery.endsWith(';')) {
+                strippedQuery = strippedQuery.slice(0, -1);
+            }
+            
+            finalQuery = `SELECT * FROM (${strippedQuery}) AS _fluxbase_paginate_subquery LIMIT ${limit} OFFSET ${offset};`;
+            console.log(`[SqlEngine] Paginated query generated: ${finalQuery}`);
+        }
 
         this.validateAstScope(queryCleaned, options.allowMulti);
 
@@ -169,7 +186,7 @@ export class SqlEngine {
                         connection.query(`SET time_zone = ?` as any, [this.projectTimezone]).catch(() => {});
                     }
 
-                    const [queryResult, fields]: any = await connection.query(queryCleaned as any, params || []);
+                    const [queryResult, fields]: any = await connection.query(finalQuery as any, params || []);
 
                     const executionTime = Date.now() - startTime;
                     const explanation = [`Executed via Native AWS MySQL in ${executionTime}ms`];
@@ -254,7 +271,7 @@ export class SqlEngine {
                         console.warn('[SqlEngine] "authenticated" role does not exist on this database, skipping role config.');
                     }
 
-                    const result = await client.query(queryCleaned, params || []);
+                    const result = await client.query(finalQuery, params || []);
 
                     const executionTime = Date.now() - startTime;
                     const explanation = [`Executed via Batch-Initialized AWS PostgreSQL in ${executionTime}ms`];
@@ -326,6 +343,16 @@ export class SqlEngine {
             }
 
             throw new FluxbaseError(`AWS Database Error: ${errorMessage}`, code, status);
+        }
+
+        if (options.paginate && isSelectOrWith && lastResult && lastResult.rows) {
+            const pageSize = options.pageSize || 50;
+            if (lastResult.rows.length > pageSize) {
+                lastResult.hasMore = true;
+                lastResult.rows = lastResult.rows.slice(0, pageSize);
+            } else {
+                lastResult.hasMore = false;
+            }
         }
 
         return lastResult;

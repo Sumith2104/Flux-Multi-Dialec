@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Skeleton } from './ui/skeleton';
-import { AlertCircle, Table as TableIcon, BarChart3, Code2, LineChart as LineChartIcon, PieChart as PieChartIcon } from 'lucide-react';
+import { AlertCircle, Table as TableIcon, BarChart3, Code2, LineChart as LineChartIcon, PieChart as PieChartIcon, Loader2 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { Button } from './ui/button';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -12,13 +12,26 @@ interface QueryResultsProps {
     results: { rows: any[], columns: string[] } | null;
     error: string | null;
     isGenerating: boolean;
+    hasMore?: boolean;
+    isFetchingMore?: boolean;
+    onLoadMore?: () => void;
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#6366f1'];
 
-export function QueryResults({ results, error, isGenerating }: QueryResultsProps) {
+export function QueryResults({ results, error, isGenerating, hasMore, isFetchingMore, onLoadMore }: QueryResultsProps) {
     const [view, setView] = useState<'table' | 'chart' | 'json'>('table');
     const [chartType, setChartType] = useState<'bar' | 'line' | 'pie'>('bar');
+
+    const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        if (!onLoadMore || !hasMore || isFetchingMore) return;
+        const target = e.currentTarget;
+        const threshold = 150; // pixels from the bottom
+        const isNearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < threshold;
+        if (isNearBottom) {
+            onLoadMore();
+        }
+    };
 
     const chartDataConfig = useMemo(() => {
         if (!results || !results.rows || results.rows.length === 0) return null;
@@ -60,8 +73,6 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
     }
 
     if (results && results.rows) {
-        // Empty rows will fall through to the table renderer below instead of abruptly returning.
-
         return (
             <div className="flex flex-col h-full bg-background relative overflow-hidden">
                 <div className="flex shrink-0 flex-col gap-2 border-b bg-muted/10 px-2 py-1 sm:flex-row sm:items-center sm:justify-between">
@@ -80,9 +91,14 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
                             <Button variant={chartType === 'pie' ? 'secondary' : 'ghost'} size="sm" className="h-6 w-6 p-0" onClick={() => setChartType('pie')}><PieChartIcon className="h-3 w-3" /></Button>
                         </div>
                     )}
-                    {results.rows.length > 100 && view === 'table' && (
-                        <div className="mr-2 flex items-center text-[10px] font-medium text-muted-foreground">
-                            Showing first 100 of {results.rows.length.toLocaleString()} rows
+                    {hasMore && view === 'table' && (
+                        <div className="mr-2 flex items-center text-[10px] font-medium text-muted-foreground font-sans">
+                            Scroll down to load more (Loaded: {results.rows.length})
+                        </div>
+                    )}
+                    {!hasMore && view === 'table' && results.rows.length > 0 && (
+                        <div className="mr-2 flex items-center text-[10px] font-medium text-muted-foreground font-sans">
+                            All {results.rows.length.toLocaleString()} rows loaded
                         </div>
                     )}
                     {results.rows.length > 500 && view === 'chart' && (
@@ -92,7 +108,7 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
                     )}
                 </div>
 
-                <div className="flex-grow relative overflow-auto">
+                <div className="flex-grow relative overflow-auto" onScroll={handleScroll}>
                     {view === 'table' && (
                         <Table className="relative w-max min-w-full border-collapse border-spacing-0">
                             <TableHeader className="sticky top-0 z-20 shadow-sm">
@@ -121,7 +137,7 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    results.rows.slice(0, 100).map((row, rowIndex) => (
+                                    results.rows.map((row, rowIndex) => (
                                         <TableRow key={rowIndex} className="border-b border-border/50 hover:bg-muted/30 transition-colors group">
                                             {results.columns.map((col, colIndex) => (
                                                 <TableCell
@@ -137,6 +153,15 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
                                             ))}
                                         </TableRow>
                                     ))
+                                )}
+                                {isFetchingMore && (
+                                    <TableRow className="hover:bg-transparent">
+                                        <TableCell colSpan={results.columns.length || 1} className="h-12 text-center py-3 border-r-0">
+                                            <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground font-sans">
+                                                <Loader2 className="h-4 w-4 animate-spin text-primary" /> Loading more rows...
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
                                 )}
                             </TableBody>
                         </Table>
@@ -176,7 +201,7 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
                     {view === 'json' && (
                         <div className="h-full overflow-auto bg-card p-4">
                             <pre className="font-mono text-xs text-green-400">
-                                {JSON.stringify(results.rows.slice(0, 100), null, 2)}
+                                {JSON.stringify(results.rows, null, 2)}
                             </pre>
                         </div>
                     )}
@@ -188,11 +213,10 @@ export function QueryResults({ results, error, isGenerating }: QueryResultsProps
     return (
         <div className="flex h-full flex-col items-center justify-center bg-muted/50 p-8 text-muted-foreground">
             <div className="w-16 h-16 mb-4 rounded-xl bg-muted/50 flex items-center justify-center border border-dashed border-muted-foreground/30">
-                <TableHead className="h-8 w-8 text-muted-foreground/50" />
+                <TableIcon className="h-8 w-8 text-muted-foreground/50" />
             </div>
             <p className="font-medium text-foreground">No Results Detected</p>
             <p className="text-sm mt-1">Execute a query using the editor to view data.</p>
         </div>
     );
 }
-

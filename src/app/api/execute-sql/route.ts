@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
             throw new FluxbaseError("Invalid request body. Expected a JSON object.", ERROR_CODES.BAD_REQUEST, 400);
         }
 
-        const { query, params, projectId: bodyProjectId } = body;
+        const { query, params, projectId: bodyProjectId, paginate, page, pageSize } = body;
         const { searchParams } = new URL(req.url);
         const projectId = bodyProjectId || searchParams.get('projectId');
 
@@ -154,7 +154,11 @@ export async function POST(req: NextRequest) {
 
         const startTime = Date.now();
         const engine = new SqlEngine(projectId, userId, auth.scopes, project.role, project);
-        const result = await engine.execute(query, finalParams);
+        const result = await engine.execute(query, finalParams, {
+            paginate: !!paginate,
+            page: page !== undefined ? Number(page) : 0,
+            pageSize: pageSize !== undefined ? Number(pageSize) : 50
+        });
         const duration = Date.now() - startTime;
 
         const backgroundTasks: Promise<any>[] = [];
@@ -266,7 +270,8 @@ export async function POST(req: NextRequest) {
             result: {
                 rows: result.rows || [],
                 columns: result.columns || [],
-                message: result.message
+                message: result.message,
+                hasMore: result.hasMore
             },
             explanation: result.explanation || [],
             executionInfo: {
