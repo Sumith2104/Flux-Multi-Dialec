@@ -107,9 +107,24 @@ export async function GET(req: NextRequest) {
                 interval = setInterval(async () => {
                     try {
                         // RE-CHECK SUSPENSION EVERY HEARTBEAT (15s)
-                        const projectStatus = await redis.get<string>(`project_status:${projectId}`);
-                        const orgStatus = await redis.get<string>(`org_status:${project.user_id}`);
-                        
+                        // Run both Redis reads in parallel; use allSettled so one failure
+                        // doesn't prevent the other from being checked.
+                        let projectStatus: string | null = null;
+                        let orgStatus: string | null = null;
+
+                        try {
+                            const [projectResult, orgResult] = await Promise.allSettled([
+                                redis.get<string>(`project_status:${projectId}`),
+                                redis.get<string>(`org_status:${project.user_id}`)
+                            ]);
+
+                            if (projectResult.status === 'fulfilled') projectStatus = projectResult.value;
+                            if (orgResult.status === 'fulfilled') orgStatus = orgResult.value;
+                        } catch {
+                            // Redis is unreachable — fail open and keep the SSE connection alive.
+                            // The suspension check will retry on the next heartbeat.
+                        }
+
                         if (projectStatus === 'suspended' || orgStatus === 'suspended') {
                             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', message: 'Project or Organization suspended. Connection terminated.' })}\n\n`));
                             releaseHandler();

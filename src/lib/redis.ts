@@ -12,6 +12,8 @@ if (isConfigured) {
         client = new Redis({
             url: url!,
             token: token!,
+            // Fail fast on DNS / network errors so SSE heartbeats don't hang
+            automaticDeserialization: true,
         });
         console.log('[Redis] Successfully initialized Upstash Redis client.');
     } catch (err) {
@@ -67,7 +69,13 @@ export const redis = new Proxy({} as Redis, {
                     const result = method.apply(client, args);
                     if (result instanceof Promise) {
                         return result.catch(err => {
-                            console.error(`[Redis] Error during "${String(prop)}" operation:`, err);
+                            // Downgrade transient network errors (DNS, fetch failed) to warn — not bugs
+                            const isNetworkError = err?.cause?.code === 'ENOTFOUND' || err?.message?.includes('fetch failed');
+                            if (isNetworkError) {
+                                console.warn(`[Redis] Network error during "${String(prop)}" — Redis unreachable, failing open.`);
+                            } else {
+                                console.error(`[Redis] Error during "${String(prop)}" operation:`, err);
+                            }
                             // Safe fallbacks on promise rejection
                             if (prop === 'ping') throw err;
                             if (prop === 'eval' || prop === 'evalsha') return [1, 100, Date.now() + 10000, 100];
