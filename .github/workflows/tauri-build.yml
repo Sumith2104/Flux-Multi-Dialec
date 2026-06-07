@@ -26,27 +26,18 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build Tauri App
+        id: tauri
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           includeRelease: false
 
-      - name: List Release Files (Debugging)
-        run: |
-          echo "=== Release Folder ==="
-          dir src-tauri/target/release/ -ErrorAction SilentlyContinue
-          echo "=== Bundle Folder ==="
-          dir src-tauri/target/release/bundle/ -Depth 2 -ErrorAction SilentlyContinue
-        shell: pwsh
-        continue-on-error: true
-
       - name: Upload Installer Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: fluxbase-desktop-installers
-          path: |
-            src-tauri/target/**/bundle/**/*.msi
-            src-tauri/target/**/bundle/**/*.exe
+          path: ${{ join(fromJSON(steps.tauri.outputs.artifactPaths), '\n') }}
+
 
 
