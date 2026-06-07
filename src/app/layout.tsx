@@ -25,7 +25,27 @@ export default function RootLayout({
             __html: `
               if (typeof navigator !== 'undefined' && navigator.userAgent.includes('FluxbaseDesktop')) {
                 const style = document.createElement('style');
-                style.innerHTML = 'html { transform: scale(0.8); transform-origin: top left; width: 125% !important; height: 125% !important; }';
+                style.innerHTML = \`
+                  html {
+                    transform: scale(0.8) !important;
+                    transform-origin: top left !important;
+                    width: 125% !important;
+                    height: 125% !important;
+                    max-width: none !important;
+                    max-height: none !important;
+                  }
+                  body {
+                    width: 100% !important;
+                    max-width: none !important;
+                    min-height: 100% !important;
+                  }
+                  .min-h-screen {
+                    min-height: 100% !important;
+                  }
+                  .h-screen {
+                    height: 100% !important;
+                  }
+                \`;
                 document.head.appendChild(style);
               }
             `
