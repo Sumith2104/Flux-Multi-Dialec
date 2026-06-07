@@ -30,10 +30,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          includeRelease: false # Only compile the files, do not create a draft release
+          includeRelease: false
 
-      - name: Upload Installer Artifact
+      - name: List Release Files (Debugging)
+        run: |
+          echo "=== Release Folder ==="
+          dir src-tauri/target/release/ -ErrorAction SilentlyContinue
+          echo "=== Bundle Folder ==="
+          dir src-tauri/target/release/bundle/ -Depth 2 -ErrorAction SilentlyContinue
+        shell: pwsh
+        continue-on-error: true
+
+      - name: Upload Installer Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: fluxbase-desktop-installer
-          path: src-tauri/target/release/bundle/msi/*.msi
+          name: fluxbase-desktop-installers
+          path: |
+            src-tauri/target/release/bundle/**/*.msi
+            src-tauri/target/release/bundle/**/*.exe
+
