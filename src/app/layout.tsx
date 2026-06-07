@@ -24,7 +24,9 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               if (typeof navigator !== 'undefined' && navigator.userAgent.includes('FluxbaseDesktop')) {
-                document.documentElement.style.zoom = '80%';
+                const style = document.createElement('style');
+                style.innerHTML = 'html { transform: scale(0.8); transform-origin: top left; width: 125% !important; height: 125% !important; }';
+                document.head.appendChild(style);
               }
             `
           }}
