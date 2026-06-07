@@ -19,6 +19,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if (typeof navigator !== 'undefined' && navigator.userAgent.includes('FluxbaseDesktop')) {
+                document.documentElement.style.zoom = '80%';
+              }
+            `
+          }}
+        />
+      </head>
       <body className="font-body antialiased" suppressHydrationWarning>
           <QueryProvider>
             <GlobalAlertProvider>
