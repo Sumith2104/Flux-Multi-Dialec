@@ -168,23 +168,35 @@ export async function POST(req: NextRequest) {
         const isDML = upperQuery.startsWith('INSERT') ||
                       upperQuery.startsWith('UPDATE') ||
                       upperQuery.startsWith('DELETE');
-        // rowsAffected = pg driver's rowCount for DML (real affected count)
-        // rowsReturned = actual rows in result.rows[] (0 for plain DML without RETURNING)
-        const rowsAffected = result.rowsAffected ?? (isDML ? 0 : result.rows?.length ?? 0);
-        const rowsReturned = result.rowsReturned ?? result.rows?.length ?? 0;
         // ON CONFLICT DO NOTHING / upsert with no change legitimately produces 0
         const hasConflictClause = /ON\s+CONFLICT/i.test(query);
 
+        // For DML: use pg's rowCount (actual rows affected by INSERT/UPDATE/DELETE)
+        // For SELECT: use result.rows.length (rows returned to the caller)
+        // These must NEVER be mixed — SELECT.rowCount == rows.length in pg, but
+        // reporting it as "rows_affected" for SELECT is semantically wrong.
+        const rowsAffected = isDML ? (result.rowsAffected ?? 0) : 0;
+        const rowsReturned = !isDML  ? (result.rowsReturned ?? result.rows?.length ?? 0) : 0;
+
         // 1. Post-Execution Pipeline Optimization: Do NOT await side-effects
         if (result) {
+            // Build audit metadata — only include the metric that applies to this statement type
+            const auditMeta: Record<string, any> = {
+                duration_ms: duration,
+                status: 'success',
+                ...(isDML
+                    ? {
+                        rows_affected: rowsAffected,
+                        ...(hasConflictClause ? { conflict_clause: true } : {}),
+                    }
+                    : {
+                        rows_returned: rowsReturned,
+                    }),
+            };
+
             backgroundTasks.push(
-                logAuditAction(projectId, userId, 'SQL_EXECUTION', query, {
-                    duration_ms: duration,
-                    rows_affected: rowsAffected,
-                    rows_returned: rowsReturned,
-                    conflict_clause: hasConflictClause ? true : undefined,
-                    status: 'success'
-                }).catch(e => console.error('[Audit Error]', e))
+                logAuditAction(projectId, userId, 'SQL_EXECUTION', query, auditMeta)
+                    .catch(e => console.error('[Audit Error]', e))
             );
 
             // --- ABSOLUTE TABLE DETECTION (AST-BASED) ---
@@ -289,10 +301,10 @@ export async function POST(req: NextRequest) {
             explanation: result.explanation || [],
             executionInfo: {
                 time: `${duration}ms`,
-                // SELECT: rows returned; INSERT/UPDATE/DELETE: rows affected by the DML
-                rowCount: isDML ? rowsAffected : rowsReturned,
-                rows_returned: rowsReturned,
-                rows_affected: rowsAffected,
+                // Semantically correct label: SELECT → rows_returned, DML → rows_affected
+                ...(isDML
+                    ? { rows_affected: rowsAffected, rowCount: rowsAffected }
+                    : { rows_returned: rowsReturned, rowCount: rowsReturned }),
             }
         };
 
