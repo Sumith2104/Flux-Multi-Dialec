@@ -163,18 +163,31 @@ export async function POST(req: NextRequest) {
 
         const backgroundTasks: Promise<any>[] = [];
 
+        // DML detection — hoisted so it's usable in audit log, background tasks, and response
+        const upperQuery = query.trim().toUpperCase();
+        const isDML = upperQuery.startsWith('INSERT') ||
+                      upperQuery.startsWith('UPDATE') ||
+                      upperQuery.startsWith('DELETE');
+        // rowsAffected = pg driver's rowCount for DML (real affected count)
+        // rowsReturned = actual rows in result.rows[] (0 for plain DML without RETURNING)
+        const rowsAffected = result.rowsAffected ?? (isDML ? 0 : result.rows?.length ?? 0);
+        const rowsReturned = result.rowsReturned ?? result.rows?.length ?? 0;
+        // ON CONFLICT DO NOTHING / upsert with no change legitimately produces 0
+        const hasConflictClause = /ON\s+CONFLICT/i.test(query);
+
         // 1. Post-Execution Pipeline Optimization: Do NOT await side-effects
         if (result) {
             backgroundTasks.push(
                 logAuditAction(projectId, userId, 'SQL_EXECUTION', query, {
                     duration_ms: duration,
-                    rows_affected: result.rows?.length || 0,
+                    rows_affected: rowsAffected,
+                    rows_returned: rowsReturned,
+                    conflict_clause: hasConflictClause ? true : undefined,
                     status: 'success'
                 }).catch(e => console.error('[Audit Error]', e))
             );
 
             // --- ABSOLUTE TABLE DETECTION (AST-BASED) ---
-            const uppercaseQuery = typeof query === 'string' ? query.trim().toUpperCase() : '';
             let mutatedTable: string | null = null;
             let newDataParsed: Record<string, any> | undefined = undefined;
 
@@ -217,14 +230,14 @@ export async function POST(req: NextRequest) {
                         console.warn(`[Upstash Invalidation Error] Failed to invalidate cache for ${cleanMutatedTable}:`, err);
                     });
 
-                    const webhookEvent = uppercaseQuery.startsWith('INSERT') ? 'row.inserted' : uppercaseQuery.startsWith('UPDATE') ? 'row.updated' : 'row.deleted';
+                    const webhookEvent = upperQuery.startsWith('INSERT') ? 'row.inserted' : upperQuery.startsWith('UPDATE') ? 'row.updated' : 'row.deleted';
 
                     await fireWebhooks(
                         projectId,
                         userId,
                         cleanMutatedTable,
                         webhookEvent as WebhookEvent,
-                        newDataParsed || (uppercaseQuery.startsWith('INSERT') && Array.isArray(params) ? { raw_params: params } : undefined)
+                        newDataParsed || (upperQuery.startsWith('INSERT') && Array.isArray(params) ? { raw_params: params } : undefined)
                     ).catch(err => console.error(`[Webhook Dispatch Error]`, err));
 
                     const pool = getPgPool();
@@ -232,11 +245,11 @@ export async function POST(req: NextRequest) {
                         event_type: 'raw_sql_mutation',
                         table_id: cleanMutatedTable,
                         table_name: cleanMutatedTable,
-                        operation: cleanMutatedTable ? (uppercaseQuery.startsWith('INSERT') ? 'INSERT' : uppercaseQuery.startsWith('UPDATE') ? 'UPDATE' : 'DELETE') : 'UNKNOWN',
+                        operation: cleanMutatedTable ? (upperQuery.startsWith('INSERT') ? 'INSERT' : upperQuery.startsWith('UPDATE') ? 'UPDATE' : 'DELETE') : 'UNKNOWN',
                         timestamp: new Date().toISOString(),
                         project_id: projectId,
                         data: {
-                            new: newDataParsed || (uppercaseQuery.startsWith('INSERT') && Array.isArray(params) ? { raw_params: params } : undefined)
+                            new: newDataParsed || (upperQuery.startsWith('INSERT') && Array.isArray(params) ? { raw_params: params } : undefined)
                         }
                     };
                     const payloadString = JSON.stringify(payload).replace(/'/g, "''");
@@ -246,7 +259,7 @@ export async function POST(req: NextRequest) {
                 })());
             }
 
-            const isSchemaChange = uppercaseQuery.includes('CREATE ') || uppercaseQuery.includes('DROP ') || uppercaseQuery.includes('ALTER ') || uppercaseQuery.includes('RENAME ');
+            const isSchemaChange = upperQuery.includes('CREATE ') || upperQuery.includes('DROP ') || upperQuery.includes('ALTER ') || upperQuery.includes('RENAME ');
             if (isSchemaChange) {
                 backgroundTasks.push((async () => {
                     await redis.del(`schema_inference_${projectId}`).catch(err => console.warn('Cache del error:', err));
@@ -276,7 +289,10 @@ export async function POST(req: NextRequest) {
             explanation: result.explanation || [],
             executionInfo: {
                 time: `${duration}ms`,
-                rowCount: result.rows?.length || 0
+                // SELECT: rows returned; INSERT/UPDATE/DELETE: rows affected by the DML
+                rowCount: isDML ? rowsAffected : rowsReturned,
+                rows_returned: rowsReturned,
+                rows_affected: rowsAffected,
             }
         };
 

@@ -34,6 +34,10 @@ export interface SqlResult {
     message?: string;
     explanation?: string[];
     hasMore?: boolean;
+    /** For SELECT: number of rows returned. For INSERT/UPDATE/DELETE: always 0. */
+    rowsReturned?: number;
+    /** For INSERT/UPDATE/DELETE: actual rows affected (from pg rowCount). For SELECT: same as rowsReturned. */
+    rowsAffected?: number;
 }
 
 export class SqlEngine {
@@ -278,18 +282,27 @@ export class SqlEngine {
 
                     if (Array.isArray(result)) {
                         const finalRes = result[result.length - 1];
+                        const rowsReturned   = finalRes.rows?.length ?? 0;
+                        // rowCount from pg = rows affected for DML, rows returned for SELECT
+                        const rowsAffected   = finalRes.rowCount ?? rowsReturned;
                         lastResult = {
                             rows: finalRes.rows || [],
                             columns: finalRes.fields ? finalRes.fields.map((f: any) => f.name) : [],
                             explanation,
-                            message: `Affected ${finalRes.rowCount || 0} rows`
+                            message: `Affected ${rowsAffected} rows`,
+                            rowsReturned,
+                            rowsAffected,
                         };
                     } else {
+                        const rowsReturned   = result.rows?.length ?? 0;
+                        const rowsAffected   = result.rowCount ?? rowsReturned;
                         lastResult = {
                             rows: result.rows || [],
                             columns: result.fields ? result.fields.map((f: any) => f.name) : [],
                             explanation,
-                            message: `Affected ${result.rowCount || 0} rows`
+                            message: `Affected ${rowsAffected} rows`,
+                            rowsReturned,
+                            rowsAffected,
                         };
                     }
                 } finally {
