@@ -1,41 +1,90 @@
-<p align="center">
-  <img src="src/app/favicon.ico" alt="Fluxbase Logo" width="120" height="120" />
-</p>
-
-<h1 align="center">Fluxbase ⚡</h1>
+<h1 align="center">
+  <img src="src/app/favicon.ico" alt="Fluxbase Logo" width="120" align="absmiddle" />
+  Fluxbase ⚡
+</h1>
 
 <p align="center">
   <strong>The Serverless SQL Platform Built for Speed, Scale, and Developers.</strong>
 </p>
 
+<p align="center">
+  <strong>The Serverless SQL Platform Built for Speed, Scale, and Developers.</strong>
+</p>
+<p align="center">
+  <a href="https://github.com/Sumith2104/Fluxbase/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" />
+  </a>
+  <a href="https://nextjs.org/">
+    <img src="https://img.shields.io/badge/Next.js-15-black?logo=next.js" alt="Next.js 15" />
+  </a>
+  <a href="https://www.typescriptlang.org/">
+    <img src="https://img.shields.io/badge/TypeScript-5-blue?logo=typescript" alt="TypeScript" />
+  </a>
+  <a href="https://www.postgresql.org/">
+    <img src="https://img.shields.io/badge/PostgreSQL-supported-336791?logo=postgresql&logoColor=white" alt="PostgreSQL" />
+  </a>
+  <a href="https://www.mysql.com/">
+    <img src="https://img.shields.io/badge/MySQL-supported-4479A1?logo=mysql&logoColor=white" alt="MySQL" />
+  </a>
+</p>
+
 ---
 
-## 📖 What is Fluxbase?
+## Table of Contents
 
-Fluxbase is a serverless SQL platform designed to wrap your relational databases in a developer-friendly REST API, complete with a high-performance async ingestion pipeline and real-time subscription capabilities. It enables multi-dialect database execution (PostgreSQL and MySQL) with strict tenant-isolation and zero-trust security.
+- [What is Fluxbase?](#what-is-fluxbase)
+- [Key Features](#key-features)
+- [API Reference](#api-reference)
+- [Ingestion Worker](#ingestion-worker)
+- [Real-Time Subscriptions](#real-time-subscriptions)
+- [Performance](#performance)
+- [Client Integration Examples](#client-integration-examples)
+- [Monitoring & Observability](#monitoring--observability)
+- [Project Structure](#project-structure)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
-## ✨ Key Features
+## What is Fluxbase?
 
-- **Native SQL Execution (Multi-Dialect)**: Execute raw SQL queries directly on bare-metal PostgreSQL or MySQL drivers without heavy ORM abstractions.
-- **High-Throughput Ingestion**: Leverage a dedicated ingestion pipeline capable of writing 80,000+ rows/second asynchronously.
-- **Real-Time Data Streaming**: Stream row-level database updates (`INSERT`, `UPDATE`, `DELETE`) to clients over resilient Server-Sent Events (SSE).
-- **Security-First Architecture**: Built-in AST-based command validation, JWT-claim RLS mapping, and scoped API key authorization.
+Fluxbase is a **serverless SQL platform** that wraps your relational databases in a developer-friendly REST API — complete with a high-performance async ingestion pipeline and real-time subscription capabilities.
+
+It enables multi-dialect database execution (**PostgreSQL** and **MySQL**) with strict tenant isolation and a zero-trust security model, so you can focus on building features instead of managing infrastructure.
 
 ---
 
-## 📖 API Reference
+## Key Features
 
-All requests require a project-scoped API key passed via the authorization header:
+| Feature | Description |
+|---|---|
+| 🗄️ **Native SQL Execution** | Execute raw SQL on bare-metal PostgreSQL or MySQL drivers — no heavy ORM abstractions. |
+| 🚀 **High-Throughput Ingestion** | Dedicated ingestion pipeline capable of writing **80,000+ rows/second** asynchronously. |
+| 📡 **Real-Time Data Streaming** | Stream row-level events (`INSERT`, `UPDATE`, `DELETE`) to clients over resilient Server-Sent Events (SSE). |
+| 🔒 **Security-First Architecture** | Built-in AST-based SQL validation, JWT-claim RLS mapping, and scoped API key authorization. |
+| 🌐 **Multi-Dialect Support** | First-class support for both PostgreSQL and MySQL with dialect-aware query generation. |
+| 📊 **Observability** | Prometheus metrics endpoint + preconfigured Grafana dashboard out of the box. |
+
+---
+
+## API Reference
+
+All requests require a **project-scoped API key** passed via the `Authorization` header:
+
 ```http
 Authorization: Bearer <your-api-key>
 ```
 
+> **Base URL:** `https://api.fluxbase.dev`
+
+---
+
 ### `POST /api/execute-sql`
+
 Executes an arbitrary SQL query under the project's namespace.
 
-**Request:**
+**Request Body:**
+
 ```json
 {
   "query": "SELECT * FROM users WHERE active = true LIMIT 5"
@@ -43,6 +92,7 @@ Executes an arbitrary SQL query under the project's namespace.
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -55,67 +105,116 @@ Executes an arbitrary SQL query under the project's namespace.
 }
 ```
 
-### `POST /api/ingest`
-Queues rows for high-speed asynchronous ingestion.
+**Error Response:**
 
-**Request:**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "QUERY_FORBIDDEN",
+    "message": "DROP statements are not permitted."
+  }
+}
+```
+
+---
+
+### `POST /api/ingest`
+
+Queues one or more rows for high-speed asynchronous ingestion. The table is created automatically if it does not exist.
+
+**Request Body:**
+
 ```json
 {
   "table": "events",
   "rows": [
-    { "event_name": "page_view", "path": "/home" }
+    { "event_name": "page_view", "path": "/home" },
+    { "event_name": "click", "path": "/pricing" }
   ]
 }
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
-  "queued": 1,
+  "queued": 2,
   "batchId": "batch_12345"
 }
 ```
 
+---
+
 ### `GET /api/realtime`
-Establish a Server-Sent Events (SSE) connection to subscribe to database events.
+
+Establishes a **Server-Sent Events (SSE)** connection to subscribe to live database events for a project.
+
 ```http
 GET /api/realtime?projectId=<project-id>
 Accept: text/event-stream
+Authorization: Bearer <your-api-key>
+```
+
+**Event Payload Example:**
+
+```json
+{
+  "event": "INSERT",
+  "table": "orders",
+  "row": { "id": "abc123", "status": "pending" }
+}
+```
+
+> **Note:** Clients should implement exponential backoff reconnection logic. The Fluxbase JS client SDK handles this automatically.
+
+---
+
+## Ingestion Worker
+
+The ingestion worker is a **standalone Python service** (`ingestion-worker/`) that dequeues rows from a Redis buffer and streams them into the database.
+
+- **Fast COPY Protocol** — Batches are streamed using `asyncpg`'s `COPY` protocol instead of parameterized `INSERT` statements, maximizing throughput and eliminating per-row overhead.
+- **Dynamic Union Schema Merging** — Before importing a batch, the worker calculates the union of all keys across rows to automatically add missing columns, keeping schemas flexible.
+- **Strict Identifier Sanitization** — Any table or column name not matching `^[a-zA-Z_][a-zA-Z0-9_]*$` is rejected and quarantined to a Dead Letter Queue (DLQ), blocking SQL injection at the ingestion boundary.
+- **Auto-Scaler** — The `scaler.py` module monitors queue depth and adjusts worker concurrency automatically.
+
+### Running the worker locally
+
+```bash
+cd ingestion-worker
+pip install -r requirements.txt
+python main.py
 ```
 
 ---
 
-## 🏭 Ingestion Worker
+## Real-Time Subscriptions
 
-The ingestion worker is a standalone service written in Python that dequeues rows from a Redis buffer and streams them to the database.
+Fluxbase implements low-latency SSE subscriptions with built-in connection resilience:
 
-- **Fast COPY Protocol**: Rather than running parameterized `INSERT` statements, the worker streams batches using `asyncpg`'s `COPY` protocol to maximize performance.
-- **Dynamic Union Schema Merging**: Before importing a batch, the worker dynamically calculates the union of keys present across all rows to auto-ensure column existence.
-- **Strict Identifier Sanitization**: Rejects and quarantines (to a DLQ) any table or column name not matching `^[a-zA-Z_][a-zA-Z0-9_]*$` to block SQL injection at the ingestion boundary.
-
----
-
-## 📡 Real-Time Subscriptions
-
-Fluxbase implements low-latency SSE subscriptions with connection resilience:
-- **Throttled Cache Invalidation**: Throttles invalidation events to prevent UI blocking under high-frequency database writes.
-- **Connection Resilience**: Incorporates exponential backoff with jitter and heartbeats to ensure automatic client reconnection.
-- **Shared Event Source**: Reuses a single SSE connection per project across multiple UI components to prevent connection exhaustion.
+- **Throttled Cache Invalidation** — Invalidation events are throttled to prevent UI blocking under high-frequency database writes.
+- **Connection Resilience** — Exponential backoff with jitter and automatic heartbeats ensure clients reconnect gracefully after network drops.
+- **Shared Event Source** — A single SSE connection is reused per project across all UI components to prevent connection exhaustion on the server.
 
 ---
 
-## ⚡ Performance Deep Dive
+## Performance
 
-- **COPY vs INSERT**: Bulk inserts are translated into PostgreSQL binary stream copies, eliminating SQL parsing and planning overhead.
-- **Monotonic UUID v7**: Fluxbase recommends UUID v7 primary keys to prevent B-tree page fragmentation and index splits under heavy insert loads.
-- **Asynchronous WAL Writing**: Using transaction-local `SET synchronous_commit = off` allows fast database ingestion replies without waiting for disk flushes.
+| Technique | Details |
+|---|---|
+| **COPY vs INSERT** | Bulk inserts are translated into PostgreSQL binary stream copies, eliminating SQL parsing and planning overhead. |
+| **Monotonic UUID v7** | Recommended for primary keys to prevent B-tree page fragmentation and index splits under heavy insert loads. |
+| **Async WAL Writing** | Transaction-local `SET synchronous_commit = off` allows fast ingestion replies without waiting for WAL disk flushes. |
+| **Redis Queue Buffer** | Incoming rows are buffered in Redis, decoupling the API from the database and absorbing traffic spikes. |
 
 ---
 
-## 🧑‍💻 Client Integration Examples
+## Client Integration Examples
 
 ### JavaScript / TypeScript
+
 ```typescript
 async function executeQuery<T>(sql: string): Promise<T[]> {
   const response = await fetch("https://api.fluxbase.dev/api/execute-sql", {
@@ -133,55 +232,141 @@ async function executeQuery<T>(sql: string): Promise<T[]> {
 ```
 
 ### Python
+
 ```python
 import requests
 
-def ingest_rows(table: str, rows: list[dict]):
+BASE_URL = "https://api.fluxbase.dev"
+HEADERS  = {"Authorization": "Bearer <API_KEY>"}
+
+def execute_query(sql: str) -> list[dict]:
     response = requests.post(
-        "https://api.fluxbase.dev/api/ingest",
-        headers={"Authorization": "Bearer <API_KEY>"},
+        f"{BASE_URL}/api/execute-sql",
+        headers=HEADERS,
+        json={"query": sql}
+    )
+    data = response.json()
+    if not data["success"]:
+        raise RuntimeError(data["error"]["message"])
+    return data["result"]["rows"]
+
+def ingest_rows(table: str, rows: list[dict]) -> dict:
+    response = requests.post(
+        f"{BASE_URL}/api/ingest",
+        headers=HEADERS,
         json={"table": table, "rows": rows}
     )
     return response.json()
 ```
 
+### Real-Time (JavaScript EventSource)
+
+```javascript
+const source = new EventSource(
+  `https://api.fluxbase.dev/api/realtime?projectId=${PROJECT_ID}`,
+  { headers: { Authorization: "Bearer <API_KEY>" } }
+);
+
+source.onmessage = (event) => {
+  const { table, eventType, row } = JSON.parse(event.data);
+  console.log(`[${eventType}] on ${table}:`, row);
+};
+
+source.onerror = () => {
+  // The Fluxbase SDK handles reconnection automatically.
+};
+```
+
 ---
 
-## 📊 Monitoring & Observability
+## Monitoring & Observability
 
-The Ingestion worker exposes a `/metrics` Prometheus endpoint, tracking:
-- `rows_ingested_total` (counter)
-- `rows_failed_total` (counter)
-- `rows_dlq_total` (counter)
-- `insert_latency_ms` (histogram)
+The ingestion worker exposes a `/metrics` **Prometheus** endpoint tracking:
 
-You can import the preconfigured Grafana dashboard in `ingestion-worker/grafana_dashboard.json` to monitor ingest throughput, error rates, and queue latency.
+| Metric | Type | Description |
+|---|---|---|
+| `rows_ingested_total` | Counter | Total rows successfully written to the database |
+| `rows_failed_total` | Counter | Total rows that failed processing |
+| `rows_dlq_total` | Counter | Total rows quarantined to the Dead Letter Queue |
+| `insert_latency_ms` | Histogram | End-to-end latency from queue dequeue to DB write |
+
+A preconfigured **Grafana dashboard** is available at [`ingestion-worker/grafana_dashboard.json`](ingestion-worker/grafana_dashboard.json) for monitoring ingest throughput, error rates, and queue latency in real time.
+
+Alert rules are defined in [`ingestion-worker/alert_rules.yml`](ingestion-worker/alert_rules.yml).
 
 ---
 
-## 🗂️ Project Structure
+## Project Structure
 
 ```
 Fluxbase/
 ├── src/
-│   ├── app/                   # Next.js pages and API routing
-│   │   ├── (app)/             # Authenticated dashboard views
-│   │   └── api/               # API endpoints (execute-sql, ingest, realtime)
-│   ├── components/            # UI components (SQL editor, table viewer)
-│   └── lib/                   # Database pools, auth, and helper modules
-├── ingestion-worker/          # Async Python ingestion worker
-│   ├── main.py                # Worker process entrypoint
-│   └── worker.py              # Schema merger and COPY implementation
+│   ├── app/                        # Next.js App Router
+│   │   ├── (app)/                  # Authenticated dashboard views
+│   │   ├── api/                    # API routes (execute-sql, ingest, realtime)
+│   │   ├── pricing/                # Public pricing page
+│   │   ├── docs/                   # Public documentation page
+│   │   ├── layout.tsx              # Root layout
+│   │   └── manifest.ts             # PWA manifest
+│   ├── components/                 # Reusable UI components
+│   ├── lib/                        # DB pools, auth helpers, utilities
+│   ├── hooks/                      # Custom React hooks
+│   ├── contexts/                   # React context providers
+│   ├── actions/                    # Next.js server actions
+│   └── server/                     # WebSocket & server-side modules
+├── ingestion-worker/               # Async Python ingestion service
+│   ├── main.py                     # Worker entrypoint
+│   ├── worker.py                   # Schema merger & COPY implementation
+│   ├── scaler.py                   # Auto-scaling logic
+│   ├── metrics.py                  # Prometheus metrics definitions
+│   ├── health.py                   # Health check endpoint
+│   ├── throttle.py                 # Rate-limiting / throttle logic
+│   ├── grafana_dashboard.json      # Preconfigured Grafana dashboard
+│   ├── alert_rules.yml             # Prometheus alert rules
+│   ├── Dockerfile                  # Container image for the worker
+│   └── requirements.txt
+├── fluxbase-client/                # Official JavaScript/TypeScript SDK
+│   └── src/
+├── src-tauri/                      # Tauri desktop app wrapper
+│   └── tauri.conf.json
+├── public/                         # Static assets & PWA icons
+├── next.config.ts
+├── tailwind.config.ts
 ├── package.json
 └── README.md
 ```
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-1. Fork the repository.
-2. Create a feature branch: `git checkout -b feat/my-feature`.
-3. Commit your changes: `git commit -m 'feat: add feature'`.
-4. Push to origin: `git push origin feat/my-feature`.
-5. Open a Pull Request.
+Contributions are welcome! Please follow these steps:
+
+1. **Fork** the repository.
+2. **Create** a feature branch:
+   ```bash
+   git checkout -b feat/my-feature
+   ```
+3. **Commit** your changes using [Conventional Commits](https://www.conventionalcommits.org/):
+   ```bash
+   git commit -m "feat: add my feature"
+   ```
+4. **Push** to your fork:
+   ```bash
+   git push origin feat/my-feature
+   ```
+5. **Open a Pull Request** against the `main` branch and describe your changes.
+
+> Please ensure your code passes linting (`npm run lint`) and type-checking (`npm run typecheck`) before submitting.
+
+---
+
+## License
+
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+
+---
+
+<p align="center">
+  Made with ❤️ by the <a href="https://github.com/Sumith2104">Fluxbase Team</a>
+</p>
