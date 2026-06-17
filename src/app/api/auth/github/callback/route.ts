@@ -4,6 +4,7 @@ import { createSessionCookie } from '@/lib/auth';
 import { sendWelcomeEmail } from '@/lib/email';
 import { getOAuthConfig, getBaseOrigin } from '@/lib/oauth-config';
 import crypto from 'crypto';
+import { logToFluxDB } from '@/lib/fluxdb-logger';
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
@@ -108,6 +109,19 @@ export async function GET(request: NextRequest) {
 
         // 6. Create active session cookie 
         await createSessionCookie(userId, true);
+
+        // Log to FluxDB desktop (no-op if FLUXDB_WEBHOOK_URL is not set)
+        logToFluxDB({
+            level: isNewUser ? 'INFO' : 'INFO',
+            component: 'AUTH',
+            message: isNewUser
+                ? `New user signed up via GitHub: ${email}`
+                : `User logged in via GitHub: ${email}`,
+            user_id: userId,
+            email,
+            provider: 'github',
+            event: isNewUser ? 'signup' : 'login',
+        });
 
         // 7. Redirect seamlessly
         const redirectPath = isNewUser ? '/pricing?onboarding=true' : '/dashboard/projects';

@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { validateApiKey } from '@/lib/api-keys';
 import { LRUCache } from 'lru-cache';
 import crypto from 'crypto';
+import { logToFluxDB } from '@/lib/fluxdb-logger';
 
 function getJwtSecret(): string {
     const secret = process.env.JWT_SECRET;
@@ -192,6 +193,22 @@ export async function getAuthContextFromRequest(request: Request): Promise<AuthC
                 status
             };
             _authContextCache.set(cacheKey, ctx);
+
+            // Live log to FluxDB desktop (no-op if FLUXDB_WEBHOOK_URL not set)
+            if (!isNoisyRoute) {
+                const routePath = (() => { try { return new URL(request.url).pathname; } catch { return '?'; } })();
+                logToFluxDB({
+                    level: 'INFO',
+                    component: 'API',
+                    message: `${request.method} ${routePath}`,
+                    user_id: result.userId,
+                    email,
+                    project_id: result.projectId || undefined,
+                    scopes: result.scopes?.join(','),
+                    status,
+                });
+            }
+
             return ctx;
         }
     }
