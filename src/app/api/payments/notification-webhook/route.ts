@@ -18,8 +18,8 @@ export async function POST(req: NextRequest) {
         console.log(`[Notification Webhook] Intercepted from ${app || 'Unknown App'}: Title: "${title}", Text: "${text}"`);
 
         // 1. Parse amount from notification
-        // Matches "₹ 299", "Rs. 299.00", "Rs 299"
-        const amountMatch = text.match(/(?:₹|Rs\.?|INR)\s*([\d,]+(?:\.\d{1,2})?)/i);
+        // Matches "₹ 299", "Rs. 299.00", "Rs 299", "Received ?299.00" (due to shell symbol corruption), etc.
+        const amountMatch = text.match(/(?:credited|received|payment\s+of)\s*[^0-9]*?([\d,]+(?:\.\d{1,2})?)/i);
         if (!amountMatch) {
             console.warn(`[Notification Webhook] Could not parse amount from: "${text}"`);
             return NextResponse.json({ success: false, message: 'Could not parse amount' });

@@ -32,8 +32,8 @@ export async function POST(req: NextRequest) {
         }
 
         // 2. Extract Amount
-        // Matches "Rs. 499", "Rs. 499.00", "INR 499.00", "Rs 499"
-        const amountMatch = body.match(/(?:Rs\.?|INR)\s*([\d,]+(?:\.\d{1,2})?)/i);
+        // Matches "Rs. 499", "Rs. 499.00", "INR 499.00", "Rs 499", and corrupted symbol versions.
+        const amountMatch = body.match(/(?:credited|received|payment\s+of|rs\.?|inr|₹)\s*[^0-9]*?([\d,]+(?:\.\d{1,2})?)/i);
         if (!amountMatch) {
             console.warn(`[SMS Webhook] Could not parse amount from SMS: "${body}"`);
             return NextResponse.json({ success: false, message: 'Could not parse amount' });
