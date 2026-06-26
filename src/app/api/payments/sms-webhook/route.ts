@@ -7,7 +7,11 @@ const SMS_WEBHOOK_SECRET = process.env.SMS_WEBHOOK_SECRET || 'my_super_secure_se
 export async function POST(req: NextRequest) {
     try {
         const authHeader = req.headers.get('Authorization');
-        if (authHeader !== `Bearer ${SMS_WEBHOOK_SECRET}`) {
+        const expected = `Bearer ${SMS_WEBHOOK_SECRET}`;
+        const expectedAlternative = SMS_WEBHOOK_SECRET;
+
+        if (authHeader !== expected && authHeader !== expectedAlternative) {
+            console.warn(`[SMS Webhook] Unauthorized request. Received Authorization: "${authHeader}". Expected: "${expected}" or "${expectedAlternative}"`);
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 

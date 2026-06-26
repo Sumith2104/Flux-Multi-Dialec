@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 
-const NOTIFICATION_WEBHOOK_SECRET = process.env.NOTIFICATION_WEBHOOK_SECRET || 'my_super_secure_secret_token';
+const NOTIFICATION_WEBHOOK_SECRET = process.env.NOTIFICATION_WEBHOOK_SECRET || process.env.SMS_WEBHOOK_SECRET || 'my_super_secure_secret_token';
 
 export async function POST(req: NextRequest) {
     try {
         const authHeader = req.headers.get('Authorization');
-        if (authHeader !== `Bearer ${NOTIFICATION_WEBHOOK_SECRET}`) {
+        const expected = `Bearer ${NOTIFICATION_WEBHOOK_SECRET}`;
+        const expectedAlternative = NOTIFICATION_WEBHOOK_SECRET;
+
+        if (authHeader !== expected && authHeader !== expectedAlternative) {
+            console.warn(`[Notification Webhook] Unauthorized request. Received Authorization: "${authHeader}". Expected: "${expected}" or "${expectedAlternative}"`);
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
