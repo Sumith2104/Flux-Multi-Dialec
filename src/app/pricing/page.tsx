@@ -3,9 +3,11 @@ import { useState } from 'react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Check } from 'lucide-react';
+import { Check, Copy, CreditCard, Smartphone, AlertCircle, QrCode } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 
 export default function PricingPage() {
     const { toast } = useToast();
@@ -13,6 +15,13 @@ export default function PricingPage() {
     const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
     const [discountCode, setDiscountCode] = useState('');
     const [isDiscountApplied, setIsDiscountApplied] = useState(false);
+
+    // Modal / Checkout States
+    const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
+    const [selectedPlan, setSelectedPlan] = useState<{ id: string; name: 'Pro' | 'Max'; amount: number } | null>(null);
+    const [checkoutMethod, setCheckoutMethod] = useState<'choose' | 'razorpay' | 'upi'>('choose');
+    const [utr, setUtr] = useState('');
+    const [isVerifying, setIsVerifying] = useState(false);
 
     const checkDiscount = () => {
         const validCode = process.env.NEXT_PUBLIC_DISCOUNT_CODE;
@@ -25,14 +34,34 @@ export default function PricingPage() {
         }
     };
 
-    const handleUpgrade = async (planId: string, planName: string) => {
-        setLoadingPlan(planName);
+    const handleSelectPlan = (planId: string, planName: 'Pro' | 'Max') => {
+        const standardProPrice = parseFloat(process.env.NEXT_PUBLIC_RAZORPAY_PRO_PRICE || '0');
+        const standardMaxPrice = parseFloat(process.env.NEXT_PUBLIC_RAZORPAY_MAX_PRICE || '0');
+        const discountProPrice = parseFloat(process.env.NEXT_PUBLIC_DISCOUNT_PRO_PRICE || '0');
+        const discountMaxPrice = parseFloat(process.env.NEXT_PUBLIC_DISCOUNT_MAX_PRICE || '0');
+
+        let amount = planName === 'Pro' ? standardProPrice : standardMaxPrice;
+        if (isDiscountApplied) {
+            amount = planName === 'Pro' ? discountProPrice : discountMaxPrice;
+        }
+
+        setSelectedPlan({ id: planId, name: planName, amount });
+        setCheckoutMethod('choose');
+        setUtr('');
+        setCheckoutModalOpen(true);
+    };
+
+    const handleRazorpayCheckout = async () => {
+        if (!selectedPlan) return;
+        setCheckoutModalOpen(false);
+        setLoadingPlan(selectedPlan.name);
+
         try {
             // 1. Create the subscription via backend securely
             const res = await fetch('/api/subscriptions/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ planId })
+                body: JSON.stringify({ planId: selectedPlan.id })
             });
             const data = await res.json();
 
@@ -49,11 +78,11 @@ export default function PricingPage() {
                 key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'mock_key_public',
                 subscription_id: data.subscriptionId,
                 name: 'Fluxbase',
-                description: `${planName} Subscription`,
+                description: `${selectedPlan.name} Subscription`,
                 handler: function () {
                     toast({
                         title: 'Payment Successful',
-                        description: `You are now subscribed to the ${planName} plan. Restarting session...`
+                        description: `You are now subscribed to the ${selectedPlan.name} plan. Restarting session...`
                     });
                     setTimeout(() => router.push('/dashboard'), 2000);
                 },
@@ -80,6 +109,71 @@ export default function PricingPage() {
             setLoadingPlan(null);
         }
     };
+
+    const handleUtrVerification = async () => {
+        if (!selectedPlan || !utr) return;
+        
+        const cleanUtr = utr.trim();
+        if (!/^\d{12}$/.test(cleanUtr)) {
+            toast({
+                variant: 'destructive',
+                title: 'Invalid UTR',
+                description: 'The UPI Ref No / UTR must be a 12-digit number.'
+            });
+            return;
+        }
+
+        setIsVerifying(true);
+        try {
+            const res = await fetch('/api/payments/verify-utr', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    utr: cleanUtr,
+                    plan: selectedPlan.name
+                })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.error || 'Verification failed');
+            }
+
+            toast({
+                title: 'Upgrade Successful!',
+                description: data.message
+            });
+            setCheckoutModalOpen(false);
+            setTimeout(() => router.push('/dashboard'), 1500);
+
+        } catch (err: any) {
+            toast({
+                variant: 'destructive',
+                title: 'Verification Failed',
+                description: err.message
+            });
+        } finally {
+            setIsVerifying(false);
+        }
+    };
+
+    const copyToClipboard = (text: string) => {
+        navigator.clipboard.writeText(text);
+        toast({
+            title: 'Copied!',
+            description: 'UPI VPA copied to clipboard.'
+        });
+    };
+
+    // Construct UPI Deep Link and QR Code URL
+    const upiMerchantVpa = process.env.NEXT_PUBLIC_UPI_ID || 'sumithsumith4567890@okaxis';
+    const upiString = selectedPlan
+        ? `upi://pay?pa=${upiMerchantVpa}&pn=Fluxbase&am=${selectedPlan.amount}&cu=INR&tn=${encodeURIComponent(`${selectedPlan.name} Plan Upgrade`)}`
+        : '';
+    const qrCodeUrl = selectedPlan
+        ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(upiString)}`
+        : '';
 
     return (
         <div className="flex min-h-screen flex-col items-center bg-background px-5 py-14 text-foreground sm:px-4 sm:py-20">
@@ -152,78 +246,213 @@ export default function PricingPage() {
                                 <>
                                     <span className="text-4xl font-bold text-green-400">Rs.{process.env.NEXT_PUBLIC_DISCOUNT_PRO_PRICE || '299'}</span>
                                     <span className="text-xl text-muted-foreground line-through">Rs.{process.env.NEXT_PUBLIC_RAZORPAY_PRO_PRICE || '499'}</span>
-                                </>
-                            ) : (
-                                <span className="text-4xl font-bold text-foreground">Rs.{process.env.NEXT_PUBLIC_RAZORPAY_PRO_PRICE || '499'}</span>
-                            )}
-                            <span className="mb-1 text-muted-foreground"> / month</span>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="flex-1 space-y-4 text-muted-foreground">
-                        <FeatureItem text="Up to 3 Database Projects" />
-                        <FeatureItem text="8 GB Storage (Rs.10/GB overage)" />
-                        <FeatureItem text="2,000,000 requests / month" />
-                        <FeatureItem text="500 Concurrent WebSockets" />
-                        <FeatureItem text="7-day automated backups" />
-                        <FeatureItem text="Standard Email Support" />
-                    </CardContent>
-                    <CardFooter>
-                        <Button
-                            className="w-full"
-                            onClick={() => handleUpgrade(process.env.NEXT_PUBLIC_RAZORPAY_PRO_PLAN_ID || '', 'Pro')}
-                            disabled={loadingPlan !== null}
-                        >
-                            {loadingPlan === 'Pro' ? 'Processing...' : 'Upgrade to Pro'}
-                        </Button>
-                    </CardFooter>
-                </Card>
+                                  </>
+                              ) : (
+                                  <span className="text-4xl font-bold text-foreground">Rs.{process.env.NEXT_PUBLIC_RAZORPAY_PRO_PRICE || '499'}</span>
+                              )}
+                              <span className="mb-1 text-muted-foreground"> / month</span>
+                          </div>
+                      </CardHeader>
+                      <CardContent className="flex-1 space-y-4 text-muted-foreground">
+                          <FeatureItem text="Up to 3 Database Projects" />
+                          <FeatureItem text="8 GB Storage (Rs.10/GB overage)" />
+                          <FeatureItem text="2,000,000 requests / month" />
+                          <FeatureItem text="500 Concurrent WebSockets" />
+                          <FeatureItem text="7-day automated backups" />
+                          <FeatureItem text="Standard Email Support" />
+                      </CardContent>
+                      <CardFooter>
+                          <Button
+                              className="w-full"
+                              onClick={() => handleSelectPlan(process.env.NEXT_PUBLIC_RAZORPAY_PRO_PLAN_ID || '', 'Pro')}
+                              disabled={loadingPlan !== null}
+                          >
+                              {loadingPlan === 'Pro' ? 'Processing...' : 'Upgrade to Pro'}
+                          </Button>
+                      </CardFooter>
+                  </Card>
+  
+                  {/* MAX TIER */}
+                  <Card className="flex flex-col border-border/70 bg-card/85">
+                      <CardHeader>
+                          <CardTitle className="text-2xl text-foreground">Max</CardTitle>
+                          <CardDescription>Scale limitlessly with dedicated power.</CardDescription>
+                          <div className="mt-4 flex items-end space-x-2">
+                              {isDiscountApplied ? (
+                                  <>
+                                      <span className="text-4xl font-bold text-green-400">Rs.{process.env.NEXT_PUBLIC_DISCOUNT_MAX_PRICE || '1499'}</span>
+                                      <span className="text-xl text-muted-foreground line-through">Rs.{process.env.NEXT_PUBLIC_RAZORPAY_MAX_PRICE || '2499'}</span>
+                                  </>
+                              ) : (
+                                  <span className="text-4xl font-bold text-foreground">Rs.{process.env.NEXT_PUBLIC_RAZORPAY_MAX_PRICE || '2,499'}</span>
+                              )}
+                              <span className="mb-1 text-muted-foreground"> / month</span>
+                          </div>
+                      </CardHeader>
+                      <CardContent className="flex-1 space-y-4 text-muted-foreground">
+                          <FeatureItem text="Unlimited Database Projects" />
+                          <FeatureItem text="50 GB Storage (Rs.10/GB overage)" />
+                          <FeatureItem text="10,000,000 requests / month" />
+                          <FeatureItem text="5,000 Concurrent WebSockets" />
+                          <FeatureItem text="Point-in-Time Recovery" />
+                          <FeatureItem text="Priority VIP Support" />
+                      </CardContent>
+                      <CardFooter>
+                          <Button
+                              variant="outline"
+                              className="w-full"
+                              onClick={() => handleSelectPlan(process.env.NEXT_PUBLIC_RAZORPAY_MAX_PLAN_ID || '', 'Max')}
+                              disabled={loadingPlan !== null}
+                          >
+                              {loadingPlan === 'Max' ? 'Processing...' : 'Upgrade to Max'}
+                          </Button>
+                      </CardFooter>
+                  </Card>
+              </div>
+  
+              {/* CHECKOUT MODAL */}
+              <Dialog open={checkoutModalOpen} onOpenChange={setCheckoutModalOpen}>
+                  <DialogContent className="max-w-md bg-card border border-border text-foreground shadow-2xl">
+                      {selectedPlan && (
+                          <>
+                              <DialogHeader>
+                                  <DialogTitle className="text-2xl font-bold text-foreground flex items-center justify-between">
+                                      <span>Upgrade to {selectedPlan.name}</span>
+                                      <span className="text-primary font-extrabold text-xl">₹{selectedPlan.amount}</span>
+                                  </DialogTitle>
+                                  <DialogDescription className="text-muted-foreground text-sm">
+                                      Select your preferred checkout method to securely complete the upgrade.
+                                  </DialogDescription>
+                              </DialogHeader>
+  
+                              {checkoutMethod === 'choose' && (
+                                  <div className="flex flex-col gap-3 py-4">
+                                      <button
+                                          onClick={() => setCheckoutMethod('upi')}
+                                          className="flex items-center gap-4 p-4 rounded-lg border border-border bg-muted/30 text-left hover:bg-muted/80 transition-all group"
+                                      >
+                                          <div className="p-2.5 rounded-full bg-primary/10 text-primary group-hover:scale-110 transition-transform">
+                                              <Smartphone className="h-6 w-6" />
+                                          </div>
+                                          <div>
+                                              <p className="font-semibold text-foreground">Direct UPI Transfer</p>
+                                              <p className="text-xs text-muted-foreground mt-0.5">Pay via GPay, PhonePe, Paytm with 12-digit UTR verification</p>
+                                          </div>
+                                      </button>
+  
+                                      <button
+                                          onClick={handleRazorpayCheckout}
+                                          className="flex items-center gap-4 p-4 rounded-lg border border-border bg-muted/30 text-left hover:bg-muted/80 transition-all group"
+                                      >
+                                          <div className="p-2.5 rounded-full bg-blue-500/10 text-blue-400 group-hover:scale-110 transition-transform">
+                                              <CreditCard className="h-6 w-6" />
+                                          </div>
+                                          <div>
+                                              <p className="font-semibold text-foreground">Card / Netbanking / Wallets</p>
+                                              <p className="text-xs text-muted-foreground mt-0.5">Process payment securely via Razorpay payment gateway</p>
+                                          </div>
+                                      </button>
+                                  </div>
+                              )}
+  
+                              {checkoutMethod === 'upi' && (
+                                  <div className="flex flex-col gap-4 py-2">
+                                      {/* QR Code and Instructions */}
+                                      <div className="flex flex-col items-center justify-center p-3 rounded-lg border border-border bg-muted/20">
+                                          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                                              <QrCode className="h-4 w-4" /> Scan QR to Pay
+                                          </p>
+                                          {/* QR Code Render */}
+                                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                                          <img
+                                              src={qrCodeUrl}
+                                              alt="UPI QR Code"
+                                              className="bg-white p-2.5 rounded-md shadow-md border border-border"
+                                          />
+                                          
+                                          {/* Mobile Direct Pay Link */}
+                                          <a
+                                              href={upiString}
+                                              className="mt-3.5 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-colors flex items-center gap-1.5 md:hidden"
+                                          >
+                                              <Smartphone className="h-3.5 w-3.5" /> Tap to Pay via UPI App
+                                          </a>
+                                      </div>
+  
+                                      {/* Merchant Details */}
+                                      <div className="space-y-2.5 text-sm border-t border-border pt-4">
+                                          <div className="flex justify-between items-center bg-muted/40 p-2.5 rounded border border-border/50">
+                                              <span className="text-xs text-muted-foreground">UPI ID (VPA):</span>
+                                              <div className="flex items-center gap-1.5">
+                                                  <code className="text-xs font-bold bg-background px-1.5 py-0.5 rounded border border-border text-foreground">{upiMerchantVpa}</code>
+                                                  <button 
+                                                      onClick={() => copyToClipboard(upiMerchantVpa)} 
+                                                      className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                                                  >
+                                                      <Copy className="h-3.5 w-3.5" />
+                                                  </button>
+                                              </div>
+                                          </div>
+                                          <div className="flex justify-between items-center text-xs px-1">
+                                              <span className="text-muted-foreground">Amount Payable:</span>
+                                              <span className="font-bold text-foreground">₹{selectedPlan.amount}</span>
+                                          </div>
+                                      </div>
+  
+                                      {/* UTR Input Form */}
+                                      <div className="border-t border-border pt-4 space-y-3">
+                                          <div>
+                                              <label className="text-xs font-bold text-foreground block mb-1.5">
+                                                  Enter 12-Digit UPI Ref No / UTR:
+                                              </label>
+                                              <Input
+                                                  type="text"
+                                                  placeholder="e.g. 612345678901"
+                                                  value={utr}
+                                                  onChange={(e) => setUtr(e.target.value.replace(/\D/g, '').substring(0, 12))}
+                                                  className="bg-input border-border text-foreground focus:ring-primary"
+                                              />
+                                          </div>
+                                          <div className="flex gap-2">
+                                              <Button
+                                                  variant="outline"
+                                                  onClick={() => setCheckoutMethod('choose')}
+                                                  className="w-1/3"
+                                              >
+                                                  Back
+                                              </Button>
+                                              <Button
+                                                  onClick={handleUtrVerification}
+                                                  disabled={isVerifying || utr.length !== 12}
+                                                  className="w-2/3 bg-primary text-primary-foreground font-bold flex items-center justify-center gap-1"
+                                              >
+                                                  {isVerifying ? 'Verifying...' : 'Verify Payment'}
+                                              </Button>
+                                          </div>
+                                      </div>
+  
+                                      <div className="flex gap-2 bg-yellow-500/10 border border-yellow-500/30 p-2.5 rounded text-[11px] text-yellow-400">
+                                          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                                          <p>
+                                              Make sure to complete the payment inside your UPI app first, copy the 12-digit Ref No, and enter it here to instantly upgrade.
+                                          </p>
+                                      </div>
+                                  </div>
+                              )}
+                          </>
+                      )}
+                  </DialogContent>
+              </Dialog>
+          </div>
+      );
+  }
+  
+  function FeatureItem({ text }: { text: string }) {
+      return (
+          <div className="flex items-center space-x-3">
+              <Check className="h-5 w-5 text-green-500 shrink-0" />
+              <span>{text}</span>
+          </div>
+      );
+  }
 
-                {/* MAX TIER */}
-                <Card className="flex flex-col border-border/70 bg-card/85">
-                    <CardHeader>
-                        <CardTitle className="text-2xl text-foreground">Max</CardTitle>
-                        <CardDescription>Scale limitlessly with dedicated power.</CardDescription>
-                        <div className="mt-4 flex items-end space-x-2">
-                            {isDiscountApplied ? (
-                                <>
-                                    <span className="text-4xl font-bold text-green-400">Rs.{process.env.NEXT_PUBLIC_DISCOUNT_MAX_PRICE || '1499'}</span>
-                                    <span className="text-xl text-muted-foreground line-through">Rs.{process.env.NEXT_PUBLIC_RAZORPAY_MAX_PRICE || '2499'}</span>
-                                </>
-                            ) : (
-                                <span className="text-4xl font-bold text-foreground">Rs.{process.env.NEXT_PUBLIC_RAZORPAY_MAX_PRICE || '2,499'}</span>
-                            )}
-                            <span className="mb-1 text-muted-foreground"> / month</span>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="flex-1 space-y-4 text-muted-foreground">
-                        <FeatureItem text="Unlimited Database Projects" />
-                        <FeatureItem text="50 GB Storage (Rs.10/GB overage)" />
-                        <FeatureItem text="10,000,000 requests / month" />
-                        <FeatureItem text="5,000 Concurrent WebSockets" />
-                        <FeatureItem text="Point-in-Time Recovery" />
-                        <FeatureItem text="Priority VIP Support" />
-                    </CardContent>
-                    <CardFooter>
-                        <Button
-                            variant="outline"
-                            className="w-full"
-                            onClick={() => handleUpgrade(process.env.NEXT_PUBLIC_RAZORPAY_MAX_PLAN_ID || '', 'Max')}
-                            disabled={loadingPlan !== null}
-                        >
-                            {loadingPlan === 'Max' ? 'Processing...' : 'Upgrade to Max'}
-                        </Button>
-                    </CardFooter>
-                </Card>
-            </div>
-        </div>
-    );
-}
-
-function FeatureItem({ text }: { text: string }) {
-    return (
-        <div className="flex items-center space-x-3">
-            <Check className="h-5 w-5 text-green-500 shrink-0" />
-            <span>{text}</span>
-        </div>
-    );
-}
