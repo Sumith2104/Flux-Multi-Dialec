@@ -168,8 +168,20 @@ export default function PricingPage() {
 
     // Construct UPI Deep Link and QR Code URL
     const upiMerchantVpa = process.env.NEXT_PUBLIC_UPI_ID || 'sumithsumith4567890@okaxis';
+    
+    // NPCI/Bank security rules block pre-filled amounts & notes for Personal VPAs to prevent fraud.
+    // If it's a personal VPA, we omit 'am' and 'tn' from the scanned QR to bypass the block.
+    const isPersonalVpa = !upiMerchantVpa.includes('.merchant') && 
+                          (upiMerchantVpa.endsWith('@okaxis') || 
+                           upiMerchantVpa.endsWith('@okicici') || 
+                           upiMerchantVpa.endsWith('@ybl') || 
+                           upiMerchantVpa.endsWith('@okhdfcbank') || 
+                           (upiMerchantVpa.endsWith('@paytm') && !upiMerchantVpa.startsWith('m')));
+
     const upiString = selectedPlan
-        ? `upi://pay?pa=${upiMerchantVpa}&pn=Fluxbase&am=${selectedPlan.amount}&cu=INR&tn=${encodeURIComponent(`${selectedPlan.name} Plan Upgrade`)}`
+        ? isPersonalVpa
+            ? `upi://pay?pa=${upiMerchantVpa}&pn=Fluxbase`
+            : `upi://pay?pa=${upiMerchantVpa}&pn=Fluxbase&am=${selectedPlan.amount}&cu=INR&tn=${encodeURIComponent(`${selectedPlan.name} Plan Upgrade`)}`
         : '';
     const qrCodeUrl = selectedPlan
         ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(upiString)}`
