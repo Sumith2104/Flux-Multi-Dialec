@@ -251,7 +251,7 @@ export default function PricingPage() {
             } catch (err) {
                 console.error('Error polling session status:', err);
             }
-        }, 3000);
+        }, 1000);
 
         return () => {
             clearInterval(timerInterval);
