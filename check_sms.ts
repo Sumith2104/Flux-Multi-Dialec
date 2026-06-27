@@ -1,8 +1,8 @@
 import { config } from 'dotenv';
 config({ path: '.env.local' });
-import { getPgPool } from './src/lib/pg';
 
 async function check() {
+    const { getPgPool } = await import('./src/lib/pg');
     const pool = getPgPool();
     const res = await pool.query(`
         SELECT * FROM fluxbase_global.scraped_sms ORDER BY created_at DESC LIMIT 10;
@@ -20,3 +20,4 @@ async function check() {
     process.exit(0);
 }
 check().catch(console.error);
+
