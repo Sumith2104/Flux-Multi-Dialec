@@ -50,7 +50,67 @@ export async function POST(req: NextRequest) {
             console.log(`[Notification Webhook] Logged transaction to scraped_sms: UTR=${utr}, Amount=₹${amount}`);
         }
 
-        // 3. Try to parse the custom Note/Description (Session ID or Payment ID)
+        // 3. Try to match the exact decimal amount to an active pending payment session
+        const sessionQuery = await pool.query(
+            `SELECT id, user_id, plan_type FROM fluxbase_global.payment_sessions 
+             WHERE amount = $1 AND status = 'pending' AND expires_at > NOW()
+             ORDER BY created_at DESC LIMIT 1`,
+            [amount]
+        );
+
+        if (sessionQuery.rows.length > 0) {
+            const session = sessionQuery.rows[0];
+            const userId = session.user_id;
+            const planType = session.plan_type;
+
+            console.log(`[Notification Webhook] Matching session found! Session ID: ${session.id}, User: ${userId}, Plan: ${planType}, Amount: ₹${amount}`);
+
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+
+                // A. Mark session as completed
+                await client.query(
+                    `UPDATE fluxbase_global.payment_sessions 
+                     SET status = 'completed' 
+                     WHERE id = $1`,
+                    [session.id]
+                );
+
+                // B. Insert record in payments table
+                await client.query(
+                    `INSERT INTO fluxbase_global.payments (user_id, amount, currency, status, razorpay_payment_id)
+                     VALUES ($1, $2, 'INR', 'completed', $3)`,
+                    [userId, amount, `upi_session_${session.id}`]
+                );
+
+                // C. Upgrade user plan settings
+                await client.query(
+                    `UPDATE fluxbase_global.users 
+                     SET plan_type = $1, billing_cycle_end = NOW() + INTERVAL '1 month', status = 'active'
+                     WHERE id = $2`,
+                    [planType, userId]
+                );
+
+                await client.query('COMMIT');
+                console.log(`[Notification Webhook] Successfully processed session ${session.id}. User upgraded to ${planType}`);
+
+                return NextResponse.json({ 
+                    success: true, 
+                    message: 'Payment verified and user upgraded successfully via session matching.',
+                    sessionId: session.id,
+                    amount
+                });
+
+            } catch (txnError) {
+                await client.query('ROLLBACK');
+                throw txnError;
+            } finally {
+                client.release();
+            }
+        }
+
+        // 4. Try to parse the custom Note/Description (Session ID or Payment ID)
         // Matches "Note: pay_12345" or "Note: 123-abc-456"
         const noteMatch = text.match(/(?:Note|Remark|For):\s*([a-zA-Z0-9_\-]+)/i);
         const paymentId = noteMatch ? noteMatch[1] : null;
