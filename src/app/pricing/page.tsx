@@ -213,6 +213,7 @@ export default function PricingPage() {
             return;
         }
 
+        // 1. Timer Countdown
         const timerInterval = setInterval(() => {
             const expiry = new Date(sessionExpiresAt).getTime();
             const now = new Date().getTime();
@@ -225,6 +226,66 @@ export default function PricingPage() {
             }
         }, 1000);
 
+        // 2. Real-Time WebSockets
+        const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'wss://fluxbase-realtime-2bcf.onrender.com';
+        let socket: WebSocket | null = null;
+
+        const connectWS = () => {
+            try {
+                socket = new WebSocket(wsUrl);
+
+                socket.onopen = () => {
+                    console.log('[WebSocket] Real-time connection established.');
+                    // Subscribe to global schema channel routing (routed via table name event loop)
+                    socket?.send(JSON.stringify({
+                        type: 'subscribe',
+                        roomId: `payment_session_${sessionId}`
+                    }));
+                };
+
+                socket.onmessage = (event) => {
+                    try {
+                        const msg = JSON.parse(event.data);
+                        if (msg.type === 'db_event' && msg.payload?.table === 'payment_sessions') {
+                            const record = msg.payload.record;
+                            if (record.id === sessionId && record.status === 'completed') {
+                                console.log('[WebSocket] Real-time session completion signal detected.');
+                                setSessionStatus('completed');
+                                clearInterval(timerInterval);
+                                clearInterval(pollInterval);
+                                if (socket) socket.close();
+
+                                toast({
+                                    title: 'Upgrade Successful!',
+                                    description: 'Your payment was matched successfully in real-time!'
+                                });
+                                setTimeout(() => {
+                                    setCheckoutModalOpen(false);
+                                    router.push('/dashboard');
+                                }, 2000);
+                            }
+                        }
+                    } catch (e) {
+                        console.error('[WebSocket] Parsing error:', e);
+                    }
+                };
+
+                socket.onerror = (err) => {
+                    console.warn('[WebSocket] Error observed, relying on fallback polling.', err);
+                };
+
+                socket.onclose = () => {
+                    console.log('[WebSocket] Connection closed.');
+                };
+
+            } catch (err) {
+                console.error('[WebSocket] Initialization failed.', err);
+            }
+        };
+
+        connectWS();
+
+        // 3. Fallback database polling (every 6 seconds as a backup safety net)
         const pollInterval = setInterval(async () => {
             try {
                 const res = await fetch(`/api/payments/check-session?sessionId=${sessionId}`);
@@ -234,9 +295,12 @@ export default function PricingPage() {
                         setSessionStatus('completed');
                         clearInterval(timerInterval);
                         clearInterval(pollInterval);
+                        if (socket) {
+                            try { socket.close(); } catch {}
+                        }
                         toast({
                             title: 'Upgrade Successful!',
-                            description: 'Your payment was matched successfully!'
+                            description: 'Your payment was verified successfully!'
                         });
                         setTimeout(() => {
                             setCheckoutModalOpen(false);
@@ -246,16 +310,24 @@ export default function PricingPage() {
                         setSessionStatus('expired');
                         clearInterval(timerInterval);
                         clearInterval(pollInterval);
+                        if (socket) {
+                            try { socket.close(); } catch {}
+                        }
                     }
                 }
             } catch (err) {
-                console.error('Error polling session status:', err);
+                console.error('Error in fallback check-session request:', err);
             }
-        }, 1000);
+        }, 6000);
 
         return () => {
             clearInterval(timerInterval);
             clearInterval(pollInterval);
+            if (socket) {
+                try {
+                    socket.close();
+                } catch {}
+            }
         };
     }, [checkoutMethod, sessionId, sessionExpiresAt, sessionStatus, router, toast]);
 
