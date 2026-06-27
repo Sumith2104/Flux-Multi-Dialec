@@ -169,10 +169,6 @@ export default function PricingPage() {
 
     const startUpiSession = async (planName: 'Pro' | 'Max') => {
         setSessionLoading(true);
-        setSessionStatus(null);
-        setSessionId(null);
-        setSessionAmount(null);
-        setShowUtrFallback(false);
         try {
             const res = await fetch('/api/payments/create-session', {
                 method: 'POST',
@@ -186,17 +182,8 @@ export default function PricingPage() {
             if (!res.ok) {
                 throw new Error(data.error || 'Failed to initialize payment session');
             }
-            setSessionId(data.sessionId);
-            setSessionAmount(data.amount);
-            setSessionExpiresAt(data.expiresAt);
-            setSessionStatus('pending');
-            setCheckoutMethod('upi');
-            
-            // Calculate initial time left in seconds
-            const expiry = new Date(data.expiresAt).getTime();
-            const now = new Date().getTime();
-            setTimeLeft(Math.max(0, Math.floor((expiry - now) / 1000)));
-
+            setCheckoutModalOpen(false);
+            router.push(`/checkout?sessionId=${data.sessionId}`);
         } catch (err: any) {
             toast({
                 variant: 'destructive',
@@ -207,160 +194,6 @@ export default function PricingPage() {
             setSessionLoading(false);
         }
     };
-
-    useEffect(() => {
-        if (checkoutMethod !== 'upi' || !sessionId || !sessionExpiresAt || sessionStatus !== 'pending') {
-            return;
-        }
-
-        // 1. Timer Countdown
-        const timerInterval = setInterval(() => {
-            const expiry = new Date(sessionExpiresAt).getTime();
-            const now = new Date().getTime();
-            const diff = Math.max(0, Math.floor((expiry - now) / 1000));
-            setTimeLeft(diff);
-
-            if (diff <= 0) {
-                setSessionStatus('expired');
-                clearInterval(timerInterval);
-            }
-        }, 1000);
-
-        // 2. Real-Time WebSockets
-        const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'wss://fluxbase-realtime-2bcf.onrender.com';
-        let socket: WebSocket | null = null;
-
-        const connectWS = () => {
-            try {
-                socket = new WebSocket(wsUrl);
-
-                socket.onopen = () => {
-                    console.log('[WebSocket] Real-time connection established.');
-                    // Subscribe to global schema channel routing (routed via table name event loop)
-                    socket?.send(JSON.stringify({
-                        type: 'subscribe',
-                        roomId: `payment_session_${sessionId}`
-                    }));
-                };
-
-                socket.onmessage = (event) => {
-                    try {
-                        const msg = JSON.parse(event.data);
-                        if (msg.type === 'db_event' && msg.payload?.table === 'payment_sessions') {
-                            const record = msg.payload.record;
-                            if (record.id === sessionId && record.status === 'completed') {
-                                console.log('[WebSocket] Real-time session completion signal detected.');
-                                setSessionStatus('completed');
-                                clearInterval(timerInterval);
-                                clearInterval(pollInterval);
-                                if (socket) socket.close();
-
-                                toast({
-                                    title: 'Upgrade Successful!',
-                                    description: 'Your payment was matched successfully in real-time!'
-                                });
-                                setTimeout(() => {
-                                    setCheckoutModalOpen(false);
-                                    router.push('/dashboard');
-                                }, 2000);
-                            }
-                        }
-                    } catch (e) {
-                        console.error('[WebSocket] Parsing error:', e);
-                    }
-                };
-
-                socket.onerror = (err) => {
-                    console.warn('[WebSocket] Error observed, relying on fallback polling.', err);
-                };
-
-                socket.onclose = () => {
-                    console.log('[WebSocket] Connection closed.');
-                };
-
-            } catch (err) {
-                console.error('[WebSocket] Initialization failed.', err);
-            }
-        };
-
-        connectWS();
-
-        // 3. Fallback database polling (every 6 seconds as a backup safety net)
-        const pollInterval = setInterval(async () => {
-            try {
-                const res = await fetch(`/api/payments/check-session?sessionId=${sessionId}`);
-                const data = await res.json();
-                if (res.ok && data.success) {
-                    if (data.status === 'completed') {
-                        setSessionStatus('completed');
-                        clearInterval(timerInterval);
-                        clearInterval(pollInterval);
-                        if (socket) {
-                            try { socket.close(); } catch {}
-                        }
-                        toast({
-                            title: 'Upgrade Successful!',
-                            description: 'Your payment was verified successfully!'
-                        });
-                        setTimeout(() => {
-                            setCheckoutModalOpen(false);
-                            router.push('/dashboard');
-                        }, 2000);
-                    } else if (data.status === 'expired') {
-                        setSessionStatus('expired');
-                        clearInterval(timerInterval);
-                        clearInterval(pollInterval);
-                        if (socket) {
-                            try { socket.close(); } catch {}
-                        }
-                    }
-                }
-            } catch (err) {
-                console.error('Error in fallback check-session request:', err);
-            }
-        }, 6000);
-
-        return () => {
-            clearInterval(timerInterval);
-            clearInterval(pollInterval);
-            if (socket) {
-                try {
-                    socket.close();
-                } catch {}
-            }
-        };
-    }, [checkoutMethod, sessionId, sessionExpiresAt, sessionStatus, router, toast]);
-
-    const copyToClipboard = (text: string) => {
-        navigator.clipboard.writeText(text);
-        toast({
-            title: 'Copied!',
-            description: 'UPI VPA copied to clipboard.'
-        });
-    };
-
-    // Construct UPI Deep Link and QR Code URL
-    const upiMerchantVpa = process.env.NEXT_PUBLIC_UPI_ID || 'sumithsumith4567890@okaxis';
-    
-    // NPCI/Bank security rules block pre-filled amounts & notes for Personal VPAs to prevent fraud.
-    // If it's a personal VPA, we omit 'am' and 'tn' from the scanned QR to bypass the block.
-    const isPersonalVpa = !upiMerchantVpa.includes('.merchant') && 
-                          (upiMerchantVpa.endsWith('@okaxis') || 
-                           upiMerchantVpa.endsWith('@okicici') || 
-                           upiMerchantVpa.endsWith('@ybl') || 
-                           upiMerchantVpa.endsWith('@okhdfcbank') || 
-                           (upiMerchantVpa.endsWith('@paytm') && !upiMerchantVpa.startsWith('m')));
-
-    const currentAmount = sessionAmount || (selectedPlan ? selectedPlan.amount : 0);
-
-    const upiString = selectedPlan
-        ? isPersonalVpa
-            ? `upi://pay?pa=${upiMerchantVpa}&pn=Fluxbase`
-            : `upi://pay?pa=${upiMerchantVpa}&pn=Fluxbase&am=${currentAmount}&cu=INR&tn=${encodeURIComponent(`${selectedPlan.name} Plan Upgrade`)}`
-        : '';
-    const qrCodeUrl = selectedPlan
-        ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(upiString)}`
-        : '';
 
     return (
         <div className="flex min-h-screen flex-col items-center bg-background px-5 py-14 text-foreground sm:px-4 sm:py-20">
@@ -377,27 +210,21 @@ export default function PricingPage() {
                     <div className="mt-6 flex w-full flex-col items-stretch justify-center gap-2 sm:flex-row sm:items-center">
                         <input
                             type="text"
-                            placeholder="Have a promo code?"
+                            placeholder="PROMOCODE"
                             value={discountCode}
                             onChange={(e) => setDiscountCode(e.target.value)}
-                            className="w-full rounded-md border border-border bg-input px-4 py-2 text-foreground shadow-inner shadow-black/10 uppercase placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/70 sm:w-auto"
-                            disabled={isDiscountApplied}
+                            className="bg-card text-foreground px-4 py-2 border border-border rounded-md text-sm outline-none focus:border-primary uppercase sm:w-64"
                         />
-                        <Button
-                            variant="secondary"
-                            onClick={checkDiscount}
-                            disabled={isDiscountApplied || !discountCode}
-                            className="bg-secondary text-secondary-foreground hover:bg-muted"
-                        >
-                            {isDiscountApplied ? 'Applied' : 'Apply'}
+                        <Button onClick={checkDiscount} className="bg-primary text-primary-foreground font-semibold">
+                            Apply Code
                         </Button>
                     </div>
                 )}
             </div>
 
-            <div className="grid w-full max-w-6xl grid-cols-1 gap-6 md:grid-cols-3 md:gap-8">
+            <div className="grid w-full max-w-5xl grid-cols-1 gap-8 md:grid-cols-3">
                 {/* FREE TIER */}
-                <Card className="flex flex-col border-border/70 bg-card/85">
+                <Card className="flex flex-col border-border bg-card/40">
                     <CardHeader>
                         <CardTitle className="text-2xl text-foreground">Free</CardTitle>
                         <CardDescription>Perfect for side projects and learning.</CardDescription>
@@ -445,12 +272,11 @@ export default function PricingPage() {
                           <FeatureItem text="8 GB Storage (Rs.10/GB overage)" />
                           <FeatureItem text="2,000,000 requests / month" />
                           <FeatureItem text="500 Concurrent WebSockets" />
-                          <FeatureItem text="7-day automated backups" />
-                          <FeatureItem text="Standard Email Support" />
+                          <FeatureItem text="Email Support (24h SLA)" />
                       </CardContent>
                       <CardFooter>
                           <Button
-                              className="w-full"
+                              className="w-full bg-primary text-primary-foreground hover:bg-primary/95"
                               onClick={() => handleSelectPlan(process.env.NEXT_PUBLIC_RAZORPAY_PRO_PLAN_ID || '', 'Pro')}
                               disabled={loadingPlan !== null}
                           >
@@ -460,10 +286,10 @@ export default function PricingPage() {
                   </Card>
   
                   {/* MAX TIER */}
-                  <Card className="flex flex-col border-border/70 bg-card/85">
+                  <Card className="flex flex-col border-border bg-card/40">
                       <CardHeader>
                           <CardTitle className="text-2xl text-foreground">Max</CardTitle>
-                          <CardDescription>Scale limitlessly with dedicated power.</CardDescription>
+                          <CardDescription>Unleashed limits for scaling organizations.</CardDescription>
                           <div className="mt-4 flex items-end space-x-2">
                               {isDiscountApplied ? (
                                   <>
@@ -471,7 +297,7 @@ export default function PricingPage() {
                                       <span className="text-xl text-muted-foreground line-through">Rs.{process.env.NEXT_PUBLIC_RAZORPAY_MAX_PRICE || '2499'}</span>
                                   </>
                               ) : (
-                                  <span className="text-4xl font-bold text-foreground">Rs.{process.env.NEXT_PUBLIC_RAZORPAY_MAX_PRICE || '2,499'}</span>
+                                  <span className="text-4xl font-bold text-foreground">Rs.{process.env.NEXT_PUBLIC_RAZORPAY_MAX_PRICE || '2499'}</span>
                               )}
                               <span className="mb-1 text-muted-foreground"> / month</span>
                           </div>
@@ -479,10 +305,9 @@ export default function PricingPage() {
                       <CardContent className="flex-1 space-y-4 text-muted-foreground">
                           <FeatureItem text="Unlimited Database Projects" />
                           <FeatureItem text="50 GB Storage (Rs.10/GB overage)" />
-                          <FeatureItem text="10,000,000 requests / month" />
-                          <FeatureItem text="5,000 Concurrent WebSockets" />
-                          <FeatureItem text="Point-in-Time Recovery" />
-                          <FeatureItem text="Priority VIP Support" />
+                          <FeatureItem text="15,000,000 requests / month" />
+                          <FeatureItem text="2,500 Concurrent WebSockets" />
+                          <FeatureItem text="Priority 24/7 Slack Support" />
                       </CardContent>
                       <CardFooter>
                           <Button
@@ -524,7 +349,7 @@ export default function PricingPage() {
                                           </div>
                                           <div>
                                               <p className="font-semibold text-foreground">
-                                                  {sessionLoading ? 'Initializing UPI...' : 'Direct UPI Transfer'}
+                                                  {sessionLoading ? 'Initializing...' : 'Direct UPI Transfer'}
                                               </p>
                                               <p className="text-xs text-muted-foreground mt-0.5">
                                                   Pay using a unique amount with fully automated verification
@@ -544,164 +369,6 @@ export default function PricingPage() {
                                               <p className="text-xs text-muted-foreground mt-0.5">Process payment securely via Razorpay payment gateway</p>
                                           </div>
                                       </button>
-                                  </div>
-                              )}
-  
-                              {checkoutMethod === 'upi' && (
-                                  <div className="flex flex-col gap-4 py-2">
-                                      {sessionStatus === 'completed' && (
-                                          <div className="flex flex-col items-center justify-center py-8 text-center space-y-4 animate-in fade-in zoom-in-95 duration-300">
-                                              <div className="p-4 rounded-full bg-green-500/10 text-green-500 animate-bounce">
-                                                  <Check className="h-12 w-12" />
-                                              </div>
-                                              <div className="space-y-2">
-                                                  <h3 className="text-xl font-bold text-foreground">Payment Received!</h3>
-                                                  <p className="text-sm text-muted-foreground max-w-xs">
-                                                      We've automatically verified your UPI transfer. Upgrading your account and redirecting to your dashboard...
-                                                  </p>
-                                              </div>
-                                          </div>
-                                      )}
-
-                                      {sessionStatus === 'expired' && (
-                                          <div className="flex flex-col items-center justify-center py-6 text-center space-y-4">
-                                              <div className="p-4 rounded-full bg-destructive/10 text-destructive">
-                                                  <AlertCircle className="h-10 w-10" />
-                                              </div>
-                                              <div className="space-y-1.5">
-                                                  <h3 className="text-lg font-bold text-foreground">Checkout Session Expired</h3>
-                                                  <p className="text-xs text-muted-foreground max-w-xs">
-                                                      For safety, payment sessions expire after 5 minutes. Please regenerate the QR code to proceed.
-                                                  </p>
-                                              </div>
-                                              <div className="flex gap-2 w-full pt-2">
-                                                  <Button
-                                                      variant="outline"
-                                                      onClick={() => setCheckoutMethod('choose')}
-                                                      className="w-1/3"
-                                                  >
-                                                      Back
-                                                  </Button>
-                                                  <Button
-                                                      onClick={() => startUpiSession(selectedPlan.name)}
-                                                      className="w-2/3 bg-primary text-primary-foreground font-bold"
-                                                  >
-                                                      Regenerate QR Code
-                                                  </Button>
-                                              </div>
-                                          </div>
-                                      )}
-
-                                      {sessionStatus === 'pending' && (
-                                          <>
-                                              {/* Countdown Timer */}
-                                              <div className="flex justify-between items-center bg-muted/30 border border-border px-3 py-2 rounded-lg text-xs">
-                                                  <span className="text-muted-foreground">Session Expiration:</span>
-                                                  <span className={`font-mono font-bold px-2 py-0.5 rounded ${timeLeft < 60 ? 'bg-destructive/10 text-destructive animate-pulse' : 'bg-primary/10 text-primary'}`}>
-                                                      {(() => {
-                                                          const m = Math.floor(timeLeft / 60);
-                                                          const s = timeLeft % 60;
-                                                          return `${m}:${s < 10 ? '0' : ''}${s}`;
-                                                      })()}
-                                                  </span>
-                                              </div>
-
-                                              {/* QR Code and Instructions */}
-                                              <div className="flex flex-col items-center justify-center p-3 rounded-lg border border-border bg-muted/20">
-                                                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                                                      <QrCode className="h-4 w-4" /> Scan QR to Pay
-                                                  </p>
-                                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                  <img
-                                                      src={qrCodeUrl}
-                                                      alt="UPI QR Code"
-                                                      className="bg-white p-2.5 rounded-md shadow-md border border-border"
-                                                  />
-                                                  
-                                                  {/* Mobile Direct Pay Link */}
-                                                  <a
-                                                      href={upiString}
-                                                      className="mt-3.5 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-colors flex items-center gap-1.5 md:hidden"
-                                                  >
-                                                      <Smartphone className="h-3.5 w-3.5" /> Tap to Pay via UPI App
-                                                  </a>
-                                              </div>
-
-                                              {/* Payment Details */}
-                                              <div className="space-y-2.5 text-sm border-t border-border pt-4">
-                                                  <div className="flex justify-between items-center bg-muted/40 p-2.5 rounded border border-border/50">
-                                                      <span className="text-xs text-muted-foreground">UPI ID (VPA):</span>
-                                                      <div className="flex items-center gap-1.5">
-                                                          <code className="text-xs font-bold bg-background px-1.5 py-0.5 rounded border border-border text-foreground">{upiMerchantVpa}</code>
-                                                          <button 
-                                                              onClick={() => copyToClipboard(upiMerchantVpa)} 
-                                                              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                                                          >
-                                                              <Copy className="h-3.5 w-3.5" />
-                                                          </button>
-                                                      </div>
-                                                  </div>
-                                                  
-                                                  <div className="flex flex-col gap-1 bg-primary/5 border border-primary/20 p-3 rounded-lg">
-                                                      <div className="flex justify-between items-center text-xs">
-                                                          <span className="text-muted-foreground">Amount Payable:</span>
-                                                          <span className="text-lg font-extrabold text-primary">₹{sessionAmount}</span>
-                                                      </div>
-                                                      <p className="text-[10px] text-muted-foreground leading-tight mt-1">
-                                                          {isPersonalVpa 
-                                                              ? "⚠️ IMPORTANT: Please pay exactly this decimal amount manually in your UPI app to match your session automatically!"
-                                                              : "The unique decimal amount will be prefilled automatically."}
-                                                      </p>
-                                                  </div>
-                                              </div>
-
-                                              {/* Action / Back Button */}
-                                              <div className="flex gap-2 border-t border-border pt-4">
-                                                  <Button
-                                                      variant="outline"
-                                                      onClick={() => setCheckoutMethod('choose')}
-                                                      className="w-full"
-                                                  >
-                                                      Back
-                                                  </Button>
-                                              </div>
-
-                                              {/* Collapsible UTR Fallback Verification */}
-                                              <div className="border-t border-border pt-3">
-                                                  <button
-                                                      type="button"
-                                                      onClick={() => setShowUtrFallback(!showUtrFallback)}
-                                                      className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2 w-full text-center"
-                                                  >
-                                                      {showUtrFallback ? 'Hide manual verification' : 'Having issues? Verify manually using UTR'}
-                                                  </button>
-
-                                                  {showUtrFallback && (
-                                                      <div className="mt-3 p-3 rounded-lg border border-dashed border-border space-y-3 bg-muted/10 animate-in slide-in-from-top-2 duration-200">
-                                                          <div>
-                                                              <label className="text-[10px] font-bold text-foreground block mb-1">
-                                                                  Enter 12-Digit UPI Ref No / UTR:
-                                                              </label>
-                                                              <Input
-                                                                  type="text"
-                                                                  placeholder="e.g. 612345678901"
-                                                                  value={utr}
-                                                                  onChange={(e) => setUtr(e.target.value.replace(/\D/g, '').substring(0, 12))}
-                                                                  className="bg-input border-border text-foreground focus:ring-primary h-8 text-xs"
-                                                              />
-                                                          </div>
-                                                          <Button
-                                                              onClick={handleUtrVerification}
-                                                              disabled={isVerifying || utr.length !== 12}
-                                                              className="w-full bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs h-8 font-bold flex items-center justify-center gap-1"
-                                                          >
-                                                              {isVerifying ? 'Verifying...' : 'Verify Manually'}
-                                                          </Button>
-                                                      </div>
-                                                  )}
-                                              </div>
-                                          </>
-                                      )}
                                   </div>
                               )}
                           </>

@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 
         // Query status of the session, ensuring it belongs to the authenticated user
         const result = await pool.query(
-            `SELECT status, expires_at FROM fluxbase_global.payment_sessions 
+            `SELECT status, expires_at, amount, plan_type FROM fluxbase_global.payment_sessions 
              WHERE id = $1 AND user_id = $2`,
             [parseInt(sessionId, 10), userId]
         );
@@ -46,7 +46,10 @@ export async function GET(req: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            status
+            status,
+            amount: parseFloat(session.amount),
+            planType: session.plan_type,
+            expiresAt: session.expires_at
         });
 
     } catch (error: any) {
