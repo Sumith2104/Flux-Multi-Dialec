@@ -150,9 +150,18 @@ export async function POST(req: NextRequest) {
                             [payment.id]
                         );
 
-                        const standardProPrice = parseFloat(process.env.NEXT_PUBLIC_RAZORPAY_PRO_PRICE || '499');
-                        const discountProPrice = parseFloat(process.env.NEXT_PUBLIC_DISCOUNT_PRO_PRICE || '299');
-                        const planType = (amount === standardProPrice || amount === discountProPrice) ? 'pro' : 'max';
+                        const pricingRes = await client.query(
+                            `SELECT pro_price, discount_pro_price 
+                             FROM fluxbase_global.pricing_configs 
+                             ORDER BY id DESC LIMIT 1`
+                        );
+                        let planType = 'max';
+                        if (pricingRes.rows.length > 0) {
+                            const pricingConf = pricingRes.rows[0];
+                            const dbStandardPro = parseFloat(pricingConf.pro_price);
+                            const dbDiscountPro = parseFloat(pricingConf.discount_pro_price);
+                            planType = (amount === dbStandardPro || amount === dbDiscountPro) ? 'pro' : 'max';
+                        }
 
                         await client.query(
                             `UPDATE fluxbase_global.users 

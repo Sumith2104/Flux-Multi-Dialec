@@ -17,11 +17,24 @@ export async function POST(req: NextRequest) {
 
         const cleanPlan = plan.toLowerCase();
 
-        // 1. Get base price from environment variables
-        const standardProPrice = parseFloat(process.env.NEXT_PUBLIC_RAZORPAY_PRO_PRICE || '499');
-        const discountProPrice = parseFloat(process.env.NEXT_PUBLIC_DISCOUNT_PRO_PRICE || '299');
-        const standardMaxPrice = parseFloat(process.env.NEXT_PUBLIC_RAZORPAY_MAX_PRICE || '2499');
-        const discountMaxPrice = parseFloat(process.env.NEXT_PUBLIC_DISCOUNT_MAX_PRICE || '1499');
+        const pool = getPgPool();
+
+        // 1. Query base price from database configs table
+        const pricingRes = await pool.query(
+            `SELECT pro_price, max_price, discount_pro_price, discount_max_price 
+             FROM fluxbase_global.pricing_configs 
+             ORDER BY id DESC LIMIT 1`
+        );
+
+        if (pricingRes.rows.length === 0) {
+            return NextResponse.json({ error: 'Pricing configurations not seeded in database.' }, { status: 500 });
+        }
+
+        const pricing = pricingRes.rows[0];
+        const standardProPrice = parseFloat(pricing.pro_price);
+        const discountProPrice = parseFloat(pricing.discount_pro_price);
+        const standardMaxPrice = parseFloat(pricing.max_price);
+        const discountMaxPrice = parseFloat(pricing.discount_max_price);
 
         let basePrice = cleanPlan === 'pro' 
             ? (isDiscountApplied ? discountProPrice : standardProPrice)
@@ -29,8 +42,6 @@ export async function POST(req: NextRequest) {
 
         // Convert basePrice to integer to clear out any decimal parts before adding our unique offset
         basePrice = Math.floor(basePrice);
-
-        const pool = getPgPool();
 
         // 2. Query all active pending sessions to find occupied offsets
         const activeSessionsQuery = await pool.query(

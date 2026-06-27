@@ -16,6 +16,15 @@ export default function PricingPage() {
     const [discountCode, setDiscountCode] = useState('');
     const [isDiscountApplied, setIsDiscountApplied] = useState(false);
 
+    // Dynamic database-driven pricing states
+    const [proPrice, setProPrice] = useState<number>(0);
+    const [maxPrice, setMaxPrice] = useState<number>(0);
+    const [discountProPrice, setDiscountProPrice] = useState<number>(0);
+    const [discountMaxPrice, setDiscountMaxPrice] = useState<number>(0);
+    const [enableDiscount, setEnableDiscount] = useState<boolean>(false);
+    const [dbDiscountCode, setDbDiscountCode] = useState<string>('');
+    const [pricingLoaded, setPricingLoaded] = useState<boolean>(false);
+
     // Modal / Checkout States
     const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
     const [selectedPlan, setSelectedPlan] = useState<{ id: string; name: 'Pro' | 'Max'; amount: number } | null>(null);
@@ -32,9 +41,35 @@ export default function PricingPage() {
     const [timeLeft, setTimeLeft] = useState<number>(300);
     const [showUtrFallback, setShowUtrFallback] = useState(false);
 
+    // Fetch dynamic pricing details from the database on component mount
+    useEffect(() => {
+        const fetchPricing = async () => {
+            try {
+                const res = await fetch('/api/payments/pricing-config');
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    const p = data.pricing;
+                    setProPrice(p.proPrice);
+                    setMaxPrice(p.maxPrice);
+                    setDiscountProPrice(p.discountProPrice);
+                    setDiscountMaxPrice(p.discountMaxPrice);
+                    setEnableDiscount(p.enableDiscount);
+                    setDbDiscountCode(p.discountCode);
+                    setPricingLoaded(true);
+                }
+            } catch (err) {
+                console.error("Failed to fetch dynamic pricing configurations:", err);
+            }
+        };
+        fetchPricing();
+    }, []);
+
     const checkDiscount = () => {
-        const validCode = process.env.NEXT_PUBLIC_DISCOUNT_CODE;
-        if (discountCode.toUpperCase() === validCode) {
+        if (!enableDiscount) {
+            toast({ variant: 'destructive', title: 'Discounts Disabled', description: 'Promotional discounts are not active at this time.' });
+            return;
+        }
+        if (discountCode.toUpperCase() === dbDiscountCode.toUpperCase()) {
             setIsDiscountApplied(true);
             toast({ title: 'Discount Applied!', description: 'Promotional pricing activated.' });
         } else {
@@ -44,12 +79,7 @@ export default function PricingPage() {
     };
 
     const handleSelectPlan = (planId: string, planName: 'Pro' | 'Max') => {
-        const standardProPrice = parseFloat(process.env.NEXT_PUBLIC_RAZORPAY_PRO_PRICE || '0');
-        const standardMaxPrice = parseFloat(process.env.NEXT_PUBLIC_RAZORPAY_MAX_PRICE || '0');
-        const discountProPrice = parseFloat(process.env.NEXT_PUBLIC_DISCOUNT_PRO_PRICE || '0');
-        const discountMaxPrice = parseFloat(process.env.NEXT_PUBLIC_DISCOUNT_MAX_PRICE || '0');
-
-        let amount = planName === 'Pro' ? standardProPrice : standardMaxPrice;
+        let amount = planName === 'Pro' ? proPrice : maxPrice;
         if (isDiscountApplied) {
             amount = planName === 'Pro' ? discountProPrice : discountMaxPrice;
         }
@@ -206,7 +236,7 @@ export default function PricingPage() {
                 <p className="text-base leading-7 text-muted-foreground sm:text-xl">
                     From hobby projects to enterprise performance, choose the database power you actually need without unpredictable bills.
                 </p>
-                {process.env.NEXT_PUBLIC_ENABLE_DISCOUNT === 'true' && (
+                {enableDiscount && (
                     <div className="mt-6 flex w-full flex-col items-stretch justify-center gap-2 sm:flex-row sm:items-center">
                         <input
                             type="text"
@@ -258,11 +288,11 @@ export default function PricingPage() {
                         <div className="mt-4 flex items-end space-x-2">
                             {isDiscountApplied ? (
                                 <>
-                                    <span className="text-4xl font-bold text-green-400">Rs.{process.env.NEXT_PUBLIC_DISCOUNT_PRO_PRICE || '299'}</span>
-                                    <span className="text-xl text-muted-foreground line-through">Rs.{process.env.NEXT_PUBLIC_RAZORPAY_PRO_PRICE || '499'}</span>
+                                    <span className="text-4xl font-bold text-green-400">Rs.{discountProPrice}</span>
+                                    <span className="text-xl text-muted-foreground line-through">Rs.{proPrice}</span>
                                   </>
                               ) : (
-                                  <span className="text-4xl font-bold text-foreground">Rs.{process.env.NEXT_PUBLIC_RAZORPAY_PRO_PRICE || '499'}</span>
+                                  <span className="text-4xl font-bold text-foreground">Rs.{proPrice}</span>
                               )}
                               <span className="mb-1 text-muted-foreground"> / month</span>
                           </div>
@@ -293,11 +323,11 @@ export default function PricingPage() {
                           <div className="mt-4 flex items-end space-x-2">
                               {isDiscountApplied ? (
                                   <>
-                                      <span className="text-4xl font-bold text-green-400">Rs.{process.env.NEXT_PUBLIC_DISCOUNT_MAX_PRICE || '1499'}</span>
-                                      <span className="text-xl text-muted-foreground line-through">Rs.{process.env.NEXT_PUBLIC_RAZORPAY_MAX_PRICE || '2499'}</span>
+                                      <span className="text-4xl font-bold text-green-400">Rs.{discountMaxPrice}</span>
+                                      <span className="text-xl text-muted-foreground line-through">Rs.{maxPrice}</span>
                                   </>
                               ) : (
-                                  <span className="text-4xl font-bold text-foreground">Rs.{process.env.NEXT_PUBLIC_RAZORPAY_MAX_PRICE || '2499'}</span>
+                                  <span className="text-4xl font-bold text-foreground">Rs.{maxPrice}</span>
                               )}
                               <span className="mb-1 text-muted-foreground"> / month</span>
                           </div>

@@ -364,20 +364,6 @@ function CheckoutContent() {
                                                 : "The unique amount is pre-filled automatically inside the QR."}
                                         </p>
                                     </div>
-
-                                    {/* VPA Details */}
-                                    <div className="flex justify-between items-center bg-muted/40 p-3 rounded-lg border border-border/50 text-xs">
-                                        <span className="text-muted-foreground font-semibold">UPI ID (VPA):</span>
-                                        <div className="flex items-center gap-1.5">
-                                            <code className="font-bold bg-background px-2 py-0.5 rounded border border-border text-foreground text-[11px]">{upiMerchantVpa}</code>
-                                            <button 
-                                                onClick={() => copyToClipboard(upiMerchantVpa)} 
-                                                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                                            >
-                                                <Copy className="h-3.5 w-3.5" />
-                                            </button>
-                                        </div>
-                                    </div>
                                 </div>
 
                                 {/* Manual Verification Fallback accordion */}
