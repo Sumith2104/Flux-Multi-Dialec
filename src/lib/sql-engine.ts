@@ -80,6 +80,105 @@ export class SqlEngine {
         }
     }
 
+    private sanitizeTenantQuery(queryStr: string): string {
+        if (!this.projectObj) return queryStr;
+        const { schemaName, dbName } = getProjectDbAndSchema(this.projectObj);
+        const targetSchema = this.projectDialect?.toLowerCase() === 'mysql' ? dbName : schemaName;
+
+        let sanitized = queryStr
+            .replace(/--.*$/gm, '') // Remove single-line comments
+            .replace(/\/\*[\s\S]*?\*\//g, '') // Remove multi-line comments
+            .replace(/\/[a-zA-Z0-9_]+\./g, '') // Strip corrupted schema prefixes
+            .replace(/["'\`]?(?:project|schema)_[a-zA-Z0-9_-]+["'\`]?\./gi, '') // Strip hardcoded tenant schemas with/without quotes
+            .replace(/["'\`]?fluxbase_global["'\`]?\./gi, '') // Block access to fluxbase_global system tables
+            .replace(/["'\`]?public["'\`]?\./gi, ''); // Strip explicit public. prefix
+
+        // Strict isolation for system catalog metadata queries (information_schema and pg_catalog)
+        if (this.projectObj.connection_type === 'internal' || !this.projectObj.connection_type) {
+            if (/information_schema\.(tables|columns|table_constraints|views|key_column_usage|statistics)/i.test(sanitized)) {
+                if (/table_schema\s*(?:=|LIKE|IN|!=|<>)\s*(?![$?])/i.test(sanitized)) {
+                    sanitized = sanitized.replace(/table_schema\s*(?:=|LIKE|IN|!=|<>)\s*(?![$?])('[^']+'|"[^"]+"|[a-zA-Z0-9_\-]+)/gi, `table_schema = '${targetSchema}'`);
+                } else if (!new RegExp(`table_schema\\s*=\\s*['"\`]${targetSchema}['"\`]`, 'i').test(sanitized) && !/table_schema\s*=\s*[$?]/i.test(sanitized)) {
+                    if (/\bWHERE\b/i.test(sanitized)) {
+                        sanitized = sanitized.replace(/\bWHERE\b/i, `WHERE table_schema = '${targetSchema}' AND `);
+                    } else {
+                        if (/\b(ORDER BY|GROUP BY|LIMIT)\b/i.test(sanitized)) {
+                            sanitized = sanitized.replace(/\b(ORDER BY|GROUP BY|LIMIT)\b/i, (match) => `WHERE table_schema = '${targetSchema}' ${match}`);
+                        } else {
+                            sanitized = sanitized.replace(/;?\s*$/, ` WHERE table_schema = '${targetSchema}';`);
+                        }
+                    }
+                }
+            }
+
+            if (/information_schema\.routines/i.test(sanitized)) {
+                if (/routine_schema\s*(?:=|LIKE|IN|!=|<>)\s*(?![$?])/i.test(sanitized)) {
+                    sanitized = sanitized.replace(/routine_schema\s*(?:=|LIKE|IN|!=|<>)\s*(?![$?])('[^']+'|"[^"]+"|[a-zA-Z0-9_\-]+)/gi, `routine_schema = '${targetSchema}'`);
+                } else if (!new RegExp(`routine_schema\\s*=\\s*['"\`]${targetSchema}['"\`]`, 'i').test(sanitized) && !/routine_schema\s*=\s*[$?]/i.test(sanitized)) {
+                    if (/\bWHERE\b/i.test(sanitized)) {
+                        sanitized = sanitized.replace(/\bWHERE\b/i, `WHERE routine_schema = '${targetSchema}' AND `);
+                    } else {
+                        if (/\b(ORDER BY|GROUP BY|LIMIT)\b/i.test(sanitized)) {
+                            sanitized = sanitized.replace(/\b(ORDER BY|GROUP BY|LIMIT)\b/i, (match) => `WHERE routine_schema = '${targetSchema}' ${match}`);
+                        } else {
+                            sanitized = sanitized.replace(/;?\s*$/, ` WHERE routine_schema = '${targetSchema}';`);
+                        }
+                    }
+                }
+            }
+
+            if (/information_schema\.schemata/i.test(sanitized)) {
+                if (/schema_name\s*(?:=|LIKE|IN|!=|<>)\s*(?![$?])/i.test(sanitized)) {
+                    sanitized = sanitized.replace(/schema_name\s*(?:=|LIKE|IN|!=|<>)\s*(?![$?])('[^']+'|"[^"]+"|[a-zA-Z0-9_\-]+)/gi, `schema_name = '${targetSchema}'`);
+                } else if (!new RegExp(`schema_name\\s*=\\s*['"\`]${targetSchema}['"\`]`, 'i').test(sanitized) && !/schema_name\s*=\s*[$?]/i.test(sanitized)) {
+                    if (/\bWHERE\b/i.test(sanitized)) {
+                        sanitized = sanitized.replace(/\bWHERE\b/i, `WHERE schema_name = '${targetSchema}' AND `);
+                    } else {
+                        if (/\b(ORDER BY|GROUP BY|LIMIT)\b/i.test(sanitized)) {
+                            sanitized = sanitized.replace(/\b(ORDER BY|GROUP BY|LIMIT)\b/i, (match) => `WHERE schema_name = '${targetSchema}' ${match}`);
+                        } else {
+                            sanitized = sanitized.replace(/;?\s*$/, ` WHERE schema_name = '${targetSchema}';`);
+                        }
+                    }
+                }
+            }
+
+            if (/(?:pg_catalog\.)?(?:pg_tables|pg_views|pg_indexes)/i.test(sanitized)) {
+                if (/schemaname\s*(?:=|LIKE|IN|!=|<>)\s*(?![$?])/i.test(sanitized)) {
+                    sanitized = sanitized.replace(/schemaname\s*(?:=|LIKE|IN|!=|<>)\s*(?![$?])('[^']+'|"[^"]+"|[a-zA-Z0-9_\-]+)/gi, `schemaname = '${targetSchema}'`);
+                } else if (!new RegExp(`schemaname\\s*=\\s*['"\`]${targetSchema}['"\`]`, 'i').test(sanitized) && !/schemaname\s*=\s*[$?]/i.test(sanitized)) {
+                    if (/\bWHERE\b/i.test(sanitized)) {
+                        sanitized = sanitized.replace(/\bWHERE\b/i, `WHERE schemaname = '${targetSchema}' AND `);
+                    } else {
+                        if (/\b(ORDER BY|GROUP BY|LIMIT)\b/i.test(sanitized)) {
+                            sanitized = sanitized.replace(/\b(ORDER BY|GROUP BY|LIMIT)\b/i, (match) => `WHERE schemaname = '${targetSchema}' ${match}`);
+                        } else {
+                            sanitized = sanitized.replace(/;?\s*$/, ` WHERE schemaname = '${targetSchema}';`);
+                        }
+                    }
+                }
+            }
+
+            if (/(?:pg_catalog\.)?pg_namespace/i.test(sanitized)) {
+                if (/nspname\s*(?:=|LIKE|IN|!=|<>)\s*(?![$?])/i.test(sanitized)) {
+                    sanitized = sanitized.replace(/nspname\s*(?:=|LIKE|IN|!=|<>)\s*(?![$?])('[^']+'|"[^"]+"|[a-zA-Z0-9_\-]+)/gi, `nspname = '${targetSchema}'`);
+                } else if (!new RegExp(`nspname\\s*=\\s*['"\`]${targetSchema}['"\`]`, 'i').test(sanitized) && !/nspname\s*=\s*[$?]/i.test(sanitized)) {
+                    if (/\bWHERE\b/i.test(sanitized)) {
+                        sanitized = sanitized.replace(/\bWHERE\b/i, `WHERE nspname = '${targetSchema}' AND `);
+                    } else {
+                        if (/\b(ORDER BY|GROUP BY|LIMIT)\b/i.test(sanitized)) {
+                            sanitized = sanitized.replace(/\b(ORDER BY|GROUP BY|LIMIT)\b/i, (match) => `WHERE nspname = '${targetSchema}' ${match}`);
+                        } else {
+                            sanitized = sanitized.replace(/;?\s*$/, ` WHERE nspname = '${targetSchema}';`);
+                        }
+                    }
+                }
+            }
+        }
+
+        return sanitized;
+    }
+
     public async execute(
         query: string, 
         params?: any[], 
@@ -88,11 +187,13 @@ export class SqlEngine {
         await this.init();
         if (!this.userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
-        const queryCleaned = query
-            .replace(/--.*$/gm, '') // Remove single-line comments
-            .replace(/\/\*[\s\S]*?\*\//g, '') // Remove multi-line comments
-            .replace(/\/[a-zA-Z0-9_]+\./g, '') // Strip corrupted schema prefixes like /c8.TableName
-            .replace(/project_[a-zA-Z0-9_]+\./g, ''); // Ensure users don't hardcode other tenant IDs
+        const queryCleaned = this.sanitizeTenantQuery(query);
+
+        if (params && Array.isArray(params) && this.projectObj && (this.projectObj.connection_type === 'internal' || !this.projectObj.connection_type)) {
+            const { schemaName, dbName } = getProjectDbAndSchema(this.projectObj);
+            const targetSchema = this.projectDialect?.toLowerCase() === 'mysql' ? dbName : schemaName;
+            params = params.map(p => (typeof p === 'string' && (p === 'public' || (p.startsWith('project_') && p !== targetSchema) || (p.startsWith('schema_') && p !== targetSchema))) ? targetSchema : p);
+        }
 
         if (!queryCleaned.trim()) return { rows: [], columns: [] };
 

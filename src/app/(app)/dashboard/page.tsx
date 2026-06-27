@@ -156,15 +156,15 @@ export default function DashboardPage() {
     return (
         <div className="container mx-auto px-0">
             <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center mb-6">
-                <h1 className="text-3xl font-bold flex items-center gap-3">
+            <h1 className="text-2xl font-semibold flex items-center gap-3 tracking-tight">
                     Dashboard
-                    <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-zinc-400 opacity-30"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-zinc-400"></span>
+                    <span className="relative flex h-1.5 w-1.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-zinc-500 opacity-30"></span>
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-zinc-500"></span>
                     </span>
                 </h1>
                 <div className="flex items-center gap-3">
-                    <Button asChild variant="outline" className="border-zinc-700 text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-300 text-sm">
+                    <Button asChild variant="ghost" className="text-muted-foreground hover:text-foreground text-sm">
                         <Link href="/pricing">
                             Upgrade Plan
                         </Link>

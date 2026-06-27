@@ -735,8 +735,8 @@ export function EditorClient({
     const sidebarExplorerContent = (
         <div className="flex flex-col h-full overflow-hidden">
             <div className="p-2 space-y-2">
-                <Button variant="outline" className="w-full justify-start text-muted-foreground pointer-events-none">
-                    <span className="truncate">Dialect: <strong>{dialect.toUpperCase()}</strong></span>
+                <Button variant="outline" className="w-full justify-start text-muted-foreground pointer-events-none text-xs font-mono">
+                    <span className="truncate">{dialect.toUpperCase()}</span>
                 </Button>
 
                 {connectionType === 'external_server' && (
@@ -839,7 +839,7 @@ export function EditorClient({
                 {/* Sidebar - Desktop Only */}
                 <aside className="hidden md:flex md:w-64 flex-shrink-0 md:border-r bg-background flex-col md:h-full overflow-hidden">
                     <div className="p-4 border-b">
-                        <h2 className="text-lg font-semibold">Table Editor</h2>
+                        <h2 className="text-sm font-medium tracking-tight">Table Editor</h2>
                     </div>
                     <div className="flex-1 overflow-hidden">
                         {sidebarExplorerContent}
@@ -849,8 +849,8 @@ export function EditorClient({
                 {/* Main Content */}
                 <main className="flex-1 flex flex-col overflow-hidden w-full">
                             {currentTable && tableId && tableName ? (
-                                <>
-                                    <header className="flex flex-col sm:flex-row min-h-14 py-2 h-auto items-start sm:items-center gap-4 border-b bg-background px-4 sm:px-6 flex-shrink-0">
+                                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col min-h-0">
+                                    <header className="flex flex-col sm:flex-row min-h-12 py-1.5 h-auto items-start sm:items-center gap-3 border-b bg-background px-3 sm:px-4 flex-shrink-0">
                                           <div className="flex items-center gap-2 text-sm text-muted-foreground shrink-0">
                                                <SheetRoot open={isMobileExplorerOpen} onOpenChange={setIsMobileExplorerOpen}>
                                                    <SheetTrigger asChild>
@@ -860,18 +860,22 @@ export function EditorClient({
                                                    </SheetTrigger>
                                                    <SheetContent side="left" className="p-0 w-72 flex flex-col h-full bg-background border-r">
                                                        <div className="p-4 border-b">
-                                                           <h2 className="text-lg font-semibold">Table Explorer</h2>
+                                                            <h2 className="text-sm font-medium tracking-tight">Table Explorer</h2>
                                                        </div>
                                                        <div className="flex-1 overflow-hidden">
                                                            {sidebarExplorerContent}
                                                        </div>
                                                    </SheetContent>
                                                </SheetRoot>
-                                               <Table className="h-4 w-4" />
+                                               <Table className="h-4 w-4 text-orange-500" />
                                                <span className="font-semibold text-foreground">{currentTable.table_name}</span>
-                                               <span className="ml-3 text-xs text-muted-foreground font-medium">({rowCount.toLocaleString()} rows)</span>
+                                               <span className="ml-2 text-xs text-muted-foreground font-medium">({rowCount.toLocaleString()} rows)</span>
                                           </div>
-                                        <Separator orientation="vertical" className="hidden sm:block h-6" />
+                                        <TabsList className="h-8 p-0.5 bg-muted/60">
+                                            <TabsTrigger value="data" className="text-xs px-3 py-1">Data</TabsTrigger>
+                                            <TabsTrigger value="structure" className="text-xs px-3 py-1">Structure</TabsTrigger>
+                                        </TabsList>
+                                        <Separator orientation="vertical" className="hidden sm:block h-5" />
                                         <div className="flex items-center gap-2 shrink-0 flex-wrap">
                                     {tableId && tableName && projectId && initialColumns && (
                                         <>
@@ -1132,17 +1136,7 @@ export function EditorClient({
                             </header>
 
                             <div className="flex-grow flex flex-col overflow-hidden">
-                                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col min-h-0">
-                                    <div className="flex items-center justify-between w-full border-b py-2 mb-2">
-                                        <TabsList>
-                                            <TabsTrigger value="data">Data</TabsTrigger>
-                                            <TabsTrigger value="structure">Structure</TabsTrigger>
-                                        </TabsList>
-                                        <div className="text-sm font-medium text-muted-foreground px-4 py-1.5 bg-muted/50 rounded-md border shadow-sm">
-                                            {rowCount.toLocaleString()} Rows
-                                        </div>
-                                    </div>
-                                    <TabsContent value="data" className="mt-6 md:flex-1 md:flex md:flex-col md:min-h-0 h-[600px] md:h-auto relative overflow-hidden">
+                                <TabsContent value="data" className="mt-0 pt-0 md:flex-1 md:flex md:flex-col md:min-h-0 h-[600px] md:h-auto relative overflow-hidden">
                                         <div className="relative flex-1 min-h-0" onClick={() => { setShowFilterPanel(false); setShowColumnPanel(false); }}>
                                             <DataTable
                                                 columns={columns}
@@ -1291,9 +1285,8 @@ export function EditorClient({
                                             </CardFooter>
                                         </Card>
                                     </TabsContent>
-                                </Tabs>
-                            </div>
-                        </>
+                                </div>
+                            </Tabs>
                     ) : (
                         <>
                             <header className="flex flex-col sm:flex-row min-h-14 py-2 h-auto items-start sm:items-center gap-4 border-b bg-background px-4 sm:px-6 flex-shrink-0 md:hidden">

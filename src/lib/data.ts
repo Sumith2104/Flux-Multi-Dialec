@@ -1563,9 +1563,10 @@ export async function updateRow(projectId: string, tableId: string, rowId: strin
     let i = 1;
 
     for (const [key, value] of Object.entries(updates)) {
-        if (key === 'id' || key === '_id' || key === pkCol.column_name) continue;
-        if (columns.some(c => c.column_name === key) && value !== undefined) {
-            setClauses.push(project.dialect?.toLowerCase() === 'mysql' ? `\`${key.replace(/[^a-zA-Z0-9_]/g, '')}\` = ?` : `"${key.replace(/[^a-zA-Z0-9_]/g, '')}" = $${i++}`);
+        if (key.toLowerCase() === 'id' || key.toLowerCase() === '_id' || key.toLowerCase() === pkCol.column_name.toLowerCase()) continue;
+        const matchingCol = columns.find(c => c.column_name.toLowerCase() === key.toLowerCase());
+        if (matchingCol && value !== undefined) {
+            setClauses.push(project.dialect?.toLowerCase() === 'mysql' ? `\`${matchingCol.column_name.replace(/[^a-zA-Z0-9_]/g, '')}\` = ?` : `"${matchingCol.column_name.replace(/[^a-zA-Z0-9_]/g, '')}" = $${i++}`);
             params.push(value);
         }
     }

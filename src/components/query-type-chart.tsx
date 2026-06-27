@@ -1,4 +1,4 @@
-﻿
+
 'use client';
 
 import * as React from "react"
@@ -72,19 +72,19 @@ export function QueryTypeChart({ stats }: { stats: AnalyticsStats | null }) {
 
     return (
         <Card 
-            className="h-full w-full flex flex-col aspect-square justify-between border-border/80 bg-secondary/60 backdrop-blur-md shadow-lg overflow-hidden transition-colors hover:bg-secondary/70"
+            className="h-full w-full flex flex-col aspect-square justify-between border-border bg-card/30 backdrop-blur-md overflow-hidden transition-colors hover:bg-card/50"
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
-            <CardHeader className="items-center pb-4 border-b border-border/50 bg-secondary/40">
-                <CardTitle className="text-xl font-bold text-foreground flex items-center gap-2">
+            <CardHeader className="items-center pb-4 border-b border-border/40">
+                <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider font-mono flex items-center gap-2">
                     Query Type
                 </CardTitle>
             </CardHeader>
             <CardContent className="flex-1 pt-6 pb-6 flex items-center justify-center">
                 <ChartContainer
                     config={chartConfig}
-                    className="mx-auto aspect-square w-full max-h-[250px] drop-shadow-[0_0_15px_rgba(0,0,0,0.5)]"
+                    className="mx-auto aspect-square w-full max-h-[250px]"
                 >
                     <PieChart>
                         <ChartTooltip
@@ -112,6 +112,8 @@ export function QueryTypeChart({ stats }: { stats: AnalyticsStats | null }) {
                             stroke="rgba(24,24,27,0.8)" /* zinc-900 border separating slices */
                             strokeWidth={2}
                             isAnimationActive={true}
+                            animationDuration={1800}
+                            animationEasing="ease-out"
                         />
                     </PieChart>
                 </ChartContainer>

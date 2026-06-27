@@ -89,15 +89,18 @@ export async function getAnalyticsStatsAction(projectId: string) {
 
         // --- PHASE 3: Fetch Live Sessions ---
         try {
+            const realtimeManager = (await import('@/lib/realtime-manager')).default;
+            const activeLocal = realtimeManager.getSubscriberCount(projectId);
             const liveSessions = await redis.get(`live_sessions:${projectId}`);
-            (stats as any).live_sessions = parseInt(liveSessions as string || '0', 10);
+            const redisVal = parseInt(liveSessions as string || '0', 10);
+            (stats as any).live_sessions = Math.max(activeLocal, redisVal);
         } catch {
             (stats as any).live_sessions = 0;
         }
 
         try {
-            // Increase cache TTL to 30s to match throttle window and reduce Redis writes
-            await redis.set(cacheKey, stats, { ex: 30 }); 
+            // 3s TTL for crisp live dashboard updating without excessive Redis writes
+            await redis.set(cacheKey, stats, { ex: 3 }); 
         } catch (e) {
             console.warn('Redis write error for analytics stats:', e);
         }

@@ -6,13 +6,14 @@ const globalForMysql = globalThis as unknown as {
 
 export function getMysqlPool(): mysql.Pool {
     if (!globalForMysql.mysqlPool) {
-        if (!process.env.AWS_RDS_MYSQL_URL) {
+        const rawUrl = process.env.AWS_RDS_MYSQL_URL || process.env.MYSQL_URL || process.env.DATABASE_MYSQL_URL;
+        if (!rawUrl) {
             throw new Error("Missing AWS_RDS_MYSQL_URL environment variable");
         }
 
         // Strip the trailing database name (e.g., /fluxbase) from the URI
         // AWS RDS MySQL connections should be globally scoped.
-        const parsedUrl = new URL(process.env.AWS_RDS_MYSQL_URL);
+        const parsedUrl = new URL(rawUrl);
         parsedUrl.pathname = '';
 
         // connectionLimit 20 to match pg max

@@ -32,8 +32,11 @@ export function getS3Bucket(): string {
  * Format: project_{projectId}/buckets/{bucketId}/{filename}
  */
 export function buildS3Key(projectId: string, bucketId: string, filename: string): string {
-    const safeFilename = filename.replace(/[^a-zA-Z0-9._\-\/]/g, '_');
-    return `project_${projectId}/buckets/${bucketId}/${Date.now()}_${safeFilename}`;
+    const baseFilename = filename.split(/[/\\]/).pop() || 'file';
+    const safeFilename = baseFilename.replace(/[^a-zA-Z0-9._\-]/g, '_');
+    const safeProjectId = projectId.replace(/[^a-zA-Z0-9_\-]/g, '');
+    const safeBucketId = bucketId.replace(/[^a-zA-Z0-9_\-]/g, '');
+    return `project_${safeProjectId}/buckets/${safeBucketId}/${Date.now()}_${safeFilename}`;
 }
 
 export async function uploadToS3(

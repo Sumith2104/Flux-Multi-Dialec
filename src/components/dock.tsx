@@ -86,7 +86,7 @@ function DockItem({
           onFocus={() => isHovered.set(1)}
           onBlur={() => isHovered.set(0)}
           onClick={onClick}
-          className="relative flex shrink-0 snap-center cursor-pointer items-center justify-center rounded-full bg-secondary text-foreground shadow-sm ring-1 ring-border/70 transition-colors hover:bg-muted"
+          className="relative flex shrink-0 snap-center cursor-pointer items-center justify-center rounded-full bg-secondary/80 text-foreground ring-1 ring-border/40 transition-colors hover:bg-muted"
           tabIndex={0}
           role="button"
           aria-haspopup="true"
@@ -150,7 +150,7 @@ export default function Dock({
       <motion.div
         onMouseMove={(e) => mouseX.set(e.pageX)}
         onMouseLeave={() => mouseX.set(Infinity)}
-        className={`flex h-14 max-w-[calc(100vw-1rem)] snap-x items-end gap-2 overflow-x-auto overflow-y-hidden rounded-lg border border-border/70 bg-card/90 px-2 pb-2 shadow-2xl shadow-black/30 backdrop-blur-xl sm:h-16 sm:max-w-[calc(100vw-2rem)] sm:gap-3 sm:px-3 sm:pb-3 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] ${className}`}
+        className={`flex h-14 max-w-[calc(100vw-1rem)] snap-x items-end gap-2 overflow-x-auto overflow-y-hidden rounded-lg border border-border/50 bg-background/90 px-2 pb-2 shadow-xl shadow-black/20 backdrop-blur-xl sm:h-16 sm:max-w-[calc(100vw-2rem)] sm:gap-3 sm:px-3 sm:pb-3 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] ${className}`}
         role="toolbar"
         aria-label="Application dock"
       >

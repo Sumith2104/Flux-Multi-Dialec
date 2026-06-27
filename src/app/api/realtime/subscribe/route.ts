@@ -80,6 +80,10 @@ export async function GET(req: NextRequest) {
                 if (interval) clearInterval(interval);
                 if (unsubscribe) unsubscribe();
 
+                // Sync live sessions in Redis
+                const remaining = realtimeManager.getSubscriberCount(projectId);
+                redis.set(`live_sessions:${projectId}`, Math.max(0, remaining)).catch(() => {});
+
                 // Decrement global IP tracker
                 const c = globalConns.get(ip) || 1;
                 if (c <= 1) globalConns.delete(ip);
@@ -97,6 +101,10 @@ export async function GET(req: NextRequest) {
                         releaseHandler(); // Connection likely broken
                     }
                 });
+
+                // Sync live sessions in Redis
+                const currentSubscribers = realtimeManager.getSubscriberCount(projectId);
+                redis.set(`live_sessions:${projectId}`, Math.max(1, currentSubscribers)).catch(() => {});
 
                 // Abort listener for browser disconnect
                 req.signal.addEventListener('abort', () => releaseHandler());

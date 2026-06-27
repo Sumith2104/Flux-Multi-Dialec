@@ -149,8 +149,8 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         // [STABILITY FIX]: Removed client-side redirect to root.
         // Middleware handles this before page load. Removing this prevents the infinite "ping-pong" redirect loop
         // that occurs when the client state is briefly null during hydration.
-        if (!userId && !isOffline) {
-            // We just wait for auth to resolve or for middleware to catch us.
+        if (!userLoading && !userId && !isOffline) {
+            router.push('/');
             return;
         }
 
@@ -276,7 +276,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                     <Link href="/settings" className="underline underline-offset-2 ml-1 opacity-90 hover:opacity-100">Manage in Settings</Link>
                 </div>
             ) : null}
-            <header className="sticky top-0 z-40 flex h-14 max-w-full items-center gap-2 border-b border-border/70 bg-background/95 px-2 shadow-sm shadow-black/10 backdrop-blur-md sm:gap-4 sm:px-4 md:px-6">
+            <header className="sticky top-0 z-40 flex h-12 max-w-full items-center gap-2 border-b border-border bg-background/95 px-2 backdrop-blur-md sm:gap-4 sm:px-4 md:px-6">
                 <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
                     <Avatar className="hidden h-8 w-8 shrink-0 sm:block">
                         {(user as any)?.photo_url && <AvatarImage src={(user as any).photo_url} referrerPolicy="no-referrer" />}
@@ -293,7 +293,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                             <Badge
                                 variant="secondary"
                                 className={cn(
-                                    "hidden sm:inline-flex transition-colors shadow-none text-[9px] uppercase font-bold tracking-wider rounded-md border",
+                                    "hidden sm:inline-flex transition-colors shadow-none text-[9px] uppercase font-bold tracking-wider rounded-md border font-mono",
                                     selectedProject.role === 'admin' && "bg-amber-500/10 text-amber-400 border-amber-500/20",
                                     selectedProject.role === 'developer' && "bg-blue-500/10 text-blue-400 border-blue-500/20",
                                     selectedProject.role === 'viewer' && "bg-secondary text-muted-foreground border-border"
@@ -304,7 +304,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                             <Badge
                                 variant="outline"
                                 className={cn(
-                                    "hidden sm:inline-flex transition-colors shadow-none text-[9px] uppercase font-bold tracking-wider rounded-md",
+                                    "hidden sm:inline-flex transition-colors shadow-none text-[9px] uppercase font-bold tracking-wider rounded-md font-mono",
                                     planType === 'Max' ? "border-amber-500/50 bg-amber-500/10 text-amber-500" :
                                         planType === 'Pro' ? "border-blue-500/50 bg-blue-500/10 text-blue-500" :
                                             "border-muted-foreground/30 bg-muted/10 text-muted-foreground"

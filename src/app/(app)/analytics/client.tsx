@@ -283,7 +283,7 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
                     <ManualBuilder projectId={projectId} onSaved={() => router.refresh()} />
                     <Dialog open={aiOpen} onOpenChange={setAiOpen}>
                         <DialogTrigger asChild>
-                            <Button className="gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-xl shadow-blue-900/20">
+                            <Button className="gap-2">
                                 <Sparkles className="w-4 h-4" />
                                 Ask AI
                             </Button>

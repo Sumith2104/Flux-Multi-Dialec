@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useContext, useEffect } from 'react';
 import Image from 'next/image';
@@ -310,7 +310,7 @@ export default function GeneralSettingsPage() {
                 <Card className="lg:col-span-1">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <Shield className="h-5 w-5 text-primary" />
+                            <Shield className="h-5 w-5 text-muted-foreground" />
                             Project Identity
                         </CardTitle>
                         <CardDescription>Essential identification for API and database access.</CardDescription>
@@ -329,7 +329,7 @@ export default function GeneralSettingsPage() {
                 <Card className="lg:col-span-1">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <Clock className="h-5 w-5 text-primary" />
+                            <Clock className="h-5 w-5 text-muted-foreground" />
                             Regional Settings
                         </CardTitle>
                         <CardDescription>Configure localization for database operations.</CardDescription>
@@ -350,7 +350,7 @@ export default function GeneralSettingsPage() {
                             <p className="text-[10px] text-muted-foreground">Default timezone for generated timestamps (e.g., NOW()).</p>
                         </div>
                     </CardContent>
-                    <CardFooter className="flex justify-end border-t bg-muted/50 px-6 py-4">
+                    <CardFooter className="flex justify-end border-t px-6 py-4">
                         <Button onClick={handleSaveTimezone} disabled={savingTimezone || !selectedProject || selectedProject.role !== 'admin'}>
                             {savingTimezone ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Database className="h-4 w-4 mr-2" />}
                             Save Timezone
@@ -362,7 +362,7 @@ export default function GeneralSettingsPage() {
                 <Card className="lg:col-span-1">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <Key className="h-5 w-5 text-primary" />
+                            <Key className="h-5 w-5 text-muted-foreground" />
                             Account Security
                         </CardTitle>
                         <CardDescription>Secure your account with Two-Factor Authentication (TOTP).</CardDescription>
@@ -497,7 +497,7 @@ export default function GeneralSettingsPage() {
                 <Card className="lg:col-span-1">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <CreditCard className="h-5 w-5 text-primary" />
+                            <CreditCard className="h-5 w-5 text-muted-foreground" />
                             Billing & Subscription
                         </CardTitle>
                         <CardDescription>Manage your plan and organization resource limits.</CardDescription>
@@ -510,7 +510,7 @@ export default function GeneralSettingsPage() {
                                 <div className="flex items-center justify-between p-4 bg-primary/5 border border-primary/10 rounded-2xl">
                                     <div className="flex items-center gap-3">
                                         <div className="p-2 bg-primary/20 rounded-lg">
-                                            <Zap className="h-5 w-5 text-primary" />
+                                            <Zap className="h-5 w-5 text-muted-foreground" />
                                         </div>
                                         <div>
                                             <p className="text-xs text-muted-foreground uppercase font-bold tracking-widest">Active Plan</p>
@@ -580,7 +580,7 @@ export default function GeneralSettingsPage() {
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                        <TableIcon className="h-5 w-5 text-primary" />
+                        <TableIcon className="h-5 w-5 text-muted-foreground" />
                         Project Tables
                     </CardTitle>
                     <CardDescription>Quick reference for table names in the current project.</CardDescription>

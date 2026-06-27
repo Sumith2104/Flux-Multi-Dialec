@@ -9,14 +9,7 @@ import { Card, CardContent, CardHeader } from './ui/card';
 import Editor, { loader } from '@monaco-editor/react';
 import { useToast } from '@/hooks/use-toast';
 
-// Configure Monaco Editor loader to use local assets
-if (typeof window !== 'undefined') {
-    loader.config({
-        paths: {
-            vs: '/monaco-editor/vs'
-        }
-    });
-}
+
 
 // â”€â”€â”€ Module-level constants â€” live outside React, never recreated â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const SQL_KEYWORDS = [

@@ -16,6 +16,7 @@ class RealtimeManager extends EventEmitter {
     private reconnectTimeout: NodeJS.Timeout | null = null;
     private lastLogError: string | null = null;
     private lastLogTime = 0;
+    private destroyed = false;
 
     constructor() {
         super();
@@ -24,6 +25,7 @@ class RealtimeManager extends EventEmitter {
     }
 
     public async destroy() {
+        this.destroyed = true;
         if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
             this.reconnectTimeout = null;
@@ -37,6 +39,7 @@ class RealtimeManager extends EventEmitter {
     }
 
     private async init() {
+        if (this.destroyed) return;
         if (this.isConnecting || this.client) return;
         this.isConnecting = true;
 
@@ -56,7 +59,14 @@ class RealtimeManager extends EventEmitter {
                 new Promise((_, reject) => setTimeout(() => reject(new Error('Connection terminated due to connection timeout')), 5000))
             ]);
 
+            if (this.destroyed) {
+                try { this.client.release(); } catch {}
+                this.client = null;
+                return;
+            }
+
             this.client.on('notification', (msg: any) => {
+                if (this.destroyed) return;
                 try {
                     const payload = JSON.parse(msg.payload);
                     let projectId = payload.project_id;
@@ -72,6 +82,7 @@ class RealtimeManager extends EventEmitter {
             });
 
             this.client.on('error', (err: any) => {
+                if (this.destroyed) return;
                 const errMsg = err.message || String(err);
                 if (errMsg !== this.lastLogError) {
                     console.error('[RealtimeManager] Database Listener Error:', err);
@@ -106,6 +117,7 @@ class RealtimeManager extends EventEmitter {
     }
 
     private reconnect() {
+        if (this.destroyed) return;
         if (this.reconnectTimeout) return; // Already scheduled
 
         if (this.client) {
@@ -145,6 +157,10 @@ class RealtimeManager extends EventEmitter {
                 console.log(`[Realtime] ☁️ -1 Subscriber. Remaining for ${projectId}: ${remaining}`);
             }
         };
+    }
+
+    public getSubscriberCount(projectId: string): number {
+        return this.listenerCount(`project:${projectId}`);
     }
 }
 

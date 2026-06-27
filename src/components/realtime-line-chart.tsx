@@ -156,39 +156,39 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
 
     return (
         <Card 
-            className="col-span-4 flex flex-col h-full min-h-[400px] border-border bg-card/70 backdrop-blur-md shadow-2xl transition-colors hover:bg-secondary/70"
+            className="col-span-4 flex flex-col h-full min-h-[400px] border-border bg-card/30 backdrop-blur-md transition-colors hover:bg-card/50"
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
-            <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-border/50 bg-secondary/40">
+            <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-border/40">
                 <div className="space-y-1">
-                    <CardTitle className="text-xl font-bold flex items-center gap-2 text-foreground">
-                        <Activity className="h-5 w-5 text-muted-foreground/75" />
+                    <CardTitle className="text-base font-medium flex items-center gap-2 text-foreground">
+                        <Activity className="h-4 w-4 text-muted-foreground/60" />
                         Real-Time Activity
                     </CardTitle>
-                    <CardDescription className="text-muted-foreground font-medium">Live incoming requests</CardDescription>
+                    <CardDescription className="text-muted-foreground text-xs">Live incoming requests</CardDescription>
                 </div>
 
                 {/* KPI Metrics */}
                 <div className="flex gap-8">
                     <div className="flex flex-col items-end">
-                        <span className="text-[10px] text-muted-foreground/75 uppercase tracking-widest font-bold">Current</span>
+                        <span className="text-[10px] text-muted-foreground/60 uppercase tracking-widest font-mono">Current</span>
                         <div className="flex items-center gap-2">
                             <div className="h-2 w-2 rounded-full bg-orange-500/70" />
-                            <span className="text-2xl font-bold font-mono text-orange-400">
+                            <span className="text-xl font-semibold font-mono text-orange-400">
                                 {currentRPS}
                             </span>
                         </div>
                     </div>
                     <div className="flex flex-col items-end">
-                        <span className="text-[10px] text-muted-foreground/75 uppercase tracking-widest font-bold">Peak (60s)</span>
-                        <span className="text-2xl font-bold font-mono text-foreground/85">
+                        <span className="text-[10px] text-muted-foreground/60 uppercase tracking-widest font-mono">Peak (60s)</span>
+                        <span className="text-xl font-semibold font-mono text-foreground/80">
                             {peakRPS}
                         </span>
                     </div>
                     <div className="flex flex-col items-end">
-                        <span className="text-[10px] text-muted-foreground/75 uppercase tracking-widest font-bold">Avg</span>
-                        <span className="text-2xl font-bold font-mono text-muted-foreground/75">
+                        <span className="text-[10px] text-muted-foreground/60 uppercase tracking-widest font-mono">Avg</span>
+                        <span className="text-xl font-semibold font-mono text-muted-foreground/70">
                             {averages.requests}
                         </span>
                     </div>
@@ -279,7 +279,10 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                                 strokeWidth={1.5}
                                 fill="url(#colorRequests)"
                                 name="Total Requests"
-                                isAnimationActive={false}
+                                isAnimationActive={true}
+                                animationDuration={2000}
+                                animationEasing="ease-out"
+                                animationBegin={100}
                                 dot={renderCustomDot}
                                 activeDot={false}
                             />
@@ -291,7 +294,10 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                                 strokeOpacity={0.7}
                                 fill="url(#colorApi)"
                                 name="API Calls"
-                                isAnimationActive={false}
+                                isAnimationActive={true}
+                                animationDuration={2000}
+                                animationEasing="ease-out"
+                                animationBegin={250}
                                 dot={false}
                                 activeDot={false}
                             />
@@ -303,7 +309,10 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
                                 strokeOpacity={0.7}
                                 fill="url(#colorSql)"
                                 name="SQL Executions"
-                                isAnimationActive={false}
+                                isAnimationActive={true}
+                                animationDuration={2000}
+                                animationEasing="ease-out"
+                                animationBegin={400}
                                 dot={false}
                                 activeDot={false}
                             />

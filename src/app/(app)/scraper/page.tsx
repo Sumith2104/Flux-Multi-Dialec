@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useState, useEffect, useContext } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -193,10 +193,10 @@ export default function ScraperDashboard() {
                     </div>
 
                     <div className="lg:col-span-4 sticky top-20 h-fit">
-                        <Card className="border-border shadow-xl rounded-lg overflow-hidden">
-                            <CardHeader className="bg-muted/30 border-b pb-4">
-                                <CardTitle className="flex items-center gap-2 text-lg">
-                                    <DatabaseZap className="h-5 w-5 text-orange-500" />
+                        <Card className="border-border rounded-lg overflow-hidden">
+                            <CardHeader className="border-b pb-4">
+                                <CardTitle className="flex items-center gap-2 text-base font-medium">
+                                    <DatabaseZap className="h-4 w-4 text-muted-foreground" />
                                     Execution Telemetry
                                 </CardTitle>
                                 <CardDescription>Real-time logs for the selected scraper.</CardDescription>

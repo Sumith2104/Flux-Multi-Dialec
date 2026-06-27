@@ -63,7 +63,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
             <div className="flex items-start gap-3 sm:items-center sm:gap-4">
                 <BackButton />
                 <div className="min-w-0">
-                    <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Settings</h1>
+                    <h1 className="text-2xl font-semibold tracking-tight sm:text-2xl">Settings</h1>
                     <p className="text-sm leading-6 text-muted-foreground sm:text-base">
                         Manage your workspace, API keys, integrations, and preferences.
                     </p>
@@ -82,8 +82,8 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
                                     key={item.href}
                                     href={item.href}
                                     className={cn(
-                                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted hover:text-foreground flex-shrink-0 whitespace-nowrap",
-                                        isActive ? "bg-muted text-primary" : "text-muted-foreground"
+                                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted hover:text-foreground flex-shrink-0 whitespace-nowrap transition-colors",
+                                        isActive ? "bg-muted text-foreground font-medium" : "text-muted-foreground font-normal"
                                     )}
                                 >
                                     <Icon className="h-4 w-4" />

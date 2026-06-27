@@ -27,13 +27,13 @@ export async function POST(req: Request) {
             console.warn("Could not load integration guide for AI context", e);
         }
 
-        const systemPrompt = `You are Flux AI, a friendly, extremely helpful floating assistant embedded inside the Fluxbase dashboard. 
-Your job is to guide developers step-by-step through setting up their projects, understanding the platform, and integrating our APIs.
+        const systemPrompt = `You are Flux AI, an autonomous, highly agentic AI developer assistant embedded inside the Fluxbase dashboard. 
+Your job is to act as an intelligent co-pilot: formulating step-by-step action plans, querying workspace context, navigating pages, executing infrastructure actions, and automating developer workflows.
 
-CRITICAL RULES:
-1. BE CONCISE. Do not output massive walls of text unless explicitly asked for a full tutorial. The user is in a small chat widget. 
-2. Be conversational and highly encouraging. Use emojis where appropriate.
-3. The user's current dashboard URL path is: "${currentPath}". Use this context to know what they are looking at. If they are on '/dashboard/tables/create', tell them how to create a table.
+AGENTIC WORKFLOW & PLANNING INSTRUCTIONS:
+1. ACT AS AN AGENT, NOT A BOT: For complex tasks (e.g. creating tables, seeding data, setting up webhooks, analyzing schema), explicitly outline your multi-step action plan using Markdown formatting (e.g., "### 🎯 Agent Execution Plan\n- **Step 1**: Inspect workspace schema\n- **Step 2**: Generate optimized DDL\n- **Step 3**: Request execution approval").
+2. BE CONCISE & PRECISE: Keep explanations clear, structured, and conversational. Use emojis where appropriate.
+3. CONTEXT AWARENESS: The user's current URL path is: "${currentPath}". Use this to understand what page they are viewing.
 4. AGENTIC NAVIGATION: You have the physical ability to teleport the user's browser to different pages. If you agree to take the user to a different page, YOU MUST physically output the exact navigation tag at the very end of your response: [NAVIGATE:/the_path]. If you do not include this tag, the user will be stranded.
 Here are the absolute paths you can use:
 - Dashboard / Projects: /dashboard
@@ -87,29 +87,24 @@ Provide your response in Markdown formatting. Do NOT use HTML. Keep code snippet
 
         let responseText = response.text;
 
-        // Process tool requests from history to guarantee tags are returned even if the model omits them
+        // Process tool requests from response to guarantee tags are returned even if the model omits them
         try {
-            const history = (response as any).toHistory();
             const actionTags: string[] = [];
-
-            for (const msg of history) {
-                if (msg.role === 'model' || msg.role === 'assistant') {
-                    if (Array.isArray(msg.content)) {
-                        for (const part of msg.content) {
-                            if (part.toolRequest) {
-                                const req = part.toolRequest;
-                                if (req.name === 'navigatePageTool' && req.input?.path) {
-                                    actionTags.push(`[NAVIGATE:${req.input.path}]`);
-                                } else if (req.name === 'clickElementTool' && req.input?.elementId) {
-                                    actionTags.push(`[CLICK:${req.input.elementId}]`);
-                                } else if (req.name === 'typeInputTool' && req.input?.value && req.input?.locator) {
-                                    actionTags.push(`[TYPE:${req.input.value}:${req.input.locator}]`);
-                                } else if (req.name === 'createProjectTool' && req.input?.projectName && req.input?.dialect) {
-                                    actionTags.push(`[CONFIRM_ACTION:CREATE_PROJECT:${req.input.projectName}:${req.input.dialect}]`);
-                                } else if (req.name === 'runSqlTool' && req.input?.query) {
-                                    actionTags.push(`[CONFIRM_ACTION:EXECUTE_SQL:${req.input.query}]`);
-                                }
-                            }
+            const content = response.message?.content || (response as any).output?.content || [];
+            if (Array.isArray(content)) {
+                for (const part of content) {
+                    if (part.toolRequest) {
+                        const req = part.toolRequest;
+                        if (req.name === 'navigatePageTool' && req.input?.path) {
+                            actionTags.push(`[NAVIGATE:${req.input.path}]`);
+                        } else if (req.name === 'clickElementTool' && req.input?.elementId) {
+                            actionTags.push(`[CLICK:${req.input.elementId}]`);
+                        } else if (req.name === 'typeInputTool' && req.input?.value && req.input?.locator) {
+                            actionTags.push(`[TYPE:${req.input.value}:${req.input.locator}]`);
+                        } else if (req.name === 'createProjectTool' && req.input?.projectName && req.input?.dialect) {
+                            actionTags.push(`[CONFIRM_ACTION:CREATE_PROJECT:${req.input.projectName}:${req.input.dialect}]`);
+                        } else if (req.name === 'runSqlTool' && req.input?.query) {
+                            actionTags.push(`[CONFIRM_ACTION:EXECUTE_SQL:${req.input.query}]`);
                         }
                     }
                 }
@@ -121,7 +116,7 @@ Provide your response in Markdown formatting. Do NOT use HTML. Keep code snippet
                 responseText += '\n' + uniqueTags.join('\n');
             }
         } catch (historyError) {
-            console.error('[AI Chat] Failed to extract tool calls from history:', historyError);
+            console.error('[AI Chat] Failed to extract tool calls:', historyError);
         }
 
         return NextResponse.json({ success: true, text: responseText });

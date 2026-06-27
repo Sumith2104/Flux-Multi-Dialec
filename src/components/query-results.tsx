@@ -8,25 +8,101 @@ import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { Button } from './ui/button';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
+import { useToast } from '@/hooks/use-toast';
+
 interface QueryResultsProps {
-    results: { rows: any[], columns: string[] } | null;
+    results: { rows: any[], columns: string[], tableName?: string | null, primaryKeyColumn?: string | null } | null;
     error: string | null;
     isGenerating: boolean;
     hasMore?: boolean;
     isFetchingMore?: boolean;
     onLoadMore?: () => void;
+    projectId?: string;
+    onRowUpdatedInResults?: (rowIndex: number, columnName: string, newValue: any) => void;
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#6366f1'];
 
-export function QueryResults({ results, error, isGenerating, hasMore, isFetchingMore, onLoadMore }: QueryResultsProps) {
+export function QueryResults({ results, error, isGenerating, hasMore, isFetchingMore, onLoadMore, projectId, onRowUpdatedInResults }: QueryResultsProps) {
     const [view, setView] = useState<'table' | 'chart' | 'json'>('table');
     const [chartType, setChartType] = useState<'bar' | 'line' | 'pie'>('bar');
+    const { toast } = useToast();
+
+    // Inline Cell Editing State
+    const [editingCell, setEditingCell] = useState<{ rowIndex: number; columnName: string } | null>(null);
+    const [editValue, setEditValue] = useState<string>('');
+    const [updatingCell, setUpdatingCell] = useState<{ rowIndex: number; columnName: string } | null>(null);
+
+    // Primary Key Column Resolution
+    const pkColName = useMemo(() => {
+        if (!results || !results.columns) return null;
+        if (results.primaryKeyColumn) return results.primaryKeyColumn;
+        const found = results.columns.find(c => c.toLowerCase() === 'id' || c.toLowerCase().endsWith('_id'));
+        return found || 'id';
+    }, [results]);
+
+    const actualPkKey = useMemo(() => {
+        if (!results || !results.columns || !pkColName) return null;
+        return results.columns.find(c => c.toLowerCase() === pkColName.toLowerCase()) || null;
+    }, [results, pkColName]);
+
+    const handleCellDoubleClick = (rowIndex: number, colName: string, currentValue: any) => {
+        const row = results?.rows[rowIndex];
+        if (!results?.tableName) {
+            toast({ variant: 'destructive', title: 'Cannot edit', description: 'Table name could not be automatically detected for this query.' });
+            return;
+        }
+        
+        if (!row || !actualPkKey || row[actualPkKey] === undefined || row[actualPkKey] === null) {
+            toast({ variant: 'destructive', title: 'Cannot edit cell', description: `Output must include the primary key column ('${pkColName}').` });
+            return;
+        }
+        if (colName.toLowerCase() === pkColName?.toLowerCase()) return;
+
+        setEditingCell({ rowIndex, columnName: colName });
+        setEditValue(currentValue === null ? '' : String(currentValue));
+    };
+
+    const handleSaveCell = async (rowIndex: number, colName: string) => {
+        if (!projectId || !results?.tableName) return;
+        const row = results.rows[rowIndex];
+        
+        if (!row || !actualPkKey || row[actualPkKey] === undefined || row[actualPkKey] === null) return;
+        const rowId = String(row[actualPkKey]);
+
+        const originalValue = row[colName];
+        const stringifiedOriginal = originalValue === null ? '' : String(originalValue);
+        if (editValue === stringifiedOriginal) {
+            setEditingCell(null);
+            return;
+        }
+
+        setUpdatingCell({ rowIndex, columnName: colName });
+        setEditingCell(null);
+
+        try {
+            const { updateTableCellValueAction } = await import('@/app/(app)/editor/actions');
+            const res = await updateTableCellValueAction(projectId, results.tableName, rowId, colName, editValue);
+            
+            if (res.success) {
+                toast({ title: 'Success', description: `Cell '${colName}' updated.` });
+                if (onRowUpdatedInResults) {
+                    onRowUpdatedInResults(rowIndex, colName, editValue);
+                }
+            } else {
+                toast({ variant: 'destructive', title: 'Update Failed', description: res.error || 'Failed to update cell.' });
+            }
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Error', description: e.message || 'An unexpected error occurred.' });
+        } finally {
+            setUpdatingCell(null);
+        }
+    };
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
         if (!onLoadMore || !hasMore || isFetchingMore) return;
         const target = e.currentTarget;
-        const threshold = 150; // pixels from the bottom
+        const threshold = 150;
         const isNearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < threshold;
         if (isNearBottom) {
             onLoadMore();
@@ -37,10 +113,9 @@ export function QueryResults({ results, error, isGenerating, hasMore, isFetching
         if (!results || !results.rows || results.rows.length === 0) return null;
 
         const firstRow = results.rows[0];
-        let xAxisKey = results.columns[0]; // Default string/category column
+        let xAxisKey = results.columns[0];
         let yAxisKey = results.columns.find(c => typeof firstRow[c] === 'number') || results.columns[1] || results.columns[0];
 
-        // Try to identify a better string category for X and number for Y
         for (const col of results.columns) {
             if (typeof firstRow[col] === 'string' && !xAxisKey) xAxisKey = col;
             if (typeof firstRow[col] === 'number') yAxisKey = col;
@@ -69,10 +144,12 @@ export function QueryResults({ results, error, isGenerating, hasMore, isFetching
                     <p>{error}</p>
                 </div>
             </div>
-        )
+        );
     }
 
     if (results && results.rows) {
+        const isEditableTable = Boolean(results.tableName && actualPkKey);
+
         return (
             <div className="flex flex-col h-full bg-background relative overflow-hidden">
                 <div className="flex shrink-0 flex-col gap-2 border-b bg-muted/10 px-2 py-1 sm:flex-row sm:items-center sm:justify-between">
@@ -91,6 +168,13 @@ export function QueryResults({ results, error, isGenerating, hasMore, isFetching
                             <Button variant={chartType === 'pie' ? 'secondary' : 'ghost'} size="sm" className="h-6 w-6 p-0" onClick={() => setChartType('pie')}><PieChartIcon className="h-3 w-3" /></Button>
                         </div>
                     )}
+                    {isEditableTable && results.rows.length > 0 && view === 'table' && (
+                        <div className="text-[10px] text-muted-foreground/80 bg-muted/20 border px-2 py-0.5 rounded font-medium flex items-center gap-1.5 font-sans mr-2">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="font-semibold text-foreground">{results.tableName}</span>
+                            <span className="opacity-60">• Double-click cell to edit</span>
+                        </div>
+                    )}
                     {hasMore && view === 'table' && (
                         <div className="mr-2 flex items-center text-[10px] font-medium text-muted-foreground font-sans">
                             Scroll down to load more (Loaded: {results.rows.length})
@@ -99,11 +183,6 @@ export function QueryResults({ results, error, isGenerating, hasMore, isFetching
                     {!hasMore && view === 'table' && results.rows.length > 0 && (
                         <div className="mr-2 flex items-center text-[10px] font-medium text-muted-foreground font-sans">
                             All {results.rows.length.toLocaleString()} rows loaded
-                        </div>
-                    )}
-                    {results.rows.length > 500 && view === 'chart' && (
-                        <div className="text-[10px] text-muted-foreground mr-2 font-medium flex items-center">
-                            Showing first 500 of {results.rows.length.toLocaleString()} rows
                         </div>
                     )}
                 </div>
@@ -137,22 +216,57 @@ export function QueryResults({ results, error, isGenerating, hasMore, isFetching
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    results.rows.map((row, rowIndex) => (
-                                        <TableRow key={rowIndex} className="border-b border-border/50 hover:bg-muted/30 transition-colors group">
-                                            {results.columns.map((col, colIndex) => (
-                                                <TableCell
-                                                    key={`${rowIndex}-${colIndex}-${col}`}
-                                                    className="px-4 py-1.5 whitespace-nowrap font-mono text-xs border-r border-border/50 last:border-r-0 group-hover:border-border/80"
-                                                >
-                                                    {row[col] === null ? (
-                                                        <span className="text-muted-foreground/50 italic text-[10px]">NULL</span>
-                                                    ) : (
-                                                        <span className="text-foreground/90">{String(row[col])}</span>
-                                                    )}
-                                                </TableCell>
-                                            ))}
-                                        </TableRow>
-                                    ))
+                                    results.rows.map((row, rowIndex) => {
+                                        const rowHasPk = actualPkKey && row[actualPkKey] !== undefined && row[actualPkKey] !== null;
+                                        const canEditRow = isEditableTable && rowHasPk;
+
+                                        return (
+                                            <TableRow key={rowIndex} className="border-b border-border/50 hover:bg-muted/30 transition-colors group h-9">
+                                                {results.columns.map((col, colIndex) => {
+                                                    const isEditing = editingCell?.rowIndex === rowIndex && editingCell?.columnName === col;
+                                                    const isUpdating = updatingCell?.rowIndex === rowIndex && updatingCell?.columnName === col;
+                                                    const isPkCell = pkColName ? col.toLowerCase() === pkColName.toLowerCase() : false;
+                                                    const canEditCell = canEditRow && !isPkCell;
+
+                                                    return (
+                                                        <TableCell
+                                                            key={`${rowIndex}-${colIndex}-${col}`}
+                                                            className={`relative h-9 p-0 whitespace-nowrap font-mono text-xs border-r border-border/50 last:border-r-0 select-none ${canEditCell ? 'cursor-pointer hover:bg-primary/5' : ''}`}
+                                                            onDoubleClick={() => canEditCell && handleCellDoubleClick(rowIndex, col, row[col])}
+                                                        >
+                                                            {isUpdating ? (
+                                                                <div className="w-full h-full flex items-center gap-2 px-4 py-1.5 bg-muted/20">
+                                                                    <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
+                                                                    <span className="text-muted-foreground truncate">{editValue}</span>
+                                                                </div>
+                                                            ) : isEditing ? (
+                                                                <input
+                                                                    type="text"
+                                                                    className="absolute inset-0 w-full h-full px-4 py-1.5 bg-background text-foreground font-mono text-xs border-2 border-primary focus:outline-none focus:ring-0 focus-visible:ring-0 rounded-none shadow-none z-30"
+                                                                    value={editValue}
+                                                                    onChange={(e) => setEditValue(e.target.value)}
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === 'Enter') handleSaveCell(rowIndex, col);
+                                                                        if (e.key === 'Escape') setEditingCell(null);
+                                                                    }}
+                                                                    onBlur={() => handleSaveCell(rowIndex, col)}
+                                                                    autoFocus
+                                                                />
+                                                            ) : (
+                                                                <div className="w-full h-full flex items-center px-4 py-1.5">
+                                                                    {row[col] === null ? (
+                                                                        <span className="text-muted-foreground/50 italic text-[10px]">NULL</span>
+                                                                    ) : (
+                                                                        <span className="text-foreground/90 truncate">{String(row[col])}</span>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </TableCell>
+                                                    );
+                                                })}
+                                            </TableRow>
+                                        );
+                                    })
                                 )}
                                 {isFetchingMore && (
                                     <TableRow className="hover:bg-transparent">

@@ -192,9 +192,9 @@ export default function CreateProjectPage() {
                     <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
                 </Button>
 
-                <Card className="border-white/10 shadow-2xl bg-card/60 backdrop-blur-xl">
+                <Card className="border-border bg-card/30">
                     <CardHeader>
-                        <CardTitle className="text-3xl font-bold tracking-tight bg-gradient-to-r from-white via-white/90 to-white/60 bg-clip-text text-transparent">Create New Project</CardTitle>
+                        <CardTitle className="text-2xl font-semibold tracking-tight">Create New Project</CardTitle>
                         <CardDescription>Configure and deploy a dynamic database tenant in your workspace.</CardDescription>
                     </CardHeader>
                     <CardContent>

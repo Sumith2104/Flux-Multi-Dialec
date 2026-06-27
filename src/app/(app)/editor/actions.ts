@@ -476,3 +476,50 @@ export async function deleteTableAction(projectId: string, tableId: string, tabl
         return { error: `An unexpected error occurred: ${(error as Error).message}` };
     }
 }
+
+export async function updateTableCellValueAction(
+    projectId: string,
+    tableName: string,
+    rowId: string,
+    columnName: string,
+    newValue: any
+) {
+    const userId = await getCurrentUserId();
+    if (!userId) return { error: 'Unauthorized' };
+
+    try {
+        const columns = await getColumnsForTable(projectId, tableName);
+        const targetCol = columns.find(c => c.column_name.toLowerCase() === columnName.toLowerCase());
+        if (!targetCol) {
+            return { error: `Column '${columnName}' not found in table '${tableName}'.` };
+        }
+
+        const updates = {
+            [targetCol.column_name]: newValue === '' ? null : newValue
+        };
+
+        await updateRow(projectId, tableName, rowId, updates);
+        return { success: true };
+    } catch (error: any) {
+        console.error('Failed to update table cell:', error);
+        return { error: error.message || 'Failed to update cell.' };
+    }
+}
+
+export async function updateFullRowAction(
+    projectId: string,
+    tableName: string,
+    rowId: string,
+    updates: Record<string, any>
+) {
+    const userId = await getCurrentUserId();
+    if (!userId) return { error: 'Unauthorized' };
+
+    try {
+        await updateRow(projectId, tableName, rowId, updates);
+        return { success: true };
+    } catch (error: any) {
+        console.error('Failed to update row:', error);
+        return { error: error.message || 'Failed to update row.' };
+    }
+}

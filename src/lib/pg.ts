@@ -8,18 +8,24 @@ declare global {
 }
 
 const isServerless = process.env.VERCEL === '1' || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
-const defaultPoolMax = isServerless ? '2' : '15';
+const defaultPoolMax = isServerless ? '2' : '30';
+
+const connectionString = process.env.AWS_RDS_POSTGRES_URL || process.env.DATABASE_URL || process.env.POSTGRES_URL;
+
+const needsSsl = !!(
+    connectionString?.includes('rds.amazonaws.com') ||
+    connectionString?.includes('supabase') ||
+    connectionString?.includes('neon.tech') ||
+    connectionString?.includes('sslmode=require') ||
+    process.env.NODE_ENV === 'production'
+);
 
 export const pool = global._pool || new Pool({
-    connectionString: process.env.AWS_RDS_POSTGRES_URL,
-    // [STABILITY FIX]: Enable SSL automatically if connecting to RDS, even in local dev.
-    // RDS rejects unencrypted connections with "no pg_hba.conf entry... no encryption".
-    ssl: process.env.AWS_RDS_POSTGRES_URL?.includes('rds.amazonaws.com') 
-        ? { rejectUnauthorized: false } 
-        : (process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false),
+    connectionString,
+    ssl: needsSsl ? { rejectUnauthorized: false } : false,
     max: parseInt(process.env.DATABASE_POOL_MAX || defaultPoolMax, 10),
     idleTimeoutMillis: isServerless ? 10000 : 600000, // 10s in serverless, 10m in local dev
-    connectionTimeoutMillis: 30000, // Safe 30s timeout to prevent failures during bulk ingestion loads
+    connectionTimeoutMillis: 5000, // Rapid 5s timeout to prevent requests from hanging endlessly
     keepAlive: true,
 });
 

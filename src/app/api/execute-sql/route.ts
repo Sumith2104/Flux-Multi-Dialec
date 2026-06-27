@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { SqlEngine } from '@/lib/sql-engine';
-import { getProjectById, logAuditAction, ensureNotSuspended } from '@/lib/data';
+import { getProjectById, logAuditAction, ensureNotSuspended, getColumnsForTable } from '@/lib/data';
 import { invalidateTableCache } from '@/lib/cache';
 import { fireWebhooks } from '@/lib/webhooks';
 import { ERROR_CODES, FluxbaseError } from '@/lib/error-codes';
@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
         assertProjectScope(auth, projectId);
 
         // Optimization: Burst Cache (Reads only)
-        const isSelect = query.trim().toUpperCase().startsWith('SELECT');
+        const isSelect = /^\s*(?:--.*\r?\n|\/\*[\s\S]*?\*\/)*\s*SELECT/i.test(query);
         const cacheKey = isSelect ? `sql_cache:${projectId}:${Buffer.from(query + JSON.stringify(params || [])).toString('base64').substring(0, 100)}` : null;
 
         // Pre-Flight Optimization: Parallelize Auth, Burst Cache, and Traffic Limits
@@ -144,6 +144,29 @@ export async function POST(req: NextRequest) {
         await ensureNotSuspended(project);
 
         if (cachedResult && cachedResult.expiresAt > Date.now()) {
+            // Fix: ensure cached SELECT results also return tableName and primaryKeyColumn for inline editing
+            if (isSelect && cachedResult.result && !cachedResult.result.tableName) {
+                try {
+                    let selectTableName: string | null = null;
+                    let primaryKeyColumn: string | null = null;
+
+                    const tblMatch = query.match(/(?:FROM)\s+["'\`]?(?:[a-zA-Z0-9_]+\.)?["'\`]?([a-zA-Z0-9_]+)["'\`]?/i);
+                    if (tblMatch) {
+                        selectTableName = tblMatch[1];
+                        const cols = await getColumnsForTable(projectId, selectTableName, userId);
+                        const pk = cols.find(c => c.is_primary_key);
+                        if (pk) {
+                            primaryKeyColumn = pk.column_name;
+                        }
+                    }
+
+                    cachedResult.result.tableName = selectTableName;
+                    cachedResult.result.primaryKeyColumn = primaryKeyColumn;
+                } catch (err) {
+                    console.warn('[Cache Table Match Error]', err);
+                }
+            }
+
             return NextResponse.json({
                 success: true,
                 result: cachedResult.result,
@@ -162,6 +185,8 @@ export async function POST(req: NextRequest) {
         const duration = Date.now() - startTime;
 
         const backgroundTasks: Promise<any>[] = [];
+        let selectTableName: string | null = null;
+        let primaryKeyColumn: string | null = null;
 
         // DML detection — hoisted so it's usable in audit log, background tasks, and response
         const upperQuery = query.trim().toUpperCase();
@@ -214,6 +239,13 @@ export async function POST(req: NextRequest) {
                         if (tableObj) {
                             mutatedTable = typeof tableObj === 'string' ? tableObj : (tableObj.table || tableObj.expr?.value);
                         }
+                    } else if (sqlAst.type === 'select') {
+                        if (Array.isArray(sqlAst.from) && sqlAst.from.length === 1) {
+                            const tableObj = sqlAst.from[0];
+                            if (tableObj && typeof tableObj.table === 'string') {
+                                selectTableName = tableObj.table;
+                            }
+                        }
                     }
 
                     if (sqlAst.type === 'insert' && Array.isArray(sqlAst.columns)) {
@@ -229,9 +261,20 @@ export async function POST(req: NextRequest) {
                     }
                 }
             } catch (err) {
-                console.warn('[AST Parser Fallback] Falling back to regex for mutation detection:', err);
-                const tblMatch = query.match(/(?:INTO|UPDATE|FROM)\s+["'\`]?(?:[a-zA-Z0-9_]+\.)?["'\`]?([a-zA-Z0-9_]+)["'\`]?/i);
-                if (tblMatch) mutatedTable = tblMatch[1];
+                console.warn('[AST Parser Fallback] Falling back to regex for detection:', err);
+            }
+
+            // Fallback: Use regex if AST extraction was unsuccessful
+            if (isSelect && !selectTableName) {
+                const tblMatch = query.match(/(?:FROM)\s+["'\`]?(?:[a-zA-Z0-9_]+\.)?["'\`]?([a-zA-Z0-9_]+)["'\`]?/i);
+                if (tblMatch) {
+                    selectTableName = tblMatch[1];
+                }
+            } else if (!isSelect && !mutatedTable) {
+                const tblMatch = query.match(/(?:INTO|UPDATE)\s+["'\`]?(?:[a-zA-Z0-9_]+\.)?["'\`]?([a-zA-Z0-9_]+)["'\`]?/i);
+                if (tblMatch) {
+                    mutatedTable = tblMatch[1];
+                }
             }
 
             if (mutatedTable) {
@@ -290,13 +333,27 @@ export async function POST(req: NextRequest) {
             }
         }
 
+        if (selectTableName) {
+            try {
+                const cols = await getColumnsForTable(projectId, selectTableName, userId);
+                const pk = cols.find(c => c.is_primary_key);
+                if (pk) {
+                    primaryKeyColumn = pk.column_name;
+                }
+            } catch (err) {
+                console.warn(`[Primary Key Detection Failed] For table ${selectTableName}:`, err);
+            }
+        }
+
         const responseData = {
             success: true,
             result: {
                 rows: result.rows || [],
                 columns: result.columns || [],
                 message: result.message,
-                hasMore: result.hasMore
+                hasMore: result.hasMore,
+                tableName: selectTableName,
+                primaryKeyColumn: primaryKeyColumn
             },
             explanation: result.explanation || [],
             executionInfo: {

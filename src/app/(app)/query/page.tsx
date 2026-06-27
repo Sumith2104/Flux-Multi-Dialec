@@ -209,6 +209,26 @@ export default function QueryPage() {
 
   }, [query, project, toast, addToHistory]);
 
+  const handleRowUpdatedInResults = useCallback((rowIndex: number, columnName: string, newValue: any) => {
+    setQueryResponse((prev: any) => {
+      if (!prev || !prev.result || !prev.result.rows) return prev;
+      const updatedRows = [...prev.result.rows];
+      if (updatedRows[rowIndex]) {
+        updatedRows[rowIndex] = {
+          ...updatedRows[rowIndex],
+          [columnName]: newValue === '' ? null : newValue
+        };
+      }
+      return {
+        ...prev,
+        result: {
+          ...prev.result,
+          rows: updatedRows
+        }
+      };
+    });
+  }, []);
+
   const fetchNextPage = useCallback(async () => {
     if (isFetchingMore || !hasMore || !project?.project_id || !queryResponse?.success) return;
 
@@ -527,6 +547,8 @@ export default function QueryPage() {
                       hasMore={hasMore}
                       isFetchingMore={isFetchingMore}
                       onLoadMore={fetchNextPage}
+                      projectId={project?.project_id}
+                      onRowUpdatedInResults={handleRowUpdatedInResults}
                     />
                   ) : (
                     <div className="flex h-full flex-col items-center justify-center p-8 text-center text-muted-foreground">
@@ -783,6 +805,8 @@ export default function QueryPage() {
                     hasMore={hasMore}
                     isFetchingMore={isFetchingMore}
                     onLoadMore={fetchNextPage}
+                    projectId={project?.project_id}
+                    onRowUpdatedInResults={handleRowUpdatedInResults}
                   />
                 ) : (
                   <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8 opacity-40">

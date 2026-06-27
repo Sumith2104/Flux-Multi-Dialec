@@ -71,11 +71,20 @@ export const redis = new Proxy({} as Redis, {
                         return result.catch(err => {
                             // Downgrade transient network errors (DNS, fetch failed) to warn — not bugs
                             const isNetworkError = err?.cause?.code === 'ENOTFOUND' || err?.message?.includes('fetch failed');
+                            const isNoScript = err?.message?.includes('NOSCRIPT');
+                            
                             if (isNetworkError) {
                                 console.warn(`[Redis] Network error during "${String(prop)}" — Redis unreachable, failing open.`);
+                            } else if (isNoScript) {
+                                console.log(`[Redis] NOSCRIPT detected during "${String(prop)}" — letting client fallback to EVAL.`);
                             } else {
                                 console.error(`[Redis] Error during "${String(prop)}" operation:`, err);
                             }
+
+                            if (isNoScript) {
+                                throw err;
+                            }
+
                             // Safe fallbacks on promise rejection
                             if (prop === 'ping') throw err;
                             if (prop === 'eval' || prop === 'evalsha') return [1, 100, Date.now() + 10000, 100];
@@ -89,7 +98,13 @@ export const redis = new Proxy({} as Redis, {
                 }
                 return (client as any)[prop];
             } catch (err) {
-                console.error(`[Redis] Error accessing property/method "${String(prop)}":`, err);
+                const isNoScript = (err as any)?.message?.includes('NOSCRIPT');
+                if (!isNoScript) {
+                    console.error(`[Redis] Error accessing property/method "${String(prop)}":`, err);
+                }
+                if (isNoScript) {
+                    throw err;
+                }
                 if (prop === 'ping') throw err;
                 if (prop === 'eval' || prop === 'evalsha') return [1, 100, Date.now() + 10000, 100];
                 if (prop === 'keys' || prop === 'smembers') return [];

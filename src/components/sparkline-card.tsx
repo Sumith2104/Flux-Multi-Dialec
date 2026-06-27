@@ -48,7 +48,7 @@ export function SparklineCard({ title, value, subtitle, type, color, data }: Spa
 
     return (
         <Card
-            className="h-full w-full aspect-square flex flex-col justify-between relative overflow-hidden group border-border/80 bg-secondary/60 backdrop-blur-md shadow-lg transition-colors hover:bg-secondary/70"
+            className="h-full w-full aspect-square flex flex-col justify-between relative overflow-hidden group border-border bg-card/30 backdrop-blur-md transition-colors hover:bg-card/50"
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
@@ -69,7 +69,9 @@ export function SparklineCard({ title, value, subtitle, type, color, data }: Spa
                                 stroke={activeColor}
                                 strokeWidth={3}
                                 dot={false}
-                                isAnimationActive={false}
+                                isAnimationActive={true}
+                                animationDuration={1800}
+                                animationEasing="ease-out"
                             />
                         </LineChart>
                     ) : type === "bar" ? (
@@ -84,7 +86,9 @@ export function SparklineCard({ title, value, subtitle, type, color, data }: Spa
                                 dataKey="val"
                                 fill={activeColor}
                                 radius={[4, 4, 0, 0]}
-                                isAnimationActive={false}
+                                isAnimationActive={true}
+                                animationDuration={1800}
+                                animationEasing="ease-out"
                                 minPointSize={2}
                             />
                         </BarChart>
@@ -108,7 +112,9 @@ export function SparklineCard({ title, value, subtitle, type, color, data }: Spa
                                 stroke={activeColor}
                                 fillOpacity={1}
                                 fill={`url(#color-${title.replace(/\s+/g, '')})`}
-                                isAnimationActive={false}
+                                isAnimationActive={true}
+                                animationDuration={1800}
+                                animationEasing="ease-out"
                                 strokeWidth={2}
                             />
                         </AreaChart>
@@ -119,7 +125,7 @@ export function SparklineCard({ title, value, subtitle, type, color, data }: Spa
             {/* Foreground Content */}
             <div className="relative z-10 flex flex-col justify-between h-full p-6 pointer-events-none">
                 <CardHeader className="p-0 pb-2">
-                    <CardTitle className="text-sm font-bold tracking-wider uppercase text-muted-foreground/75 flex items-center gap-2">
+                    <CardTitle className="text-xs font-medium tracking-wider uppercase text-muted-foreground/70 font-mono flex items-center gap-2">
                         {title}
                         {type === "line" && (
                             <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
@@ -127,7 +133,7 @@ export function SparklineCard({ title, value, subtitle, type, color, data }: Spa
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
-                    <div className="text-4xl font-black tracking-tight text-white">
+                    <div className="text-3xl font-bold tracking-tight text-foreground">
                         {typeof value === 'number' ? value.toLocaleString() : value}
                     </div>
                     <p className="text-xs text-muted-foreground font-medium mt-1 truncate">

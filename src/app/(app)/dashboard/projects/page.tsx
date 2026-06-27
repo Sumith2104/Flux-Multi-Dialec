@@ -25,8 +25,14 @@ export default function SelectProjectPage() {
     setLoading(true);
     setError(null);
     try {
-      const userProjects = await getProjectsForCurrentUser();
-      setProjects(userProjects);
+      const res = await fetch('/api/projects');
+      const data = await res.json();
+      if (data.success && data.projects) {
+        setProjects(data.projects);
+      } else {
+        const userProjects = await getProjectsForCurrentUser();
+        setProjects(userProjects);
+      }
     } catch (e: any) {
       console.error("Failed to fetch projects:", e);
       setError("We couldn't load your projects. Please try again.");
@@ -95,7 +101,7 @@ export default function SelectProjectPage() {
                       onClick={() => handleProjectSelect(project)}
                       className="w-full text-left group relative outline-none"
                     >
-                      <Card className="relative overflow-hidden flex flex-col h-36 border-border bg-card/40 backdrop-blur-sm hover:border-primary/50 transition-all duration-300 hover:shadow-[0_0_2rem_-0.5rem_#ffffff15] hover:-translate-y-1">
+                      <Card className="relative overflow-hidden flex flex-col h-36 border-border bg-card/30 hover:border-border hover:bg-card/50 transition-all duration-300 hover:-translate-y-0.5">
                         
                         {/* Faint Background Logo Outline */}
                         <div className="absolute -right-6 -bottom-6 w-36 h-36 group-hover:scale-110 transition-all duration-500 pointer-events-none overflow-visible z-0">
@@ -111,7 +117,7 @@ export default function SelectProjectPage() {
                             <div className="flex justify-between items-start mb-4">
                                 <div className="flex gap-2">
                                     <Badge variant="secondary" className={cn(
-                                        "text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 shadow-sm",
+                                        "text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 font-mono",
                                         isPostgres 
                                           ? "bg-blue-500/10 text-blue-400 border-blue-500/20" 
                                           : "bg-orange-500/10 text-orange-400 border-orange-500/20"
@@ -121,7 +127,7 @@ export default function SelectProjectPage() {
                                     
                                     {project.role && (
                                         <Badge variant="secondary" className={cn(
-                                            "text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 shadow-sm border",
+                                            "text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 border font-mono",
                                             project.role === 'admin' && "bg-amber-500/10 text-amber-400 border-amber-500/20",
                                             project.role === 'developer' && "bg-blue-500/10 text-blue-400 border-blue-500/20",
                                             project.role === 'viewer' && "bg-secondary text-muted-foreground border-border"
@@ -135,13 +141,13 @@ export default function SelectProjectPage() {
 
                             {/* Middle: Project Name */}
                             <div className="mt-auto mb-2">
-                                <h3 className="text-xl font-bold tracking-tight text-foreground/90 group-hover:text-foreground transition-colors line-clamp-1">
+                                <h3 className="text-lg font-semibold tracking-tight text-foreground/90 group-hover:text-foreground transition-colors line-clamp-1">
                                     {project.display_name}
                                 </h3>
                             </div>
 
                             {/* Bottom: Date */}
-                            <div className="flex items-center text-xs text-muted-foreground/60 font-medium mt-1">
+                            <div className="flex items-center text-xs text-muted-foreground/60 font-mono mt-1">
                                 <span>Created {new Date(project.created_at).toLocaleDateString(undefined, {
                                     month: 'short',
                                     day: 'numeric',
@@ -155,7 +161,7 @@ export default function SelectProjectPage() {
                   })}
 
                   <Link href="/dashboard/projects/create" className="w-full text-left group outline-none">
-                    <Card className="flex flex-col h-36 items-center justify-center border-dashed border-2 bg-transparent hover:bg-card/30 hover:border-primary/50 transition-all duration-300 hover:shadow-[0_0_2rem_-0.5rem_#ffffff10] hover:-translate-y-1">
+                    <Card className="flex flex-col h-36 items-center justify-center border-dashed border bg-transparent hover:bg-card/20 transition-all duration-300">
                       <CardContent className="text-center p-6 flex flex-col items-center justify-center h-full w-full">
                         <div className="p-3 rounded-full bg-muted/50 group-hover:bg-primary/10 transition-colors mb-3">
                             <Plus className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />

@@ -390,24 +390,16 @@ export function DataTable({
                           }}
                         >
                           {isEditingThis ? (
-                            <div className="flex h-full w-full items-center gap-1 px-1" onClick={e => e.stopPropagation()}>
-                              <Input
-                                ref={editInputRef}
-                                value={editValue}
-                                onChange={e => setEditValue(e.target.value)}
-                                onKeyDown={handleEditKeyDown}
-                                onBlur={cancelEdit}
-                                className="h-7 flex-1 text-sm border-primary/50 focus:border-primary bg-background px-2 py-0 rounded"
-                              />
-                              <button
-                                className="shrink-0 rounded p-0.5 hover:bg-green-500/20 text-green-400"
-                                onMouseDown={e => { e.preventDefault(); commitEdit(); }}
-                              ><Check className="h-3.5 w-3.5" /></button>
-                              <button
-                                className="shrink-0 rounded p-0.5 hover:bg-red-500/20 text-red-400"
-                                onMouseDown={e => { e.preventDefault(); cancelEdit(); }}
-                              ><X className="h-3.5 w-3.5" /></button>
-                            </div>
+                            <input
+                              ref={editInputRef}
+                              value={editValue}
+                              onChange={e => setEditValue(e.target.value)}
+                              onKeyDown={handleEditKeyDown}
+                              onBlur={commitEdit}
+                              onClick={e => e.stopPropagation()}
+                              className="absolute inset-0 w-full h-full px-4 text-sm bg-background text-foreground font-mono border-2 border-primary focus:outline-none focus:ring-0 focus-visible:ring-0 rounded-none shadow-none z-30"
+                              autoFocus
+                            />
                           ) : isSavingThis ? (
                             <span className="flex items-center gap-1.5 w-full truncate">
                               <Loader2 className="h-3 w-3 animate-spin shrink-0 text-amber-400" />
