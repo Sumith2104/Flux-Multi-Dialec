@@ -358,9 +358,9 @@ export default function PricingPage() {
                       {selectedPlan && (
                           <>
                               <DialogHeader>
-                                  <DialogTitle className="text-2xl font-bold text-foreground flex items-center justify-between">
+                                  <DialogTitle className="text-2xl font-bold text-foreground flex items-center gap-2.5">
                                       <span>Upgrade to {selectedPlan.name}</span>
-                                      <span className="text-primary font-extrabold text-xl">₹{selectedPlan.amount}</span>
+                                      <span className="text-primary font-extrabold text-lg bg-primary/10 border border-primary/20 px-2.5 py-0.5 rounded-md">₹{selectedPlan.amount}</span>
                                   </DialogTitle>
                                   <DialogDescription className="text-muted-foreground text-sm">
                                       Select your preferred checkout method to securely complete the upgrade.
