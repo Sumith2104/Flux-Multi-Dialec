@@ -49,18 +49,8 @@ export async function POST(req: Request) {
 
         const amount = parseFloat(sms.amount);
 
-        // 2. Validate the payment amount against standard or discount prices loaded from env
-        const standardProPrice = parseFloat(process.env.NEXT_PUBLIC_RAZORPAY_PRO_PRICE || '0');
-        const standardMaxPrice = parseFloat(process.env.NEXT_PUBLIC_RAZORPAY_MAX_PRICE || '0');
-        const discountProPrice = parseFloat(process.env.NEXT_PUBLIC_DISCOUNT_PRO_PRICE || '0');
-        const discountMaxPrice = parseFloat(process.env.NEXT_PUBLIC_DISCOUNT_MAX_PRICE || '0');
-
-        let isValidAmount = false;
-        if (cleanPlan === 'pro') {
-            isValidAmount = amount === standardProPrice || amount === discountProPrice;
-        } else if (cleanPlan === 'max') {
-            isValidAmount = amount === standardMaxPrice || amount === discountMaxPrice;
-        }
+        // 2. Validate that the payment amount is greater than 0
+        const isValidAmount = amount > 0;
 
         if (!isValidAmount) {
             return NextResponse.json({ 

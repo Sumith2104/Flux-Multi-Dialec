@@ -21,12 +21,15 @@ export async function POST(req: NextRequest) {
 
         console.log(`[Notification Webhook] Intercepted from ${app || 'Unknown App'}: Title: "${title}", Text: "${text}"`);
 
-        // 1. Parse amount from notification
-        // Matches "₹ 299", "Rs. 299.00", "Rs 299", "Received ?299.00" (due to shell symbol corruption), etc.
-        const amountMatch = text.match(/(?:credited|received|payment\s+of)\s*[^0-9]*?([\d,]+(?:\.\d{1,2})?)/i);
+        // 1. Parse amount from notification using robust multi-pattern fallback
+        const amountMatch = 
+            text.match(/(?:₹|rs\.?|inr|\?)\s*([\d,]+(?:\.\d{1,2})?)/i) ||
+            text.match(/(?:credited|received|payment\s+of|deposited)\s*[^0-9]*?([\d,]+(?:\.\d{1,2})?)/i) ||
+            text.match(/([\d,]+(?:\.\d{1,2})?)\s*[^0-9]*?(?:credited|received|deposited)/i);
+
         if (!amountMatch) {
             console.warn(`[Notification Webhook] Could not parse amount from: "${text}"`);
-            return NextResponse.json({ success: false, message: 'Could not parse amount' });
+            return NextResponse.json({ success: false, message: 'Could not parse amount' }, { status: 400 });
         }
         const rawAmount = amountMatch[1].replace(/,/g, '');
         const amount = parseFloat(rawAmount);

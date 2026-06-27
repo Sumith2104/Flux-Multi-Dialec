@@ -35,12 +35,15 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: false, message: 'Ignored non-credit notification' });
         }
 
-        // 2. Extract Amount
-        // Matches "Rs. 499", "Rs. 499.00", "INR 499.00", "Rs 499", and corrupted symbol versions.
-        const amountMatch = body.match(/(?:credited|received|payment\s+of|rs\.?|inr|₹)\s*[^0-9]*?([\d,]+(?:\.\d{1,2})?)/i);
+        // 2. Extract Amount using robust multi-pattern fallback
+        const amountMatch = 
+            body.match(/(?:₹|rs\.?|inr|\?)\s*([\d,]+(?:\.\d{1,2})?)/i) ||
+            body.match(/(?:credited|received|payment\s+of|deposited)\s*[^0-9]*?([\d,]+(?:\.\d{1,2})?)/i) ||
+            body.match(/([\d,]+(?:\.\d{1,2})?)\s*[^0-9]*?(?:credited|received|deposited)/i);
+
         if (!amountMatch) {
             console.warn(`[SMS Webhook] Could not parse amount from SMS: "${body}"`);
-            return NextResponse.json({ success: false, message: 'Could not parse amount' });
+            return NextResponse.json({ success: false, message: 'Could not parse amount' }, { status: 400 });
         }
         
         const rawAmount = amountMatch[1].replace(/,/g, '');
