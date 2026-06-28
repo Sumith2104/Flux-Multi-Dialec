@@ -19,9 +19,9 @@ export async function POST(req: NextRequest) {
 
         const pool = getPgPool();
 
-        // 1. Query base price from database configs table
+        // 1. Query base price & dynamic UPI ID from database configs table
         const pricingRes = await pool.query(
-            `SELECT pro_price, max_price, discount_pro_price, discount_max_price 
+            `SELECT pro_price, max_price, discount_pro_price, discount_max_price, upi_id 
              FROM fluxbase_global.pricing_configs 
              ORDER BY id DESC LIMIT 1`
         );
@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
             sessionId: session.id,
             amount: parseFloat(session.amount),
             expiresAt: session.expires_at,
-            upiMerchantVpa: process.env.NEXT_PUBLIC_UPI_ID || 'sumith0909@axl'
+            upiMerchantVpa: pricing.upi_id || 'sumith0909@axl'
         });
 
     } catch (error: any) {

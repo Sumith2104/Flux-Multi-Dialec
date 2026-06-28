@@ -5,7 +5,7 @@ export async function GET() {
     try {
         const pool = getPgPool();
         const result = await pool.query(
-            `SELECT pro_price, max_price, discount_pro_price, discount_max_price, enable_discount, discount_code 
+            `SELECT pro_price, max_price, discount_pro_price, discount_max_price, enable_discount, discount_code, upi_id 
              FROM fluxbase_global.pricing_configs 
              ORDER BY id DESC LIMIT 1`
         );
@@ -27,7 +27,8 @@ export async function GET() {
                 discountProPrice: parseFloat(config.discount_pro_price),
                 discountMaxPrice: parseFloat(config.discount_max_price),
                 enableDiscount: config.enable_discount,
-                discountCode: config.discount_code
+                discountCode: config.discount_code,
+                upiId: config.upi_id || 'sumith0909@axl'
             }
         });
     } catch (err: any) {

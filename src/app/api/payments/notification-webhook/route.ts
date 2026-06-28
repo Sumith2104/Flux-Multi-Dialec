@@ -14,28 +14,36 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { app, title, text } = await req.json();
+        let body: any = {};
+        let rawText = '';
+        try {
+            rawText = await req.text();
+            body = JSON.parse(rawText);
+        } catch (e) {
+            body = { text: rawText };
+        }
+
+        const text = body.text || body.utr || body.sms_body || body.message || rawText;
+        const app = body.app || body.source || 'Scraper';
+
         if (!text) {
             return NextResponse.json({ error: 'Missing notification text' }, { status: 400 });
         }
 
+        const title = body.title || '';
         console.log(`[Notification Webhook] Intercepted from ${app || 'Unknown App'}: Title: "${title}", Text: "${text}"`);
 
         // 1. Parse amount from notification using robust multi-pattern fallback
         const amountMatch = 
-            text.match(/(?:₹|rs\.?|inr|\?)\s*([\d,]+(?:\.\d{1,2})?)/i) ||
-            text.match(/(?:credited|received|payment\s+of|deposited)\s*[^0-9]*?([\d,]+(?:\.\d{1,2})?)/i) ||
-            text.match(/([\d,]+(?:\.\d{1,2})?)\s*[^0-9]*?(?:credited|received|deposited)/i);
+            text.match(/(?:credited with INR|credited|received|payment\s+of|deposited|INR|rs\.?|₹|\?)\s*([\d,]+(?:\.\d{1,2})?)/i) ||
+            text.match(/([\d,]+(?:\.\d{1,2})?)\s*[^0-9]*?(?:credited|received|deposited)/i) ||
+            text.match(/([\d]+(?:\.\d{1,2})?)/);
 
-        if (!amountMatch) {
-            console.warn(`[Notification Webhook] Could not parse amount from: "${text}"`);
-            return NextResponse.json({ success: false, message: 'Could not parse amount' }, { status: 400 });
-        }
-        const rawAmount = amountMatch[1].replace(/,/g, '');
-        const amount = parseFloat(rawAmount);
+        const rawAmount = amountMatch ? amountMatch[1].replace(/,/g, '') : '0.00';
+        const amount = parseFloat(rawAmount) || 0;
 
         // 2. Try to parse 12-digit UTR from the notification text
-        const utrMatch = text.match(/\b(\d{12})\b/);
+        const utrMatch = text.match(/(?:UPI|IMPS|Ref|UTR|Txn)[:\s;]*(\d{12})/i) || text.match(/\b(\d{12})\b/);
         const utr = utrMatch ? utrMatch[1] : null;
 
         const pool = getPgPool();
@@ -43,11 +51,19 @@ export async function POST(req: NextRequest) {
         if (utr) {
             // Save the transaction into scraped_sms database so the user can verify it manually in the UI via UTR
             await pool.query(`
+                CREATE TABLE IF NOT EXISTS fluxbase_global.scraped_sms (
+                    id SERIAL PRIMARY KEY,
+                    sms_body TEXT,
+                    sender VARCHAR(100),
+                    utr VARCHAR(64) UNIQUE,
+                    amount NUMERIC(10, 2),
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                );
                 INSERT INTO fluxbase_global.scraped_sms (sms_body, sender, utr, amount)
                 VALUES ($1, $2, $3, $4)
                 ON CONFLICT (utr) DO NOTHING
-            `, [text, app || 'Notification Scraper', utr, amount]);
-            console.log(`[Notification Webhook] Logged transaction to scraped_sms: UTR=${utr}, Amount=₹${amount}`);
+            `, [text, app || 'Notification Scraper', utr, amount]).catch(() => {});
+            console.log(`[SCRAPER RECEIVE 📥] Channel: ${app.toUpperCase()} | UTR: ${utr} | Amount: ₹${amount}`);
         }
 
         // 3. Try to match the exact decimal amount to an active pending payment session

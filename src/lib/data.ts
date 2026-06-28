@@ -201,10 +201,55 @@ async function ensureMigration(pool: any) {
             ALTER TABLE fluxbase_global.projects 
             ADD COLUMN IF NOT EXISTS connection_type VARCHAR(50) DEFAULT 'internal',
             ADD COLUMN IF NOT EXISTS connection_config JSONB DEFAULT '{}'::jsonb;
+
+            CREATE TABLE IF NOT EXISTS fluxbase_global.pricing_configs (
+                id SERIAL PRIMARY KEY,
+                pro_price NUMERIC(10, 2) DEFAULT 999.00,
+                max_price NUMERIC(10, 2) DEFAULT 2499.00,
+                discount_pro_price NUMERIC(10, 2) DEFAULT 499.00,
+                discount_max_price NUMERIC(10, 2) DEFAULT 1499.00,
+                enable_discount BOOLEAN DEFAULT true,
+                discount_code VARCHAR(50) DEFAULT 'PROMO50',
+                upi_id VARCHAR(255) DEFAULT 'sumith0909@axl',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+
+            ALTER TABLE fluxbase_global.pricing_configs ADD COLUMN IF NOT EXISTS upi_id VARCHAR(255) DEFAULT 'sumith0909@axl';
+
+            CREATE TABLE IF NOT EXISTS fluxbase_global.bank_payments (
+                utr VARCHAR(64) PRIMARY KEY,
+                amount NUMERIC(10, 2) NOT NULL,
+                day_name VARCHAR(10) NOT NULL,
+                payment_date DATE NOT NULL,
+                payment_time TIME NOT NULL,
+                source VARCHAR(30) NOT NULL,
+                order_id VARCHAR(64),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS fluxbase_global.pending_orders (
+                order_id VARCHAR(64) PRIMARY KEY,
+                user_id VARCHAR(64) NOT NULL,
+                amount NUMERIC(10, 2) NOT NULL,
+                status VARCHAR(20) DEFAULT 'pending',
+                utr_number VARCHAR(64),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                fulfilled_at TIMESTAMP WITH TIME ZONE
+            );
+
+            CREATE TABLE IF NOT EXISTS fluxbase_global.payment_scraper_logs (
+                id SERIAL PRIMARY KEY,
+                utr VARCHAR(64) NOT NULL,
+                amount NUMERIC(10, 2) NOT NULL,
+                source VARCHAR(30) NOT NULL,
+                is_winner BOOLEAN NOT NULL,
+                winning_source VARCHAR(30),
+                received_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
         `);
         migrationRun = true;
     } catch (err) {
-        console.error("[Migration Error] Failed to alter projects table:", err);
+        console.error("[Migration Error] Failed to execute schema migrations:", err);
     }
 }
 

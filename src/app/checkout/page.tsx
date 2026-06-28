@@ -20,6 +20,7 @@ function CheckoutContent() {
     const [planType, setPlanType] = useState<string | null>(null);
     const [expiresAt, setExpiresAt] = useState<string | null>(null);
     const [status, setStatus] = useState<'pending' | 'completed' | 'expired' | null>(null);
+    const [upiMerchantVpa, setUpiMerchantVpa] = useState<string>('sumith0909@axl');
 
     // Live Flow States
     const [timeLeft, setTimeLeft] = useState<number>(300);
@@ -50,6 +51,7 @@ function CheckoutContent() {
                 setPlanType(data.planType);
                 setExpiresAt(data.expiresAt);
                 setStatus(data.status);
+                if (data.upiMerchantVpa) setUpiMerchantVpa(data.upiMerchantVpa);
                 setLoading(false);
             } catch (err: any) {
                 console.error(err);
@@ -230,17 +232,7 @@ function CheckoutContent() {
         );
     }
 
-    const upiMerchantVpa = process.env.NEXT_PUBLIC_UPI_ID || 'sumith0909@axl';
-    const isPersonalVpa = !upiMerchantVpa.includes('.merchant') && 
-                          (upiMerchantVpa.endsWith('@okaxis') || 
-                           upiMerchantVpa.endsWith('@okicici') || 
-                           upiMerchantVpa.endsWith('@ybl') || 
-                           upiMerchantVpa.endsWith('@okhdfcbank') || 
-                           (upiMerchantVpa.endsWith('@paytm') && !upiMerchantVpa.startsWith('m')));
-
-    const upiString = isPersonalVpa
-        ? `upi://pay?pa=${upiMerchantVpa}&pn=Fluxbase`
-        : `upi://pay?pa=${upiMerchantVpa}&pn=Fluxbase&am=${amount}&cu=INR&tn=${encodeURIComponent(`${planType?.toUpperCase()} Plan Upgrade`)}`;
+    const upiString = `upi://pay?pa=${upiMerchantVpa}&pn=Fluxbase&am=${amount}&cu=INR&tn=${encodeURIComponent(`${planType?.toUpperCase()} Plan Upgrade`)}`;
 
     const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(upiString)}`;
 
@@ -359,9 +351,7 @@ function CheckoutContent() {
                                         <span className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Pay Exact Amount:</span>
                                         <span className="text-3xl font-black text-primary">₹{amount}</span>
                                         <p className="text-[10px] text-muted-foreground/80 leading-normal pt-1.5 border-t border-primary/10 mt-1">
-                                            {isPersonalVpa 
-                                                ? "⚠️ CRITICAL: Since this is a personal VPA, the amount CANNOT be pre-filled. You MUST manually enter the exact decimal amount above in your app."
-                                                : "The unique amount is pre-filled automatically inside the QR."}
+                                            The exact unique decimal amount is pre-filled inside the QR code for instant instant verification.
                                         </p>
                                     </div>
                                 </div>

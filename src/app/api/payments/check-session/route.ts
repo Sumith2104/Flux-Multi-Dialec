@@ -44,12 +44,16 @@ export async function GET(req: NextRequest) {
             );
         }
 
+        const pricingRes = await pool.query(`SELECT upi_id FROM fluxbase_global.pricing_configs ORDER BY id DESC LIMIT 1`);
+        const upiMerchantVpa = pricingRes.rows[0]?.upi_id || 'sumith0909@axl';
+
         return NextResponse.json({
             success: true,
             status,
             amount: parseFloat(session.amount),
             planType: session.plan_type,
-            expiresAt: session.expires_at
+            expiresAt: session.expires_at,
+            upiMerchantVpa
         });
 
     } catch (error: any) {
