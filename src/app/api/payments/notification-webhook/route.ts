@@ -35,7 +35,8 @@ export async function POST(req: NextRequest) {
 
         // 1. Parse amount from notification using robust multi-pattern fallback
         const amountMatch = 
-            text.match(/(?:credited with INR|credited|received|payment\s+of|deposited|INR|rs\.?|₹|\?)\s*([\d,]+(?:\.\d{1,2})?)/i) ||
+            text.match(/(?:amount of|credited with|credited|received|payment\s+of|deposited)\s*(?:INR|Rs\.?|₹)?\s*([\d,]+(?:\.\d{1,2})?)/i) ||
+            text.match(/(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d{1,2})?)/i) ||
             text.match(/([\d,]+(?:\.\d{1,2})?)\s*[^0-9]*?(?:credited|received|deposited)/i) ||
             text.match(/([\d]+(?:\.\d{1,2})?)/);
 
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
         const amount = parseFloat(rawAmount) || 0;
 
         // 2. Try to parse 12-digit UTR from the notification text
-        const utrMatch = text.match(/(?:UPI|IMPS|Ref|UTR|Txn)[:\s;]*(\d{12})/i) || text.match(/\b(\d{12})\b/);
+        const utrMatch = text.match(/(?:UPI\s*Ref\s*No\.?|Ref\s*No\.?|UPI|IMPS|Ref|UTR|Txn)[:\s;\.#]*(\d{12})/i) || text.match(/\b(\d{12})\b/);
         const utr = utrMatch ? utrMatch[1] : null;
 
         const pool = getPgPool();

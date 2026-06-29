@@ -31,17 +31,19 @@ export async function POST(req: Request) {
 
         const rawText = (String(utr || '') + ' ' + String(body.message || body.sms_body || body.text || rawBodyString || '')).trim();
 
-        // Server-side Smart Regex Parser: Extract 12-digit UTR automatically if raw SMS text is sent
+        // Server-side Smart Regex Parser: Extract 12-digit UTR automatically if raw SMS/Email text is sent
         if (!utr || String(utr).length > 12 || isNaN(Number(utr))) {
-            const utrMatch = rawText.match(/(?:UPI|IMPS|Ref|UTR|Txn)[:\s;]*(\d{12})/i) || rawText.match(/(\d{12})/);
+            const utrMatch = rawText.match(/(?:UPI\s*Ref\s*No\.?|Ref\s*No\.?|UPI|IMPS|Ref|UTR|Txn)[:\s;\.#]*(\d{12})/i) || rawText.match(/\b(\d{12})\b/);
             if (utrMatch) {
                 utr = utrMatch[1];
             }
         }
 
-        // Server-side Smart Regex Parser: Extract Amount automatically if raw SMS text is sent
+        // Server-side Smart Regex Parser: Extract Amount automatically if raw SMS/Email text is sent
         if (!amount || isNaN(parseFloat(amount))) {
-            const amtMatch = rawText.match(/(?:credited with INR|INR|Rs\.?|₹)\s*([0-9]+\.[0-9]{2}|[0-9]+)/i);
+            const amtMatch = 
+                rawText.match(/(?:amount of|credited with|credited)\s*(?:INR|Rs\.?|₹)?\s*([0-9]+\.[0-9]{2}|[0-9]+)/i) ||
+                rawText.match(/(?:INR|Rs\.?|₹)\s*([0-9]+\.[0-9]{2}|[0-9]+)/i);
             if (amtMatch) {
                 amount = amtMatch[1];
             }
