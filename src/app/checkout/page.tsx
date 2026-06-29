@@ -182,6 +182,28 @@ function CheckoutContent() {
         };
     }, [loading, sessionId, expiresAt, status, router, toast]);
 
+    const handleCancelSession = async () => {
+        if (status === 'completed') {
+            router.push('/pricing');
+            return;
+        }
+        const confirmCancel = window.confirm("Are you sure you want to go back? This will cancel your active payment session.");
+        if (!confirmCancel) return;
+
+        if (sessionId) {
+            try {
+                await fetch('/api/payments/cancel-session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessionId })
+                });
+            } catch (e) {
+                console.error('Error cancelling session:', e);
+            }
+        }
+        router.push('/pricing');
+    };
+
     const handleManualUtrVerify = async () => {
         if (!utr || utr.length !== 12) return;
         setIsVerifying(true);
@@ -191,7 +213,8 @@ function CheckoutContent() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     utr,
-                    plan: planType
+                    plan: planType,
+                    sessionId
                 })
             });
             const data = await res.json();
@@ -247,7 +270,7 @@ function CheckoutContent() {
             <div className="absolute top-6 left-6 sm:top-10 sm:left-10">
                 <Button 
                     variant="ghost" 
-                    onClick={() => router.push('/pricing')}
+                    onClick={handleCancelSession}
                     className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground text-xs font-semibold"
                 >
                     <ArrowLeft className="h-4 w-4" /> Back to Pricing
@@ -351,9 +374,14 @@ function CheckoutContent() {
                                         <span className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">Pay Exact Amount:</span>
                                         <span className="text-3xl font-black text-primary">₹{amount}</span>
                                         <p className="text-[10px] text-muted-foreground/80 leading-normal pt-1.5 border-t border-primary/10 mt-1">
-                                            The exact unique decimal amount is pre-filled inside the QR code for instant instant verification.
+                                            The exact unique decimal amount is pre-filled inside the QR code for instant verification.
                                         </p>
                                     </div>
+                                </div>
+
+                                {/* Custom Gateway Notice */}
+                                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-[11px] font-medium leading-relaxed text-center">
+                                    ⚡ This is a custom built payment gateway and some payments take up to 1 min. So if it takes too long, just enter your UTR manually.
                                 </div>
 
                                 {/* Manual Verification Fallback accordion */}
