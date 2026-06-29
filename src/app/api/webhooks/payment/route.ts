@@ -166,6 +166,7 @@ export async function POST(req: Request) {
 
             let matchedOrderId: string | null = null;
             let matchedUserId: string | null = null;
+            let matchedSessionId: number | null = null;
 
             if (orderRes.rows.length > 0) {
                 matchedOrderId = orderRes.rows[0].order_id;
@@ -186,6 +187,41 @@ export async function POST(req: Request) {
                 `, [matchedOrderId, utr]);
 
                 console.log(`[ORDER MATCHED 🎯] Order ID '${matchedOrderId}' for User '${matchedUserId}' verified and marked PAID!`);
+            } else {
+                // Check pending web checkout sessions
+                const sessionRes = await client.query(`
+                    SELECT id, user_id, plan_type 
+                    FROM fluxbase_global.payment_sessions 
+                    WHERE amount = $1 AND status = 'pending' AND expires_at > NOW()
+                    ORDER BY created_at DESC LIMIT 1;
+                `, [parsedAmount]);
+
+                if (sessionRes.rows.length > 0) {
+                    const session = sessionRes.rows[0];
+                    matchedSessionId = session.id;
+                    matchedUserId = session.user_id;
+                    const planType = session.plan_type;
+
+                    await client.query(
+                        `UPDATE fluxbase_global.payment_sessions SET status = 'completed' WHERE id = $1`,
+                        [session.id]
+                    );
+
+                    await client.query(
+                        `INSERT INTO fluxbase_global.payments (user_id, amount, currency, status, razorpay_payment_id)
+                         VALUES ($1, $2, 'INR', 'completed', $3)`,
+                        [matchedUserId, parsedAmount, `upi_session_${session.id}`]
+                    );
+
+                    await client.query(
+                        `UPDATE fluxbase_global.users 
+                         SET plan_type = $1, billing_cycle_end = NOW() + INTERVAL '1 month', status = 'active'
+                         WHERE id = $2`,
+                        [planType, matchedUserId]
+                    );
+
+                    console.log(`[SESSION MATCHED 🎯] Checkout Session '${session.id}' for User '${matchedUserId}' verified and completed!`);
+                }
             }
 
             await client.query('COMMIT');
@@ -217,8 +253,9 @@ export async function POST(req: Request) {
                 paymentDate,
                 paymentTime,
                 source: finalSource,
-                orderMatched: !!matchedOrderId,
-                matchedOrderId
+                orderMatched: !!matchedOrderId || !!matchedSessionId,
+                matchedOrderId,
+                matchedSessionId
             });
 
         } catch (txError) {
