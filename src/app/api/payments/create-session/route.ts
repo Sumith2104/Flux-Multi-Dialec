@@ -19,6 +19,20 @@ export async function POST(req: NextRequest) {
 
         const pool = getPgPool();
 
+        // Check current plan of user to avoid duplicate or lower tier purchases
+        const userRes = await pool.query(
+            'SELECT plan_type FROM fluxbase_global.users WHERE id = $1',
+            [userId]
+        );
+        const currentPlan = (userRes.rows[0]?.plan_type || 'free').toLowerCase();
+
+        if (currentPlan === 'max') {
+            return NextResponse.json({ error: 'You are already subscribed to the Max plan.' }, { status: 400 });
+        }
+        if (cleanPlan === 'pro' && currentPlan === 'pro') {
+            return NextResponse.json({ error: 'You are already subscribed to the Pro plan.' }, { status: 400 });
+        }
+
         // 1. Query base price & dynamic UPI ID from database configs table
         const pricingRes = await pool.query(
             `SELECT pro_price, max_price, discount_pro_price, discount_max_price, upi_id 

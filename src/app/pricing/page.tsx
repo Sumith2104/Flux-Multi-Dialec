@@ -8,10 +8,13 @@ import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { getUserPlanAction } from '@/app/(app)/settings/actions';
 
 export default function PricingPage() {
     const { toast } = useToast();
     const router = useRouter();
+    const [currentPlan, setCurrentPlan] = useState<string>('free');
+    const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
     const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
     const [discountCode, setDiscountCode] = useState('');
     const [isDiscountApplied, setIsDiscountApplied] = useState(false);
@@ -41,7 +44,7 @@ export default function PricingPage() {
     const [timeLeft, setTimeLeft] = useState<number>(300);
     const [showUtrFallback, setShowUtrFallback] = useState(false);
 
-    // Fetch dynamic pricing details from the database on component mount
+    // Fetch dynamic pricing details and user subscription status from the database on component mount
     useEffect(() => {
         const fetchPricing = async () => {
             try {
@@ -61,7 +64,24 @@ export default function PricingPage() {
                 console.error("Failed to fetch dynamic pricing configurations:", err);
             }
         };
+
+        const fetchUserPlan = async () => {
+            try {
+                const res = await getUserPlanAction();
+                if (res && res.success && res.plan) {
+                    setCurrentPlan(res.plan.toLowerCase());
+                    setIsLoggedIn(true);
+                } else {
+                    setCurrentPlan('free');
+                    setIsLoggedIn(false);
+                }
+            } catch (err) {
+                console.error("Failed to fetch user plan:", err);
+            }
+        };
+
         fetchPricing();
+        fetchUserPlan();
     }, []);
 
     const checkDiscount = () => {
@@ -271,8 +291,13 @@ export default function PricingPage() {
                         <FeatureItem text="Community Support" />
                     </CardContent>
                     <CardFooter>
-                        <Button variant="outline" className="w-full" onClick={() => router.push('/dashboard')}>
-                            Get Started
+                        <Button 
+                            variant="outline" 
+                            className="w-full" 
+                            onClick={() => router.push('/dashboard')}
+                            disabled={isLoggedIn && currentPlan === 'free'}
+                        >
+                            {isLoggedIn && currentPlan === 'free' ? 'Current Plan' : 'Get Started'}
                         </Button>
                     </CardFooter>
                 </Card>
@@ -304,15 +329,21 @@ export default function PricingPage() {
                           <FeatureItem text="500 Concurrent WebSockets" />
                           <FeatureItem text="Email Support (24h SLA)" />
                       </CardContent>
-                      <CardFooter>
-                          <Button
-                              className="w-full bg-primary text-primary-foreground hover:bg-primary/95"
-                              onClick={() => handleSelectPlan(process.env.NEXT_PUBLIC_RAZORPAY_PRO_PLAN_ID || '', 'Pro')}
-                              disabled={loadingPlan !== null}
-                          >
-                              {loadingPlan === 'Pro' ? 'Processing...' : 'Upgrade to Pro'}
-                          </Button>
-                      </CardFooter>
+                       <CardFooter>
+                           <Button
+                               className="w-full bg-primary text-primary-foreground hover:bg-primary/95"
+                               onClick={() => handleSelectPlan(process.env.NEXT_PUBLIC_RAZORPAY_PRO_PLAN_ID || '', 'Pro')}
+                               disabled={loadingPlan !== null || (isLoggedIn && (currentPlan === 'pro' || currentPlan === 'max'))}
+                           >
+                               {loadingPlan === 'Pro' 
+                                   ? 'Processing...' 
+                                   : (isLoggedIn && currentPlan === 'pro') 
+                                       ? 'Current Plan' 
+                                       : (isLoggedIn && currentPlan === 'max')
+                                           ? 'Included in Max'
+                                           : 'Upgrade to Pro'}
+                           </Button>
+                       </CardFooter>
                   </Card>
   
                   {/* MAX TIER */}
@@ -339,16 +370,20 @@ export default function PricingPage() {
                           <FeatureItem text="2,500 Concurrent WebSockets" />
                           <FeatureItem text="Priority 24/7 Slack Support" />
                       </CardContent>
-                      <CardFooter>
-                          <Button
-                              variant="outline"
-                              className="w-full"
-                              onClick={() => handleSelectPlan(process.env.NEXT_PUBLIC_RAZORPAY_MAX_PLAN_ID || '', 'Max')}
-                              disabled={loadingPlan !== null}
-                          >
-                              {loadingPlan === 'Max' ? 'Processing...' : 'Upgrade to Max'}
-                          </Button>
-                      </CardFooter>
+                       <CardFooter>
+                           <Button
+                               variant="outline"
+                               className="w-full"
+                               onClick={() => handleSelectPlan(process.env.NEXT_PUBLIC_RAZORPAY_MAX_PLAN_ID || '', 'Max')}
+                               disabled={loadingPlan !== null || (isLoggedIn && currentPlan === 'max')}
+                           >
+                               {loadingPlan === 'Max' 
+                                   ? 'Processing...' 
+                                   : (isLoggedIn && currentPlan === 'max') 
+                                       ? 'Current Plan' 
+                                       : 'Upgrade to Max'}
+                           </Button>
+                       </CardFooter>
                   </Card>
               </div>
   

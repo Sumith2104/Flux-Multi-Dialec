@@ -152,7 +152,7 @@ function CheckoutContent() {
                         clearInterval(timer);
                         clearInterval(fallbackPoll);
                         if (socket) {
-                            try { socket.close(); } catch {}
+                            try { socket.close(); } catch { }
                         }
                         toast({
                             title: 'Upgrade Successful!',
@@ -164,7 +164,7 @@ function CheckoutContent() {
                         clearInterval(timer);
                         clearInterval(fallbackPoll);
                         if (socket) {
-                            try { socket.close(); } catch {}
+                            try { socket.close(); } catch { }
                         }
                     }
                 }
@@ -177,7 +177,7 @@ function CheckoutContent() {
             clearInterval(timer);
             clearInterval(fallbackPoll);
             if (socket) {
-                try { socket.close(); } catch {}
+                try { socket.close(); } catch { }
             }
         };
     }, [loading, sessionId, expiresAt, status, router, toast]);
@@ -268,8 +268,8 @@ function CheckoutContent() {
     return (
         <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-background via-card/10 to-background px-4 text-foreground relative py-12">
             <div className="absolute top-6 left-6 sm:top-10 sm:left-10">
-                <Button 
-                    variant="ghost" 
+                <Button
+                    variant="ghost"
                     onClick={handleCancelSession}
                     className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground text-xs font-semibold"
                 >
@@ -291,7 +291,7 @@ function CheckoutContent() {
                 <Card className="border border-border bg-card shadow-2xl relative overflow-hidden backdrop-blur-md">
                     {/* Glowing effect inside card */}
                     <div className="absolute top-0 right-0 h-40 w-40 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
-                    
+
                     {status === 'completed' && (
                         <CardContent className="flex flex-col items-center justify-center py-16 text-center space-y-5 animate-in fade-in zoom-in-95 duration-500">
                             <div className="p-5 rounded-full bg-green-500/10 text-green-500 animate-bounce">
@@ -381,7 +381,7 @@ function CheckoutContent() {
 
                                 {/* Custom Gateway Notice */}
                                 <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-[11px] font-medium leading-relaxed text-center">
-                                    ⚡ This is a custom built payment gateway and some payments take up to 1 min. So if it takes too long, just enter your UTR manually.
+                                    This is a custom built payment gateway and some payments take up to 1 min. So if it takes too long, just enter your UTR manually.
                                 </div>
 
                                 {/* Manual Verification Fallback accordion */}

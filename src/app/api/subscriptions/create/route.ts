@@ -15,6 +15,26 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Missing planId' }, { status: 400 });
         }
 
+        const { getPgPool } = await import('@/lib/pg');
+        const pool = getPgPool();
+        const userRes = await pool.query(
+            'SELECT plan_type FROM fluxbase_global.users WHERE id = $1',
+            [userId]
+        );
+        const currentPlan = (userRes.rows[0]?.plan_type || 'free').toLowerCase();
+
+        const proPlanId = process.env.NEXT_PUBLIC_RAZORPAY_PRO_PLAN_ID || '';
+        const maxPlanId = process.env.NEXT_PUBLIC_RAZORPAY_MAX_PLAN_ID || '';
+
+        const requestedPlan = planId === maxPlanId ? 'max' : planId === proPlanId ? 'pro' : 'unknown';
+
+        if (currentPlan === 'max') {
+            return NextResponse.json({ error: 'You are already subscribed to the Max plan.' }, { status: 400 });
+        }
+        if (requestedPlan === 'pro' && currentPlan === 'pro') {
+            return NextResponse.json({ error: 'You are already subscribed to the Pro plan.' }, { status: 400 });
+        }
+
         // Generate a Subscription object via Razorpay Node SDK
         const razorpay = getRazorpayClient();
         const subscription = await razorpay.subscriptions.create({
