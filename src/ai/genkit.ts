@@ -16,7 +16,7 @@ const FALLBACK_MODELS = [
 ];
 
 
-const THIRD_PARTY_PROVIDERS = ['groq', 'xai', 'openai', 'nvidia'];
+const THIRD_PARTY_PROVIDERS = ['groq', 'xai', 'openai', 'nvidia', 'glm'];
 
 function describeZodSchema(schema: any): any {
   if (!schema) return 'any';
@@ -69,6 +69,10 @@ async function tryThirdPartyProvider(provider: string, prompt: string, schema: a
     url = 'https://integrate.api.nvidia.com/v1/chat/completions';
     apiKey = process.env.NVIDIA_API_KEY || '';
     model = 'nvidia/llama-3.1-nemotron-70b-instruct';
+  } else if (provider === 'glm') {
+    url = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
+    apiKey = process.env.GLM_API_KEY || '';
+    model = 'glm-4-flash';
   }
 
 
@@ -134,7 +138,15 @@ export const ai = new Proxy(baseAi, {
         // Each item in the chain is an async function that returns the result or throws.
         const chain: Array<{ name: string; run: () => Promise<any> }> = [];
 
-        // 1. If it's a third-party provider, put it first in the chain
+        // 0. Prioritize GLM if GLM_API_KEY is configured (instead of Gemini)
+        if (process.env.GLM_API_KEY) {
+          chain.push({
+            name: `GLM (glm-4-flash)`,
+            run: () => tryThirdPartyProvider('glm', options.prompt, options.output?.schema),
+          });
+        }
+
+        // 1. If it's a third-party provider, put it next in the chain
         if (THIRD_PARTY_PROVIDERS.includes(requestedModel)) {
           chain.push({
             name: `Third-Party: ${requestedModel}`,
