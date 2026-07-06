@@ -579,6 +579,30 @@ export class SqlEngine {
     }
 
     private validateAstScope(queryCleaned: string, allowMulti = false) {
+        const queryUpper = queryCleaned.trim().toUpperCase();
+        const isDoBlock = queryUpper.startsWith('DO') || queryUpper.startsWith('\nDO') || queryUpper.includes(' DO ') || queryUpper.includes('\nDO ');
+        const isSchemaCommand = queryUpper.includes('CREATE SCHEMA') || queryUpper.includes('DROP SCHEMA') || queryUpper.includes('ALTER SCHEMA');
+        const isSystemQuery = queryUpper.includes('INFORMATION_SCHEMA') || queryUpper.includes('PG_CATALOG') || queryUpper.includes('PG_TABLES') || queryUpper.includes('PG_CLASS') || queryUpper.includes('PG_NAMESPACE');
+
+        if (isDoBlock || isSchemaCommand || isSystemQuery) {
+            if (this.role === 'viewer') {
+                throw new FluxbaseError(
+                    "Insufficient Permissions: Schema management and procedural operations are restricted for Viewers.",
+                    ERROR_CODES.FORBIDDEN,
+                    403
+                );
+            }
+            if (this.scopes && !this.scopes.includes('admin')) {
+                throw new FluxbaseError(
+                    "Insufficient Permissions: Scope 'admin' is required for schema management or procedural operations.",
+                    ERROR_CODES.FORBIDDEN,
+                    403
+                );
+            }
+            console.log('[SqlEngine] Bypassing AST parsing validation for schema/procedural operation.');
+            return;
+        }
+
         let ast: any;
         try {
             ast = this.parser.astify(queryCleaned, {

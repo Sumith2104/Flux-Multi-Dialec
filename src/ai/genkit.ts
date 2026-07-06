@@ -72,7 +72,7 @@ async function tryThirdPartyProvider(provider: string, prompt: string, schema: a
   } else if (provider === 'glm') {
     url = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
     apiKey = process.env.GLM_API_KEY || '';
-    model = 'glm-4-flash';
+    model = 'glm-5.2';
   }
 
 
@@ -130,7 +130,7 @@ export const ai = new Proxy(baseAi, {
     if (prop === 'generate') {
       return async (options: any) => {
         let lastError: any = null;
-        const requestedModel = options.model || 'googleai/gemini-2.5-flash';
+        const requestedModel = options.model || 'glm';
 
         console.log(`[AI] Requested model/provider: ${requestedModel}`);
 
@@ -141,7 +141,7 @@ export const ai = new Proxy(baseAi, {
         // 0. Prioritize GLM if GLM_API_KEY is configured (instead of Gemini)
         if (process.env.GLM_API_KEY) {
           chain.push({
-            name: `GLM (glm-4-flash)`,
+            name: `GLM (glm-5.2)`,
             run: () => tryThirdPartyProvider('glm', options.prompt, options.output?.schema),
           });
         }

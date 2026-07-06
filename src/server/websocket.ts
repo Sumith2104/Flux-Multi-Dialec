@@ -6,6 +6,20 @@ import { Pool } from 'pg';
 import jwt from 'jsonwebtoken';
 import http from 'http';
 import { Redis } from '@upstash/redis';
+import fs from 'fs';
+import path from 'path';
+
+let docsContext = '';
+try {
+    const docsPath = path.join(process.cwd(), 'fluxbase-client', 'INTEGRATION_GUIDE.md');
+    if (fs.existsSync(docsPath)) {
+        docsContext = fs.readFileSync(docsPath, 'utf-8');
+    } else {
+        docsContext = "Fluxbase Integration Guide: To upload files, POST to /api/storage/upload with multipart/form-data (bucketId, projectId, file). To execute SQL, POST to /api/execute-sql with JSON { query: '...' }. To listen for realtime changes, connect to /api/realtime/subscribe via SSE.";
+    }
+} catch (e) {
+    console.warn("Could not load integration guide for WS context", e);
+}
 
 const url = process.env.UPSTASH_REDIS_REST_URL || 'https://dummy.upstash.io';
 const token = process.env.UPSTASH_REDIS_REST_TOKEN || 'dummy';
@@ -250,6 +264,129 @@ wss.on('connection', async (ws, req) => {
                 await redis.decr(`live_sessions:${projectId}`).catch(() => {});
                 
                 console.log(`[WS] Client unsubscribed from ${channelId}`);
+            }
+
+            if (data.type === 'chat_request') {
+                const { messages: clientMessages, currentPath, activeProject } = data;
+                if (!clientMessages || !Array.isArray(clientMessages)) {
+                    ws.send(JSON.stringify({ type: 'chat_error', message: 'Missing messages array' }));
+                    return;
+                }
+
+                let projectContext = '';
+                if (activeProject) {
+                    projectContext = `\nACTIVE PROJECT CONTEXT:\n- Name: "${activeProject.display_name || ''}"\n- ID: "${activeProject.project_id || ''}"\n- Database Dialect: "${activeProject.dialect || 'postgresql'}"\n- Timezone: "${activeProject.timezone || 'UTC'}"\n`;
+                } else {
+                    projectContext = `\nACTIVE PROJECT CONTEXT: No active project is currently selected by the user. If they want to perform project-specific actions or execute SQL, instruct them to select or create a project first.\n`;
+                }
+
+                const systemPrompt = `You are Flux AI, an autonomous, highly agentic AI developer assistant embedded inside the Fluxbase dashboard. 
+Your job is to act as an intelligent co-pilot: formulating step-by-step action plans, querying workspace context, navigating pages, executing infrastructure actions, and automating developer workflows.
+
+AGENTIC WORKFLOW & PLANNING INSTRUCTIONS:
+1. ACT AS AN AGENT, NOT A BOT: For complex tasks (e.g. creating tables, seeding data, setting up webhooks, analyzing schema), explicitly outline your multi-step action plan using Markdown formatting (e.g., "### 🎯 Agent Execution Plan\n- **Step 1**: Inspect workspace schema\n- **Step 2**: Generate optimized DDL\n- **Step 3**: Request execution approval").
+2. BE CONCISE & PRECISE: Keep explanations clear, structured, and conversational. Use emojis where appropriate.
+3. CONTEXT AWARENESS: The user's current URL path is: "${currentPath || '/dashboard'}". Use this to understand what page they are viewing. ${projectContext}
+4. AGENTIC NAVIGATION: You have the physical ability to teleport the user's browser to different pages. If you agree to take the user to a different page, YOU MUST physically output the exact navigation tag at the very end of your response: [NAVIGATE:/the_path]. If you do not include this tag, the user will be stranded.
+Here are the absolute paths you can use:
+- Dashboard / Projects: /dashboard
+- Create Project: /dashboard/projects/create
+- API Keys: /settings/api-keys
+- Webhooks: /settings/webhooks
+- General Settings: /settings
+- Table Editor / Database Manager: /editor
+- SQL Editor / Write SQL: /query
+- Cloud Storage/Buckets: /storage
+Example response: "I'll take you to the Table Editor right now! ✨\n[NAVIGATE:/editor]"
+5. AGENTIC EXECUTION (SAFETY GUARDRAIL): You have the power to create projects and execute SQL directly on behalf of the user. Because these modify infrastructure and data, you MUST explicitly ask for safety permission using the exact string: [CONFIRM_ACTION:CmdName:Args...].
+- To Create a Project: [CONFIRM_ACTION:CREATE_PROJECT:ProjectName:dialect] (e.g. [CONFIRM_ACTION:CREATE_PROJECT:MyShop:postgresql])
+- To Execute SQL (e.g. create tables, insert data): [CONFIRM_ACTION:EXECUTE_SQL:RawSQLQuery] (e.g. [CONFIRM_ACTION:EXECUTE_SQL:CREATE TABLE users (id SERIAL PRIMARY KEY, name VARCHAR(50))])
+For example, if asked to 'create a sample table', output: 'I can create that table for you right now! ✨ [CONFIRM_ACTION:EXECUTE_SQL:CREATE TABLE sample (...)]'. 
+6. AGENTIC CLICKING (UI CONTROL): You can physically click or tap buttons on the screen for the user! If the user asks you to click something (like "click on new table"), output a click tag with the EXACT visible text of the button: [CLICK:Button Name]. 
+Example: "I am clicking the New Table button for you right now! ✨[CLICK:New Table]"
+7. AGENTIC TYPING (FORM FILLING): You have the physical capability to type into forms! If the user says "set table name to users" or asks you to type into an input box, YOU MUST physically output the exact typing tag at the very end of your response: [TYPE:InputValue:FieldLabel]. For example, if typing "users" into "Table Name", you MUST append: [TYPE:users:Table Name]. If you do not include this exact hidden bracket tag, your typing action will silently fail and the user will think you are broken!
+8. EXPLICIT SETTINGS FORM LAYOUTS:
+- API Keys tab (/settings/api-keys): The creation form is directly on this page (no modals, no "Create New API Key" button exists). To create a key, type into field "Key Name" (e.g. [TYPE:test:Key Name]), click scope text like "Admin Access" (e.g. [CLICK:Admin Access]), and click button "Generate API Key" (e.g. [CLICK:Generate API Key]).
+- Webhooks tab (/settings/webhooks): The form is directly on the page. To add, type name into field "Name" (e.g. [TYPE:Slack:Name]), type url into field "URL Endpoint" (e.g. [TYPE:https://hooks:URL Endpoint]), and click button "Add Webhook" (e.g. [CLICK:Add Webhook]).
+9. Below is the official Fluxbase Integration Guide. Use this information to answer any technical questions about API keys, SQL queries, or Webhooks/Storage.
+
+--- START OFFICIAL INTEGRATION GUIDE ---
+${docsContext.substring(0, 10000)}
+--- END OFFICIAL INTEGRATION GUIDE ---
+
+Provide your response in Markdown formatting. Do NOT use HTML. Keep code snippets short and sweet.`;
+
+                try {
+                    const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${process.env.GLM_API_KEY || ''}`
+                        },
+                        body: JSON.stringify({
+                            model: 'glm-5.2',
+                            messages: [
+                                { role: 'system', content: systemPrompt },
+                                ...clientMessages.slice(-6).map((m: any) => ({
+                                    role: m.role === 'assistant' ? 'assistant' : 'user',
+                                    content: m.content
+                                }))
+                            ],
+                            stream: true,
+                            temperature: 0.2
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errText = await response.text();
+                        ws.send(JSON.stringify({ type: 'chat_error', message: `GLM API returned status ${response.status}: ${errText}` }));
+                        return;
+                    }
+
+                    const body = response.body;
+                    if (!body) {
+                        ws.send(JSON.stringify({ type: 'chat_error', message: 'No response body from GLM' }));
+                        return;
+                    }
+
+                    const reader = body.getReader();
+                    const decoder = new TextDecoder();
+                    let fullText = '';
+                    let buffer = '';
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop() ?? '';
+
+                        for (const line of lines) {
+                            const cleanLine = line.trim();
+                            if (!cleanLine || cleanLine === 'data: [DONE]') continue;
+                            if (cleanLine.startsWith('data:')) {
+                                try {
+                                    const rawJson = cleanLine.slice(5).trim();
+                                    const parsed = JSON.parse(rawJson);
+                                    const content = parsed.choices?.[0]?.delta?.content || '';
+                                    if (content) {
+                                        fullText += content;
+                                        ws.send(JSON.stringify({ type: 'chat_token', token: content }));
+                                    }
+                                } catch (e) {
+                                    // ignore incomplete chunk parsing errors
+                                }
+                            }
+                        }
+                    }
+
+                    ws.send(JSON.stringify({ type: 'chat_done', text: fullText }));
+
+                } catch (err: any) {
+                    console.error('[WS Chat Error]:', err);
+                    ws.send(JSON.stringify({ type: 'chat_error', message: err.message || 'Failed to call Zhipu API' }));
+                }
             }
 
         } catch (e) {

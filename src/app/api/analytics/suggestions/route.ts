@@ -70,7 +70,7 @@ If the schema only has 'users', ask about user counts.
 Do not suggest queries for tables that do not exist.`;
 
         const response = await ai.generate({
-            model: model || 'googleai/gemini-2.5-flash',
+            model: model || 'glm',
             prompt: prompt,
             output: { schema: SuggestionSchema }
         });

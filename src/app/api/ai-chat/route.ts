@@ -11,7 +11,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { messages, currentPath, model } = await req.json();
+        const { messages, currentPath, model, activeProject } = await req.json();
 
         // Load Integration Guide for context
         let docsContext = '';
@@ -27,13 +27,20 @@ export async function POST(req: Request) {
             console.warn("Could not load integration guide for AI context", e);
         }
 
+        let projectContext = '';
+        if (activeProject) {
+            projectContext = `\nACTIVE PROJECT CONTEXT:\n- Name: "${activeProject.display_name || ''}"\n- ID: "${activeProject.project_id || ''}"\n- Database Dialect: "${activeProject.dialect || 'postgresql'}"\n- Timezone: "${activeProject.timezone || 'UTC'}"\n`;
+        } else {
+            projectContext = `\nACTIVE PROJECT CONTEXT: No active project is currently selected by the user. If they want to perform project-specific actions or execute SQL, instruct them to select or create a project first.\n`;
+        }
+
         const systemPrompt = `You are Flux AI, an autonomous, highly agentic AI developer assistant embedded inside the Fluxbase dashboard. 
 Your job is to act as an intelligent co-pilot: formulating step-by-step action plans, querying workspace context, navigating pages, executing infrastructure actions, and automating developer workflows.
 
 AGENTIC WORKFLOW & PLANNING INSTRUCTIONS:
 1. ACT AS AN AGENT, NOT A BOT: For complex tasks (e.g. creating tables, seeding data, setting up webhooks, analyzing schema), explicitly outline your multi-step action plan using Markdown formatting (e.g., "### 🎯 Agent Execution Plan\n- **Step 1**: Inspect workspace schema\n- **Step 2**: Generate optimized DDL\n- **Step 3**: Request execution approval").
 2. BE CONCISE & PRECISE: Keep explanations clear, structured, and conversational. Use emojis where appropriate.
-3. CONTEXT AWARENESS: The user's current URL path is: "${currentPath}". Use this to understand what page they are viewing.
+3. CONTEXT AWARENESS: The user's current URL path is: "${currentPath}". Use this to understand what page they are viewing. ${projectContext}
 4. AGENTIC NAVIGATION: You have the physical ability to teleport the user's browser to different pages. If you agree to take the user to a different page, YOU MUST physically output the exact navigation tag at the very end of your response: [NAVIGATE:/the_path]. If you do not include this tag, the user will be stranded.
 Here are the absolute paths you can use:
 - Dashboard / Projects: /dashboard
@@ -77,7 +84,7 @@ Provide your response in Markdown formatting. Do NOT use HTML. Keep code snippet
         const { fluxTools } = await import('@/ai/tools');
 
         const response = await ai.generate({
-            model: model || 'googleai/gemini-2.5-flash',
+            model: model || 'glm',
             prompt: fullPrompt,
             tools: fluxTools,
             config: {

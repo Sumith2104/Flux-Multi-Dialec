@@ -55,7 +55,7 @@ ${schemaString}
 4. Ensure alias names in the query EXACTLY match the xAxisKey and dataKeys in your config.`;
 
         const response = await ai.generate({
-            model: model || 'googleai/gemini-2.5-flash',
+            model: model || 'glm',
             prompt: fullPrompt,
             output: { schema: OutputSchema }
         });

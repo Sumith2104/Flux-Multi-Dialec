@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Volume2, VolumeX, ArrowUp } from "lucide-react";
+import { X, Volume2, VolumeX, ArrowUp, Zap } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useContext } from "react";
 import { ProjectContext } from "@/contexts/project-context";
@@ -14,6 +14,7 @@ type Message = {
   pendingWorkflow?: {
     steps: WorkflowStep[];
   };
+  hidden?: boolean;
 };
 
 type WorkflowStep = {
@@ -98,17 +99,189 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [selectedModel, setSelectedModel] = useState("googleai/gemini-2.5-flash");
+  const [selectedModel, setSelectedModel] = useState("glm");
   const [activeWorkflow, setActiveWorkflow] = useState<ActiveWorkflow | null>(null);
+  const [autoPilotActive, setAutoPilotActive] = useState<boolean>(false);
+  const [autoPilotGoal, setAutoPilotGoal] = useState<string>("");
+  const [triggerCheckin, setTriggerCheckin] = useState(0);
+
+  const requestAutopilotCheckin = (messageOverride?: string) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('flux_autopilot_pending_checkin', 'true');
+      if (messageOverride) {
+        localStorage.setItem('flux_autopilot_checkin_message', messageOverride);
+      } else {
+        localStorage.removeItem('flux_autopilot_checkin_message');
+      }
+      setTriggerCheckin(prev => prev + 1);
+    }
+  };
+
+  // Load autopilot settings from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const active = localStorage.getItem("flux_autopilot_active") === "true";
+      const goal = localStorage.getItem("flux_autopilot_goal") || "";
+      setAutoPilotActive(active);
+      setAutoPilotGoal(goal);
+    }
+  }, []);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isTyping, isOpen]);
+
+  const toggleAutoPilot = () => {
+    const newVal = !autoPilotActive;
+    setAutoPilotActive(newVal);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("flux_autopilot_active", newVal ? "true" : "false");
+      if (!newVal) {
+        localStorage.removeItem("flux_autopilot_goal");
+        localStorage.removeItem("flux_autopilot_pending_checkin");
+        setAutoPilotGoal("");
+      }
+    }
+  };
 
   // Load selected model from localStorage on mount
   useEffect(() => {
     if (typeof window !== "undefined") {
       const savedModel = localStorage.getItem("flux_ai_selected_model");
-      if (savedModel) {
-        setSelectedModel(savedModel);
+      if (savedModel !== "glm") {
+        setSelectedModel("glm");
+        localStorage.setItem("flux_ai_selected_model", "glm");
+      } else {
+        setSelectedModel("glm");
       }
     }
+  }, []);
+
+  const socketRef = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    let activeSocket: WebSocket | null = null;
+    let reconnectTimer: NodeJS.Timeout | null = null;
+    let isUnmounting = false;
+
+    const connectWs = () => {
+      if (isUnmounting) return;
+      try {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const getCookie = (name: string) => {
+          const value = `; ${document.cookie}`;
+          const parts = value.split(`; ${name}=`);
+          if (parts.length === 2) return parts.pop()?.split(';').shift();
+          return null;
+        };
+        const sessionToken = getCookie("session");
+        const tokenParam = sessionToken ? `?token=${sessionToken}` : "";
+        const wsUrl = `${protocol}//${window.location.hostname}:4000${tokenParam}`;
+        console.log(`[Assistant WS] Connecting to websocket server...`);
+        
+        const socket = new WebSocket(wsUrl);
+        activeSocket = socket;
+        socketRef.current = socket;
+
+        socket.onopen = () => {
+          console.log("[Assistant WS] Realtime chat stream connected");
+        };
+
+        socket.onclose = () => {
+          console.log("[Assistant WS] Chat stream closed. Reconnecting in 5s...");
+          socketRef.current = null;
+          if (!isUnmounting) {
+            reconnectTimer = setTimeout(connectWs, 5000);
+          }
+        };
+
+        socket.onerror = (err) => {
+          console.warn("[Assistant WS] Connection error:", err);
+        };
+
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            
+            if (data.type === 'chat_token') {
+              setIsTyping(false); // Hide standard loading dots once we start receiving text
+              setMessages(prev => {
+                const lastMsg = prev[prev.length - 1];
+                if (lastMsg && lastMsg.role === 'assistant') {
+                  return [
+                    ...prev.slice(0, -1),
+                    { ...lastMsg, content: lastMsg.content + data.token }
+                  ];
+                }
+                return prev;
+              });
+            }
+
+            if (data.type === 'chat_done') {
+              const finalContent = data.text;
+              setIsTyping(false);
+              
+              const { steps, cleanText } = parseWorkflow(finalContent);
+              
+              setMessages(prev => {
+                const lastMsg = prev[prev.length - 1];
+                if (lastMsg && lastMsg.role === 'assistant') {
+                  return [
+                    ...prev.slice(0, -1),
+                    {
+                      role: "assistant",
+                      content: cleanText,
+                      pendingWorkflow: steps.length > 0 ? { steps } : undefined
+                    }
+                  ];
+                }
+                return prev;
+              });
+
+              if (steps.length > 0) {
+                const workflowObj: ActiveWorkflow = {
+                  steps,
+                  currentStepIndex: 0
+                };
+                localStorage.setItem('flux_active_workflow', JSON.stringify(workflowObj));
+                setActiveWorkflow(workflowObj);
+              } else {
+                localStorage.removeItem("flux_autopilot_goal");
+                setAutoPilotGoal("");
+              }
+
+              speak(cleanText);
+            }
+
+            if (data.type === 'chat_error') {
+              setIsTyping(false);
+              setMessages(prev => [
+                ...prev.filter(m => m.content !== ""),
+                { role: "assistant", content: `❌ Error: ${data.message || 'Stream failed. Using fallback...'}` }
+              ]);
+            }
+          } catch (e) {
+            console.warn("[Assistant WS] Parse error:", e);
+          }
+        };
+      } catch (err) {
+        console.warn("[Assistant WS] Init error:", err);
+      }
+    };
+
+    connectWs();
+
+    return () => {
+      isUnmounting = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (activeSocket) {
+        activeSocket.close();
+      }
+    };
   }, []);
 
   const handleModelChange = (model: string) => {
@@ -146,9 +319,41 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
           localStorage.removeItem('flux_active_workflow');
           setActiveWorkflow(null);
           console.log('[Workflow Runner] Workflow completed successfully.');
+          if (typeof window !== 'undefined' && localStorage.getItem("flux_autopilot_active") === "true") {
+              requestAutopilotCheckin();
+          }
       } else {
           localStorage.setItem('flux_active_workflow', JSON.stringify(updated));
           setActiveWorkflow(updated);
+      }
+  };
+
+  const handleWorkflowError = (errorMessage: string) => {
+      localStorage.removeItem('flux_active_workflow');
+      setActiveWorkflow(null);
+
+      if (typeof window !== 'undefined' && localStorage.getItem("flux_autopilot_active") === "true") {
+          console.log(`[Auto-Pilot] Action failed. Requesting self-correction check-in for error: ${errorMessage}`);
+          
+          setMessages(prev => [...prev, {
+              role: "assistant",
+              content: `⚠️ Action failed: ${errorMessage}`
+          }]);
+
+          const currentGoal = localStorage.getItem("flux_autopilot_goal") || "";
+          requestAutopilotCheckin(
+              `System Error: The previous action failed with error: "${errorMessage}". We are trying to achieve the goal: "${currentGoal}". Please analyze the error, self-correct, and propose a modified plan or query to achieve the goal. Do not give up.`
+          );
+      } else {
+          if (typeof window !== 'undefined') {
+              localStorage.removeItem('flux_autopilot_goal');
+              localStorage.removeItem('flux_autopilot_active');
+              localStorage.removeItem('flux_autopilot_pending_checkin');
+              localStorage.removeItem('flux_autopilot_checkin_message');
+              setAutoPilotActive(false);
+              setAutoPilotGoal("");
+          }
+          console.warn(`[Workflow Runner Stopped with Error] ${errorMessage}`);
       }
   };
 
@@ -200,13 +405,16 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
 
               // Save advanced index to localStorage first so it loads on the new page,
               // but DO NOT set activeWorkflow state on this page to prevent executing on the old page.
-              const nextIndex = currentStepIndex + 1;
-              const updated = { ...activeWorkflow, currentStepIndex: nextIndex };
-              if (nextIndex >= steps.length) {
-                  localStorage.removeItem('flux_active_workflow');
-              } else {
-                  localStorage.setItem('flux_active_workflow', JSON.stringify(updated));
-              }
+               const nextIndex = currentStepIndex + 1;
+               const updated = { ...activeWorkflow, currentStepIndex: nextIndex };
+               if (nextIndex >= steps.length) {
+                   localStorage.removeItem('flux_active_workflow');
+                    if (typeof window !== 'undefined' && localStorage.getItem("flux_autopilot_active") === "true") {
+                        requestAutopilotCheckin();
+                    }
+               } else {
+                   localStorage.setItem('flux_active_workflow', JSON.stringify(updated));
+               }
 
               // Set activeWorkflow to null immediately to stop the runner on this page
               // while the browser handles router.push navigation asynchronously.
@@ -240,10 +448,7 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
                   simulateClickElement(targetEl, advanceWorkflow);
               } else if (Date.now() - startTime > 10000) {
                   cleanup();
-                  console.warn(`[Workflow Runner] Timeout waiting for element: ${step.elementId}`);
-                  // Stop the workflow to avoid hanging
-                  localStorage.removeItem('flux_active_workflow');
-                  setActiveWorkflow(null);
+                  handleWorkflowError(`Timeout waiting for element: ${step.elementId}`);
               }
           }, 200);
       } 
@@ -302,10 +507,7 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
                   simulateTypeIntoElement(targetEl, step.value!, advanceWorkflow);
               } else if (Date.now() - startTime > 10000) {
                   cleanup();
-                  console.warn(`[Workflow Runner] Timeout waiting for input: ${step.locator}`);
-                  // Stop the workflow to avoid hanging
-                  localStorage.removeItem('flux_active_workflow');
-                  setActiveWorkflow(null);
+                  handleWorkflowError(`Timeout waiting for input: ${step.locator}`);
               }
           }, 200);
       }
@@ -329,16 +531,14 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
                       });
                       advanceWorkflow();
                   } else {
-                      localStorage.removeItem('flux_active_workflow');
-                      setActiveWorkflow(null);
+                      handleWorkflowError(`Failed to create project: ${result.error || 'Unknown error'}`);
                       setMessages(prev => {
                           const filtered = prev.filter(m => !m.content.includes("Creating project"));
                           return [...filtered, { role: "assistant", content: `❌ Failed to create project: ${result.error || 'Unknown error'}` }];
                       });
                   }
               }).catch(err => {
-                  localStorage.removeItem('flux_active_workflow');
-                  setActiveWorkflow(null);
+                  handleWorkflowError(`Error creating project: ${err.message || err}`);
                   setMessages(prev => {
                       const filtered = prev.filter(m => !m.content.includes("Creating project"));
                       return [...filtered, { role: "assistant", content: `❌ Error creating project: ${err.message || err}` }];
@@ -361,20 +561,27 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
                           }
                           setMessages(prev => {
                               const filtered = prev.filter(m => !m.content.includes("Executing query"));
-                              return [...filtered, { role: "assistant", content: ` Successfully executed SQL query: \`${step.query}\`` }];
+                              let feedbackContent = ` Successfully executed SQL query: \`${step.query}\``;
+                              const rows = result.result?.rows;
+                              if (Array.isArray(rows) && rows.length > 0) {
+                                  feedbackContent += `\n\n**Output results (first 5 rows):**\n\`\`\`json\n${JSON.stringify(rows.slice(0, 5), null, 2)}\n\`\`\``;
+                              } else if (result.executionInfo) {
+                                  const info = result.executionInfo;
+                                  const countText = info.rows_affected !== undefined ? `${info.rows_affected} rows affected` : `${info.rows_returned || 0} rows returned`;
+                                  feedbackContent += `\n\n*Result: ${countText} (Time: ${info.time || 'N/A'})*`;
+                              }
+                              return [...filtered, { role: "assistant", content: feedbackContent }];
                           });
                           advanceWorkflow();
                       } else {
-                          localStorage.removeItem('flux_active_workflow');
-                          setActiveWorkflow(null);
+                          handleWorkflowError(`Failed to execute SQL: ${result.error?.message || 'Unknown error'}`);
                           setMessages(prev => {
                               const filtered = prev.filter(m => !m.content.includes("Executing query"));
                               return [...filtered, { role: "assistant", content: `❌ Failed to execute SQL: ${result.error?.message || 'Unknown error'}` }];
                           });
                       }
                   }).catch(err => {
-                      localStorage.removeItem('flux_active_workflow');
-                      setActiveWorkflow(null);
+                      handleWorkflowError(`Error executing SQL: ${err.message || err}`);
                       setMessages(prev => {
                           const filtered = prev.filter(m => !m.content.includes("Executing query"));
                           return [...filtered, { role: "assistant", content: `❌ Error executing SQL: ${err.message || err}` }];
@@ -386,8 +593,7 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
                   runSql(project);
               } else {
                   console.log(`[Workflow Runner] Waiting for project context to initialize...`);
-                  localStorage.removeItem('flux_active_workflow');
-                  setActiveWorkflow(null);
+                  handleWorkflowError('No project context initialized');
                   setMessages(prev => {
                       const filtered = prev.filter(m => !m.content.includes("Executing query"));
                       return [...filtered, { role: "assistant", content: `❌ Failed to execute SQL: No project active.` }];
@@ -527,9 +733,7 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
   };
 
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+
 
   const storageKey = `flux_ai_messages_${userId}`;
 
@@ -600,26 +804,61 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
     setVoiceEnabled(!voiceEnabled);
   };
 
-  const handleSend = async (e?: React.FormEvent) => {
+  const handleSend = async (e?: React.FormEvent, overrideMsg?: string) => {
     if (e) e.preventDefault();
-    if (!input.trim() || isTyping) return;
+    const msgToSend = overrideMsg || input.trim();
+    if (!msgToSend.trim() || isTyping) return;
 
-    const userMsg = input.trim();
-    setInput("");
-    setMessages(prev => [...prev, { role: "user", content: userMsg }]);
+    if (!overrideMsg) {
+      setInput("");
+      if (autoPilotActive) {
+        const existingGoal = localStorage.getItem("flux_autopilot_goal");
+        if (!existingGoal) {
+          localStorage.setItem("flux_autopilot_goal", msgToSend);
+          setAutoPilotGoal(msgToSend);
+        }
+      }
+    }
+
+    setMessages(prev => [...prev, { role: "user", content: msgToSend, hidden: !!overrideMsg && msgToSend.startsWith("System:") }]);
     setIsTyping(true);
 
+    const currentMsgs = [...messages, { role: "user", content: msgToSend, hidden: !!overrideMsg && msgToSend.startsWith("System:") }];
+
+    // Try WebSocket stream first if socket is open
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      setMessages(prev => [...prev, { role: "assistant", content: "" }]);
+      socketRef.current.send(JSON.stringify({
+        type: 'chat_request',
+        messages: currentMsgs,
+        currentPath: pathname,
+        activeProject: project ? {
+          project_id: project.project_id,
+          display_name: project.display_name,
+          dialect: project.dialect,
+          timezone: project.timezone
+        } : null
+      }));
+      return;
+    }
+
     try {
-      const currentMsgs = [...messages, { role: "user", content: userMsg }];
       const res = await fetch("/api/ai-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: currentMsgs,
           currentPath: pathname,
-          model: selectedModel
+          model: selectedModel,
+          activeProject: project ? {
+            project_id: project.project_id,
+            display_name: project.display_name,
+            dialect: project.dialect,
+            timezone: project.timezone
+          } : null
         })
-      });      const data = await res.json();
+      });
+      const data = await res.json();
       if (data.success) {
         const responseText = data.text;
         
@@ -639,6 +878,9 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
             };
             localStorage.setItem('flux_active_workflow', JSON.stringify(workflowObj));
             setActiveWorkflow(workflowObj);
+        } else {
+            localStorage.removeItem("flux_autopilot_goal");
+            setAutoPilotGoal("");
         }
 
         speak(cleanText);
@@ -651,6 +893,28 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
       setIsTyping(false);
     }
   };
+
+  // Auto-Pilot continuous execution loop
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const pendingCheckin = localStorage.getItem("flux_autopilot_pending_checkin") === "true";
+      const isAutoActive = localStorage.getItem("flux_autopilot_active") === "true";
+      const currentGoal = localStorage.getItem("flux_autopilot_goal") || "";
+
+      if (pendingCheckin && isAutoActive && currentGoal && !isTyping) {
+        localStorage.removeItem("flux_autopilot_pending_checkin");
+        
+        // Wait 2.5 seconds to let the route and state settle fully
+        const timer = setTimeout(() => {
+          handleSend(
+            undefined,
+            `System: I have successfully completed the previous set of actions. I am currently on page "${window.location.pathname}". What is the next step to achieve the overall goal: "${currentGoal}"? If the goal is fully achieved, output exactly: "Goal accomplished successfully! Let me know if you need anything else."`
+          );
+        }, 2500);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [pathname, isTyping, triggerCheckin]);
 
   // ── Professional markdown renderer ──────────────────────────────────────────
   const formatText = (text: string) => {
@@ -770,15 +1034,11 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
                 <select
                   value={selectedModel}
                   onChange={(e) => handleModelChange(e.target.value)}
-                  className="h-7 px-1.5 mr-1.5 rounded border border-border bg-background text-[10.5px] font-medium text-foreground/80 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer max-w-[130px] truncate select-none shadow-sm"
-                  title="Select AI Model"
+                  className="h-7 px-1.5 mr-1.5 rounded border border-border bg-background text-[10.5px] font-medium text-foreground/80 focus:outline-none focus:ring-1 focus:ring-primary cursor-default max-w-[130px] truncate select-none shadow-sm opacity-90"
+                  title="AI Model"
+                  disabled
                 >
-                  <option value="googleai/gemini-2.5-flash">Gemini 2.5 Flash</option>
-                  <option value="googleai/gemini-1.5-pro">Gemini 1.5 Pro</option>
-                  <option value="openai">GPT-4o Mini (OpenAI)</option>
-                  <option value="groq">Llama 3.3 (Groq)</option>
-                  <option value="xai">Grok 2 (xAI)</option>
-                  <option value="nvidia">Llama 3.1 (Nvidia)</option>
+                  <option value="glm">GLM 5.2</option>
                 </select>
                 <button
                   onClick={toggleVoice}
@@ -796,9 +1056,25 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
               </div>
             </div>
 
+            {/* Auto-Pilot Goal Banner */}
+            {autoPilotActive && autoPilotGoal && (
+              <div className="mx-4 mt-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-between text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                <div className="flex items-center gap-2 truncate">
+                  <Zap size={13} className="animate-bounce shrink-0 fill-current text-amber-500" />
+                  <span className="truncate">Auto-Pilot: "{autoPilotGoal}"</span>
+                </div>
+                <button 
+                  onClick={toggleAutoPilot}
+                  className="text-[10px] uppercase font-bold text-amber-500 hover:underline shrink-0 ml-2"
+                >
+                  Stop
+                </button>
+              </div>
+            )}
+
             {/* ── Messages ── */}
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 custom-scrollbar">
-              {messages.map((msg, idx) => (
+              {messages.filter(msg => !msg.hidden).map((msg, idx) => (
                 <motion.div
                   key={idx}
                   initial={{ opacity: 0, y: 6 }}
@@ -876,6 +1152,19 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
                   disabled={isTyping}
                   autoFocus
                 />
+                <button
+                  type="button"
+                  onClick={toggleAutoPilot}
+                  className={`h-9 px-3 shrink-0 flex items-center justify-center rounded-lg border text-xs font-semibold gap-1.5 transition-all ${
+                    autoPilotActive 
+                      ? 'bg-amber-500/10 border-amber-500/30 text-amber-500 hover:bg-amber-500/20' 
+                      : 'bg-secondary/40 border-border text-muted-foreground hover:text-foreground hover:bg-secondary'
+                  }`}
+                  title="Toggle Auto-Pilot Mode"
+                >
+                  <Zap size={14} className={autoPilotActive ? "animate-pulse fill-current text-amber-500" : ""} />
+                  <span>Auto-Pilot</span>
+                </button>
                 <button
                   type="submit"
                   disabled={!input.trim() || isTyping}
