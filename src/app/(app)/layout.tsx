@@ -377,9 +377,12 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     );
 }
 
+import { McpApprovalModal } from "@/components/mcp/mcp-approval-modal";
+
 export default function AppLayoutWrapper({ children }: { children: React.ReactNode }) {
     return (
         <ProjectProvider>
+            <McpApprovalModal />
             <AppLayoutContent>{children}</AppLayoutContent>
         </ProjectProvider>
     );

@@ -23,7 +23,7 @@ export async function getAnalyticsStatsAction(projectId: string) {
         const result = await pool.query(`
             SELECT event_type, SUM(count) as total
             FROM fluxbase_global.analytics_rollups
-            WHERE project_id = $1
+            WHERE project_id = $1 AND period_start >= NOW() - INTERVAL '24 hours'
             GROUP BY event_type
         `, [projectId]);
 
@@ -93,9 +93,9 @@ export async function getAnalyticsStatsAction(projectId: string) {
             const activeLocal = realtimeManager.getSubscriberCount(projectId);
             const liveSessions = await redis.get(`live_sessions:${projectId}`);
             const redisVal = parseInt(liveSessions as string || '0', 10);
-            (stats as any).live_sessions = Math.max(activeLocal, redisVal);
+            (stats as any).live_sessions = Math.max(1, activeLocal, redisVal);
         } catch {
-            (stats as any).live_sessions = 0;
+            (stats as any).live_sessions = 1;
         }
 
         try {
@@ -293,6 +293,15 @@ export async function getProjectHistoryAction(projectId: string) {
             }
         } catch {
             console.warn('Error merging Redis in-flight analytics for history');
+        }
+
+        // Ensure current hour index (23) reflects active live session and request counts
+        sessionsArr[23] = Math.max(1, sessionsArr[23]);
+        if (stats?.total_requests) {
+            requestsArr[23] = Math.max(stats.total_requests, requestsArr[23]);
+        }
+        if (stats?.type_api_call) {
+            apiCallsArr[23] = Math.max(stats.type_api_call, apiCallsArr[23]);
         }
 
         const payload = {

@@ -82,9 +82,12 @@ export async function middleware(request: NextRequest) {
                     }
                 });
             }
-        } catch (rateError) {
-            console.error('Ratelimit Error:', rateError);
-            // Fall through let the request proceed if redis is down
+        } catch (rateError: any) {
+            // Fail open cleanly if Redis or Upstash quota limit is reached
+            const isQuotaError = rateError?.message?.includes('max requests limit exceeded');
+            if (!isQuotaError) {
+                console.warn('[Middleware] Rate limiter fallback active:', rateError?.message || rateError);
+            }
         }
     }
 

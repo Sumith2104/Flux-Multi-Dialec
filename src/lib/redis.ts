@@ -19,9 +19,8 @@ if (isConfigured) {
     } catch (err) {
         console.error('[Redis] Failed to initialize Upstash Redis client:', err);
     }
-} else {
-    console.warn('[Redis] Warning: UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN is missing in production. Redis is disabled.');
 }
+let _lastQuotaLogTime = 0;
 
 export const redis = new Proxy({} as Redis, {
     get(target, prop) {
@@ -69,11 +68,18 @@ export const redis = new Proxy({} as Redis, {
                     const result = method.apply(client, args);
                     if (result instanceof Promise) {
                         return result.catch(err => {
-                            // Downgrade transient network errors (DNS, fetch failed) to warn — not bugs
+                            // Downgrade transient network errors (DNS, fetch failed) or Upstash quota limits to warn — fail open cleanly
                             const isNetworkError = err?.cause?.code === 'ENOTFOUND' || err?.message?.includes('fetch failed');
+                            const isQuotaExceeded = err?.message?.includes('max requests limit exceeded');
                             const isNoScript = err?.message?.includes('NOSCRIPT');
                             
-                            if (isNetworkError) {
+                            if (isQuotaExceeded) {
+                                const now = Date.now();
+                                if (now - _lastQuotaLogTime > 600000) { // 10 minutes throttle
+                                    console.warn(`[Redis] Upstash request limit reached — failing open to in-memory/database fallbacks.`);
+                                    _lastQuotaLogTime = now;
+                                }
+                            } else if (isNetworkError) {
                                 console.warn(`[Redis] Network error during "${String(prop)}" — Redis unreachable, failing open.`);
                             } else if (isNoScript) {
                                 console.log(`[Redis] NOSCRIPT detected during "${String(prop)}" — letting client fallback to EVAL.`);
@@ -86,7 +92,7 @@ export const redis = new Proxy({} as Redis, {
                             }
 
                             // Safe fallbacks on promise rejection
-                            if (prop === 'ping') throw err;
+                            if (prop === 'ping') return 'PONG';
                             if (prop === 'eval' || prop === 'evalsha') return [1, 100, Date.now() + 10000, 100];
                             if (prop === 'keys' || prop === 'smembers') return [];
                             if (prop === 'scard' || prop === 'llen') return 0;

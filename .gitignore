@@ -50,6 +50,12 @@ firestore-debug.log
 .codex/
 .agents/
 
+# Python virtual environments & cache
+.venv/
+venv/
+__pycache__/
+*.pyc
+
 # Generated Monaco editor assets
 public/monaco-editor/
 # End

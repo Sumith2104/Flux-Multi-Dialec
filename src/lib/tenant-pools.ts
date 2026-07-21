@@ -49,9 +49,10 @@ export function getProjectDbAndSchema(project: Project) {
     : project.connection_config || {};
 
   if (!project.connection_type || project.connection_type === 'internal') {
+    const targetSchema = (project as any).schema_name || `project_${project.project_id}`;
     return {
-      dbName: `project_${project.project_id}`,
-      schemaName: `project_${project.project_id}`
+      dbName: targetSchema,
+      schemaName: targetSchema
     };
   } else {
     let dbName = config.database || 'postgres';

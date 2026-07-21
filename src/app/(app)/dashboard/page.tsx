@@ -233,46 +233,7 @@ export default function DashboardPage() {
                 </div>
 
 
-                {/* Custom Widgets Section */}
-                {widgetsLoading ? (
-                    <Card className="border border-border/50 bg-background/50 relative overflow-hidden">
-                        <CardHeader className="py-4 px-6 flex flex-row items-center justify-between border-b border-border/60 bg-secondary/30">
-                            <div>
-                                <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                                    <Sparkles className="w-4 h-4 text-orange-500 animate-pulse" />
-                                    Custom Analytics Widgets
-                                </CardTitle>
-                                <CardDescription>Loading custom widgets...</CardDescription>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="p-6 grid gap-4 grid-cols-1 md:grid-cols-3">
-                            <Skeleton className="h-60 w-full" />
-                            <Skeleton className="h-60 w-full" />
-                            <Skeleton className="h-60 w-full" />
-                        </CardContent>
-                    </Card>
-                ) : widgets && widgets.length > 0 ? (
-                    <Card className="border border-border/50 bg-background/50 relative overflow-hidden">
-                        <CardHeader className="py-4 px-6 flex flex-row items-center justify-between border-b border-border/60 bg-secondary/30">
-                            <div>
-                                <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                                    <Sparkles className="w-4 h-4 text-orange-500" />
-                                    Custom Analytics Widgets
-                                </CardTitle>
-                                <CardDescription>Pinned query charts and insights for this project</CardDescription>
-                            </div>
-                            <Button asChild size="sm" variant="outline" className="border-zinc-700 text-zinc-300 hover:bg-zinc-800">
-                                <Link href={`/analytics?projectId=${selectedProject.project_id}`}>
-                                    <Edit className="w-4 h-4 mr-2" />
-                                    Manage Widgets
-                                </Link>
-                            </Button>
-                        </CardHeader>
-                        <CardContent className="p-6">
-                            <DashboardCustomWidgetsGrid widgets={widgets} projectId={selectedProject.project_id} />
-                        </CardContent>
-                    </Card>
-                ) : null}
+
 
 
 

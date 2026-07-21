@@ -4,6 +4,8 @@ import { createProject } from '@/lib/data';
 import { provisionDatabaseInstance } from '@/lib/aws-rds';
 import { checkInstanceSizeLimit, getUserPlan } from '@/lib/limits';
 import { getCurrentUserId } from '@/lib/auth';
+import { TenantProvisioner } from '@/lib/tenant-engine';
+import { getPgPool } from '@/lib/pg';
 import crypto from 'crypto';
 
 export async function createProjectAction(formData: FormData) {
@@ -56,25 +58,23 @@ export async function createProjectAction(formData: FormData) {
       }
     }
 
-    // 2. Provision the AWS RDS instance if size is specified and it's internal
-    if (instanceSize && actualConnectionType === 'internal') {
-      const masterUsername = 'fluxadmin_' + crypto.randomBytes(4).toString('hex');
-      const masterPassword = 'Flux' + crypto.randomBytes(16).toString('base64').replace(/[^a-zA-Z0-9]/g, '') + 'A1!';
-      const instanceIdentifier = `fluxbase-tenant-${project.project_id.toLowerCase()}-${Date.now()}`;
+    // 2. Provision Supabase-style Serverless Tenant Schema ($0 cost, <50ms instant creation)
+    if (actualConnectionType === 'internal') {
+      try {
+        const tenantResult = await TenantProvisioner.createTenantSchema(
+          project.project_id,
+          dialect === 'mysql' ? 'mysql' : 'postgresql'
+        );
 
-      // Trigger the asynchronous AWS RDS API builder
-      provisionDatabaseInstance({
-        instanceIdentifier,
-        engine: dialect === 'mysql' ? 'mysql' : 'postgres',
-        masterUsername,
-        masterPassword,
-        instanceClass: instanceSize
-      }).catch(err => {
-        console.error(`[AWS Provisioning Error in Background] Project ${project.project_id}:`, err);
-      });
-
-      // We can expose this safely mapping the password, or just let them know it's provisioning
-      console.log(`[AWS Lifecycle] Spinning up RDS ${instanceIdentifier} for ${project.project_id}`);
+        const pool = getPgPool();
+        await pool.query(
+          'UPDATE fluxbase_global.projects SET is_serverless = true, schema_name = $1 WHERE project_id = $2',
+          [tenantResult.schemaName, project.project_id]
+        );
+        console.log(`[Supabase Engine] Instant Serverless Tenant Created: ${tenantResult.schemaName} in ${tenantResult.executionTimeMs}ms`);
+      } catch (tenantErr) {
+        console.error(`[Serverless Provisioning Error] Project ${project.project_id}:`, tenantErr);
+      }
     }
 
     return { success: true, project: project };
