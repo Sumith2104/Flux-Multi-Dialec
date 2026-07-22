@@ -11,6 +11,14 @@ export async function GET(req: NextRequest) {
     const auth = await getAuthContextFromRequest(req);
     if (!auth?.userId || !projectId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+    const { requireProjectAccess, jsonError } = await import('@/lib/project-auth');
+    try {
+        await requireProjectAccess(projectId, auth);
+    } catch (error) {
+        const { body, status } = jsonError(error);
+        return NextResponse.json(body, { status });
+    }
+
     const pool = getPgPool();
 
     const q = search

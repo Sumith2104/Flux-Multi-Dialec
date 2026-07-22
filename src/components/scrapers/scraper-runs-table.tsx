@@ -31,7 +31,6 @@ export function ScraperRunsTable({ scraperId }: ScraperRunsTableProps) {
             return data.runs || [];
         },
         enabled: !!scraperId,
-        refetchInterval: 5000,
     });
 
     if (!scraperId) {

@@ -63,20 +63,29 @@ export async function GET(request: Request) {
         
         if (project.dialect === 'mysql') {
             [resultTables, resultViews, resultIndexes, resultFunctions] = await Promise.all([
-                engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = ? AND table_name NOT LIKE '\\_flux\\_internal\\_%';`, [dbName]),
-                engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = ? AND table_name NOT LIKE '\\_flux\\_internal\\_%';`, [dbName]),
+                engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = ? AND table_name NOT LIKE '_flux_internal_%';`, [dbName]),
+                engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = ? AND table_name NOT LIKE '_flux_internal_%';`, [dbName]),
                 engine.execute(`SELECT index_name, table_name FROM information_schema.statistics WHERE table_schema = ?;`, [dbName]),
                 engine.execute(`SELECT routine_name FROM information_schema.routines WHERE routine_schema = ? AND routine_type = 'FUNCTION';`, [dbName])
             ]);
-            resultExtensions = { rows: [] }; // MySQL doesn't natively use Extensions in this standard format
+            resultExtensions = { rows: [] };
         } else {
             [resultTables, resultViews, resultIndexes, resultFunctions, resultExtensions] = await Promise.all([
-                engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = $1 AND table_name NOT LIKE '\\_flux\\_internal\\_%' ORDER BY table_name, ordinal_position;`, [schemaName]),
-                engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = $1 AND table_name NOT LIKE '\\_flux\\_internal\\_%';`, [schemaName]),
+                engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = $1 AND table_name NOT LIKE '_flux_internal_%' ORDER BY table_name, ordinal_position;`, [schemaName]),
+                engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = $1 AND table_name NOT LIKE '_flux_internal_%';`, [schemaName]),
                 engine.execute(`SELECT indexname, tablename FROM pg_indexes WHERE schemaname = $1;`, [schemaName]),
                 engine.execute(`SELECT routine_name FROM information_schema.routines WHERE routine_schema = $1 AND routine_type = 'FUNCTION';`, [schemaName]),
                 engine.execute(`SELECT extname FROM pg_extension;`)
             ]);
+
+            if ((!resultTables?.rows || resultTables.rows.length === 0) && schemaName !== 'public') {
+                [resultTables, resultViews, resultIndexes, resultFunctions] = await Promise.all([
+                    engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name NOT LIKE '_flux_internal_%' ORDER BY table_name, ordinal_position;`),
+                    engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = 'public' AND table_name NOT LIKE '_flux_internal_%';`),
+                    engine.execute(`SELECT indexname, tablename FROM pg_indexes WHERE schemaname = 'public';`),
+                    engine.execute(`SELECT routine_name FROM information_schema.routines WHERE routine_schema = 'public' AND routine_type = 'FUNCTION';`)
+                ]);
+            }
         }
 
         const schemaGraph: Record<string, any[]> = {};

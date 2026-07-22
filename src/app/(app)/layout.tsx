@@ -378,12 +378,17 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 }
 
 import { McpApprovalModal } from "@/components/mcp/mcp-approval-modal";
+import { UploadProvider } from "@/contexts/upload-context";
+import { BackgroundUploadWidget } from "@/components/storage/background-upload-widget";
 
 export default function AppLayoutWrapper({ children }: { children: React.ReactNode }) {
     return (
         <ProjectProvider>
-            <McpApprovalModal />
-            <AppLayoutContent>{children}</AppLayoutContent>
+            <UploadProvider>
+                <McpApprovalModal />
+                <AppLayoutContent>{children}</AppLayoutContent>
+                <BackgroundUploadWidget />
+            </UploadProvider>
         </ProjectProvider>
     );
 }

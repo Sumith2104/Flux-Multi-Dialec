@@ -2,12 +2,13 @@
 
 import React, { useRef, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Play, Save, Download, Loader2, Plus, AlignLeft, Activity, Share2, Upload } from 'lucide-react';
+import { Play, Save, Download, Loader2, Plus, AlignLeft, Activity, Share2, Upload, Zap, Check } from 'lucide-react';
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
 import { Card, CardContent, CardHeader } from './ui/card';
 import Editor, { loader } from '@monaco-editor/react';
 import { useToast } from '@/hooks/use-toast';
+import { IndexAdvisor, IndexRecommendation } from '@/lib/index-advisor';
 
 
 
@@ -191,17 +192,34 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
         };
     }, [editorInstance]);
 
+    const [recommendations, setRecommendations] = useState<IndexRecommendation[]>([]);
+
     const handleRunClick = () => {
+        let sqlToRun = queryRef.current;
         if (editorRef.current) {
             const selection = editorRef.current.getSelection();
             if (selection && !selection.isEmpty()) {
-                const selected = editorRef.current.getModel().getValueInRange(selection).trim();
-                if (selected) { onRunRef.current(selected); return; }
+                sqlToRun = editorRef.current.getModel().getValueInRange(selection).trim();
+            } else {
+                sqlToRun = editorRef.current.getModel().getValue().trim();
             }
-            onRunRef.current(editorRef.current.getModel().getValue().trim());
-            return;
         }
-        onRunRef.current();
+
+        // Run AI Index Advisor on query
+        try {
+            const recs = IndexAdvisor.analyzeQuery(sqlToRun);
+            setRecommendations(recs);
+        } catch {
+            setRecommendations([]);
+        }
+
+        onRunRef.current(sqlToRun);
+    };
+
+    const handleApplyRecommendation = (rec: IndexRecommendation) => {
+        onRunRef.current(rec.sqlStatement);
+        toast({ title: "Index Optimization Triggered", description: `Executing: ${rec.sqlStatement}` });
+        setRecommendations(prev => prev.filter(r => r.indexName !== rec.indexName));
     };
 
     const handleNewQuery = () => { setQueryRef.current(''); editorRef.current?.focus(); };
@@ -286,6 +304,22 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
                     </Button>
                 </div>
             </CardHeader>
+
+            {recommendations.length > 0 && (
+                <div className="bg-amber-500/10 border-y border-amber-500/20 px-4 py-2 flex items-center justify-between text-xs animate-in fade-in duration-200">
+                    <div className="flex items-center gap-2 text-amber-400 font-medium">
+                        <Zap size={14} className="animate-pulse shrink-0" />
+                        <span>AI Index Advisor: {recommendations[0].reason}</span>
+                    </div>
+                    <Button 
+                        size="sm" 
+                        onClick={() => handleApplyRecommendation(recommendations[0])}
+                        className="h-6 text-[11px] bg-amber-600 hover:bg-amber-500 text-white font-semibold px-2.5 rounded-md gap-1"
+                    >
+                        <Check size={12} /> Apply Recommended Index
+                    </Button>
+                </div>
+            )}
 
             <CardContent className="p-0 flex-grow relative bg-card">
                 {!query.trim() && (

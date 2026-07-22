@@ -45,15 +45,22 @@ export async function GET(req: NextRequest) {
         const auth = await getAuthContextFromRequest(req);
         if (!projectId) throw new FluxbaseError('projectId is required', ERROR_CODES.MISSING_FIELD, 400);
 
-        await requireProjectAccess(projectId, auth);
+        const project = await requireProjectAccess(projectId, auth);
+        const { getProjectDbAndSchema } = await import('@/lib/tenant-pools');
+        const { schemaName } = getProjectDbAndSchema(project);
 
         const pool = getPgPool();
-        const schemaName = `project_${projectId}`;
 
-        const tablesRes = await pool.query(
-            `SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE' ORDER BY table_name`,
+        let tablesRes = await pool.query(
+            `SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE' AND table_name NOT LIKE '_flux_internal_%' ORDER BY table_name`,
             [schemaName]
         );
+
+        if (tablesRes.rows.length === 0 && schemaName !== 'public') {
+            tablesRes = await pool.query(
+                `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name NOT LIKE '_flux_internal_%' ORDER BY table_name`
+            );
+        }
 
         await ensureRlsCatalog(pool);
 

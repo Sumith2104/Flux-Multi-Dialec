@@ -9,6 +9,14 @@ import { ErdView } from '@/components/erd-view';
 
 
 async function Database({ projectId }: { projectId: string }) {
+    const { getCurrentUserId } = await import('@/lib/auth');
+    const { getProjectById } = await import('@/lib/data');
+    const userId = await getCurrentUserId();
+    const project = await getProjectById(projectId, userId || undefined);
+    if (!project) {
+        redirect('/dashboard');
+    }
+
     const allTables = await getTablesForProject(projectId);
     const allColumns = await Promise.all(
         allTables.map(table => getColumnsForTable(projectId, table.table_id))

@@ -31,7 +31,13 @@ export async function GET(req: NextRequest) {
 
         if (!projectId) return NextResponse.json({ error: 'Missing projectId' }, { status: 400 });
 
-        // 1. Get project members
+        const { requireProjectAccess, jsonError } = await import('@/lib/project-auth');
+        try {
+            await requireProjectAccess(projectId, auth);
+        } catch (error) {
+            const { body, status } = jsonError(error);
+            return NextResponse.json(body, { status });
+        }
         const membersRes = await pool.query(`
             SELECT u.id as "userId", u.email, u.display_name as "displayName", 
                    'admin' as role, 

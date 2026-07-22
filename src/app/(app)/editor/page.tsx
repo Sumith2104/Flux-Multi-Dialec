@@ -10,7 +10,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { getTablesForProject, getColumnsForTable, getConstraintsForTable, getConstraintsForProject, getProjectById } from '@/lib/data';
 // ...
 async function Editor({ projectId, tableId, tableName }: { projectId: string; tableId?: string; tableName?: string; }) {
-    const project = await getProjectById(projectId);
+    const { getCurrentUserId } = await import('@/lib/auth');
+    const userId = await getCurrentUserId();
+    const project = await getProjectById(projectId, userId || undefined);
+    if (!project) {
+        redirect('/dashboard');
+    }
     const dialect = project?.dialect || 'postgresql';
     const allTables = await getTablesForProject(projectId);
     const currentTable = tableId ? allTables.find(t => t.table_id === tableId) : null;

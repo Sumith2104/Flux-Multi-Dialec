@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
@@ -40,10 +40,6 @@ export function InvitationAlerts({ initialInvites }: { initialInvites?: Invite[]
         } else {
             fetchInvites();
         }
-        
-        // Poll every 60 seconds for new invites
-        const interval = setInterval(fetchInvites, 60000);
-        return () => clearInterval(interval);
     }, [fetchInvites, initialInvites]);
 
     const handleAction = async (inviteId: string, status: 'accepted' | 'rejected') => {

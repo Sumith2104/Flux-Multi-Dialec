@@ -17,8 +17,8 @@ export async function createApiKeyAction(name: string, projectId?: string, scope
         let projectName: string | undefined;
 
         if (projectId) {
-            const project = await getProjectById(projectId);
-            if (!project || project.user_id !== userId) {
+            const project = await getProjectById(projectId, userId);
+            if (!project) {
                 return { success: false, error: "Project not found or unauthorized" };
             }
             projectName = project.display_name;

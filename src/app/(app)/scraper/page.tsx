@@ -44,7 +44,6 @@ export default function ScraperDashboard() {
             return data.success ? data.scrapers : []
         },
         enabled: !!projectId,
-        refetchInterval: 5000,
     })
 
     useEffect(() => {

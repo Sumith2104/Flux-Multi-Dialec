@@ -99,6 +99,54 @@ async function startConnection(projectId: string) {
     }
 
     state.status = 'connecting';
+
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL;
+    if (wsUrl && typeof window !== 'undefined') {
+        try {
+            const wsTarget = `${wsUrl.replace(/\/$/, '')}?projectId=${projectId}`;
+            const ws = new WebSocket(wsTarget);
+            (state as any).socket = ws;
+
+            ws.onopen = () => {
+                state.status = 'open';
+                state.retryCount = 0;
+                console.log(`[Realtime] ✅ WebSocket connected to Render for ${projectId}`);
+                resetWatchdog(projectId);
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    resetWatchdog(projectId);
+                    if (data.type === 'ping' || data.type === 'connected') return;
+
+                    const tableRef = data.table || '';
+                    const cleanTable = typeof tableRef === 'string' ? tableRef.split('.').pop() || tableRef : tableRef;
+                    const normalized: RealtimeEvent = {
+                        ...data,
+                        type: data.action ? 'update' : (data.type || 'update'),
+                        table: cleanTable,
+                        action: data.action,
+                        data: data.record,
+                    };
+                    notifyListeners(projectId, normalized);
+                } catch {}
+            };
+
+            ws.onclose = () => {
+                (state as any).socket = null;
+                scheduleReconnect(projectId);
+            };
+
+            ws.onerror = () => {
+                ws.close();
+            };
+            return;
+        } catch (e) {
+            console.warn('[Realtime] WebSocket connect failed, falling back to SSE:', e);
+        }
+    }
+
     const abortController = new AbortController();
     state.abortController = abortController;
 

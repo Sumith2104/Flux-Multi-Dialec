@@ -398,8 +398,16 @@ export async function deleteColumnAction(formData: FormData) {
     const tableId = formData.get('tableId') as string;
     const columnId = formData.get('columnId') as string;
     const columnName = formData.get('columnName') as string;
+    const userId = await getCurrentUserId();
+
+    if (!userId || !projectId) {
+        return { error: 'Unauthorized' };
+    }
 
     try {
+        const project = await getProjectById(projectId, userId);
+        if (!project) return { error: 'Forbidden: Insufficient project permissions.' };
+
         // Validation: Check constraints
         const constraints = await getConstraintsForProject(projectId);
         const isUsedInConstraint = constraints.some(c => c.table_id === tableId && c.column_names.split(',').includes(columnName));
@@ -408,11 +416,7 @@ export async function deleteColumnAction(formData: FormData) {
         }
 
         await deleteColumn(projectId, tableId, columnId);
-
-        // Note: Field remains in documents until manually cleaned up or overwritten.
-
         await broadcastSchemaUpdate(projectId);
-        // revalidatePath(`/editor?projectId=${projectId}&tableId=${tableId}&tableName=${tableName}`);
         return { success: true };
     } catch (error) {
         return { error: `An unexpected error occurred: ${(error as Error).message}` };
@@ -426,8 +430,15 @@ export async function addConstraintAction(formData: FormData) {
     const tableId = formData.get('tableId') as string;
     const type = formData.get('type') as Constraint['type'];
     const columnNames = formData.get('columnNames') as string;
+    const userId = await getCurrentUserId();
+
+    if (!userId || !projectId) {
+        return { error: 'Unauthorized' };
+    }
 
     try {
+        const project = await getProjectById(projectId, userId);
+        if (!project) return { error: 'Forbidden: Insufficient project permissions.' };
         const constraint: any = {
             table_id: tableId,
             type,
@@ -454,11 +465,18 @@ export async function addConstraintAction(formData: FormData) {
 export async function deleteConstraintAction(formData: FormData) {
     const projectId = formData.get('projectId') as string;
     const constraintId = formData.get('constraintId') as string;
+    const userId = await getCurrentUserId();
+
+    if (!userId || !projectId) {
+        return { error: 'Unauthorized' };
+    }
 
     try {
+        const project = await getProjectById(projectId, userId);
+        if (!project) return { error: 'Forbidden: Insufficient project permissions.' };
+
         await deleteConstraint(projectId, constraintId);
         await broadcastSchemaUpdate(projectId);
-        // revalidatePath(`/editor?projectId=${projectId}&tableId=${tableId}&tableName=${tableName}`);
         return { success: true };
     } catch (error) {
         return { error: `An unexpected error occurred: ${(error as Error).message}` };
@@ -467,7 +485,15 @@ export async function deleteConstraintAction(formData: FormData) {
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function deleteTableAction(projectId: string, tableId: string, tableName: string) {
+    const userId = await getCurrentUserId();
+    if (!userId || !projectId) {
+        return { error: 'Unauthorized' };
+    }
+
     try {
+        const project = await getProjectById(projectId, userId);
+        if (!project) return { error: 'Forbidden: Project not found or insufficient access.' };
+
         await deleteTable(projectId, tableId);
         await broadcastSchemaUpdate(projectId);
         revalidatePath(`/dashboard?projectId=${projectId}`);

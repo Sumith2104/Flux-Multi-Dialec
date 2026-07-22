@@ -43,6 +43,7 @@ import {
 import { getTablesForProject, Table as DbTable } from '@/lib/data';
 import { getUserPlanAction } from './billing-actions';
 import { Skeleton } from '@/components/ui/skeleton';
+import { WebhooksManager } from '@/components/settings/webhooks-manager';
 
 const timezones = Intl.supportedValuesOf('timeZone');
 
@@ -357,6 +358,13 @@ export default function GeneralSettingsPage() {
                         </Button>
                     </CardFooter>
                 </Card>
+
+                {/* Live Webhooks Section */}
+                {selectedProject && (
+                    <div className="lg:col-span-2">
+                        <WebhooksManager projectId={selectedProject.project_id} tables={tables} />
+                    </div>
+                )}
 
                 {/* 2FA Section */}
                 <Card className="lg:col-span-1">

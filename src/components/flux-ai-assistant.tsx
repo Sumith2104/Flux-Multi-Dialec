@@ -2,11 +2,12 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Volume2, VolumeX, ArrowUp, Zap } from "lucide-react";
+import { X, Volume2, VolumeX, ArrowUp, Zap, GripVertical } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useContext } from "react";
 import { ProjectContext } from "@/contexts/project-context";
 import { createProjectAction } from "@/components/layout/actions";
+import { cn } from "@/lib/utils";
 
 type Message = {
   role: "user" | "assistant";
@@ -105,6 +106,43 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
   const [autoPilotGoal, setAutoPilotGoal] = useState<string>("");
   const [triggerCheckin, setTriggerCheckin] = useState(0);
 
+  // Resizable panel state
+  const [panelWidth, setPanelWidth] = useState<number>(420);
+  const [isResizing, setIsResizing] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedWidth = localStorage.getItem('flux_ai_panel_width');
+      if (savedWidth) {
+        const parsed = parseInt(savedWidth, 10);
+        if (!isNaN(parsed) && parsed >= 340 && parsed <= 1200) {
+          setPanelWidth(parsed);
+        }
+      }
+    }
+  }, []);
+
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const newWidth = window.innerWidth - moveEvent.clientX;
+      const clamped = Math.max(340, Math.min(newWidth, Math.min(950, window.innerWidth - 20)));
+      setPanelWidth(clamped);
+      localStorage.setItem('flux_ai_panel_width', clamped.toString());
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
   const requestAutopilotCheckin = (messageOverride?: string) => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('flux_autopilot_pending_checkin', 'true');
@@ -164,6 +202,13 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
   const socketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
+    if (!isOpen) {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      return;
+    }
+
     let activeSocket: WebSocket | null = null;
     let reconnectTimer: NodeJS.Timeout | null = null;
     let isUnmounting = false;
@@ -192,9 +237,8 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
         };
 
         socket.onclose = () => {
-          console.log("[Assistant WS] Chat stream closed. Reconnecting in 5s...");
           socketRef.current = null;
-          if (!isUnmounting) {
+          if (!isUnmounting && isOpen) {
             reconnectTimer = setTimeout(connectWs, 5000);
           }
         };
@@ -1015,8 +1059,23 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 400 }}
             transition={{ duration: 0.25, type: 'spring', bounce: 0.1 }}
-            className="fixed right-0 top-0 bottom-0 z-50 w-[380px] sm:w-[420px] flex flex-col bg-card border-l border-border shadow-2xl"
+            style={{ width: `${panelWidth}px`, maxWidth: 'calc(100vw - 20px)' }}
+            className={cn(
+              "fixed right-0 top-0 bottom-0 z-50 flex flex-col bg-card border-l border-border shadow-2xl transition-none",
+              isResizing && "select-none"
+            )}
           >
+            {/* Resizable drag handle on left border */}
+            <div
+              onMouseDown={handleResizeStart}
+              className="absolute left-0 top-0 bottom-0 w-3 -translate-x-1/2 cursor-ew-resize hover:bg-primary/30 active:bg-primary/50 z-50 transition-colors flex items-center justify-center group"
+              title="Drag to stretch/resize panel width"
+            >
+              <div className="w-1 h-10 rounded-full bg-border/80 group-hover:bg-primary transition-colors flex items-center justify-center">
+                <GripVertical className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+            </div>
+
             {/* ── Header ── */}
             <div className="flex items-center justify-between px-4 h-14 shrink-0 border-b border-border bg-card/95">
               <div className="flex items-center gap-2.5">
@@ -1090,10 +1149,10 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
                   )}
 
                   <div
-                    className={`max-w-[82%] text-[13px] leading-relaxed ${
+                    className={`text-[13px] leading-relaxed ${
                       msg.role === 'user'
-                        ? 'bg-primary text-primary-foreground rounded-2xl rounded-br-sm px-3.5 py-2.5 shadow-sm'
-                        : 'bg-secondary/60 border border-border/50 text-foreground rounded-2xl rounded-bl-sm px-3.5 py-2.5'
+                        ? 'max-w-[88%] bg-primary text-primary-foreground rounded-2xl rounded-br-sm px-3.5 py-2.5 shadow-sm'
+                        : 'w-full max-w-[96%] bg-secondary/60 border border-border/50 text-foreground rounded-2xl rounded-bl-sm px-3.5 py-2.5'
                     }`}
                   >
                     {formatText(msg.content)}

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useContext, useRef } from 'react';
+import { useState, useContext, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ProjectContext } from '@/contexts/project-context';
+import { useUploadManager } from '@/contexts/upload-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -44,6 +45,7 @@ function getFileIcon(mime: string) {
 
 export default function StoragePage() {
     const { project } = useContext(ProjectContext);
+    const { enqueueUpload } = useUploadManager();
     const queryClient = useQueryClient();
     const [selectedBucket, setSelectedBucket] = useState<Bucket | null>(null);
     const [uploading, setUploading] = useState(false);
@@ -64,6 +66,24 @@ export default function StoragePage() {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const projectId = project?.project_id;
+
+    // Warn user before navigating away while upload is in progress
+    useEffect(() => {
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (uploading) {
+                e.preventDefault();
+                e.returnValue = 'An upload is currently in progress. If you leave now, the upload will be cancelled.';
+                return e.returnValue;
+            }
+        };
+
+        if (uploading) {
+            window.addEventListener('beforeunload', handleBeforeUnload);
+        }
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
+    }, [uploading]);
 
     // Load buckets (Smart Cached)
     const { data: buckets = [], isLoading: loadingBuckets } = useQuery<Bucket[]>({
@@ -93,99 +113,10 @@ export default function StoragePage() {
         staleTime: 60 * 1000,
     });
 
-    // Upload file
+    // Upload file via Global Background Worker
     const uploadFile = async (file: File) => {
         if (!projectId || !selectedBucket) return;
-        setUploading(true);
-        setUploadProgress(`Uploading ${file.name}...`);
-        setError(null);
-        try {
-            // 1. Get S3 Presigned URL (validates size limits and quotas)
-            const presignRes = await fetch('/api/storage/upload/presign', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    fileName: file.name,
-                    fileSize: file.size,
-                    mimeType: file.type || 'application/octet-stream',
-                    bucketId: selectedBucket.id,
-                    projectId
-                })
-            });
-            const presignData = await presignRes.json();
-            if (!presignData.success) {
-                setError(typeof presignData.error === 'object' ? presignData.error.message : (presignData.error || 'Failed to get upload URL'));
-                return;
-            }
-
-            const { uploadUrl, s3Key, actualBucketId } = presignData;
-
-            let uploadSucceeded = false;
-            try {
-                // 2. Direct upload to AWS S3 using PUT and Content-Type
-                const s3UploadRes = await fetch(uploadUrl, {
-                    method: 'PUT',
-                    body: file,
-                    headers: {
-                        'Content-Type': file.type || 'application/octet-stream'
-                    }
-                });
-
-                if (!s3UploadRes.ok) {
-                    throw new Error(`S3 direct upload failed with status ${s3UploadRes.status}`);
-                }
-                uploadSucceeded = true;
-            } catch (s3Error: any) {
-                console.error("Direct S3 upload failed, checking fallback:", s3Error);
-                if (file.size <= 4 * 1024 * 1024) {
-                    setUploadProgress(`Retrying via fallback server upload...`);
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    formData.append('bucketId', actualBucketId);
-                    formData.append('projectId', projectId);
-
-                    const fallbackRes = await fetch('/api/storage/upload', {
-                        method: 'POST',
-                        body: formData
-                    });
-                    const fallbackData = await fallbackRes.json();
-                    if (!fallbackData.success) {
-                        throw new Error(typeof fallbackData.error === 'object' ? fallbackData.error.message : (fallbackData.error || 'Fallback upload failed'));
-                    }
-                } else {
-                    throw s3Error;
-                }
-            }
-
-            if (uploadSucceeded) {
-                // 3. Finalize upload metadata in DB (only if direct upload succeeded)
-                const finalizeRes = await fetch('/api/storage/upload/finalize', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        fileName: file.name,
-                        fileSize: file.size,
-                        mimeType: file.type || 'application/octet-stream',
-                        bucketId: actualBucketId,
-                        projectId,
-                        s3Key
-                    })
-                });
-                const finalizeData = await finalizeRes.json();
-                if (!finalizeData.success) {
-                    setError(typeof finalizeData.error === 'object' ? finalizeData.error.message : (finalizeData.error || 'Failed to finalize upload'));
-                    return;
-                }
-            }
-
-            queryClient.invalidateQueries({ queryKey: ['storage-files', projectId, selectedBucket.id] });
-            queryClient.invalidateQueries({ queryKey: ['storage-buckets', projectId] });
-        } catch (e: any) {
-            setError(e.message || 'An unexpected error occurred during upload');
-        } finally {
-            setUploading(false);
-            setUploadProgress(null);
-        }
+        enqueueUpload(file, selectedBucket.id, projectId);
     };
 
     const onDrop = async (e: React.DragEvent) => {

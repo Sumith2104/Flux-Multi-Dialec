@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
@@ -41,17 +41,20 @@ export function StatusIndicator() {
         try {
             const start = Date.now();
             const res = await fetch('/api/health', { cache: 'no-store' });
-            const latency = Date.now() - start;
+            const fetchLatency = Date.now() - start;
             const data = await res.json();
 
-            const dbStatus: HealthStatus = data.database === true ? (latency > 800 ? 'degraded' : 'healthy') : 'offline';
+            const dbLatency = (typeof data.dbLatencyMs === 'number' && data.dbLatencyMs >= 0) ? data.dbLatencyMs : fetchLatency;
+            const redisLatency = (typeof data.redisLatencyMs === 'number' && data.redisLatencyMs >= 0) ? data.redisLatencyMs : undefined;
+
+            const dbStatus: HealthStatus = data.database === true ? (dbLatency > 800 ? 'degraded' : 'healthy') : 'offline';
             const redisStatus: HealthStatus = data.redis === true ? 'healthy' : 'degraded';
             const apiStatus: HealthStatus = res.ok ? 'healthy' : 'offline';
 
             const updated = [
-                { name: 'Database', status: dbStatus, latency },
-                { name: 'Redis', status: redisStatus },
-                { name: 'API', status: apiStatus, latency },
+                { name: 'Database', status: dbStatus, latency: dbLatency },
+                { name: 'Redis', status: redisStatus, latency: redisLatency },
+                { name: 'API', status: apiStatus, latency: fetchLatency },
             ];
             setServices(updated);
 
