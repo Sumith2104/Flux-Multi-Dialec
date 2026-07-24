@@ -102,16 +102,26 @@ async function startConnection(projectId: string) {
 
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL;
     if (wsUrl && typeof window !== 'undefined') {
+        let wsOpened = false;
         try {
             const wsTarget = `${wsUrl.replace(/\/$/, '')}?projectId=${projectId}`;
             const ws = new WebSocket(wsTarget);
             (state as any).socket = ws;
 
             ws.onopen = () => {
+                wsOpened = true;
                 state.status = 'open';
                 state.retryCount = 0;
                 console.log(`[Realtime] ✅ WebSocket connected to Render for ${projectId}`);
                 resetWatchdog(projectId);
+
+                // Send subscription handshake to Render room system
+                try {
+                    ws.send(JSON.stringify({ type: 'subscribe', roomId: `project_${projectId}` }));
+                    ws.send(JSON.stringify({ type: 'subscribe', roomId: projectId }));
+                } catch (err) {
+                    console.warn('[Realtime] Failed to send subscribe handshake:', err);
+                }
             };
 
             ws.onmessage = (event) => {
@@ -120,32 +130,46 @@ async function startConnection(projectId: string) {
                     resetWatchdog(projectId);
                     if (data.type === 'ping' || data.type === 'connected') return;
 
-                    const tableRef = data.table || '';
+                    const payload = data.payload || data;
+                    const tableRef = payload.table || payload.table_name || data.table || data.table_name || '';
                     const cleanTable = typeof tableRef === 'string' ? tableRef.split('.').pop() || tableRef : tableRef;
                     const normalized: RealtimeEvent = {
                         ...data,
-                        type: data.action ? 'update' : (data.type || 'update'),
+                        ...payload,
+                        type: payload.action ? 'update' : (payload.type || data.type || 'update'),
                         table: cleanTable,
-                        action: data.action,
-                        data: data.record,
+                        action: payload.action || data.action,
+                        data: payload.record || payload.data || data.record || data.data,
                     };
                     notifyListeners(projectId, normalized);
-                } catch {}
+                } catch (e) {
+                    console.warn('[Realtime] WS message parse error:', e);
+                }
             };
 
             ws.onclose = () => {
                 (state as any).socket = null;
-                scheduleReconnect(projectId);
+                if (!wsOpened) {
+                    console.warn(`[Realtime] Render WebSocket failed to connect for ${projectId}, falling back to SSE...`);
+                    connectSSE(projectId, state);
+                } else {
+                    scheduleReconnect(projectId);
+                }
             };
 
             ws.onerror = () => {
-                ws.close();
+                try { ws.close(); } catch {}
             };
             return;
         } catch (e) {
             console.warn('[Realtime] WebSocket connect failed, falling back to SSE:', e);
         }
     }
+
+    await connectSSE(projectId, state);
+}
+
+async function connectSSE(projectId: string, state: ConnectionState) {
 
     const abortController = new AbortController();
     state.abortController = abortController;
