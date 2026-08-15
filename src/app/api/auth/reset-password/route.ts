@@ -25,6 +25,14 @@ export async function POST(req: Request) {
         const expiresAt = new Date(Date.now() + 60 * 60000); // 1 hour expiration
 
         await pool.query(`
+            CREATE TABLE IF NOT EXISTS fluxbase_global.password_resets (
+                email VARCHAR(255) PRIMARY KEY,
+                token VARCHAR(255) NOT NULL,
+                expires_at TIMESTAMP NOT NULL
+            )
+        `);
+
+        await pool.query(`
             INSERT INTO fluxbase_global.password_resets (email, token, expires_at)
             VALUES ($1, $2, $3)
             ON CONFLICT (email) DO UPDATE SET

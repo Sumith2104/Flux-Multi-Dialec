@@ -112,7 +112,7 @@ async function startConnection(projectId: string) {
                 wsOpened = true;
                 state.status = 'open';
                 state.retryCount = 0;
-                console.log(`[Realtime] ✅ WebSocket connected to Render for ${projectId}`);
+                console.log(`[Realtime] WebSocket connected to Render for ${projectId}`);
                 resetWatchdog(projectId);
 
                 // Send subscription handshake to Render room system
@@ -189,7 +189,7 @@ async function connectSSE(projectId: string, state: ConnectionState) {
 
         state.status = 'open';
         state.retryCount = 0;
-        console.log(`[Realtime] ✅ SSE connected for ${projectId}`);
+        console.log(`[Realtime] SSE connected for ${projectId}`);
         resetWatchdog(projectId);
 
         const reader = response.body.getReader();

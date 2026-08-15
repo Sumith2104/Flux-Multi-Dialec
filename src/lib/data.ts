@@ -632,18 +632,47 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
     if (!project) throw new FluxbaseError("Project not found or access denied.", ERROR_CODES.PROJECT_NOT_FOUND, 404);
 
     try {
+        const isExternal = project.connection_type && project.connection_type !== 'internal';
+
         if (project.dialect?.toLowerCase() === 'mysql') {
             const mysqlPool = await getTenantMysqlPool(project);
-            const { dbName } = getProjectDbAndSchema(project);
+            let { dbName } = getProjectDbAndSchema(project);
 
-            const [rows]: any = await mysqlPool.query(`
-                SELECT table_name 
+            let [rows]: any = await mysqlPool.query(`
+                SELECT DISTINCT table_name 
                 FROM information_schema.tables 
-                WHERE table_schema = ? AND table_type = 'BASE TABLE' 
-                AND table_name NOT LIKE '\\_flux\\_internal\\_%'
-            `, [dbName]);
+                WHERE table_schema = ? AND table_type = 'BASE TABLE'
+                AND table_name NOT LIKE '_flux_internal_%'
+            `, [dbName || '']);
 
-            return rows.map((row: any) => ({
+            if (isExternal && (!rows || rows.length === 0)) {
+                // Fallback 1 for external DBs: Active DATABASE()
+                try {
+                    const [dbRes]: any = await mysqlPool.query(`SELECT DATABASE() as active_db`);
+                    const activeDb = dbRes?.[0]?.active_db;
+                    if (activeDb) {
+                        [rows] = await mysqlPool.query(`
+                            SELECT DISTINCT table_name 
+                            FROM information_schema.tables 
+                            WHERE table_schema = ? AND table_type = 'BASE TABLE'
+                            AND table_name NOT LIKE '_flux_internal_%'
+                        `, [activeDb]);
+                    }
+                } catch {}
+            }
+
+            if (isExternal && (!rows || rows.length === 0)) {
+                // Fallback 2 for external DBs: All non-system MySQL databases
+                [rows] = await mysqlPool.query(`
+                    SELECT DISTINCT table_name 
+                    FROM information_schema.tables 
+                    WHERE table_schema NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') 
+                    AND table_type = 'BASE TABLE'
+                    AND table_name NOT LIKE '_flux_internal_%'
+                `);
+            }
+
+            return (rows || []).map((row: any) => ({
                 table_id: row.TABLE_NAME || row.table_name,
                 project_id: projectId,
                 table_name: row.TABLE_NAME || row.table_name,
@@ -657,17 +686,27 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
             let { schemaName } = getProjectDbAndSchema(project);
 
             let result = await pool.query(`
-                SELECT table_name 
+                SELECT DISTINCT table_name 
                 FROM information_schema.tables 
                 WHERE table_schema = $1 AND table_type = 'BASE TABLE'
                 AND table_name NOT LIKE '_flux_internal_%'
             `, [schemaName]);
 
-            if (result.rows.length === 0 && schemaName !== 'public') {
+            if (isExternal && result.rows.length === 0 && schemaName !== 'public') {
                 result = await pool.query(`
-                    SELECT table_name 
+                    SELECT DISTINCT table_name 
                     FROM information_schema.tables 
                     WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+                    AND table_name NOT LIKE '_flux_internal_%'
+                `);
+            }
+
+            if (isExternal && result.rows.length === 0) {
+                // Fallback ONLY for external databases with non-standard schemas
+                result = await pool.query(`
+                    SELECT DISTINCT table_name 
+                    FROM information_schema.tables 
+                    WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_type = 'BASE TABLE'
                     AND table_name NOT LIKE '_flux_internal_%'
                 `);
             }
@@ -682,7 +721,7 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
             }));
         }
     } catch (error) {
-        console.error("Error fetching tables from AWS:", error);
+        console.error("Error fetching tables:", error);
         return [];
     }
 }
@@ -886,9 +925,9 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
     try {
         if (project.dialect?.toLowerCase() === 'mysql') {
             const mysqlPool = await getTenantMysqlPool(project);
-            const { dbName } = getProjectDbAndSchema(project);
+            let { dbName } = getProjectDbAndSchema(project);
 
-            const [result]: any = await mysqlPool.query(`
+            let [result]: any = await mysqlPool.query(`
                 SELECT 
                     COLUMN_NAME as column_name, 
                     DATA_TYPE as data_type, 
@@ -898,9 +937,25 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
                 FROM information_schema.columns 
                 WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
                 ORDER BY ORDINAL_POSITION
-            `, [dbName, safeTableName]);
+            `, [dbName || '', safeTableName]);
 
-            return result.map((row: any) => ({
+            if ((!result || result.length === 0)) {
+                // Fallback: search column information schema across all non-system databases
+                [result] = await mysqlPool.query(`
+                    SELECT 
+                        COLUMN_NAME as column_name, 
+                        DATA_TYPE as data_type, 
+                        IS_NULLABLE as is_nullable, 
+                        COLUMN_DEFAULT as column_default,
+                        CASE WHEN COLUMN_KEY = 'PRI' THEN true ELSE false END as is_primary_key
+                    FROM information_schema.columns 
+                    WHERE TABLE_NAME = ? 
+                    AND TABLE_SCHEMA NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys')
+                    ORDER BY ORDINAL_POSITION
+                `, [safeTableName]);
+            }
+
+            return (result || []).map((row: any) => ({
                 column_id: row.column_name,
                 table_id: safeTableName,
                 column_name: row.column_name,
@@ -913,10 +968,10 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
 
         } else {
             const pool = await getTenantPgPool(project);
-            const { schemaName } = getProjectDbAndSchema(project);
+            let { schemaName } = getProjectDbAndSchema(project);
 
             // Fetch columns and identify primary keys
-            const result = await pool.query(`
+            let result = await pool.query(`
                 SELECT 
                     c.column_name, 
                     c.data_type, 
@@ -936,6 +991,52 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
                 WHERE c.table_schema = $1 AND c.table_name = $2
                 ORDER BY c.ordinal_position
             `, [schemaName, safeTableName]);
+
+            if (result.rows.length === 0 && schemaName !== 'public') {
+                result = await pool.query(`
+                    SELECT 
+                        c.column_name, 
+                        c.data_type, 
+                        c.is_nullable, 
+                        c.column_default,
+                        (
+                            SELECT count(*) > 0
+                            FROM information_schema.key_column_usage kcu
+                            JOIN information_schema.table_constraints tc 
+                                ON kcu.constraint_name = tc.constraint_name
+                            WHERE tc.constraint_type = 'PRIMARY KEY' 
+                                AND kcu.table_schema = c.table_schema 
+                                AND kcu.table_name = c.table_name 
+                                AND kcu.column_name = c.column_name
+                        ) as is_primary_key
+                    FROM information_schema.columns c
+                    WHERE c.table_schema = 'public' AND c.table_name = $1
+                    ORDER BY c.ordinal_position
+                `, [safeTableName]);
+            }
+
+            if (result.rows.length === 0) {
+                result = await pool.query(`
+                    SELECT 
+                        c.column_name, 
+                        c.data_type, 
+                        c.is_nullable, 
+                        c.column_default,
+                        (
+                            SELECT count(*) > 0
+                            FROM information_schema.key_column_usage kcu
+                            JOIN information_schema.table_constraints tc 
+                                ON kcu.constraint_name = tc.constraint_name
+                            WHERE tc.constraint_type = 'PRIMARY KEY' 
+                                AND kcu.table_schema = c.table_schema 
+                                AND kcu.table_name = c.table_name 
+                                AND kcu.column_name = c.column_name
+                        ) as is_primary_key
+                    FROM information_schema.columns c
+                    WHERE c.table_name = $1 AND c.table_schema NOT IN ('pg_catalog', 'information_schema')
+                    ORDER BY c.ordinal_position
+                `, [safeTableName]);
+            }
 
             return result.rows.map(row => ({
                 column_id: row.column_name, // natively, name is ID
@@ -1427,6 +1528,32 @@ function _myOrder(sorts: TableSort[]): string {
     return 'ORDER BY ' + sorts.map(s => `${sc(s.field)} ${s.direction === 'desc' ? 'DESC' : 'ASC'}`).join(', ');
 }
 
+async function resolvePgSchemaForTable(pool: any, defaultSchema: string, tableName: string): Promise<string> {
+    try {
+        const check = await pool.query(
+            `SELECT table_schema FROM information_schema.tables WHERE table_name = $1 AND table_type = 'BASE TABLE' LIMIT 1`,
+            [tableName]
+        );
+        if (check.rows.length > 0 && check.rows[0].table_schema) {
+            return check.rows[0].table_schema;
+        }
+    } catch {}
+    return defaultSchema || 'public';
+}
+
+async function resolveMysqlDbForTable(mysqlPool: any, defaultDb: string, tableName: string): Promise<string> {
+    try {
+        const [check]: any = await mysqlPool.query(
+            `SELECT TABLE_SCHEMA as table_schema FROM information_schema.TABLES WHERE TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE' LIMIT 1`,
+            [tableName]
+        );
+        if (check && check.length > 0 && check[0].table_schema) {
+            return check[0].table_schema;
+        }
+    } catch {}
+    return defaultDb || '';
+}
+
 export async function getTableData(
     projectId: string,
     tableName: string,
@@ -1462,6 +1589,9 @@ export async function getTableData(
         if (project.dialect?.toLowerCase() === 'mysql') {
             const mysqlPool = await getTenantMysqlPool(project);
             const { dbName } = getProjectDbAndSchema(project);
+            const targetDb = await resolveMysqlDbForTable(mysqlPool, dbName, safeTableName);
+            const fromTable = targetDb ? `\`${targetDb}\`.\`${safeTableName}\`` : `\`${safeTableName}\``;
+
             const { clause: wClause, params: wParams } = _myWhere(filters);
             const orderBy = _myOrder(sorts);
 
@@ -1470,14 +1600,14 @@ export async function getTableData(
                 [countResult],
                 [pkColResult]
             ]: any = await Promise.all([
-                mysqlPool.query(`SELECT * FROM \`${dbName}\`.\`${safeTableName}\` ${wClause} ${orderBy} LIMIT ${limit} OFFSET ${offset}`, wParams),
-                mysqlPool.query(`SELECT COUNT(*) as count FROM \`${dbName}\`.\`${safeTableName}\` ${wClause}`, wParams),
-                mysqlPool.query(`SELECT COLUMN_NAME as column_name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_KEY = 'PRI' LIMIT 1`, [dbName, safeTableName]),
+                mysqlPool.query(`SELECT * FROM ${fromTable} ${wClause} ${orderBy} LIMIT ${limit} OFFSET ${offset}`, wParams),
+                mysqlPool.query(`SELECT COUNT(*) as count FROM ${fromTable} ${wClause}`, wParams),
+                mysqlPool.query(`SELECT COLUMN_NAME as column_name FROM information_schema.COLUMNS WHERE TABLE_NAME = ? AND COLUMN_KEY = 'PRI' LIMIT 1`, [safeTableName]),
             ]);
 
-            totalRows = parseInt(countResult[0].count);
+            totalRows = parseInt(countResult[0]?.count || '0', 10);
             const pkName = pkColResult.length > 0 ? pkColResult[0].column_name : null;
-            rows = dataResult.map((row: any, index: number) => {
+            rows = (dataResult || []).map((row: any, index: number) => {
                 const idField = (pkName && row[pkName]) ? row[pkName] : (row.id || row.uuid || `row_${offset + index}`);
                 return { ...row, id: idField, _id: idField };
             });
@@ -1485,16 +1615,27 @@ export async function getTableData(
         } else {
             const pool = await getTenantPgPool(project);
             const { schemaName } = getProjectDbAndSchema(project);
+            const targetSchema = await resolvePgSchemaForTable(pool, schemaName, safeTableName);
             const { clause: wClause, params: wParams } = _pgWhere(filters, 3);
             const orderBy = _pgOrder(sorts);
 
-            const [dataResult, countResult, pkColResult] = await Promise.all([
-                pool.query(`SELECT * FROM "${schemaName}"."${safeTableName}" ${wClause} ${orderBy} LIMIT $1 OFFSET $2`, [limit, offset, ...wParams]),
-                pool.query(`SELECT COUNT(*) FROM "${schemaName}"."${safeTableName}" ${wClause}`, wParams),
-                pool.query(`SELECT kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = $1 AND tc.table_name = $2 LIMIT 1`, [schemaName, safeTableName]),
-            ]);
+            let dataResult, countResult, pkColResult;
+            try {
+                [dataResult, countResult, pkColResult] = await Promise.all([
+                    pool.query(`SELECT * FROM "${targetSchema}"."${safeTableName}" ${wClause} ${orderBy} LIMIT $1 OFFSET $2`, [limit, offset, ...wParams]),
+                    pool.query(`SELECT COUNT(*) FROM "${targetSchema}"."${safeTableName}" ${wClause}`, wParams),
+                    pool.query(`SELECT kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = $1 LIMIT 1`, [safeTableName]),
+                ]);
+            } catch (pgError: any) {
+                // Direct table fallback if schema qualification fails
+                [dataResult, countResult, pkColResult] = await Promise.all([
+                    pool.query(`SELECT * FROM "${safeTableName}" ${wClause} ${orderBy} LIMIT $1 OFFSET $2`, [limit, offset, ...wParams]),
+                    pool.query(`SELECT COUNT(*) FROM "${safeTableName}" ${wClause}`, wParams),
+                    pool.query(`SELECT kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = $1 LIMIT 1`, [safeTableName]),
+                ]);
+            }
 
-            totalRows = parseInt(countResult.rows[0].count);
+            totalRows = parseInt(countResult.rows[0]?.count || '0', 10);
             const pkName = pkColResult.rows.length > 0 ? pkColResult.rows[0].column_name : null;
             rows = dataResult.rows.map((row, index) => {
                 const idField = (pkName && row[pkName]) ? row[pkName] : (row.id || row.uuid || `row_${offset + index}`);
@@ -1560,10 +1701,12 @@ export async function insertRow(projectId: string, tableId: string, rowData: Rec
         if (project.dialect?.toLowerCase() === 'mysql') {
             const mysqlPool = await getTenantMysqlPool(project);
             const { dbName } = getProjectDbAndSchema(project);
+            const targetDb = await resolveMysqlDbForTable(mysqlPool, dbName, safeTableName);
+            const fromTable = targetDb ? `\`${targetDb}\`.\`${safeTableName}\`` : `\`${safeTableName}\``;
 
             // MySQL does not naturally support RETURNING *. We do an INSERT then a SELECT of the last insert if needed, 
             // but for simple webhook fire, we'll try to reconstruct the object locally since this is a basic interface.
-            const ddl = `INSERT INTO \`${dbName}\`.\`${safeTableName}\` (${cols.join(', ')}) VALUES (${vals.join(', ')})`;
+            const ddl = `INSERT INTO ${fromTable} (${cols.join(', ')}) VALUES (${vals.join(', ')})`;
 
             try {
                 const [result]: any = await mysqlPool.query(ddl as any, params);
@@ -1576,7 +1719,8 @@ export async function insertRow(projectId: string, tableId: string, rowData: Rec
         } else {
             const pool = await getTenantPgPool(project);
             const { schemaName } = getProjectDbAndSchema(project);
-            const ddl = `INSERT INTO "${schemaName}"."${safeTableName}" (${cols.join(', ')}) VALUES (${vals.join(', ')}) RETURNING *`;
+            const targetSchema = await resolvePgSchemaForTable(pool, schemaName, safeTableName);
+            const ddl = `INSERT INTO "${targetSchema}"."${safeTableName}" (${cols.join(', ')}) VALUES (${vals.join(', ')}) RETURNING *`;
 
             try {
                 const result = await pool.query(ddl, params);
@@ -1636,12 +1780,14 @@ export async function updateRow(projectId: string, tableId: string, rowId: strin
         if (project.dialect?.toLowerCase() === 'mysql') {
             const mysqlPool = await getTenantMysqlPool(project);
             const { dbName } = getProjectDbAndSchema(project);
+            const targetDb = await resolveMysqlDbForTable(mysqlPool, dbName, safeTableName);
+            const fromTable = targetDb ? `\`${targetDb}\`.\`${safeTableName}\`` : `\`${safeTableName}\``;
 
-            const [oldDataResult]: any = await mysqlPool.query(`SELECT * FROM \`${dbName}\`.\`${safeTableName}\` WHERE \`${pkCol.column_name}\` = ?` as any, [rowId]);
+            const [oldDataResult]: any = await mysqlPool.query(`SELECT * FROM ${fromTable} WHERE \`${pkCol.column_name}\` = ?` as any, [rowId]);
             if (oldDataResult.length === 0) throw new Error(`Row with PK '${rowId}' not found.`);
             oldData = oldDataResult[0];
 
-            const ddl = `UPDATE \`${dbName}\`.\`${safeTableName}\` SET ${setClauses.join(', ')} WHERE \`${pkCol.column_name}\` = ?`;
+            const ddl = `UPDATE ${fromTable} SET ${setClauses.join(', ')} WHERE \`${pkCol.column_name}\` = ?`;
             await mysqlPool.query(ddl as any, params);
 
             // MySQL lacks RETURNING *, grab it again or approximate
@@ -1650,12 +1796,13 @@ export async function updateRow(projectId: string, tableId: string, rowId: strin
         } else {
             const pool = await getTenantPgPool(project);
             const { schemaName } = getProjectDbAndSchema(project);
+            const targetSchema = await resolvePgSchemaForTable(pool, schemaName, safeTableName);
 
-            const oldDataResult = await pool.query(`SELECT * FROM "${schemaName}"."${safeTableName}" WHERE "${pkCol.column_name}"::text = $1`, [rowId]);
+            const oldDataResult = await pool.query(`SELECT * FROM "${targetSchema}"."${safeTableName}" WHERE "${pkCol.column_name}"::text = $1`, [rowId]);
             if (oldDataResult.rows.length === 0) throw new Error(`Row with PK '${rowId}' not found.`);
             oldData = oldDataResult.rows[0];
 
-            const ddl = `UPDATE "${schemaName}"."${safeTableName}" SET ${setClauses.join(', ')} WHERE "${pkCol.column_name}"::text = $${i} RETURNING *`;
+            const ddl = `UPDATE "${targetSchema}"."${safeTableName}" SET ${setClauses.join(', ')} WHERE "${pkCol.column_name}"::text = $${i} RETURNING *`;
             const result = await pool.query(ddl, params);
             updatedRow = result.rows[0];
         }
@@ -1692,23 +1839,26 @@ export async function deleteRow(projectId: string, tableId: string, rowId: strin
         if (project.dialect?.toLowerCase() === 'mysql') {
             const mysqlPool = await getTenantMysqlPool(project);
             const { dbName } = getProjectDbAndSchema(project);
+            const targetDb = await resolveMysqlDbForTable(mysqlPool, dbName, safeTableName);
+            const fromTable = targetDb ? `\`${targetDb}\`.\`${safeTableName}\`` : `\`${safeTableName}\``;
 
-            const [oldDataResult]: any = await mysqlPool.query(`SELECT * FROM \`${dbName}\`.\`${safeTableName}\` WHERE \`${pkCol.column_name}\` = ?`, [rowId]);
+            const [oldDataResult]: any = await mysqlPool.query(`SELECT * FROM ${fromTable} WHERE \`${pkCol.column_name}\` = ?`, [rowId]);
             oldData = oldDataResult.length > 0 ? oldDataResult[0] : null;
 
             if (oldData) {
-                await mysqlPool.query(`DELETE FROM \`${dbName}\`.\`${safeTableName}\` WHERE \`${pkCol.column_name}\` = ?`, [rowId]);
+                await mysqlPool.query(`DELETE FROM ${fromTable} WHERE \`${pkCol.column_name}\` = ?`, [rowId]);
             }
         } else {
             const pool = await getTenantPgPool(project);
             const { schemaName } = getProjectDbAndSchema(project);
+            const targetSchema = await resolvePgSchemaForTable(pool, schemaName, safeTableName);
 
             // Fetch old data for webhook
-            const oldDataResult = await pool.query(`SELECT * FROM "${schemaName}"."${safeTableName}" WHERE "${pkCol.column_name}"::text = $1`, [rowId]);
+            const oldDataResult = await pool.query(`SELECT * FROM "${targetSchema}"."${safeTableName}" WHERE "${pkCol.column_name}"::text = $1`, [rowId]);
             oldData = oldDataResult.rows.length > 0 ? oldDataResult.rows[0] : null;
 
             if (oldData) {
-                await pool.query(`DELETE FROM "${schemaName}"."${safeTableName}" WHERE "${pkCol.column_name}"::text = $1`, [rowId]);
+                await pool.query(`DELETE FROM "${targetSchema}"."${safeTableName}" WHERE "${pkCol.column_name}"::text = $1`, [rowId]);
             }
         }
         if (oldData) {

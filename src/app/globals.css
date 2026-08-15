@@ -235,3 +235,13 @@ body {
 .animate-subtle-pulse {
   animation: subtle-pulse 3s ease-in-out infinite;
 }
+
+/* Universal Sharp Edge Buttons across entire app */
+button,
+.btn,
+[role="button"],
+input[type="button"],
+input[type="submit"],
+input[type="reset"] {
+  border-radius: 0px !important;
+}

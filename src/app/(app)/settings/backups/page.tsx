@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useCallback, useContext } from 'react';
 import { ProjectContext } from '@/contexts/project-context';
@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Archive, Download, Clock, CheckCircle2, AlertCircle, Loader2, HardDrive, RotateCcw, Calendar, Trash2 } from 'lucide-react';
+import { Archive, Download, Clock, CheckCircle2, AlertCircle, Loader2, HardDrive, RotateCcw, Calendar, Trash2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, formatDistanceToNow } from 'date-fns';
 
@@ -144,14 +144,14 @@ export default function BackupsPage() {
                 <div className="flex items-center gap-3 bg-destructive/10 border border-destructive/30 text-destructive rounded-lg px-4 py-3 text-sm">
                     <AlertCircle className="h-4 w-4 shrink-0" />
                     <span className="flex-1">{actionError}</span>
-                    <button onClick={() => setActionError(null)} className="ml-auto opacity-70 hover:opacity-100"><span>✖</span></button>
+                    <button onClick={() => setActionError(null)} className="ml-auto opacity-70 hover:opacity-100"><X className="h-4 w-4" /></button>
                 </div>
             )}
             {actionSuccess && (
                 <div className="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-lg px-4 py-3 text-sm">
                     <CheckCircle2 className="h-4 w-4 shrink-0" />
                     <span className="flex-1">{actionSuccess}</span>
-                    <button onClick={() => setActionSuccess(null)} className="ml-auto opacity-70 hover:opacity-100"><span>✖</span></button>
+                    <button onClick={() => setActionSuccess(null)} className="ml-auto opacity-70 hover:opacity-100"><X className="h-4 w-4" /></button>
                 </div>
             )}
 
@@ -226,8 +226,9 @@ export default function BackupsPage() {
                         <p className="text-sm text-muted-foreground">
                             This will restore your database to the state at <strong className="text-foreground">{confirmRestore && format(new Date(confirmRestore.createdAt), 'MMM d, yyyy HH:mm')}</strong>.
                         </p>
-                        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 text-xs text-yellow-300">
-                            ⚠️ This action is irreversible. All data changes made after this backup snapshot will be permanently lost.
+                        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 text-xs text-yellow-300 flex items-center gap-2">
+                            <AlertCircle className="h-4 w-4 shrink-0 text-yellow-400" />
+                            <span>This action is irreversible. All data changes made after this backup snapshot will be permanently lost.</span>
                         </div>
                     </div>
                     <DialogFooter>

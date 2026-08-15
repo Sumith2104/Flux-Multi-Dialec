@@ -305,7 +305,7 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
               setIsTyping(false);
               setMessages(prev => [
                 ...prev.filter(m => m.content !== ""),
-                { role: "assistant", content: `❌ Error: ${data.message || 'Stream failed. Using fallback...'}` }
+                { role: "assistant", content: `Error: ${data.message || 'Stream failed. Using fallback...'}` }
               ]);
             }
           } catch (e) {
@@ -381,7 +381,7 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
           
           setMessages(prev => [...prev, {
               role: "assistant",
-              content: `⚠️ Action failed: ${errorMessage}`
+              content: `Action failed: ${errorMessage}`
           }]);
 
           const currentGoal = localStorage.getItem("flux_autopilot_goal") || "";
@@ -559,7 +559,7 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
       else if (step.type === 'CONFIRM_ACTION') {
           if (step.actionType === 'CREATE_PROJECT' && step.projectName) {
               console.log(`[Workflow Runner] Creating project automatically: ${step.projectName}`);
-              setMessages(prev => [...prev, { role: "assistant", content: `⚙️ Creating project **${step.projectName}**... Please wait.` }]);
+              setMessages(prev => [...prev, { role: "assistant", content: `Creating project **${step.projectName}**... Please wait.` }]);
               
               const formData = new FormData();
               formData.append('projectName', step.projectName);
@@ -571,27 +571,27 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
                       setProject(result.project);
                       setMessages(prev => {
                           const filtered = prev.filter(m => !m.content.includes("Creating project"));
-                          return [...filtered, { role: "assistant", content: ` Successfully created and switched to project **${step.projectName}**!` }];
+                          return [...filtered, { role: "assistant", content: `Successfully created and switched to project **${step.projectName}**!` }];
                       });
                       advanceWorkflow();
                   } else {
                       handleWorkflowError(`Failed to create project: ${result.error || 'Unknown error'}`);
                       setMessages(prev => {
                           const filtered = prev.filter(m => !m.content.includes("Creating project"));
-                          return [...filtered, { role: "assistant", content: `❌ Failed to create project: ${result.error || 'Unknown error'}` }];
+                          return [...filtered, { role: "assistant", content: `Failed to create project: ${result.error || 'Unknown error'}` }];
                       });
                   }
               }).catch(err => {
                   handleWorkflowError(`Error creating project: ${err.message || err}`);
                   setMessages(prev => {
                       const filtered = prev.filter(m => !m.content.includes("Creating project"));
-                      return [...filtered, { role: "assistant", content: `❌ Error creating project: ${err.message || err}` }];
+                      return [...filtered, { role: "assistant", content: `Error creating project: ${err.message || err}` }];
                   });
               });
           }
           else if (step.actionType === 'EXECUTE_SQL' && step.query) {
               console.log(`[Workflow Runner] Executing SQL automatically: ${step.query}`);
-              setMessages(prev => [...prev, { role: "assistant", content: `⚙️ Executing query \`${step.query}\`... Please wait.` }]);
+              setMessages(prev => [...prev, { role: "assistant", content: `Executing query \`${step.query}\`... Please wait.` }]);
               
               const runSql = (activeProject: any) => {
                   fetch('/api/execute-sql', {
@@ -605,7 +605,7 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
                           }
                           setMessages(prev => {
                               const filtered = prev.filter(m => !m.content.includes("Executing query"));
-                              let feedbackContent = ` Successfully executed SQL query: \`${step.query}\``;
+                              let feedbackContent = `Successfully executed SQL query: \`${step.query}\``;
                               const rows = result.result?.rows;
                               if (Array.isArray(rows) && rows.length > 0) {
                                   feedbackContent += `\n\n**Output results (first 5 rows):**\n\`\`\`json\n${JSON.stringify(rows.slice(0, 5), null, 2)}\n\`\`\``;
@@ -621,14 +621,14 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
                           handleWorkflowError(`Failed to execute SQL: ${result.error?.message || 'Unknown error'}`);
                           setMessages(prev => {
                               const filtered = prev.filter(m => !m.content.includes("Executing query"));
-                              return [...filtered, { role: "assistant", content: `❌ Failed to execute SQL: ${result.error?.message || 'Unknown error'}` }];
+                              return [...filtered, { role: "assistant", content: `Failed to execute SQL: ${result.error?.message || 'Unknown error'}` }];
                           });
                       }
                   }).catch(err => {
                       handleWorkflowError(`Error executing SQL: ${err.message || err}`);
                       setMessages(prev => {
                           const filtered = prev.filter(m => !m.content.includes("Executing query"));
-                          return [...filtered, { role: "assistant", content: `❌ Error executing SQL: ${err.message || err}` }];
+                          return [...filtered, { role: "assistant", content: `Error executing SQL: ${err.message || err}` }];
                       });
                   });
               };
@@ -640,7 +640,7 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
                   handleWorkflowError('No project context initialized');
                   setMessages(prev => {
                       const filtered = prev.filter(m => !m.content.includes("Executing query"));
-                      return [...filtered, { role: "assistant", content: `❌ Failed to execute SQL: No project active.` }];
+                      return [...filtered, { role: "assistant", content: `Failed to execute SQL: No project active.` }];
                   });
               }
           }

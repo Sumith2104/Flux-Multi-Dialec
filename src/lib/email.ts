@@ -1,33 +1,69 @@
 import nodemailer from 'nodemailer';
 import path from 'path';
 
-const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-    },
-    // Prevent 18s+ hangs on slow SMTP relays
-    connectionTimeout: 5000, 
-    greetingTimeout: 5000,
-    socketTimeout: 5000,
-});
+function getTransporter() {
+    const host = process.env.SMTP_HOST || '';
+    const user = process.env.SMTP_USER || '';
+    const isGmail = host === 'smtp.gmail.com' || user.endsWith('@gmail.com');
 
-export async function sendEmail(to: string, subject: string, html: string, attachments?: any[]) {
-    if (!process.env.SMTP_HOST) {
+    if (isGmail) {
+        return nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASS,
+            },
+        });
+    }
+
+    return nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: parseInt(process.env.SMTP_PORT || '587', 10),
+        secure: process.env.SMTP_SECURE === 'true',
+        auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+        },
+        connectionTimeout: 10000, 
+        greetingTimeout: 10000,
+        socketTimeout: 10000,
+    });
+}
+
+function htmlToPlainText(html: string): string {
+    return html
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&bull;/g, '•')
+        .replace(/&copy;/g, '©')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+}
+
+export async function sendEmail(to: string, subject: string, html: string, attachments?: any[], text?: string) {
+    if (!process.env.SMTP_HOST && !process.env.SMTP_USER) {
         console.log("SMTP not configured. Skipping email:", { to, subject });
         return;
     }
 
     try {
+        const transporter = getTransporter();
+        const fromAddress = process.env.SMTP_FROM || (process.env.SMTP_USER ? `"Fluxbase" <${process.env.SMTP_USER}>` : '"Fluxbase" <noreply@fluxbase.com>');
+        const plainText = text || htmlToPlainText(html);
+
         const info = await transporter.sendMail({
-            from: process.env.SMTP_FROM || '"Fluxbase" <noreply@fluxbase.com>',
+            from: fromAddress,
             to,
             subject,
+            text: plainText,
             html,
             attachments,
+            headers: {
+                'X-Mailer': 'Fluxbase Mail Engine',
+                'X-Priority': '3',
+            }
         });
         console.log("Message sent: %s", info.messageId);
         return info;
@@ -108,7 +144,16 @@ function buildEmailHtml(options: EmailTemplateOptions) {
                         <!-- Header -->
                         <tr>
                             <td class="header">
-                                <img src="cid:fluxbase-favicon" alt="Fluxbase" class="brand-logo" width="48" height="48" style="display:block;" />
+                                <table border="0" cellpadding="0" cellspacing="0">
+                                    <tr>
+                                        <td style="vertical-align:middle; width:44px;">
+                                            <img src="cid:fluxbase-favicon" alt="Fluxbase" class="brand-logo" width="40" height="40" style="display:block; width:40px; height:40px; border-radius:10px;" />
+                                        </td>
+                                        <td style="padding-left:12px; font-size:22px; font-weight:700; color:#ffffff; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; letter-spacing:-0.5px; vertical-align:middle;">
+                                            Fluxbase
+                                        </td>
+                                    </tr>
+                                </table>
                             </td>
                         </tr>
                         
@@ -148,11 +193,11 @@ function buildEmailHtml(options: EmailTemplateOptions) {
     `;
 }
 
-// Get the central CID attachments universally required for all branded emails
+// Brand attachments (crisp, high-performance 1.69KB favicon logo for email headers)
 function getBrandAttachments() {
     return [{
-        filename: 'favicon.png', // Sent as PNG to ensure email client rendering compatibility
-        path: path.join(process.cwd(), 'src/app/favicon.ico'),
+        filename: 'fluxbase-logo.png',
+        path: path.join(process.cwd(), 'public/fluxbase-email-logo.png'),
         cid: 'fluxbase-favicon'
     }];
 }
@@ -166,20 +211,49 @@ export async function sendOtpEmail(to: string, name: string, otp: string) {
         contentHtml: '<p class="otp-label">Authentication Code</p><p class="otp-code">' + otp + '</p>'
     });
 
-    return sendEmail(to, otp + " is your Fluxbase verification code", html, getBrandAttachments());
+    const plainText = `Hello ${safeName},\n\nYour Fluxbase verification code is: ${otp}\n\nThis code will expire in 10 minutes. If you did not initiate this request, please secure your account immediately.\n\nFluxbase Team`;
+
+    return sendEmail(to, otp + " is your Fluxbase verification code", html, getBrandAttachments(), plainText);
 }
 
 export async function sendWelcomeEmail(to: string, name: string) {
     const safeName = name || 'Explorer';
     const url = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const html = buildEmailHtml({
-        title: "Welcome to Fluxbase 🚀",
+        title: "Welcome to Fluxbase",
         greeting: "Hello " + safeName + ",",
-        instruction: "We're absolutely thrilled to have you on board! You're now ready to start accelerating your workflows with the most powerful native database tools available.",
+        instruction: "We're thrilled to have you on board! You're now ready to start accelerating your workflows with the most powerful native database tools available.",
         contentHtml: '<a href="' + url + '/dashboard" class="btn">Open Dashboard</a>'
     });
 
-    return sendEmail(to, "Welcome to Fluxbase! 🚀", html, getBrandAttachments());
+    const plainText = `Hello ${safeName},\n\nWelcome to Fluxbase!\n\nYou're now ready to start building. Open your dashboard at: ${url}/dashboard\n\nFluxbase Team`;
+
+    return sendEmail(to, "Welcome to Fluxbase", html, getBrandAttachments(), plainText);
+}
+
+export async function sendMagicLoginEmail(to: string, name: string, otp: string, magicLink: string) {
+    const safeName = name || 'Developer';
+    const html = buildEmailHtml({
+        title: "Your Login Code & Link",
+        greeting: "Hello " + safeName + ",",
+        instruction: "You requested a passwordless login to Fluxbase. Enter the 6-digit code below in your browser, or click the direct sign-in button to log in instantly.",
+        contentHtml: `
+            <div style="margin-bottom: 24px;">
+                <p class="otp-label">One-Time Login Code</p>
+                <p class="otp-code">${otp}</p>
+            </div>
+            <div style="margin-bottom: 24px; border-top: 1px solid rgba(255, 130, 36, 0.2); padding-top: 24px;">
+                <p style="color: #e4e4e7; font-size: 15px; margin: 0 0 16px 0; font-weight: 500;">Or sign in with 1-click:</p>
+                <a href="${magicLink}" class="btn">Sign In Instantly</a>
+            </div>
+            <p style="color: #a1a1aa; font-size: 13px; margin: 0 0 8px 0;">If the button above doesn't work, copy and paste this secure link:</p>
+            <p style="color: #ff8224; font-size: 12px; word-break: break-all; margin: 0;"><a href="${magicLink}" style="color: #ff8224; text-decoration: underline;">${magicLink}</a></p>
+        `
+    });
+
+    const plainText = `Hello ${safeName},\n\nYour one-time Fluxbase login code is: ${otp}\n\nOr click this link to sign in instantly:\n${magicLink}\n\nThis code and link are valid for 15 minutes.\nIf you did not request this login, you can safely ignore this email.\n\nFluxbase Team`;
+
+    return sendEmail(to, `${otp} is your Fluxbase sign-in code`, html, getBrandAttachments(), plainText);
 }
 
 export async function sendPasswordResetEmail(to: string, resetLink: string) {
@@ -192,6 +266,8 @@ export async function sendPasswordResetEmail(to: string, resetLink: string) {
             <div style="margin-bottom: 24px;">
                 <a href="${resetLink}" class="btn">Reset Password</a>
             </div>
+            <p style="color: #a1a1aa; font-size: 14px; margin: 0 0 16px 0;">If the button above doesn't work, copy and paste this link into your browser:</p>
+            <p style="color: #ff8224; font-size: 13px; word-break: break-all; margin: 0 0 24px 0;"><a href="${resetLink}" style="color: #ff8224; text-decoration: underline;">${resetLink}</a></p>
             <p style="color: #a1a1aa; font-size: 14px; margin: 0 0 16px 0;">If you remembered your password, you can simply log in instead:</p>
             <div>
                 <a href="${baseUrl}" class="btn" style="background-color: transparent; border: 1px solid #52525b; color: #e4e4e7 !important;">Login to Fluxbase</a>
@@ -199,7 +275,9 @@ export async function sendPasswordResetEmail(to: string, resetLink: string) {
         `
     });
 
-    return sendEmail(to, "Fluxbase Password Reset", html, getBrandAttachments());
+    const plainText = `Hello,\n\nWe received a request to reset the password for your Fluxbase account.\n\nTo reset your password, visit:\n${resetLink}\n\nThis link is valid for 1 hour.\nIf you did not make this request, you can safely ignore this email.\n\nFluxbase Team`;
+
+    return sendEmail(to, "Fluxbase Password Reset", html, getBrandAttachments(), plainText);
 }
 
 
@@ -219,7 +297,7 @@ export async function sendLoginAlertEmail(to: string, name: string) {
 export async function sendLimitAlertEmail(to: string, projectName: string, resource: string, limit: number, isHardLimit: boolean = false) {
     const url = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     
-    const title = isHardLimit ? "🚨 Resource Limit Exceeded" : "⚠️ Approaching Resource Limit";
+    const title = isHardLimit ? "Resource Limit Exceeded" : "Approaching Resource Limit";
     const instruction = isHardLimit 
         ? `Your project <b>${projectName}</b> has reached its configured limit for <b>${resource}</b> (${limit.toLocaleString()}). Further operations may be blocked until the limit is increased.`
         : `Your project <b>${projectName}</b> is approaching its configured limit for <b>${resource}</b> (${limit.toLocaleString()}).`;
@@ -244,10 +322,10 @@ export async function sendLimitAlertEmail(to: string, projectName: string, resou
  */
 export async function sendFeedbackEmail(to: string, mood: number | null, message: string, page: string | null, userId: string = 'Anonymous') {
     const moodMap: Record<number, { label: string, color: string }> = {
-        1: { label: 'Bad ☹️', color: '#f87171' },
-        2: { label: 'Okay 😐', color: '#fbbf24' },
-        3: { label: 'Good 🙂', color: '#34d399' },
-        4: { label: 'Love it! 🤩', color: '#60a5fa' },
+        1: { label: 'Bad', color: '#f87171' },
+        2: { label: 'Okay', color: '#fbbf24' },
+        3: { label: 'Good', color: '#34d399' },
+        4: { label: 'Love it!', color: '#60a5fa' },
     };
 
     const moodData = mood ? moodMap[mood] : { label: 'None', color: '#71717a' };
@@ -292,10 +370,10 @@ export async function sendClassifiedFeedbackEmail(
     page: string | null = null
 ) {
     const moodMap: Record<number, { label: string, color: string }> = {
-        1: { label: 'Bad ☹️', color: '#f87171' },
-        2: { label: 'Okay 😐', color: '#fbbf24' },
-        3: { label: 'Good 🙂', color: '#34d399' },
-        4: { label: 'Love it! 🤩', color: '#60a5fa' },
+        1: { label: 'Bad', color: '#f87171' },
+        2: { label: 'Okay', color: '#fbbf24' },
+        3: { label: 'Good', color: '#34d399' },
+        4: { label: 'Love it!', color: '#60a5fa' },
     };
 
     const moodData = mood ? moodMap[mood] : { label: 'None', color: '#71717a' };
@@ -325,7 +403,7 @@ export async function sendClassifiedFeedbackEmail(
                 
                 <hr style="border: 0; border-top: 1px solid #27272a; margin: 20px 0;" />
                 
-                <p style="margin: 0 0 12px 0; font-size: 12px; font-weight: bold; color: #ff8224; text-transform: uppercase; letter-spacing: 1px;">🤖 AI Classification Results</p>
+                <p style="margin: 0 0 12px 0; font-size: 12px; font-weight: bold; color: #ff8224; text-transform: uppercase; letter-spacing: 1px;">AI Classification Results</p>
                 
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
@@ -338,7 +416,7 @@ export async function sendClassifiedFeedbackEmail(
                     </tr>
                     <tr>
                         <td style="padding: 6px 0; font-size: 13px; color: #71717a;">Flagged Policy Violation:</td>
-                        <td style="padding: 6px 0; font-size: 13px; color: ${flagged ? '#ef4444' : '#34d399'}; font-weight: 600;">${flagged ? 'YES 🚨' : 'NO ✅'}</td>
+                        <td style="padding: 6px 0; font-size: 13px; color: ${flagged ? '#ef4444' : '#34d399'}; font-weight: 600;">${flagged ? 'YES' : 'NO'}</td>
                     </tr>
                 </table>
                 
@@ -356,7 +434,7 @@ export async function sendClassifiedFeedbackEmail(
 export async function sendTeamInviteEmail(to: string, inviterName: string, projectName: string, role: string) {
     const url = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const html = buildEmailHtml({
-        title: "You've been invited! 🤝",
+        title: "You've been invited!",
         greeting: "Hello,",
         instruction: `<b>${inviterName}</b> has invited you to join the team for project <b>${projectName}</b> as a <b>${role}</b>.`,
         contentHtml: `

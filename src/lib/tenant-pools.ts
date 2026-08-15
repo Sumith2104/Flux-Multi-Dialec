@@ -48,6 +48,8 @@ export function getProjectDbAndSchema(project: Project) {
     ? JSON.parse(project.connection_config)
     : project.connection_config || {};
 
+  const isMysql = project.dialect?.toLowerCase() === 'mysql';
+
   if (!project.connection_type || project.connection_type === 'internal') {
     const targetSchema = (project as any).schema_name || `project_${project.project_id}`;
     return {
@@ -55,12 +57,13 @@ export function getProjectDbAndSchema(project: Project) {
       schemaName: targetSchema
     };
   } else {
-    let dbName = config.database || 'postgres';
-    let schemaName = config.schema || 'public';
+    let dbName = config.database || config.dbname || config.dbName || (isMysql ? '' : 'postgres');
+    let schemaName = config.schema || config.schemaName || (isMysql ? dbName : 'public');
 
     if (project.connection_type === 'external_server') {
       if (project.active_db) {
         dbName = project.active_db;
+        if (isMysql) schemaName = project.active_db;
       }
     }
 

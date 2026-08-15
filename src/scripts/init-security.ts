@@ -40,7 +40,7 @@ async function migrate() {
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
         `);
-        console.log("✅ Security & RBAC Tables Successfully Deployed");
+        console.log("[SUCCESS] Security & RBAC Tables Successfully Deployed");
     } catch (e) {
         console.error("Migration failed:", e);
     } finally {

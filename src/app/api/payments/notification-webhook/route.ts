@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
             VALUES ($1, $2, $3, $4)
         `, [text, app, utr, amount]).catch(err => console.error('[Scraped SMS Insert Error]:', err.message));
 
-        console.log(`[SCRAPER RECEIVE 📥] Channel: ${app.toUpperCase()} | UTR: ${utr || 'N/A'} | Amount: ₹${amount}`);
+        console.log(`[SCRAPER RECEIVE] Channel: ${app.toUpperCase()} | UTR: ${utr || 'N/A'} | Amount: ₹${amount}`);
 
         // 3. If UTR exists, record FCFS winner & duplicate audit logs in bank_payments and payment_scraper_logs
         if (utr && amount > 0) {
@@ -116,13 +116,13 @@ export async function POST(req: NextRequest) {
                         INSERT INTO fluxbase_global.payment_scraper_logs (utr, amount, source, is_winner, winning_source)
                         VALUES ($1, $2, $3, false, $4);
                     `, [utr, amount, sourceChannel, winningSource]);
-                    console.log(`[FCFS DUPLICATE REJECTED 🛑] Channel '${sourceChannel}' hit UTR ${utr}, but '${winningSource}' ALREADY WON!`);
+                    console.log(`[FCFS DUPLICATE REJECTED] Channel '${sourceChannel}' hit UTR ${utr}, but '${winningSource}' ALREADY WON!`);
                 } else {
                     await client.query(`
                         INSERT INTO fluxbase_global.payment_scraper_logs (utr, amount, source, is_winner, winning_source)
                         VALUES ($1, $2, $3, true, $3);
                     `, [utr, amount, sourceChannel]);
-                    console.log(`[FCFS WINNER 🏆] Channel '${sourceChannel.toUpperCase()}' PROCESSED UTR ${utr} FIRST!`);
+                    console.log(`[FCFS WINNER] Channel '${sourceChannel.toUpperCase()}' PROCESSED UTR ${utr} FIRST!`);
                 }
                 await client.query('COMMIT');
             } catch (e) {

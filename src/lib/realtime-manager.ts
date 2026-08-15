@@ -35,7 +35,7 @@ class RealtimeManager extends EventEmitter {
             this.client = null;
         }
         this.removeAllListeners();
-        console.log('[RealtimeManager] 🛑 Instance Destroyed.');
+        console.log('[RealtimeManager] Instance Destroyed.');
     }
 
     private async init() {
@@ -93,7 +93,7 @@ class RealtimeManager extends EventEmitter {
 
             await this.client.query('LISTEN flux_realtime');
             
-            console.log('[RealtimeManager] ✅ Global Listener Active (Listening on "flux_realtime")');
+            console.log('[RealtimeManager] Global Listener Active (Listening on "flux_realtime")');
 
             this.isConnecting = false;
             this.retryCount = 0;
@@ -105,11 +105,11 @@ class RealtimeManager extends EventEmitter {
             // Suppress duplicate noisy terminal logs for DNS failures
             if (err.code === 'ENOTFOUND' || errMsg.includes('connection timeout')) {
                 if (errMsg !== this.lastLogError) {
-                    console.warn(`[RealtimeManager] ⚠️ Host unreachable. Will retry with backoff.`);
+                    console.warn(`[RealtimeManager] Host unreachable. Will retry with backoff.`);
                     this.lastLogError = errMsg;
                 }
             } else {
-                console.error('[RealtimeManager] 🛑 Initialization Failed:', err);
+                console.error('[RealtimeManager] Initialization Failed:', err);
             }
             
             this.reconnect();
@@ -147,14 +147,14 @@ class RealtimeManager extends EventEmitter {
 
         const count = this.listenerCount(eventName);
         if (count === 1 || count % 5 === 0) {
-            console.log(`[Realtime] ⚡ +1 Subscriber. Total for ${projectId}: ${count}`);
+            console.log(`[Realtime] +1 Subscriber. Total for ${projectId}: ${count}`);
         }
 
         return () => {
             this.off(eventName, callback);
             const remaining = this.listenerCount(eventName);
             if (remaining === 0 || remaining % 5 === 0) {
-                console.log(`[Realtime] ☁️ -1 Subscriber. Remaining for ${projectId}: ${remaining}`);
+                console.log(`[Realtime] -1 Subscriber. Remaining for ${projectId}: ${remaining}`);
             }
         };
     }

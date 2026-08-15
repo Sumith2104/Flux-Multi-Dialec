@@ -21,7 +21,7 @@ if (fs.existsSync(envPath)) {
 const connectionString = process.env.AWS_RDS_POSTGRES_URL;
 
 if (!connectionString) {
-    console.error("❌ ERROR: AWS_RDS_POSTGRES_URL is missing in environment variables.");
+    console.error("[ERROR] AWS_RDS_POSTGRES_URL is missing in environment variables.");
     process.exit(1);
 }
 
@@ -31,16 +31,16 @@ const pool = new Pool({
 });
 
 async function initScrapers() {
-    console.log("🔌 Connecting to AWS RDS to provision Scraper Tables...");
+    console.log("Connecting to AWS RDS to provision Scraper Tables...");
     const client = await pool.connect();
 
     try {
         await client.query('BEGIN');
 
-        console.log("🔨 Creating Schema: fluxbase_global (if not exists)");
+        console.log("Creating Schema: fluxbase_global (if not exists)");
         await client.query('CREATE SCHEMA IF NOT EXISTS fluxbase_global');
 
-        console.log("🔨 Creating Table: fluxbase_global.fluxbase_scrapers");
+        console.log("Creating Table: fluxbase_global.fluxbase_scrapers");
         await client.query(`
             CREATE TABLE IF NOT EXISTS fluxbase_global.fluxbase_scrapers (
                 id UUID PRIMARY KEY,
@@ -57,7 +57,7 @@ async function initScrapers() {
             );
         `);
 
-        console.log("🔨 Creating Table: fluxbase_global.fluxbase_scraper_runs");
+        console.log("Creating Table: fluxbase_global.fluxbase_scraper_runs");
         await client.query(`
             CREATE TABLE IF NOT EXISTS fluxbase_global.fluxbase_scraper_runs (
                 id UUID PRIMARY KEY,
@@ -71,17 +71,17 @@ async function initScrapers() {
         `);
 
         // Create indexes for faster queries
-        console.log("⚡ Creating Indexes...");
+        console.log("Creating Indexes...");
         await client.query(`CREATE INDEX IF NOT EXISTS idx_scrapers_project ON fluxbase_global.fluxbase_scrapers(project_id);`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_scrapers_user ON fluxbase_global.fluxbase_scrapers(user_id);`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_scraper_runs_parent ON fluxbase_global.fluxbase_scraper_runs(scraper_id);`);
 
         await client.query('COMMIT');
-        console.log("✅ Scraper schemas provisioned successfully.");
+        console.log("[SUCCESS] Scraper schemas provisioned successfully.");
 
     } catch (error) {
         await client.query('ROLLBACK');
-        console.error("❌ Transaction Failed, rolling back.", error);
+        console.error("[ERROR] Transaction Failed, rolling back.", error);
     } finally {
         client.release();
     }
@@ -90,7 +90,7 @@ async function initScrapers() {
 initScrapers()
     .then(() => {
         pool.end();
-        console.log("🔌 Disconnected.");
+        console.log("Disconnected.");
     })
     .catch((err) => {
         console.error("Critical Failure:", err);
