@@ -307,7 +307,14 @@ export async function POST(req: NextRequest) {
                             new: newDataParsed || (upperQuery.startsWith('INSERT') && Array.isArray(params) ? { raw_params: params } : undefined)
                         }
                     };
-                    const payloadString = JSON.stringify(payload).replace(/'/g, "''");
+                    let payloadString = JSON.stringify(payload).replace(/'/g, "''");
+                    if (Buffer.byteLength(payloadString, 'utf8') > 7500) {
+                        const truncatedPayload = {
+                            ...payload,
+                            data: { truncated: true }
+                        };
+                        payloadString = JSON.stringify(truncatedPayload).replace(/'/g, "''");
+                    }
                     await pool.query(`NOTIFY flux_realtime, '${payloadString}'`).catch(err => {
                         console.warn(`[SSE Broadcast Error] Failed to fire NOTIFY:`, err);
                     });

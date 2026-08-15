@@ -852,6 +852,19 @@ export async function createTable(projectId: string, tableName: string, descript
                     'data', row_to_json(row_data)
                   );
 
+                  -- PostgreSQL NOTIFY has a hard limit of 8000 bytes.
+                  -- If exceeded (e.g. large base64 strings, long JSON, binary data), send truncated payload so transaction never fails:
+                  IF octet_length(payload::text) > 7500 THEN
+                    payload := json_build_object(
+                      'table', TG_TABLE_NAME,
+                      'project_id', '${toSafeSql(projectId.replace(/'/g, "''"))}',
+                      'operation', TG_OP,
+                      'data', json_build_object('id', row_to_json(row_data)->'id'),
+                      'truncated', true
+                    );
+                  END IF;
+
+                  PERFORM pg_notify('flux_realtime', payload::text);
                   PERFORM pg_notify('fluxbase_changes', payload::text);
                   RETURN row_data;
                 END;

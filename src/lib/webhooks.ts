@@ -125,8 +125,15 @@ export async function fireWebhooks(
             const channel = `fluxbase_live`;
             // Add project_id to the payload explicitly so listeners can filter
             const internalPayload = { ...payload, project_id: projectId };
-            // Postgres NOTIFY payload must be a string literal, it does not support parameterized queries ($1) directly via node-postgres
-            const payloadString = JSON.stringify(internalPayload).replace(/'/g, "''");
+            // Postgres NOTIFY payload must be a string literal, with an 8000 byte limit.
+            let payloadString = JSON.stringify(internalPayload).replace(/'/g, "''");
+            if (Buffer.byteLength(payloadString, 'utf8') > 7500) {
+                const truncatedPayload = {
+                    ...internalPayload,
+                    data: { truncated: true }
+                };
+                payloadString = JSON.stringify(truncatedPayload).replace(/'/g, "''");
+            }
             await pool.query(`NOTIFY ${channel}, '${payloadString}'`);
         } catch (notifyErr) {
             console.error(`[INTERNAL LIVE UPDATE ERROR] Project ${projectId}:`, notifyErr);
