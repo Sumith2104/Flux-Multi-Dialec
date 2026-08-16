@@ -67,12 +67,23 @@ const parseWorkflow = (text: string): { steps: WorkflowStep[], cleanText: string
                     dialect: parts[2]?.trim() || 'postgresql'
                 });
             } else if (actionType === 'EXECUTE_SQL') {
-                const query = argsStr.substring(argsStr.indexOf(':') + 1).trim();
-                steps.push({
-                    type: 'CONFIRM_ACTION',
-                    actionType: 'EXECUTE_SQL',
-                    query
-                });
+                let query = argsStr.substring(argsStr.indexOf(':') + 1).trim();
+                
+                // Fallback: If model outputted placeholder "RawSQLQuery", extract the actual SQL from markdown blocks
+                if (!query || query.toLowerCase().includes('rawsqlquery') || query === 'RawSQL' || query === '"RawSQLQuery"') {
+                    const sqlBlockMatch = text.match(/```(?:sql)?\s*([\s\S]*?)```/i);
+                    if (sqlBlockMatch && sqlBlockMatch[1].trim()) {
+                        query = sqlBlockMatch[1].trim().replace(/;+$/, '');
+                    }
+                }
+
+                if (query && !query.toLowerCase().includes('rawsqlquery')) {
+                    steps.push({
+                        type: 'CONFIRM_ACTION',
+                        actionType: 'EXECUTE_SQL',
+                        query
+                    });
+                }
             }
         }
     }

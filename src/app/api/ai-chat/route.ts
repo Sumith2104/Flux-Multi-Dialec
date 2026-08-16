@@ -64,24 +64,53 @@ export async function POST(req: Request) {
                     const targetSchemaOrDb = isMysql ? dbName : schemaName;
                     const engine = new SqlEngine(activeProject.project_id, auth.userId, undefined, undefined, project);
 
-                    const query = isMysql
-                        ? `SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = ? AND table_name NOT LIKE '\\_flux\\_internal\\_%' ORDER BY table_name, ordinal_position;`
-                        : `SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = $1 AND table_name NOT LIKE '\\_flux\\_internal\\_%' ORDER BY table_name, ordinal_position;`;
+                    const colQuery = isMysql
+                        ? `SELECT table_name, column_name, data_type, is_nullable, column_key FROM information_schema.columns WHERE table_schema = ? AND table_name NOT LIKE '\\_flux\\_internal\\_%' ORDER BY table_name, ordinal_position;`
+                        : `SELECT table_name, column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema = $1 AND table_name NOT LIKE '\\_flux\\_internal\\_%' ORDER BY table_name, ordinal_position;`;
 
-                    const res = await engine.execute(query, [targetSchemaOrDb]);
-                    if (res && res.rows && res.rows.length > 0) {
+                    const fkQuery = isMysql
+                        ? `SELECT TABLE_NAME as table_name, COLUMN_NAME as column_name, REFERENCED_TABLE_NAME as referenced_table, REFERENCED_COLUMN_NAME as referenced_column 
+                           FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
+                           WHERE TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME IS NOT NULL;`
+                        : `SELECT tc.table_name, kcu.column_name, ccu.table_name AS referenced_table, ccu.column_name AS referenced_column
+                           FROM information_schema.table_constraints AS tc
+                           JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+                           JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
+                           WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = $1;`;
+
+                    const [colRes, fkRes] = await Promise.all([
+                        engine.execute(colQuery, [targetSchemaOrDb]).catch(() => null),
+                        engine.execute(fkQuery, [targetSchemaOrDb]).catch(() => null)
+                    ]);
+
+                    if (colRes && colRes.rows && colRes.rows.length > 0) {
                         const schemaMap: Record<string, string[]> = {};
-                        res.rows.forEach((r: any) => {
+                        colRes.rows.forEach((r: any) => {
                             const t = r.table_name || r.TABLE_NAME;
                             const c = r.column_name || r.COLUMN_NAME;
                             const dt = r.data_type || r.DATA_TYPE || '';
+                            const key = (r.column_key || r.COLUMN_KEY) === 'PRI' ? ' [PK]' : '';
                             if (!schemaMap[t]) schemaMap[t] = [];
-                            schemaMap[t].push(`${c} (${dt})`);
+                            schemaMap[t].push(`${c} (${dt}${key})`);
                         });
-                        schemaContext = `\n\nREAL DATABASE SCHEMA (LIVE TABLES & COLUMNS IN THIS PROJECT):\n` +
+
+                        const fkList: string[] = [];
+                        if (fkRes && fkRes.rows && fkRes.rows.length > 0) {
+                            fkRes.rows.forEach((r: any) => {
+                                fkList.push(`• ${r.table_name}.${r.column_name} -> ${r.referenced_table}.${r.referenced_column}`);
+                            });
+                        }
+
+                        schemaContext = `\n\n=== FULL DATABASE INTROSPECTION (DESCRIBE ALL TABLES & RELATIONS) ===\n` +
                             Object.entries(schemaMap)
                                 .map(([tbl, cols]) => `- Table "${tbl}": [${cols.join(', ')}]`)
-                                .join('\n') + `\n\nCRITICAL SQL ACCURACY MANDATE: You MUST strictly use the exact table names and column names listed in the schema above. NEVER invent placeholder table names like "Table_Editor" or placeholder column names like "date_column" or "balance_column". If the user asks for a balance or date, search the schema above for matching columns (e.g. amount, balance, total, timestamp, created_at, date in existing tables) and write the exact query using those actual columns.\n`;
+                                .join('\n') +
+                            (fkList.length > 0 ? `\n- Foreign Key Relations:\n${fkList.join('\n')}` : '') +
+                            `\n\nCRITICAL SQL ACCURACY MANDATE:
+1. You already have the complete, live database structure above. You DO NOT need to run describe queries or guess table names.
+2. ONLY query the exact table names and column names listed above.
+3. When writing a query for a user request (e.g. "when balance > 4570 in predictions"), write the exact SQL query with proper WHERE filters and ORDER BY.
+4. Put the actual SQL statement into the tag: [CONFIRM_ACTION:EXECUTE_SQL:SELECT timestamp, balance FROM predictions WHERE balance > 4570 ORDER BY balance DESC]. NEVER output the placeholder string "RawSQLQuery".\n=====================================================================\n`;
                     }
                 }
             } catch (schemaErr) {
