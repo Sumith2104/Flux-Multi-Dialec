@@ -256,6 +256,19 @@ async function ensureMigration(pool: any) {
                 UNIQUE(project_id, period_start, event_type)
             );
 
+            CREATE TABLE IF NOT EXISTS fluxbase_global.ai_error_memory (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                project_id VARCHAR(255),
+                dialect VARCHAR(50) NOT NULL DEFAULT 'postgresql',
+                error_category VARCHAR(50) NOT NULL,
+                error_message TEXT NOT NULL,
+                failed_input TEXT NOT NULL,
+                resolution_fix TEXT NOT NULL,
+                occurred_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                success_count INT DEFAULT 1
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_error_mem_dialect ON fluxbase_global.ai_error_memory (dialect, error_category);
             CREATE INDEX IF NOT EXISTS idx_audit_logs_project_created ON fluxbase_global.audit_logs (project_id, created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_analytics_rollups_project_period ON fluxbase_global.analytics_rollups (project_id, period_start DESC);
             CREATE INDEX IF NOT EXISTS idx_projects_user_id ON fluxbase_global.projects (user_id);

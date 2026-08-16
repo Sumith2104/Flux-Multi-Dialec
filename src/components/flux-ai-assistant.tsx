@@ -618,10 +618,26 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
                           });
                           advanceWorkflow();
                       } else {
-                          handleWorkflowError(`Failed to execute SQL: ${result.error?.message || 'Unknown error'}`);
+                          const errMsg = result.error?.message || 'Unknown error';
+                          handleWorkflowError(`Failed to execute SQL: ${errMsg}`);
+                          
+                          // Record error in RAG memory
+                          fetch('/api/ai-chat/learn', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                  projectId: activeProject.project_id,
+                                  dialect: activeProject.dialect || 'postgresql',
+                                  errorCategory: 'sql_execution_error',
+                                  errorMessage: errMsg,
+                                  failedQuery: step.query,
+                                  verifiedFix: 'Check SQL syntax, reserved keywords, and table constraints.'
+                              })
+                          }).catch(() => {});
+
                           setMessages(prev => {
                               const filtered = prev.filter(m => !m.content.includes("Executing query"));
-                              return [...filtered, { role: "assistant", content: `Failed to execute SQL: ${result.error?.message || 'Unknown error'}` }];
+                              return [...filtered, { role: "assistant", content: `Failed to execute SQL: ${errMsg}` }];
                           });
                       }
                   }).catch(err => {
@@ -886,6 +902,29 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
       return;
     }
 
+    const getScreenContext = () => {
+      if (typeof window === 'undefined') return undefined;
+      try {
+        const tableHeading = document.querySelector('[data-current-table]')?.getAttribute('data-current-table') || 
+                             document.querySelector('h1, h2')?.textContent?.trim();
+        const columnHeaders = Array.from(document.querySelectorAll('th, [role="columnheader"]'))
+                                  .map(el => el.textContent?.trim() || '')
+                                  .filter(Boolean)
+                                  .slice(0, 20);
+        const rowCountText = document.querySelector('[data-total-rows]')?.getAttribute('data-total-rows');
+        const activeError = document.querySelector('[role="alert"]')?.textContent?.trim() || undefined;
+
+        return {
+          activeTable: tableHeading,
+          visibleColumns: columnHeaders,
+          rowCount: rowCountText ? parseInt(rowCountText, 10) : undefined,
+          activeError: activeError ? activeError.slice(0, 150) : undefined
+        };
+      } catch {
+        return undefined;
+      }
+    };
+
     try {
       const res = await fetch("/api/ai-chat", {
         method: "POST",
@@ -899,7 +938,8 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
             display_name: project.display_name,
             dialect: project.dialect,
             timezone: project.timezone
-          } : null
+          } : null,
+          screenContext: getScreenContext()
         })
       });
       const data = await res.json();
