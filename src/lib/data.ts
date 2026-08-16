@@ -1542,9 +1542,20 @@ function _myOrder(sorts: TableSort[]): string {
 }
 
 async function resolvePgSchemaForTable(pool: any, defaultSchema: string, tableName: string): Promise<string> {
+    if (defaultSchema) {
+        try {
+            const check = await pool.query(
+                `SELECT table_schema FROM information_schema.tables WHERE table_schema = $1 AND table_name = $2 AND table_type = 'BASE TABLE' LIMIT 1`,
+                [defaultSchema, tableName]
+            );
+            if (check.rows.length > 0) {
+                return defaultSchema;
+            }
+        } catch {}
+    }
     try {
         const check = await pool.query(
-            `SELECT table_schema FROM information_schema.tables WHERE table_name = $1 AND table_type = 'BASE TABLE' LIMIT 1`,
+            `SELECT table_schema FROM information_schema.tables WHERE table_name = $1 AND table_schema NOT IN ('pg_catalog', 'information_schema') AND table_type = 'BASE TABLE' LIMIT 1`,
             [tableName]
         );
         if (check.rows.length > 0 && check.rows[0].table_schema) {
@@ -1555,9 +1566,20 @@ async function resolvePgSchemaForTable(pool: any, defaultSchema: string, tableNa
 }
 
 async function resolveMysqlDbForTable(mysqlPool: any, defaultDb: string, tableName: string): Promise<string> {
+    if (defaultDb) {
+        try {
+            const [check]: any = await mysqlPool.query(
+                `SELECT TABLE_SCHEMA as table_schema FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE' LIMIT 1`,
+                [defaultDb, tableName]
+            );
+            if (check && check.length > 0) {
+                return defaultDb;
+            }
+        } catch {}
+    }
     try {
         const [check]: any = await mysqlPool.query(
-            `SELECT TABLE_SCHEMA as table_schema FROM information_schema.TABLES WHERE TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE' LIMIT 1`,
+            `SELECT TABLE_SCHEMA as table_schema FROM information_schema.TABLES WHERE TABLE_NAME = ? AND TABLE_SCHEMA NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') AND TABLE_TYPE = 'BASE TABLE' LIMIT 1`,
             [tableName]
         );
         if (check && check.length > 0 && check[0].table_schema) {
@@ -1615,7 +1637,7 @@ export async function getTableData(
             ]: any = await Promise.all([
                 mysqlPool.query(`SELECT * FROM ${fromTable} ${wClause} ${orderBy} LIMIT ${limit} OFFSET ${offset}`, wParams),
                 mysqlPool.query(`SELECT COUNT(*) as count FROM ${fromTable} ${wClause}`, wParams),
-                mysqlPool.query(`SELECT COLUMN_NAME as column_name FROM information_schema.COLUMNS WHERE TABLE_NAME = ? AND COLUMN_KEY = 'PRI' LIMIT 1`, [safeTableName]),
+                mysqlPool.query(`SELECT COLUMN_NAME as column_name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_KEY = 'PRI' LIMIT 1`, [targetDb || dbName || '', safeTableName]),
             ]);
 
             totalRows = parseInt(countResult[0]?.count || '0', 10);
@@ -1637,7 +1659,7 @@ export async function getTableData(
                 [dataResult, countResult, pkColResult] = await Promise.all([
                     pool.query(`SELECT * FROM "${targetSchema}"."${safeTableName}" ${wClause} ${orderBy} LIMIT $1 OFFSET $2`, [limit, offset, ...wParams]),
                     pool.query(`SELECT COUNT(*) FROM "${targetSchema}"."${safeTableName}" ${wClause}`, wParams),
-                    pool.query(`SELECT kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = $1 LIMIT 1`, [safeTableName]),
+                    pool.query(`SELECT kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = $1 AND tc.table_name = $2 LIMIT 1`, [targetSchema, safeTableName]),
                 ]);
             } catch (pgError: any) {
                 // Direct table fallback if schema qualification fails
