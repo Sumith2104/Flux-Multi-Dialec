@@ -53,6 +53,7 @@ export default function QueryPage() {
   const [page, setPage] = useState(0);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [executedQuery, setExecutedQuery] = useState('');
+  const [isLiveUpdating, setIsLiveUpdating] = useState(false);
 
   // AI State
   const [aiInput, setAiInput] = useState('');
@@ -280,24 +281,70 @@ export default function QueryPage() {
 
   const { lastEvent } = useRealtimeSubscription(project?.project_id);
 
-  // Reactive SQL: Auto-refresh results when data in the affected table changes elsewhere
+  const handleLiveRefresh = useCallback(async () => {
+    if (!project?.project_id || !executedQuery || !queryResponse?.success || isExecuting || isLiveUpdating) return;
+
+    const totalPagesToFetch = Math.max(1, page + 1);
+    const fetchPageSize = Math.max(50, totalPagesToFetch * 50);
+
+    setIsLiveUpdating(true);
+    try {
+      const response = await fetch('/api/execute-sql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: project.project_id,
+          query: executedQuery,
+          paginate: true,
+          page: 0,
+          pageSize: fetchPageSize
+        })
+      });
+
+      const data = await response.json();
+      if (data.success && data.result) {
+        setQueryResponse((prev: any) => {
+          if (!prev || !prev.result) return data;
+          return {
+            ...data,
+            result: {
+              ...data.result,
+              rows: data.result.rows || [],
+              hasMore: !!data.result.hasMore
+            },
+            executionInfo: {
+              ...data.executionInfo,
+              time: data.executionInfo?.time || prev.executionInfo?.time,
+              rowCount: data.result.rows?.length || 0
+            }
+          };
+        });
+        setHasMore(!!data.result.hasMore);
+      }
+    } catch (err) {
+      console.warn('[Realtime SQL] Silent live refresh error:', err);
+    } finally {
+      setIsLiveUpdating(false);
+    }
+  }, [project?.project_id, executedQuery, queryResponse, isExecuting, isLiveUpdating, page]);
+
+  // Reactive SQL: Auto-refresh results seamlessly when data in the affected table changes elsewhere
   useEffect(() => {
     const eventType = lastEvent?.type || lastEvent?.event_type;
-    if (!lastEvent || eventType !== 'db_event' || !queryResponse?.success) return;
+    if (!lastEvent || (eventType !== 'db_event' && eventType !== 'update' && eventType !== 'live') || !queryResponse?.success) return;
 
     const affectedTable = (lastEvent as any).payload?.table || lastEvent.table || lastEvent.table_name;
     if (!affectedTable) return;
 
-    // Smart Refresh: Check if the affected table name exists in the current query string
-    // This prevents unnecessary refreshes for unrelated background tasks.
-    const isRelevant = new RegExp(`\\b${affectedTable}\\b`, 'i').test(query);
-    const isReadOnly = /^\s*(SELECT|WITH)\b/i.test(query);
+    const targetQuery = executedQuery || query;
+    const isRelevant = new RegExp(`\\b${affectedTable}\\b`, 'i').test(targetQuery);
+    const isReadOnly = /^\s*(SELECT|WITH)\b/i.test(targetQuery);
 
     if (isRelevant && isReadOnly) {
-      console.log(`[Realtime SQL] Detected change in '${affectedTable}'. Refreshing results...`);
-      handleRunQuery();
+      console.log(`[Realtime SQL] Detected change in '${affectedTable}'. Silently refreshing results without resetting scroll...`);
+      handleLiveRefresh();
     }
-  }, [lastEvent, query, queryResponse?.success, handleRunQuery]);
+  }, [lastEvent, executedQuery, query, queryResponse?.success, handleLiveRefresh]);
 
   const handleGenerateSQL = async () => {
     if (!aiInput.trim()) return;
@@ -544,6 +591,7 @@ export default function QueryPage() {
                       results={queryResponse.result} 
                       error={null} 
                       isGenerating={false} 
+                      isLiveUpdating={isLiveUpdating}
                       hasMore={hasMore}
                       isFetchingMore={isFetchingMore}
                       onLoadMore={fetchNextPage}
@@ -802,6 +850,7 @@ export default function QueryPage() {
                     results={queryResponse.result} 
                     error={null} 
                     isGenerating={false} 
+                    isLiveUpdating={isLiveUpdating}
                     hasMore={hasMore}
                     isFetchingMore={isFetchingMore}
                     onLoadMore={fetchNextPage}

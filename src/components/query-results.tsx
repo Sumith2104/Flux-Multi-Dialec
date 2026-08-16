@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useLayoutEffect } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Skeleton } from './ui/skeleton';
-import { AlertCircle, Table as TableIcon, BarChart3, Code2, LineChart as LineChartIcon, PieChart as PieChartIcon, Loader2 } from 'lucide-react';
+import { AlertCircle, Table as TableIcon, BarChart3, Code2, LineChart as LineChartIcon, PieChart as PieChartIcon, Loader2, Radio } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { Button } from './ui/button';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -14,6 +14,7 @@ interface QueryResultsProps {
     results: { rows: any[], columns: string[], tableName?: string | null, primaryKeyColumn?: string | null } | null;
     error: string | null;
     isGenerating: boolean;
+    isLiveUpdating?: boolean;
     hasMore?: boolean;
     isFetchingMore?: boolean;
     onLoadMore?: () => void;
@@ -23,10 +24,14 @@ interface QueryResultsProps {
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#6366f1'];
 
-export function QueryResults({ results, error, isGenerating, hasMore, isFetchingMore, onLoadMore, projectId, onRowUpdatedInResults }: QueryResultsProps) {
+export function QueryResults({ results, error, isGenerating, isLiveUpdating, hasMore, isFetchingMore, onLoadMore, projectId, onRowUpdatedInResults }: QueryResultsProps) {
     const [view, setView] = useState<'table' | 'chart' | 'json'>('table');
     const [chartType, setChartType] = useState<'bar' | 'line' | 'pie'>('bar');
     const { toast } = useToast();
+
+    // Scroll persistence: preserve scroll position during live updates
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const scrollTopRef = useRef<number>(0);
 
     // Inline Cell Editing State
     const [editingCell, setEditingCell] = useState<{ rowIndex: number; columnName: string } | null>(null);
@@ -100,14 +105,22 @@ export function QueryResults({ results, error, isGenerating, hasMore, isFetching
     };
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-        if (!onLoadMore || !hasMore || isFetchingMore) return;
         const target = e.currentTarget;
+        scrollTopRef.current = target.scrollTop;
+        if (!onLoadMore || !hasMore || isFetchingMore) return;
         const threshold = 150;
         const isNearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < threshold;
         if (isNearBottom) {
             onLoadMore();
         }
     };
+
+    // Restore scroll position after live background refresh
+    useLayoutEffect(() => {
+        if (scrollContainerRef.current && scrollTopRef.current > 0) {
+            scrollContainerRef.current.scrollTop = scrollTopRef.current;
+        }
+    }, [results?.rows]);
 
     const chartDataConfig = useMemo(() => {
         if (!results || !results.rows || results.rows.length === 0) return null;
@@ -168,26 +181,37 @@ export function QueryResults({ results, error, isGenerating, hasMore, isFetching
                             <Button variant={chartType === 'pie' ? 'secondary' : 'ghost'} size="sm" className="h-6 w-6 p-0" onClick={() => setChartType('pie')}><PieChartIcon className="h-3 w-3" /></Button>
                         </div>
                     )}
-                    {isEditableTable && results.rows.length > 0 && view === 'table' && (
-                        <div className="text-[10px] text-muted-foreground/80 bg-muted/20 border px-2 py-0.5 rounded font-medium flex items-center gap-1.5 font-sans mr-2">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                            <span className="font-semibold text-foreground">{results.tableName}</span>
-                            <span className="opacity-60">• Double-click cell to edit</span>
-                        </div>
-                    )}
-                    {hasMore && view === 'table' && (
-                        <div className="mr-2 flex items-center text-[10px] font-medium text-muted-foreground font-sans">
-                            Scroll down to load more (Loaded: {results.rows.length})
-                        </div>
-                    )}
-                    {!hasMore && view === 'table' && results.rows.length > 0 && (
-                        <div className="mr-2 flex items-center text-[10px] font-medium text-muted-foreground font-sans">
-                            All {results.rows.length.toLocaleString()} rows loaded
+                    {view === 'table' && (
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <div className="text-[10px] text-muted-foreground/80 bg-muted/20 border px-2 py-0.5 rounded font-medium flex items-center gap-1.5 font-sans">
+                                <span className={`h-1.5 w-1.5 rounded-full ${isLiveUpdating ? 'bg-amber-400 animate-ping' : 'bg-emerald-500 animate-pulse'}`} />
+                                <span className="font-semibold text-foreground">{results.tableName || 'Live'}</span>
+                                {isLiveUpdating ? (
+                                    <span className="text-amber-400 font-medium">Syncing...</span>
+                                ) : (
+                                    <span className="opacity-60">• Live</span>
+                                )}
+                            </div>
+                            {isEditableTable && results.rows.length > 0 && (
+                                <span className="text-[10px] text-muted-foreground/60 hidden md:inline">
+                                    Double-click cell to edit
+                                </span>
+                            )}
+                            {hasMore && (
+                                <div className="text-[10px] font-medium text-muted-foreground font-sans">
+                                    Loaded {results.rows.length} rows
+                                </div>
+                            )}
+                            {!hasMore && results.rows.length > 0 && (
+                                <div className="text-[10px] font-medium text-muted-foreground font-sans">
+                                    All {results.rows.length.toLocaleString()} rows
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
 
-                <div className="flex-grow relative overflow-auto" onScroll={handleScroll}>
+                <div ref={scrollContainerRef} className="flex-grow relative overflow-auto" onScroll={handleScroll}>
                     {view === 'table' && (
                         <Table className="relative w-max min-w-full border-collapse border-spacing-0">
                             <TableHeader className="sticky top-0 z-20 shadow-sm">
@@ -219,9 +243,10 @@ export function QueryResults({ results, error, isGenerating, hasMore, isFetching
                                     results.rows.map((row, rowIndex) => {
                                         const rowHasPk = actualPkKey && row[actualPkKey] !== undefined && row[actualPkKey] !== null;
                                         const canEditRow = isEditableTable && rowHasPk;
+                                        const rowKey = rowHasPk ? String(row[actualPkKey]) : `row_${rowIndex}`;
 
                                         return (
-                                            <TableRow key={rowIndex} className="border-b border-border/50 hover:bg-muted/30 transition-colors group h-9">
+                                            <TableRow key={rowKey} className="border-b border-border/50 hover:bg-muted/30 transition-colors group h-9">
                                                 {results.columns.map((col, colIndex) => {
                                                     const isEditing = editingCell?.rowIndex === rowIndex && editingCell?.columnName === col;
                                                     const isUpdating = updatingCell?.rowIndex === rowIndex && updatingCell?.columnName === col;
@@ -230,7 +255,7 @@ export function QueryResults({ results, error, isGenerating, hasMore, isFetching
 
                                                     return (
                                                         <TableCell
-                                                            key={`${rowIndex}-${colIndex}-${col}`}
+                                                            key={`${rowKey}-${colIndex}-${col}`}
                                                             className={`relative h-9 p-0 whitespace-nowrap font-mono text-xs border-r border-border/50 last:border-r-0 select-none ${canEditCell ? 'cursor-pointer hover:bg-primary/5' : ''}`}
                                                             onDoubleClick={() => canEditCell && handleCellDoubleClick(rowIndex, col, row[col])}
                                                         >
