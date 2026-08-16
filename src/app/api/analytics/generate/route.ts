@@ -37,7 +37,7 @@ export async function POST(req: Request) {
             schemaString += `Table: ${table.table_name}\nColumns: ${colDefs}\n\n`;
         }
 
-        const dialectPrompt = project.dialect === 'mysql' ? 'MySQL' : 'PostgreSQL';
+        const dialectPrompt = project.dialect?.toLowerCase() === 'mysql' ? 'MySQL' : 'PostgreSQL';
 
         const fullPrompt = `You are an expert Data Analyst & BI Developer.
 The user wants to create an analytical dashboard widget for their database. You must generate the exact ${dialectPrompt} query to fetch this data, and determine the optimal Recharts visualization type.

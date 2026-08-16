@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUserId } from '@/lib/auth';
-import { getPgPool } from '@/lib/pg';
+import { getProjectById } from '@/lib/data';
+import { getTenantPgPool, getTenantMysqlPool, getProjectDbAndSchema } from '@/lib/tenant-pools';
 import Busboy from 'busboy';
 import { Readable } from 'node:stream';
 
 export const runtime = 'nodejs';
-// 200k rows at ~5ms/row single-insert = ~1000s. Batch inserts are 50-100x faster,
-// so 300s is ample for a 200MB CSV.
 export const maxDuration = 300;
 
 /**
@@ -34,16 +33,13 @@ async function parseMultipart(req: NextRequest): Promise<{
         bb.on('close', () => resolve({ fields, files }));
         bb.on('error', reject);
 
-        // Pipe the Web ReadableStream into busboy (a Node.js Writable)
         if (!req.body) { reject(new Error('No request body')); return; }
         const nodeStream = Readable.fromWeb(req.body as any);
         nodeStream.pipe(bb);
     });
 }
 
-
-// Rows per INSERT (...), (...), ... batch statement.
-// ~1000 is optimal: low round-trip count, avoids pg 65535 param limit.
+// Rows per INSERT batch statement
 const BATCH_SIZE = 1000;
 
 function parseCSV(csvText: string): { headers: string[]; rows: string[][] } {
@@ -65,7 +61,6 @@ function parseCSV(csvText: string): { headers: string[]; rows: string[][] } {
         for (let i = 0; i < line.length; i++) {
             const ch = line[i];
             if (ch === '"') {
-                // Handle escaped quotes ""
                 if (inQuotes && line[i + 1] === '"') {
                     current += '"';
                     i++;
@@ -91,19 +86,7 @@ function parseCSV(csvText: string): { headers: string[]; rows: string[][] } {
 
 /**
  * POST /api/import-csv
- *
- * Two modes:
- * 1. After table creation (called from create/page.tsx):
- *    Fields: projectId, tableName, csvFile
- *    — creates rows for new table
- *
- * 2. Insert into existing table (called from editor):
- *    Fields: projectId, tableName, csvFile, mode=insert
- *    — detects headers, inserts only matching columns
- *
- * Performance: rows are batched BATCH_SIZE at a time using multi-row
- * INSERT (...), (...) syntax to minimise round-trips.
- * A 200k-row CSV completes in ~5-15 seconds instead of minutes.
+ * Supports both PostgreSQL and MySQL dialect projects.
  */
 export async function POST(req: NextRequest) {
     try {
@@ -112,10 +95,9 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Use streaming busboy parser — bypasses Next.js's 4 MB body-size cap
         const { fields, files } = await parseMultipart(req);
         const projectId = fields['projectId'];
-        const tableName  = fields['tableName'];
+        const tableName = fields['tableName'];
         const csvFileRaw = files['csvFile'];
         const excludedRaw = fields['excludedColumns'];
         let excludedColumns: string[] = [];
@@ -130,13 +112,14 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        if (!/^[a-zA-Z0-9_]+$/.test(tableName)) {
-            return NextResponse.json({ error: 'Invalid table name' }, { status: 400 });
+        const project = await getProjectById(projectId, userId);
+        if (!project) {
+            return NextResponse.json({ error: 'Project not found' }, { status: 404 });
         }
 
+        const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
         const csvText = csvFileRaw.buffer.toString('utf-8');
         const { headers, rows: dataRows } = parseCSV(csvText);
-
 
         if (headers.length === 0) {
             return NextResponse.json({ error: 'Could not parse CSV headers.' }, { status: 400 });
@@ -147,43 +130,37 @@ export async function POST(req: NextRequest) {
 
         const { checkRowLimit, checkProjectTrafficLimits } = await import('@/lib/limits');
         await checkProjectTrafficLimits(projectId);
-        await checkRowLimit(projectId, userId, tableName, dataRows.length);
+        await checkRowLimit(projectId, userId, safeTableName, dataRows.length);
 
-        const pool = getPgPool();
-        const client = await pool.connect();
-        const schemaName = `project_${projectId}`;
-
+        const isMysql = project.dialect?.toLowerCase() === 'mysql';
         let importedCount = 0;
         const errors: string[] = [];
         let insertableHeaders: string[] = [];
 
-        try {
-            // Discover actual table columns from information_schema
-            const colResult = await client.query(
-                `SELECT column_name, column_default, is_nullable
+        if (isMysql) {
+            const mysqlPool = await getTenantMysqlPool(project);
+            const { dbName } = getProjectDbAndSchema(project);
+
+            const [colResult]: any = await mysqlPool.query(
+                `SELECT COLUMN_NAME as column_name, COLUMN_DEFAULT as column_default, IS_NULLABLE as is_nullable
                  FROM information_schema.columns
-                 WHERE table_schema = $1 AND table_name = $2
-                 ORDER BY ordinal_position`,
-                [schemaName, tableName]
+                 WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+                 ORDER BY ORDINAL_POSITION`,
+                [dbName, safeTableName]
             );
 
-            if (colResult.rows.length === 0) {
+            if (!colResult || colResult.length === 0) {
                 return NextResponse.json(
-                    { error: `Table '${tableName}' not found in schema '${schemaName}'.` },
+                    { error: `Table '${safeTableName}' not found in database '${dbName}'.` },
                     { status: 404 }
                 );
             }
 
-            const tableColumnNames = colResult.rows.map((r: any) => r.column_name as string);
-            // Map column_name → has a server-side default (e.g. gen_random_uuid(), now())
+            const tableColumnNames = colResult.map((r: any) => r.column_name as string);
             const columnHasDefault = new Map<string, boolean>(
-                colResult.rows.map((r: any) => [r.column_name as string, !!(r.column_default)])
+                colResult.map((r: any) => [r.column_name as string, !!(r.column_default)])
             );
 
-            // Map CSV headers to actual table columns (case-insensitive).
-            // We include 'id' / '_id' columns — if the CSV provides a real value we use it.
-            // Empty id values are handled at row-level: if the column has a server default
-            // we omit it so the DB auto-generates; otherwise we pass null and let the DB error surface.
             const headerToTableCol: Record<string, string> = {};
             for (const h of headers) {
                 if (excludedColumns.includes(h)) continue;
@@ -193,20 +170,12 @@ export async function POST(req: NextRequest) {
             }
 
             insertableHeaders = Object.keys(headerToTableCol);
-
             if (insertableHeaders.length === 0) {
                 return NextResponse.json({
                     error: `No matching columns found. CSV headers: [${headers.join(', ')}]. Table columns: [${tableColumnNames.join(', ')}].`
                 }, { status: 400 });
             }
 
-            // Build per-row column lists: if a column has a server default AND its value is
-            // empty/null in this row, omit it from the INSERT so the default fires.
-
-
-            // Collect valid rows (skip blanks).
-            // Each row is stored as { cols: string[], vals: (string|null)[] }
-            // where columns with server defaults are omitted when their value is null/empty.
             type ImportRow = { cols: string[]; vals: (string | null)[] };
             const validRows: ImportRow[] = [];
 
@@ -222,26 +191,16 @@ export async function POST(req: NextRequest) {
                     const val = raw === '' ? null : raw;
                     const tableCol = headerToTableCol[h];
 
-                    // If column has a server default AND this value is empty, skip it
-                    // so the DB auto-generates (handles id, created_at, etc.)
                     if (val === null && columnHasDefault.get(tableCol)) continue;
 
-                    rowCols.push(`"${tableCol}"`);
+                    rowCols.push(`\`${tableCol}\``);
                     rowVals.push(val);
                 }
 
                 if (rowCols.length > 0) validRows.push({ cols: rowCols, vals: rowVals });
             }
 
-            await client.query('BEGIN');
-
-            // ── Batched multi-row INSERT with SAVEPOINT isolation ──────────────
-            // Because rows may have different column sets (e.g., some have explicit id, some don't)
-            // we group rows by their column signature, then batch each group.
-            // Fallback: row-by-row with SAVEPOINTs for error isolation.
-            let savepointIdx = 0;
-
-            // Group rows by column signature for efficient batching
+            // Group by columns signature
             const groups = new Map<string, ImportRow[]>();
             for (const row of validRows) {
                 const sig = row.cols.join(',');
@@ -252,83 +211,192 @@ export async function POST(req: NextRequest) {
             for (const [, groupRows] of groups) {
                 const quotedCols = groupRows[0].cols.join(', ');
                 const colCount = groupRows[0].cols.length;
+
                 for (let batchStart = 0; batchStart < groupRows.length; batchStart += BATCH_SIZE) {
                     const batch = groupRows.slice(batchStart, batchStart + BATCH_SIZE);
                     const flatParams: (string | null)[] = [];
-                    const valueClauses: string[] = [];
+                    const valuePlaceholders: string[] = [];
+                    const rowPlaceholder = `(${Array(colCount).fill('?').join(', ')})`;
 
-                    for (let r = 0; r < batch.length; r++) {
-                        const vals = batch[r].vals;
-                        const placeholders = vals.map((_, c) => `$${r * colCount + c + 1}`).join(', ');
-                        valueClauses.push(`(${placeholders})`);
-                        flatParams.push(...vals);
+                    for (const r of batch) {
+                        valuePlaceholders.push(rowPlaceholder);
+                        flatParams.push(...r.vals);
                     }
 
-                    const batchSp = `sp_batch_${savepointIdx++}`;
-                    await client.query(`SAVEPOINT ${batchSp}`);
-
-                    const sql = `INSERT INTO "${schemaName}"."${tableName}" (${quotedCols}) VALUES ${valueClauses.join(', ')}`;
+                    const sql = `INSERT INTO \`${dbName}\`.\`${safeTableName}\` (${quotedCols}) VALUES ${valuePlaceholders.join(', ')}`;
 
                     try {
-                        await client.query(sql, flatParams);
-                        await client.query(`RELEASE SAVEPOINT ${batchSp}`);
+                        await (mysqlPool as any).query(sql, flatParams);
                         importedCount += batch.length;
                     } catch {
-                        // Batch failed — rollback to clear aborted state, retry row-by-row
-                        await client.query(`ROLLBACK TO SAVEPOINT ${batchSp}`);
-                        await client.query(`RELEASE SAVEPOINT ${batchSp}`);
-
+                        // Fallback row by row for error identification
                         for (let r = 0; r < batch.length; r++) {
-                            const vals = batch[r].vals;
-                            const rowCols = batch[r].cols.join(', ');
-                            const placeholders = vals.map((_, c) => `$${c + 1}`).join(', ');
-                            const rowSql = `INSERT INTO "${schemaName}"."${tableName}" (${rowCols}) VALUES (${placeholders})`;
-                            const rowSp = `sp_row_${savepointIdx++}`;
-
-                            await client.query(`SAVEPOINT ${rowSp}`);
+                            const singleRowSql = `INSERT INTO \`${dbName}\`.\`${safeTableName}\` (${batch[r].cols.join(', ')}) VALUES (${Array(batch[r].vals.length).fill('?').join(', ')})`;
                             try {
-                                await client.query(rowSql, vals);
-                                await client.query(`RELEASE SAVEPOINT ${rowSp}`);
+                                await (mysqlPool as any).query(singleRowSql, batch[r].vals);
                                 importedCount++;
                             } catch (rowErr: any) {
-                                await client.query(`ROLLBACK TO SAVEPOINT ${rowSp}`);
-                                await client.query(`RELEASE SAVEPOINT ${rowSp}`);
                                 const absoluteRowNum = batchStart + r + 2;
                                 errors.push(`Row ${absoluteRowNum}: ${rowErr.message.split('\n')[0]}`);
                                 if (errors.length >= 50) break;
                             }
-                            if (errors.length >= 50) break;
                         }
                     }
-
                     if (errors.length >= 50) break;
-                } // end batchStart loop
+                }
                 if (errors.length >= 50) break;
-            } // end groups loop
-
-
-            if (importedCount === 0 && errors.length > 0) {
-                await client.query('ROLLBACK');
-                return NextResponse.json({
-                    error: 'Import failed — all rows had errors.',
-                    details: errors
-                }, { status: 422 });
             }
 
-            await client.query('COMMIT');
+        } else {
+            // PostgreSQL implementation
+            const pool = await getTenantPgPool(project);
+            const { schemaName } = getProjectDbAndSchema(project);
+            const client = await pool.connect();
 
-        } finally {
-            client.release();
+            try {
+                const colResult = await client.query(
+                    `SELECT column_name, column_default, is_nullable
+                     FROM information_schema.columns
+                     WHERE table_schema = $1 AND table_name = $2
+                     ORDER BY ordinal_position`,
+                    [schemaName, safeTableName]
+                );
+
+                if (colResult.rows.length === 0) {
+                    return NextResponse.json(
+                        { error: `Table '${safeTableName}' not found in schema '${schemaName}'.` },
+                        { status: 404 }
+                    );
+                }
+
+                const tableColumnNames = colResult.rows.map((r: any) => r.column_name as string);
+                const columnHasDefault = new Map<string, boolean>(
+                    colResult.rows.map((r: any) => [r.column_name as string, !!(r.column_default)])
+                );
+
+                const headerToTableCol: Record<string, string> = {};
+                for (const h of headers) {
+                    if (excludedColumns.includes(h)) continue;
+                    const lh = h.toLowerCase();
+                    const match = tableColumnNames.find(tc => tc.toLowerCase() === lh);
+                    if (match) headerToTableCol[h] = match;
+                }
+
+                insertableHeaders = Object.keys(headerToTableCol);
+                if (insertableHeaders.length === 0) {
+                    return NextResponse.json({
+                        error: `No matching columns found. CSV headers: [${headers.join(', ')}]. Table columns: [${tableColumnNames.join(', ')}].`
+                    }, { status: 400 });
+                }
+
+                type ImportRow = { cols: string[]; vals: (string | null)[] };
+                const validRows: ImportRow[] = [];
+
+                for (const rawValues of dataRows) {
+                    if (rawValues.length === 0 || (rawValues.length === 1 && rawValues[0] === '')) continue;
+
+                    const rowCols: string[] = [];
+                    const rowVals: (string | null)[] = [];
+
+                    for (const h of insertableHeaders) {
+                        const csvIdx = headers.indexOf(h);
+                        const raw = csvIdx === -1 ? '' : (rawValues[csvIdx] ?? '').replace(/^"|"$/g, '').trim();
+                        const val = raw === '' ? null : raw;
+                        const tableCol = headerToTableCol[h];
+
+                        if (val === null && columnHasDefault.get(tableCol)) continue;
+
+                        rowCols.push(`"${tableCol}"`);
+                        rowVals.push(val);
+                    }
+
+                    if (rowCols.length > 0) validRows.push({ cols: rowCols, vals: rowVals });
+                }
+
+                await client.query('BEGIN');
+                let savepointIdx = 0;
+
+                const groups = new Map<string, ImportRow[]>();
+                for (const row of validRows) {
+                    const sig = row.cols.join(',');
+                    if (!groups.has(sig)) groups.set(sig, []);
+                    groups.get(sig)!.push(row);
+                }
+
+                for (const [, groupRows] of groups) {
+                    const quotedCols = groupRows[0].cols.join(', ');
+                    const colCount = groupRows[0].cols.length;
+                    for (let batchStart = 0; batchStart < groupRows.length; batchStart += BATCH_SIZE) {
+                        const batch = groupRows.slice(batchStart, batchStart + BATCH_SIZE);
+                        const flatParams: (string | null)[] = [];
+                        const valueClauses: string[] = [];
+
+                        for (let r = 0; r < batch.length; r++) {
+                            const vals = batch[r].vals;
+                            const placeholders = vals.map((_, c) => `$${r * colCount + c + 1}`).join(', ');
+                            valueClauses.push(`(${placeholders})`);
+                            flatParams.push(...vals);
+                        }
+
+                        const batchSp = `sp_batch_${savepointIdx++}`;
+                        await client.query(`SAVEPOINT ${batchSp}`);
+
+                        const sql = `INSERT INTO "${schemaName}"."${safeTableName}" (${quotedCols}) VALUES ${valueClauses.join(', ')}`;
+
+                        try {
+                            await client.query(sql, flatParams);
+                            await client.query(`RELEASE SAVEPOINT ${batchSp}`);
+                            importedCount += batch.length;
+                        } catch {
+                            await client.query(`ROLLBACK TO SAVEPOINT ${batchSp}`);
+                            await client.query(`RELEASE SAVEPOINT ${batchSp}`);
+
+                            for (let r = 0; r < batch.length; r++) {
+                                const vals = batch[r].vals;
+                                const rowCols = batch[r].cols.join(', ');
+                                const placeholders = vals.map((_, c) => `$${c + 1}`).join(', ');
+                                const rowSql = `INSERT INTO "${schemaName}"."${safeTableName}" (${rowCols}) VALUES (${placeholders})`;
+                                const rowSp = `sp_row_${savepointIdx++}`;
+
+                                await client.query(`SAVEPOINT ${rowSp}`);
+                                try {
+                                    await client.query(rowSql, vals);
+                                    await client.query(`RELEASE SAVEPOINT ${rowSp}`);
+                                    importedCount++;
+                                } catch (rowErr: any) {
+                                    await client.query(`ROLLBACK TO SAVEPOINT ${rowSp}`);
+                                    await client.query(`RELEASE SAVEPOINT ${rowSp}`);
+                                    const absoluteRowNum = batchStart + r + 2;
+                                    errors.push(`Row ${absoluteRowNum}: ${rowErr.message.split('\n')[0]}`);
+                                    if (errors.length >= 50) break;
+                                }
+                                if (errors.length >= 50) break;
+                            }
+                        }
+
+                        if (errors.length >= 50) break;
+                    }
+                    if (errors.length >= 50) break;
+                }
+
+                if (importedCount === 0 && errors.length > 0) {
+                    await client.query('ROLLBACK');
+                    return NextResponse.json({
+                        error: 'Import failed — all rows had errors.',
+                        details: errors
+                    }, { status: 422 });
+                }
+
+                await client.query('COMMIT');
+            } finally {
+                client.release();
+            }
         }
 
-        // Bust the Redis cache so the freshly imported rows are visible immediately.
-        // Without this, the table-data route keeps serving the stale (empty) cached result
-        // even though Postgres now has the data.
         try {
             const { invalidateTableCache } = await import('@/lib/cache');
-            await invalidateTableCache(projectId, tableName);
+            await invalidateTableCache(projectId, safeTableName);
         } catch (cacheErr) {
-            // Non-fatal: data is committed; cache will expire naturally.
             console.warn('[import-csv] Cache invalidation failed:', cacheErr);
         }
 

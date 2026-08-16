@@ -37,7 +37,7 @@ export async function POST(req: Request) {
 
         let resultRows: any[] = [];
 
-        if (project.dialect === 'mysql') {
+        if (project.dialect?.toLowerCase() === 'mysql') {
             const { getMysqlPool } = await import('@/lib/mysql');
             const mysqlPool = getMysqlPool();
             const connection = await mysqlPool.getConnection();

@@ -1,4 +1,4 @@
-﻿
+
 'use client';
 
 import * as React from 'react';
@@ -91,9 +91,9 @@ export function ProjectSwitcher({
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                     <span className={cn(
                         "text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider",
-                        project.dialect === 'mysql' ? 'bg-orange-500/10 text-orange-400' : 'bg-blue-500/10 text-blue-400'
+                        project.dialect?.toLowerCase() === 'mysql' ? 'bg-orange-500/10 text-orange-400' : 'bg-blue-500/10 text-blue-400'
                     )}>
-                      {project.dialect === 'mysql' ? 'MySQL' : 'PG'}
+                      {project.dialect?.toLowerCase() === 'mysql' ? 'MySQL' : 'PG'}
                     </span>
                     
                     {project.role && (

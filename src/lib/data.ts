@@ -782,7 +782,7 @@ export async function createTable(projectId: string, tableName: string, descript
             columnDefs.push(toSafeSql(defStr));
         }
 
-        const safeDb = quoteMysqlProjectSchemaSafe(projectId);
+        const safeDb = quoteMysqlIdentifierSafe(dbName);
         const safeTable = quoteMysqlIdentifierSafe(tableName);
         const joinedDefs = toSafeSql(columnDefs.join(', '));
         const ddl = safeSql`CREATE TABLE ${safeDb}.${safeTable} (${joinedDefs})`;
@@ -823,7 +823,7 @@ export async function createTable(projectId: string, tableName: string, descript
             columnDefs.push(toSafeSql(defStr));
         }
 
-        const safeSchema = quotePgProjectSchemaSafe(projectId);
+        const safeSchema = quotePgIdentifierSafe(schemaName);
         const safeTable = quotePgIdentifierSafe(tableName);
         const joinedDefs = toSafeSql(columnDefs.join(', '));
         const ddl = safeSql`CREATE TABLE ${safeSchema}.${safeTable} (${joinedDefs})`;
@@ -909,12 +909,14 @@ export async function deleteTable(projectId: string, tableId: string, explicitUs
 
     if (project.dialect?.toLowerCase() === 'mysql') {
         const mysqlPool = await getTenantMysqlPool(project);
-        const safeDb = quoteMysqlProjectSchemaSafe(projectId);
+        const { dbName } = getProjectDbAndSchema(project);
+        const safeDb = quoteMysqlIdentifierSafe(dbName);
         const safeTable = quoteMysqlIdentifierSafe(tableId);
         await mysqlPool.query(safeSql`DROP TABLE IF EXISTS ${safeDb}.${safeTable}`);
     } else {
         const pool = await getTenantPgPool(project);
-        const safeSchema = quotePgProjectSchemaSafe(projectId);
+        const { schemaName } = getProjectDbAndSchema(project);
+        const safeSchema = quotePgIdentifierSafe(schemaName);
         const safeTable = quotePgIdentifierSafe(tableId);
         await pool.query(safeSql`DROP TABLE IF EXISTS ${safeSchema}.${safeTable} CASCADE`);
     }
@@ -934,6 +936,7 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
     if (!project) throw new FluxbaseError("Project not found", ERROR_CODES.PROJECT_NOT_FOUND, 404);
 
     const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
+    const isExternal = project.connection_type && project.connection_type !== 'internal';
 
     try {
         if (project.dialect?.toLowerCase() === 'mysql') {
@@ -952,8 +955,8 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
                 ORDER BY ORDINAL_POSITION
             `, [dbName || '', safeTableName]);
 
-            if ((!result || result.length === 0)) {
-                // Fallback: search column information schema across all non-system databases
+            if (isExternal && (!result || result.length === 0)) {
+                // Fallback ONLY for external non-standard databases:
                 [result] = await mysqlPool.query(`
                     SELECT 
                         COLUMN_NAME as column_name, 
@@ -1005,7 +1008,7 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
                 ORDER BY c.ordinal_position
             `, [schemaName, safeTableName]);
 
-            if (result.rows.length === 0 && schemaName !== 'public') {
+            if (isExternal && result.rows.length === 0 && schemaName !== 'public') {
                 result = await pool.query(`
                     SELECT 
                         c.column_name, 
@@ -1028,7 +1031,7 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
                 `, [safeTableName]);
             }
 
-            if (result.rows.length === 0) {
+            if (isExternal && result.rows.length === 0) {
                 result = await pool.query(`
                     SELECT 
                         c.column_name, 
@@ -1101,14 +1104,13 @@ export async function addColumn(projectId: string, tableId: string, column: Omit
             }
         }
 
-        const safeDb = quoteMysqlProjectSchemaSafe(projectId);
+        const safeDb = quoteMysqlIdentifierSafe(dbName);
         const safeTable = quoteMysqlIdentifierSafe(tableId);
         const def = toSafeSql(defStr);
         await mysqlPool.query(safeSql`ALTER TABLE ${safeDb}.${safeTable} ${def}`);
 
     } else {
         const pool = await getTenantPgPool(project);
-        const { schemaName } = getProjectDbAndSchema(project);
 
         let type = column.data_type.toUpperCase();
         if (type === 'NUMBER') type = 'NUMERIC';
@@ -1130,7 +1132,8 @@ export async function addColumn(projectId: string, tableId: string, column: Omit
             }
         }
 
-        const safeSchema = quotePgProjectSchemaSafe(projectId);
+        const { schemaName } = getProjectDbAndSchema(project);
+        const safeSchema = quotePgIdentifierSafe(schemaName);
         const safeTable = quotePgIdentifierSafe(tableId);
         const def = toSafeSql(defStr);
         await pool.query(safeSql`ALTER TABLE ${safeSchema}.${safeTable} ${def}`);
@@ -1152,13 +1155,15 @@ export async function deleteColumn(projectId: string, tableId: string, columnId:
 
     if (project.dialect?.toLowerCase() === 'mysql') {
         const mysqlPool = await getTenantMysqlPool(project);
-        const safeDb = quoteMysqlProjectSchemaSafe(projectId);
+        const { dbName } = getProjectDbAndSchema(project);
+        const safeDb = quoteMysqlIdentifierSafe(dbName);
         const safeTable = quoteMysqlIdentifierSafe(tableId);
         const safeCol = quoteMysqlIdentifierSafe(columnId);
         await mysqlPool.query(safeSql`ALTER TABLE ${safeDb}.${safeTable} DROP COLUMN ${safeCol}`);
     } else {
         const pool = await getTenantPgPool(project);
-        const safeSchema = quotePgProjectSchemaSafe(projectId);
+        const { schemaName } = getProjectDbAndSchema(project);
+        const safeSchema = quotePgIdentifierSafe(schemaName);
         const safeTable = quotePgIdentifierSafe(tableId);
         const safeCol = quotePgIdentifierSafe(columnId);
         await pool.query(safeSql`ALTER TABLE ${safeSchema}.${safeTable} DROP COLUMN ${safeCol} CASCADE`);
@@ -1179,7 +1184,8 @@ export async function updateColumn(projectId: string, tableId: string, columnId:
 
     if (project.dialect?.toLowerCase() === 'mysql') {
         const mysqlPool = await getTenantMysqlPool(project);
-        const safeDb = quoteMysqlProjectSchemaSafe(projectId);
+        const { dbName } = getProjectDbAndSchema(project);
+        const safeDb = quoteMysqlIdentifierSafe(dbName);
         const safeTable = quoteMysqlIdentifierSafe(tableId);
         const safeCol = quoteMysqlIdentifierSafe(columnId);
 
@@ -1205,7 +1211,8 @@ export async function updateColumn(projectId: string, tableId: string, columnId:
 
     } else {
         const pool = await getTenantPgPool(project);
-        const safeSchema = quotePgProjectSchemaSafe(projectId);
+        const { schemaName } = getProjectDbAndSchema(project);
+        const safeSchema = quotePgIdentifierSafe(schemaName);
         const safeTable = quotePgIdentifierSafe(tableId);
         const safeCol = quotePgIdentifierSafe(columnId);
 
@@ -1389,7 +1396,8 @@ export async function addConstraint(projectId: string, constraint: Omit<Constrai
 
     if (project.dialect?.toLowerCase() === 'mysql') {
         const mysqlPool = await getTenantMysqlPool(project);
-        const safeDb = quoteMysqlProjectSchemaSafe(projectId);
+        const { dbName } = getProjectDbAndSchema(project);
+        const safeDb = quoteMysqlIdentifierSafe(dbName);
         const safeTable = quoteMysqlIdentifierSafe(constraint.table_id);
         const safeCol = quoteMysqlIdentifierSafe(constraint.column_names);
         const safeConstraintName = quoteMysqlIdentifierSafe(`${safeTableName}_${colName}_${Date.now()}`);
@@ -1416,7 +1424,8 @@ export async function addConstraint(projectId: string, constraint: Omit<Constrai
         await mysqlPool.query(toSafeSql(ddlStr));
     } else {
         const pool = await getTenantPgPool(project);
-        const safeSchema = quotePgProjectSchemaSafe(projectId);
+        const { schemaName } = getProjectDbAndSchema(project);
+        const safeSchema = quotePgIdentifierSafe(schemaName);
         const safeTable = quotePgIdentifierSafe(constraint.table_id);
         const safeCol = quotePgIdentifierSafe(constraint.column_names);
         const safeConstraintName = quotePgIdentifierSafe(`${safeTableName}_${colName}_${Date.now()}`);
@@ -1457,13 +1466,15 @@ export async function deleteConstraint(projectId: string, constraintId: string, 
 
     if (project.dialect?.toLowerCase() === 'mysql') {
         const mysqlPool = await getTenantMysqlPool(project);
-        const safeDb = quoteMysqlProjectSchemaSafe(projectId);
+        const { dbName } = getProjectDbAndSchema(project);
+        const safeDb = quoteMysqlIdentifierSafe(dbName);
         const safeTable = quoteMysqlIdentifierSafe(tableId);
         const safeConstraint = quoteMysqlIdentifierSafe(constraintId);
         await mysqlPool.query(safeSql`ALTER TABLE ${safeDb}.${safeTable} DROP CONSTRAINT ${safeConstraint}`);
     } else {
         const pool = await getTenantPgPool(project);
-        const safeSchema = quotePgProjectSchemaSafe(projectId);
+        const { schemaName } = getProjectDbAndSchema(project);
+        const safeSchema = quotePgIdentifierSafe(schemaName);
         const safeTable = quotePgIdentifierSafe(tableId);
         const safeConstraint = quotePgIdentifierSafe(constraintId);
         await pool.query(safeSql`ALTER TABLE ${safeSchema}.${safeTable} DROP CONSTRAINT ${safeConstraint}`);

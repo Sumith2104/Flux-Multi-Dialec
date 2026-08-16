@@ -69,6 +69,7 @@ function broadcastToSubscribers(payload: any) {
 async function setupPgListener() {
     const pgClient = await pool.connect();
     await pgClient.query('LISTEN fluxbase_changes');
+    await pgClient.query('LISTEN flux_realtime');
     await pgClient.query('LISTEN fluxbase_live');
 
     pgClient.on('notification', (msg) => {
@@ -76,7 +77,7 @@ async function setupPgListener() {
             if (msg.payload) {
                 const payload = JSON.parse(msg.payload);
                 
-                if (msg.channel === 'fluxbase_changes') {
+                if (msg.channel === 'fluxbase_changes' || msg.channel === 'flux_realtime') {
                     broadcastToSubscribers(payload);
                 } else if (msg.channel === 'fluxbase_live') {
                     // Broadcast to project wildcard listeners
@@ -99,7 +100,7 @@ async function setupPgListener() {
         }
     });
 
-    console.log('PostgreSQL realtime listener active on "fluxbase_changes" and "fluxbase_live"');
+    console.log('PostgreSQL realtime listener active on "fluxbase_changes", "flux_realtime", and "fluxbase_live"');
 }
 setupPgListener().catch(console.error);
 

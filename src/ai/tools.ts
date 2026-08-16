@@ -22,10 +22,11 @@ export const getSchemaTool = ai.defineTool({
     if (!project) throw new Error("Project not found");
 
     const { dbName, schemaName } = getProjectDbAndSchema(project);
-    const targetSchemaOrDb = project.dialect === 'mysql' ? dbName : schemaName;
+    const isMysql = project.dialect?.toLowerCase() === 'mysql';
+    const targetSchemaOrDb = isMysql ? dbName : schemaName;
     const engine = new SqlEngine(input.projectId, userId, undefined, undefined, project); 
 
-    const query = project.dialect === 'mysql'
+    const query = isMysql
       ? `SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = ? AND table_name NOT LIKE '\\_flux\\_internal\\_%';`
       : `SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name NOT LIKE '\\_flux\\_internal\\_%';`;
 

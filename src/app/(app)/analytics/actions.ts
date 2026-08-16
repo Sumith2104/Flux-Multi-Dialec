@@ -57,7 +57,7 @@ export async function updateWidgetConfigAction(projectId: string, widgetId: stri
     const project = await getProjectById(projectId, userId);
     if (!project) throw new Error("Project not found");
 
-    if (project.dialect === 'mysql') {
+    if (project.dialect?.toLowerCase() === 'mysql') {
         const { getMysqlPool } = await import('@/lib/mysql');
         const mysqlPool = getMysqlPool();
         await mysqlPool.query(

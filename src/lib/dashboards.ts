@@ -12,7 +12,7 @@ export interface DashboardWidget {
 }
 
 async function ensureTableExists(projectId: string, dialect: string) {
-    if (dialect === 'mysql') {
+    if (dialect?.toLowerCase() === 'mysql') {
         const { getMysqlPool } = await import('@/lib/mysql');
         const mysqlPool = getMysqlPool();
         await mysqlPool.query(`
@@ -44,9 +44,10 @@ export async function getDashboardWidgets(projectId: string, userId: string): Pr
     const project = await getProjectById(projectId, userId);
     if (!project) throw new Error("Project not found");
 
+    const isMysql = project.dialect?.toLowerCase() === 'mysql';
     await ensureTableExists(projectId, project.dialect || 'postgresql');
 
-    if (project.dialect === 'mysql') {
+    if (isMysql) {
         const { getMysqlPool } = await import('@/lib/mysql');
         const mysqlPool = getMysqlPool();
         const [rows]: any = await mysqlPool.query(
@@ -69,10 +70,11 @@ export async function saveDashboardWidget(projectId: string, userId: string, tit
     const project = await getProjectById(projectId, userId);
     if (!project) throw new Error("Project not found");
 
+    const isMysql = project.dialect?.toLowerCase() === 'mysql';
     await ensureTableExists(projectId, project.dialect || 'postgresql');
     const id = crypto.randomUUID().replace(/-/g, '');
 
-    if (project.dialect === 'mysql') {
+    if (isMysql) {
         const { getMysqlPool } = await import('@/lib/mysql');
         const mysqlPool = getMysqlPool();
         await mysqlPool.query(
@@ -93,7 +95,8 @@ export async function deleteDashboardWidget(projectId: string, userId: string, w
     const project = await getProjectById(projectId, userId);
     if (!project) throw new Error("Project not found");
 
-    if (project.dialect === 'mysql') {
+    const isMysql = project.dialect?.toLowerCase() === 'mysql';
+    if (isMysql) {
         const { getMysqlPool } = await import('@/lib/mysql');
         const mysqlPool = getMysqlPool();
         await mysqlPool.query(

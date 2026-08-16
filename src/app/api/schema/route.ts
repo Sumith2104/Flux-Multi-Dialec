@@ -63,7 +63,7 @@ export async function GET(request: Request) {
         
         const isExternal = project.connection_type && project.connection_type !== 'internal';
 
-        if (project.dialect === 'mysql') {
+        if (project.dialect?.toLowerCase() === 'mysql') {
             [resultTables, resultViews, resultIndexes, resultFunctions] = await Promise.all([
                 engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = ? AND table_name NOT LIKE '_flux_internal_%';`, [dbName || '']),
                 engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = ? AND table_name NOT LIKE '_flux_internal_%';`, [dbName || '']),
