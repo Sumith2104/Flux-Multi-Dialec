@@ -112,6 +112,48 @@ export default function QueryPage() {
     setQueryResponse(null);
   }, [project?.project_id]);
 
+  // Sync queries and results executed by Flux AI into the Query Results tab
+  useEffect(() => {
+    const handleAiSqlExecuted = (e: any) => {
+      const detail = e.detail;
+      if (detail?.projectId === project?.project_id && detail?.response) {
+        if (detail.query && project?.project_id) {
+          setQuery(detail.query);
+          setExecutedQuery(detail.query);
+          try {
+            localStorage.setItem(`sqlQuery_${project.project_id}`, detail.query);
+          } catch {}
+        }
+        setQueryResponse(detail.response);
+        setActiveResultsTab('results');
+        setHasMore(!!detail.response.result?.hasMore);
+      }
+    };
+
+    if (project?.project_id) {
+      try {
+        const raw = localStorage.getItem('flux_latest_query_result');
+        if (raw) {
+          const item = JSON.parse(raw);
+          if (item?.projectId === project.project_id && Date.now() - (item.timestamp || 0) < 120000) {
+            if (item.query) {
+              setQuery(item.query);
+              setExecutedQuery(item.query);
+            }
+            if (item.response) {
+              setQueryResponse(item.response);
+              setActiveResultsTab('results');
+              setHasMore(!!item.response?.result?.hasMore);
+            }
+          }
+        }
+      } catch {}
+    }
+
+    window.addEventListener('flux:sql-executed' as any, handleAiSqlExecuted);
+    return () => window.removeEventListener('flux:sql-executed' as any, handleAiSqlExecuted);
+  }, [project?.project_id]);
+
   const addToHistory = useCallback((queryStr: string, success: boolean) => {
     if (!project?.project_id) return;
     const newItem: HistoryItem = {

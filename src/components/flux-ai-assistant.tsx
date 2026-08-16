@@ -610,12 +610,28 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ projectId: activeProject.project_id, query: step.query })
                   }).then(res => res.json()).then(result => {
-                      if (result.success) {
-                          if (typeof window !== 'undefined') {
-                              window.dispatchEvent(new CustomEvent('flux:schema-change', { detail: { projectId: activeProject.project_id } }));
-                          }
-                          const rows = result.result?.rows;
-                          const isReadOnly = /^\s*(SELECT|WITH)\b/i.test(step.query || '');
+                        if (result.success) {
+                            if (typeof window !== 'undefined') {
+                                window.dispatchEvent(new CustomEvent('flux:schema-change', { detail: { projectId: activeProject.project_id } }));
+                                window.dispatchEvent(new CustomEvent('flux:sql-executed', {
+                                    detail: {
+                                        projectId: activeProject.project_id,
+                                        query: step.query,
+                                        response: result
+                                    }
+                                }));
+                                try {
+                                    localStorage.setItem(`sqlQuery_${activeProject.project_id}`, step.query || '');
+                                    localStorage.setItem('flux_latest_query_result', JSON.stringify({
+                                        projectId: activeProject.project_id,
+                                        query: step.query || '',
+                                        response: result,
+                                        timestamp: Date.now()
+                                    }));
+                                } catch {}
+                            }
+                            const rows = result.result?.rows;
+                            const isReadOnly = /^\s*(SELECT|WITH)\b/i.test(step.query || '');
 
                           setMessages(prev => {
                               const filtered = prev.filter(m => !m.content.includes("Executing query"));
