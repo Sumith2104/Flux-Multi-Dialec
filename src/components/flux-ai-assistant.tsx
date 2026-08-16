@@ -603,10 +603,12 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
                           if (typeof window !== 'undefined') {
                               window.dispatchEvent(new CustomEvent('flux:schema-change', { detail: { projectId: activeProject.project_id } }));
                           }
+                          const rows = result.result?.rows;
+                          const isReadOnly = /^\s*(SELECT|WITH)\b/i.test(step.query || '');
+
                           setMessages(prev => {
                               const filtered = prev.filter(m => !m.content.includes("Executing query"));
                               let feedbackContent = `Successfully executed SQL query: \`${step.query}\``;
-                              const rows = result.result?.rows;
                               if (Array.isArray(rows) && rows.length > 0) {
                                   feedbackContent += `\n\n**Output results (first 5 rows):**\n\`\`\`json\n${JSON.stringify(rows.slice(0, 5), null, 2)}\n\`\`\``;
                               } else if (result.executionInfo) {
@@ -617,6 +619,17 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
                               return [...filtered, { role: "assistant", content: feedbackContent }];
                           });
                           advanceWorkflow();
+
+                          // Agentic Loop: Feed query results back to the LLM to give the user a direct answer
+                          if (isReadOnly && Array.isArray(rows) && rows.length > 0) {
+                              const sampleRows = rows.slice(0, 10);
+                              setTimeout(() => {
+                                  handleSend(
+                                      undefined,
+                                      `System: The query \`${step.query}\` returned ${rows.length} rows: ${JSON.stringify(sampleRows)}. Analyze this data and give me the direct answer to my question.`
+                                  );
+                              }, 500);
+                          }
                       } else {
                           const errMsg = result.error?.message || 'Unknown error';
                           handleWorkflowError(`Failed to execute SQL: ${errMsg}`);
