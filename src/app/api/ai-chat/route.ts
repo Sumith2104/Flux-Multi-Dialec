@@ -151,6 +151,14 @@ Provide your response in Markdown formatting. Do NOT use HTML. Keep code snippet
         return NextResponse.json({ success: true, text: responseText });
     } catch (error: any) {
         console.error('AI Chat Error:', error);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        let userFacingError = error.message || 'Failed to process AI chat request.';
+        
+        if (userFacingError.includes('1113') || userFacingError.includes('余额不足')) {
+            userFacingError = "Zhipu/GLM quota is exhausted (Error 1113). Please add a free GEMINI_API_KEY, GROQ_API_KEY, or OPENAI_API_KEY to your .env.local file to continue.";
+        } else if (userFacingError.includes('API_KEY_INVALID') || userFacingError.includes('API key not valid')) {
+            userFacingError = "Gemini API key is missing or invalid. Please configure a valid GEMINI_API_KEY, GROQ_API_KEY, or GLM_API_KEY in your .env.local file.";
+        }
+
+        return NextResponse.json({ success: false, error: userFacingError }, { status: 500 });
     }
 }
