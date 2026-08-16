@@ -261,8 +261,13 @@ export function EditorClient({
         enabled: !!tableId && !!tableName,
         staleTime: 30 * 1000,
         refetchOnWindowFocus: false,
-        // Keep previous data visible while new sort/filter results load — no blank flash
-        placeholderData: keepPreviousData,
+        // Only keep previous data when sorting/filtering/paginating the SAME table
+        placeholderData: (previousData, previousQuery) => {
+            if (previousQuery && previousQuery.queryKey[1] === projectId && previousQuery.queryKey[2] === tableId) {
+                return previousData;
+            }
+            return undefined;
+        },
     });
 
     // Rows are now sorted/filtered server-side — just flatten pages
@@ -274,24 +279,25 @@ export function EditorClient({
 
     const rowCount = infiniteData?.pages?.[0]?.totalRows || 0;
 
-
     // Removed legacy fetchTableData and AbortControllers, useInfiniteQuery handles it
 
     useEffect(() => {
         async function fetchFkData() {
             if (!initialColumns.length) return;
 
-            const fkData: Record<string, any[]> = {};
             const fkConstraints = constraints.filter(c => c.type === 'FOREIGN KEY');
+            if (!fkConstraints.length) {
+                setForeignKeyData({});
+                return;
+            }
 
+            const fkData: Record<string, any[]> = {};
             for (const col of initialColumns) {
                 const constraint = fkConstraints.find(c => c.column_names === col.column_name);
                 if (constraint && constraint.referenced_table_id) {
                     const refTable = allTables.find(t => t.table_id === constraint.referenced_table_id);
                     if (refTable) {
                         try {
-                            // Phase 3: Hard cap at 200 rows for FK dropdowns.
-                            // Old: pageSize=1000 — with 3 FK cols on 50K-row tables = 150K rows in RAM.
                             const res = await fetch(`/api/table-data?projectId=${projectId}&tableName=${refTable.table_name}&pageSize=200`);
                             if (res.ok) {
                                 const data = await res.json();

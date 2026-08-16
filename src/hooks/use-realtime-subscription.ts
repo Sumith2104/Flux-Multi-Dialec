@@ -313,21 +313,27 @@ export function useRealtimeSubscription(projectId: string | undefined) {
         }
 
         // 2. Handle Data Changes (Rows deleted/inserted/updated)
-        if (event.type === 'update' || event.action || event.operation) {
+        const isDataMutation = (event.type === 'update' || event.action || event.operation) &&
+                               event.type !== 'connected' &&
+                               event.type !== 'subscribed';
+
+        if (isDataMutation) {
             const table = event.table;
 
             const doRefetch = () => {
-                console.log(`[Realtime Sync] Data mutation in project ${projectId}. Table: ${table || 'generic'}`);
-                
                 // Surgical Refetch: targeted table refresh
-                // The event.table is the physical table name, but the queryKey uses the internal tableId UUID.
-                // By using a predicate, we can simply refetch any active table-data queries for this project.
                 queryClient.refetchQueries({
-                    predicate: (query) => query.queryKey[0] === 'table-data' && query.queryKey[1] === projectId,
+                    predicate: (query) => {
+                        if (query.queryKey[0] !== 'table-data' || query.queryKey[1] !== projectId) return false;
+                        if (table && query.queryKey[2]) {
+                            return query.queryKey[2] === table;
+                        }
+                        return true;
+                    },
                     type: 'active'
                 });
 
-                // Invalidate analytics
+                // Invalidate analytics lazily (stale-while-revalidate)
                 queryClient.invalidateQueries({ queryKey: ['analytics_stats', projectId] });
                 queryClient.invalidateQueries({ queryKey: ['analytics_history', projectId] });
 
@@ -337,17 +343,15 @@ export function useRealtimeSubscription(projectId: string | undefined) {
 
             const now = Date.now();
             const timeSinceLastRefetch = now - lastRefetchTimeRef.current;
-            const THROTTLE_WINDOW = 1500;
+            const THROTTLE_WINDOW = 2000;
 
             if (timeSinceLastRefetch >= THROTTLE_WINDOW) {
-                // Leading edge: execute immediately
                 if (throttleTimerRef.current) {
                     clearTimeout(throttleTimerRef.current);
                     throttleTimerRef.current = null;
                 }
                 doRefetch();
             } else {
-                // Trailing edge: schedule if not already scheduled
                 if (!throttleTimerRef.current) {
                     const remaining = THROTTLE_WINDOW - timeSinceLastRefetch;
                     throttleTimerRef.current = setTimeout(doRefetch, remaining);

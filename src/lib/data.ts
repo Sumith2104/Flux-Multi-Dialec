@@ -1635,7 +1635,9 @@ export async function getTableData(
         if (project.dialect?.toLowerCase() === 'mysql') {
             const mysqlPool = await getTenantMysqlPool(project);
             const { dbName } = getProjectDbAndSchema(project);
-            const targetDb = await resolveMysqlDbForTable(mysqlPool, dbName, safeTableName);
+            const targetDb = (!project.connection_type || project.connection_type === 'internal')
+                ? dbName
+                : await resolveMysqlDbForTable(mysqlPool, dbName, safeTableName);
             const fromTable = targetDb ? `\`${targetDb}\`.\`${safeTableName}\`` : `\`${safeTableName}\``;
 
             const { clause: wClause, params: wParams } = _myWhere(filters);
@@ -1661,7 +1663,10 @@ export async function getTableData(
         } else {
             const pool = await getTenantPgPool(project);
             const { schemaName } = getProjectDbAndSchema(project);
-            const targetSchema = await resolvePgSchemaForTable(pool, schemaName, safeTableName);
+            const targetSchema = (!project.connection_type || project.connection_type === 'internal')
+                ? schemaName
+                : await resolvePgSchemaForTable(pool, schemaName, safeTableName);
+            const fromTable = `"${targetSchema}"."${safeTableName}"`;
             const { clause: wClause, params: wParams } = _pgWhere(filters, 3);
             const orderBy = _pgOrder(sorts);
 
@@ -1953,7 +1958,7 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
             const [rows]: any = await mysqlPool.query(`
                 SELECT 
                     table_name AS name,
-                    COALESCE(table_rows, 0) AS rows,
+                    COALESCE(table_rows, 0) AS row_count,
                     COALESCE(data_length + index_length, 0) AS size
                 FROM information_schema.tables
                 WHERE table_schema = ? AND table_type = 'BASE TABLE'
@@ -1962,7 +1967,7 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
 
             tablesStats = (rows || []).map((r: any) => ({
                 name: r.name || r.NAME,
-                rows: parseInt(r.rows || r.ROWS || '0', 10),
+                rows: parseInt(r.row_count || r.rows || r.ROWS || '0', 10),
                 size: parseInt(r.size || r.SIZE || '0', 10)
             }));
         } else {
