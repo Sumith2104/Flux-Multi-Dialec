@@ -31,6 +31,21 @@ export const pool = global._pool || new Pool({
 
 if (!global._pool) {
     global._pool = pool;
+
+    // Trap idle connection errors to prevent unhandled node crashes
+    pool.on('error', (err: any) => {
+        console.warn('[PostgreSQL Pool] Idle client warning (handled safely):', err?.message || err);
+    });
+
+    if (typeof process !== 'undefined') {
+        const handleShutdown = async () => {
+            try {
+                await pool.end();
+            } catch {}
+        };
+        process.once('SIGTERM', handleShutdown);
+        process.once('SIGINT', handleShutdown);
+    }
 }
 
 // Keep backward compatibility for existing routes

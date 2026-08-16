@@ -17,7 +17,7 @@ export function getMysqlPool(): mysql.Pool {
         parsedUrl.pathname = '';
 
         // connectionLimit 20 to match pg max
-        globalForMysql.mysqlPool = mysql.createPool({
+        const pool = mysql.createPool({
             uri: parsedUrl.toString(),
             connectionLimit: 20,
             waitForConnections: true,
@@ -29,6 +29,18 @@ export function getMysqlPool(): mysql.Pool {
                 rejectUnauthorized: false
             } // Essential for AWS RDS
         });
+
+        if (typeof process !== 'undefined') {
+            const handleShutdown = async () => {
+                try {
+                    await pool.end();
+                } catch {}
+            };
+            process.once('SIGTERM', handleShutdown);
+            process.once('SIGINT', handleShutdown);
+        }
+
+        globalForMysql.mysqlPool = pool;
     }
     return globalForMysql.mysqlPool;
 }

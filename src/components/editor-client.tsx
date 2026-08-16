@@ -426,30 +426,76 @@ export function EditorClient({
         }
     }, [projectId, tableName, sanitizeJson]);
 
-    // ── Phase 2: Upload confirmed preview data ────────────────────────────────
+    // ── Phase 2: Upload confirmed preview data with streaming chunks for large files ──
     const uploadImport = useCallback(async (data: ImportPreviewData) => {
         if (!projectId || !tableName) return;
         setIsImportingCsv(true);
-        setImportProgress('Uploading…');
+        setImportProgress('Preparing data…');
         try {
-            const fd = new FormData();
-            fd.append('projectId', projectId);
-            fd.append('tableName', tableName);
-            if ((data as any).excludedColumns?.length) {
-                fd.append('excludedColumns', JSON.stringify((data as any).excludedColumns));
+            const CHUNK_ROW_LIMIT = 5000;
+            const text = await data.csvBlob.text();
+            const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split('\n').filter(Boolean);
+            
+            if (lines.length <= 1) throw new Error('File is empty.');
+            const headerLine = lines[0];
+            const dataLines = lines.slice(1);
+            const totalRows = dataLines.length;
+
+            if (totalRows <= CHUNK_ROW_LIMIT) {
+                setImportProgress(`Uploading ${totalRows.toLocaleString()} row(s)…`);
+                const fd = new FormData();
+                fd.append('projectId', projectId);
+                fd.append('tableName', tableName);
+                if ((data as any).excludedColumns?.length) {
+                    fd.append('excludedColumns', JSON.stringify((data as any).excludedColumns));
+                }
+                fd.append('csvFile', data.csvBlob, data.file.name.replace(/\.[^.]+$/, '.csv'));
+                const res = await fetch('/api/import-csv', { method: 'POST', body: fd });
+                const ct = res.headers.get('content-type') || '';
+                if (!res.ok && !ct.includes('application/json')) {
+                    throw new Error(res.status === 413 ? 'File too large (max 500 MB).' : `Server error ${res.status}`);
+                }
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error + (json.details ? '\n' + json.details.slice(0, 3).join('\n') : ''));
+                
+                toast({
+                    title: 'Import Complete',
+                    description: `${json.importedCount} row(s) imported from ${data.file.name}${json.warnings?.length ? ` (${json.warnings.length} skipped)` : ''}.`,
+                });
+            } else {
+                // Chunked Streaming Upload for large files
+                let totalImported = 0;
+                const totalChunks = Math.ceil(totalRows / CHUNK_ROW_LIMIT);
+                
+                for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+                    const startIdx = chunkIdx * CHUNK_ROW_LIMIT;
+                    const endIdx = Math.min(startIdx + CHUNK_ROW_LIMIT, totalRows);
+                    const chunkLines = [headerLine, ...dataLines.slice(startIdx, endIdx)];
+                    const chunkBlob = new Blob([chunkLines.join('\n')], { type: 'text/csv' });
+
+                    const pct = Math.round(((chunkIdx + 1) / totalChunks) * 100);
+                    setImportProgress(`Importing ${startIdx.toLocaleString()}–${endIdx.toLocaleString()} of ${totalRows.toLocaleString()} rows (${pct}%)…`);
+
+                    const fd = new FormData();
+                    fd.append('projectId', projectId);
+                    fd.append('tableName', tableName);
+                    if ((data as any).excludedColumns?.length) {
+                        fd.append('excludedColumns', JSON.stringify((data as any).excludedColumns));
+                    }
+                    fd.append('csvFile', chunkBlob, `chunk_${chunkIdx}_${data.file.name.replace(/\.[^.]+$/, '.csv')}`);
+
+                    const res = await fetch('/api/import-csv', { method: 'POST', body: fd });
+                    const json = await res.json();
+                    if (!res.ok) throw new Error(json.error + (json.details ? '\n' + json.details.slice(0, 3).join('\n') : ''));
+                    totalImported += json.importedCount || 0;
+                }
+
+                toast({
+                    title: 'Chunked Import Complete',
+                    description: `Successfully streamed and imported ${totalImported.toLocaleString()} rows from ${data.file.name} in ${totalChunks} chunk(s).`,
+                });
             }
-            fd.append('csvFile', data.csvBlob, data.file.name.replace(/\.[^.]+$/, '.csv'));
-            const res = await fetch('/api/import-csv', { method: 'POST', body: fd });
-            const ct = res.headers.get('content-type') || '';
-            if (!res.ok && !ct.includes('application/json')) {
-                throw new Error(res.status === 413 ? 'File too large (max 200 MB).' : `Server error ${res.status}`);
-            }
-            const json = await res.json();
-            if (!res.ok) throw new Error(json.error + (json.details ? '\n' + json.details.slice(0, 3).join('\n') : ''));
-            toast({
-                title: 'Import Complete',
-                description: `${json.importedCount} row(s) imported from ${data.file.name}${json.warnings?.length ? ` (${json.warnings.length} skipped)` : ''}.`,
-            });
+
             setImportPreview(null);
             refreshData();
         } catch (err: any) {

@@ -237,15 +237,29 @@ async function ensureMigration(pool: any) {
                 fulfilled_at TIMESTAMP WITH TIME ZONE
             );
 
-            CREATE TABLE IF NOT EXISTS fluxbase_global.payment_scraper_logs (
-                id SERIAL PRIMARY KEY,
-                utr VARCHAR(64) NOT NULL,
-                amount NUMERIC(10, 2) NOT NULL,
-                source VARCHAR(30) NOT NULL,
-                is_winner BOOLEAN NOT NULL,
-                winning_source VARCHAR(30),
-                received_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            CREATE TABLE IF NOT EXISTS fluxbase_global.audit_logs (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                project_id VARCHAR(255),
+                user_id VARCHAR(255),
+                action VARCHAR(50),
+                statement TEXT,
+                metadata JSONB,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS fluxbase_global.analytics_rollups (
+                id SERIAL PRIMARY KEY,
+                project_id VARCHAR(255) NOT NULL,
+                period_start TIMESTAMP WITH TIME ZONE NOT NULL,
+                event_type VARCHAR(50) NOT NULL,
+                count BIGINT NOT NULL DEFAULT 0,
+                UNIQUE(project_id, period_start, event_type)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_audit_logs_project_created ON fluxbase_global.audit_logs (project_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_analytics_rollups_project_period ON fluxbase_global.analytics_rollups (project_id, period_start DESC);
+            CREATE INDEX IF NOT EXISTS idx_projects_user_id ON fluxbase_global.projects (user_id);
+            CREATE INDEX IF NOT EXISTS idx_project_members_user ON fluxbase_global.project_members (user_id);
         `);
         migrationRun = true;
     } catch (err) {
