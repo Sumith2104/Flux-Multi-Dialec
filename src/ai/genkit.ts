@@ -72,7 +72,7 @@ async function tryThirdPartyProvider(provider: string, prompt: string, schema: a
   } else if (provider === 'glm') {
     url = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
     apiKey = process.env.GLM_API_KEY || '';
-    model = 'glm-5.2';
+    model = process.env.GLM_MODEL || 'glm-4-flash';
   }
 
 
@@ -83,6 +83,59 @@ async function tryThirdPartyProvider(provider: string, prompt: string, schema: a
   let finalPrompt = prompt;
   if (schema) {
     finalPrompt += `\n\nCRITICAL REQUIREMENT: You MUST respond with a valid JSON object conforming exactly to this JSON schema shape:\n${JSON.stringify(describeZodSchema(schema))}\nDo not wrap the JSON in markdown code blocks like \`\`\`json. Return raw JSON.`;
+  }
+
+  if (provider === 'glm') {
+    const glmModels = [process.env.GLM_MODEL || 'glm-4-flash', 'glm-4-flash', 'glm-4-air', 'glm-4-plus'];
+    const uniqueModels = Array.from(new Set(glmModels));
+    let lastGlmErr: any = null;
+
+    for (const glmModel of uniqueModels) {
+      try {
+        console.log(`[AI] Dispatching fetch to GLM (${glmModel})...`);
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: glmModel,
+            messages: [{ role: 'user', content: finalPrompt }],
+            response_format: schema ? { type: 'json_object' } : undefined,
+            temperature: 0.2
+          })
+        });
+
+        if (!response.ok) {
+          const errorBody = await response.text();
+          throw new Error(`GLM (${glmModel}) request failed with status ${response.status}: ${errorBody}`);
+        }
+
+        const data = await response.json();
+        const rawText = data.choices?.[0]?.message?.content || '';
+
+        let output = null;
+        if (schema) {
+          try {
+            output = JSON.parse(rawText.trim().replace(/^```json\s*/i, '').replace(/```$/, '').trim());
+          } catch (e: any) {
+            console.error(`[AI] Failed to parse JSON response from GLM (${glmModel}):`, e);
+            throw new Error(`Invalid JSON format returned by GLM (${glmModel})`);
+          }
+        }
+
+        return {
+          text: rawText,
+          output,
+          message: { content: [{ text: rawText }] }
+        };
+      } catch (e: any) {
+        lastGlmErr = e;
+        console.warn(`[AI] GLM model ${glmModel} failed, trying next tier:`, e.message || e);
+      }
+    }
+    throw lastGlmErr;
   }
 
   console.log(`[AI] Dispatching fetch to third-party provider ${provider} (${model})...`);
@@ -135,13 +188,12 @@ export const ai = new Proxy(baseAi, {
         console.log(`[AI] Requested model/provider: ${requestedModel}`);
 
         // We will build a prioritized chain of actions to try:
-        // Each item in the chain is an async function that returns the result or throws.
         const chain: Array<{ name: string; run: () => Promise<any> }> = [];
 
-        // 0. Prioritize GLM if GLM_API_KEY is configured (instead of Gemini)
+        // 0. Prioritize GLM if GLM_API_KEY is configured
         if (process.env.GLM_API_KEY) {
           chain.push({
-            name: `GLM (glm-5.2)`,
+            name: `GLM (Zhipu AI / glm-4-flash)`,
             run: () => tryThirdPartyProvider('glm', options.prompt, options.output?.schema),
           });
         }
