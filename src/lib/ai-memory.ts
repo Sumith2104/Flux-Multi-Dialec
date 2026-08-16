@@ -43,11 +43,18 @@ const DEFAULT_FOUNDATIONAL_LESSONS: Omit<AiErrorLesson, 'id' | 'occurredAt' | 's
         resolutionFix: 'PostgreSQL lowercases unquoted identifiers. If columns are camelCase, wrap them in double quotes `"createdAt"`.'
     },
     {
+        dialect: 'postgresql',
+        errorCategory: 'relation_does_not_exist',
+        errorMessage: 'relation "table_editor" does not exist',
+        failedInput: 'SELECT date_column, balance_column FROM Table_Editor',
+        resolutionFix: 'NEVER invent fake table names like "Table_Editor" or fake column names like "date_column" or "balance_column". Always use real table names and column names from the REAL DATABASE SCHEMA.'
+    },
+    {
         dialect: 'mysql',
-        errorCategory: 'autoincrement_primary_key',
-        errorMessage: 'Incorrect table definition; there can be only one auto column and it must be defined as a key',
-        failedInput: 'id INT AUTO_INCREMENT, name VARCHAR(50)',
-        resolutionFix: 'In MySQL, AUTO_INCREMENT columns MUST be designated as PRIMARY KEY: `id INT AUTO_INCREMENT PRIMARY KEY`.'
+        errorCategory: 'table_does_not_exist',
+        errorMessage: "Table 'project_xxx.table_editor' doesn't exist",
+        failedInput: 'SELECT * FROM Table_Editor',
+        resolutionFix: 'NEVER invent placeholder table names like "Table_Editor". Always inspect real existing tables from the REAL DATABASE SCHEMA.'
     }
 ];
 

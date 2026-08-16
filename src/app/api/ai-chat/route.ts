@@ -50,13 +50,52 @@ export async function POST(req: Request) {
             screenContextStr = `\nLIVE SCREEN VISION & CONTEXT:\n- Active Table: "${screenContext.activeTable || 'none'}"\n- Open Columns: ${JSON.stringify(screenContext.visibleColumns || [])}\n- Total Rows in View: ${screenContext.rowCount || 0}\n${screenContext.activeError ? `- Active UI Error: "${screenContext.activeError}"\n` : ''}`;
         }
 
+        let schemaContext = '';
+        if (activeProject?.project_id) {
+            try {
+                const { SqlEngine } = await import('@/lib/sql-engine');
+                const { getProjectById } = await import('@/lib/data');
+                const { getProjectDbAndSchema } = await import('@/lib/tenant-pools');
+
+                const project = await getProjectById(activeProject.project_id, auth.userId);
+                if (project) {
+                    const { dbName, schemaName } = getProjectDbAndSchema(project);
+                    const isMysql = project.dialect?.toLowerCase() === 'mysql';
+                    const targetSchemaOrDb = isMysql ? dbName : schemaName;
+                    const engine = new SqlEngine(activeProject.project_id, auth.userId, undefined, undefined, project);
+
+                    const query = isMysql
+                        ? `SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = ? AND table_name NOT LIKE '\\_flux\\_internal\\_%' ORDER BY table_name, ordinal_position;`
+                        : `SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = $1 AND table_name NOT LIKE '\\_flux\\_internal\\_%' ORDER BY table_name, ordinal_position;`;
+
+                    const res = await engine.execute(query, [targetSchemaOrDb]);
+                    if (res && res.rows && res.rows.length > 0) {
+                        const schemaMap: Record<string, string[]> = {};
+                        res.rows.forEach((r: any) => {
+                            const t = r.table_name || r.TABLE_NAME;
+                            const c = r.column_name || r.COLUMN_NAME;
+                            const dt = r.data_type || r.DATA_TYPE || '';
+                            if (!schemaMap[t]) schemaMap[t] = [];
+                            schemaMap[t].push(`${c} (${dt})`);
+                        });
+                        schemaContext = `\n\nREAL DATABASE SCHEMA (LIVE TABLES & COLUMNS IN THIS PROJECT):\n` +
+                            Object.entries(schemaMap)
+                                .map(([tbl, cols]) => `- Table "${tbl}": [${cols.join(', ')}]`)
+                                .join('\n') + `\n\nCRITICAL SQL ACCURACY MANDATE: You MUST strictly use the exact table names and column names listed in the schema above. NEVER invent placeholder table names like "Table_Editor" or placeholder column names like "date_column" or "balance_column". If the user asks for a balance or date, search the schema above for matching columns (e.g. amount, balance, total, timestamp, created_at, date in existing tables) and write the exact query using those actual columns.\n`;
+                    }
+                }
+            } catch (schemaErr) {
+                console.warn('[AI Chat] Failed to load live schema:', schemaErr);
+            }
+        }
+
         const systemPrompt = `You are Flux AI, an autonomous, highly agentic AI developer assistant embedded inside the Fluxbase dashboard. 
 Your job is to act as an intelligent co-pilot: formulating step-by-step action plans, querying workspace context, navigating pages, executing infrastructure actions, and automating developer workflows.
 
 AGENTIC WORKFLOW & PLANNING INSTRUCTIONS:
 1. ACT AS AN AGENT, NOT A BOT: For complex tasks (e.g. creating tables, seeding data, setting up webhooks, analyzing schema), explicitly outline your multi-step action plan using Markdown formatting (e.g., "### Agent Execution Plan\n- **Step 1**: Inspect workspace schema\n- **Step 2**: Generate optimized DDL\n- **Step 3**: Request execution approval").
 2. BE CONCISE & PRECISE: Keep explanations clear, structured, and professional. Do not use emojis.
-3. CONTEXT AWARENESS: The user's current URL path is: "${currentPath}". Use this to understand what page they are viewing. ${projectContext}${screenContextStr}${ragLessonsPrompt}
+3. CONTEXT AWARENESS: The user's current URL path is: "${currentPath}". Use this to understand what page they are viewing. ${projectContext}${screenContextStr}${schemaContext}${ragLessonsPrompt}
 4. AGENTIC NAVIGATION: You have the physical ability to teleport the user's browser to different pages. If you agree to take the user to a different page, YOU MUST physically output the exact navigation tag at the very end of your response: [NAVIGATE:/the_path]. If you do not include this tag, the user will be stranded.
 Here are the absolute paths you can use:
 - Dashboard / Projects: /dashboard

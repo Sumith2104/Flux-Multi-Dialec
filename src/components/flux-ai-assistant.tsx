@@ -905,8 +905,11 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
     const getScreenContext = () => {
       if (typeof window === 'undefined') return undefined;
       try {
-        const tableHeading = document.querySelector('[data-current-table]')?.getAttribute('data-current-table') || 
-                             document.querySelector('h1, h2')?.textContent?.trim();
+        const urlParams = new URLSearchParams(window.location.search);
+        const activeTableFromUrl = urlParams.get('tableName') || urlParams.get('tableId');
+        const activeTableFromAttr = document.querySelector('[data-current-table]')?.getAttribute('data-current-table');
+        const activeTable = activeTableFromUrl || activeTableFromAttr || undefined;
+
         const columnHeaders = Array.from(document.querySelectorAll('th, [role="columnheader"]'))
                                   .map(el => el.textContent?.trim() || '')
                                   .filter(Boolean)
@@ -915,7 +918,7 @@ export function FluxAiAssistant({ userId, isOpen, onOpenChange }: { userId: stri
         const activeError = document.querySelector('[role="alert"]')?.textContent?.trim() || undefined;
 
         return {
-          activeTable: tableHeading,
+          activeTable,
           visibleColumns: columnHeaders,
           rowCount: rowCountText ? parseInt(rowCountText, 10) : undefined,
           activeError: activeError ? activeError.slice(0, 150) : undefined
