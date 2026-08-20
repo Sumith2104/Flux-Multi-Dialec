@@ -10,6 +10,7 @@ import { Activity } from 'lucide-react';
 
 interface RealtimeLineChartProps {
     projectId: string;
+    stats?: AnalyticsStats | null;
 }
 
 interface DataPoint {

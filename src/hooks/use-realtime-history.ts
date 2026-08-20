@@ -1,7 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { getRealtimeHistoryAction } from '@/app/(app)/dashboard/analytics-actions';
-import { useRealtimeSubscription } from '@/hooks/use-realtime-subscription';
-import { useEffect, useRef } from 'react';
 
 export interface RealtimeDataPoint {
     timestamp: number;

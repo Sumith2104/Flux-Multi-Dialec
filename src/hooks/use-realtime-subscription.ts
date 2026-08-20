@@ -8,7 +8,7 @@ import { useQueryClient } from '@tanstack/react-query';
 // This prevents the thundering herd of N connections when N hooks call useRealtimeSubscription.
 
 export interface RealtimeEvent {
-    type: 'live' | 'update' | 'subscribed' | 'error' | 'connected' | 'schema_update' | 'db_event';
+    type: 'live' | 'update' | 'subscribed' | 'error' | 'connected' | 'schema_update' | 'db_event' | 'raw_sql_mutation';
     project_id?: string;
     table?: string;
     table_id?: string;
