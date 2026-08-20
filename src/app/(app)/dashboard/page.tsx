@@ -217,7 +217,7 @@ export default function DashboardPage() {
                 <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-7">
                     {/* Line Chart takes up more space */}
                     <div className="col-span-1 lg:col-span-4">
-                        <RealtimeLineChart projectId={selectedProject.project_id} />
+                        <RealtimeLineChart projectId={selectedProject.project_id} stats={realtimeStats} />
                     </div>
 
                     {/* Storage Chart takes up less */}

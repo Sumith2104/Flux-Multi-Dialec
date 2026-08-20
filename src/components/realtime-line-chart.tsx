@@ -38,8 +38,9 @@ const renderCustomDot = (props: any) => {
     return <g key={`dot-${index}`} />;
 };
 
-export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
-    const stats = useRealtimeAnalytics(projectId);
+export function RealtimeLineChart({ projectId, stats: propStats }: RealtimeLineChartProps) {
+    const hookStats = useRealtimeAnalytics(propStats !== undefined ? undefined : projectId);
+    const stats = propStats !== undefined ? propStats : hookStats;
 
     const { data: initialHistory } = useQuery({
         queryKey: ['realtime-line-history', projectId],

@@ -18,40 +18,17 @@ export interface AnalyticsStats {
 }
 
 export function useRealtimeAnalytics(projectId: string | undefined): AnalyticsStats | null {
-    const { lastEvent } = useRealtimeSubscription(projectId);
-    const lastRefetchTimeRef = useRef<number>(0);
-
     const queryKey = ['analytics_stats', projectId];
 
-    const { data, refetch } = useQuery({
+    const { data } = useQuery({
         queryKey,
         queryFn: () => getAnalyticsStatsAction(projectId!),
         enabled: !!projectId,
-        staleTime: 8000,
-        refetchInterval: 12000, // Smooth background refresh every 12s
+        staleTime: 10000,
+        refetchInterval: 15000, // Background poll every 15s
         refetchOnWindowFocus: false,
         gcTime: 3 * 60 * 1000,
     });
-
-    // Throttled refresh when a real database mutation event arrives
-    useEffect(() => {
-        if (!lastEvent) return;
-
-        const isMutation = lastEvent.type === 'update' || 
-                           lastEvent.type === 'raw_sql_mutation' || 
-                           lastEvent.type === 'schema_update' || 
-                           lastEvent.action === 'INSERT' || 
-                           lastEvent.action === 'UPDATE' || 
-                           lastEvent.action === 'DELETE';
-
-        if (isMutation) {
-            const now = Date.now();
-            if (now - lastRefetchTimeRef.current >= 4000) {
-                lastRefetchTimeRef.current = now;
-                refetch();
-            }
-        }
-    }, [lastEvent, refetch]);
 
     return data || null;
 }

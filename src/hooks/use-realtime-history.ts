@@ -15,35 +15,15 @@ export interface RealtimeDataPoint {
 }
 
 export function useRealtimeHistory(projectId: string | undefined): RealtimeDataPoint[] {
-    const { lastEvent } = useRealtimeSubscription(projectId);
-    const lastRefetchTimeRef = useRef<number>(0);
-
-    const { data, refetch } = useQuery({
+    const { data } = useQuery({
         queryKey: ['analytics_history', projectId],
         queryFn: () => getRealtimeHistoryAction(projectId!),
         enabled: !!projectId,
-        staleTime: 15000,
-        refetchInterval: 30000, // Background refresh every 30s
+        staleTime: 30000,
+        refetchInterval: 60000, // Background refresh every 1 minute
         refetchOnWindowFocus: false,
         gcTime: 10 * 60 * 1000,
     });
-
-    // Throttled refresh on real mutations
-    useEffect(() => {
-        if (!lastEvent) return;
-
-        const isMutation = lastEvent.type === 'update' || 
-                           lastEvent.type === 'raw_sql_mutation' || 
-                           lastEvent.type === 'schema_update';
-
-        if (isMutation) {
-            const now = Date.now();
-            if (now - lastRefetchTimeRef.current >= 8000) {
-                lastRefetchTimeRef.current = now;
-                refetch();
-            }
-        }
-    }, [lastEvent, refetch]);
 
     return (data as RealtimeDataPoint[]) || [];
 }
