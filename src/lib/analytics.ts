@@ -6,16 +6,21 @@ export async function trackApiRequest(projectId: string, type: AnalyticsType) {
     if (!projectId) return;
 
     try {
-        const d = new Date();
-        d.setMinutes(0, 0, 0); // truncate to current hour
-        const periodStartMs = d.getTime();
+        const now = Date.now();
+        const minuteStartMs = Math.floor(now / 60000) * 60000;
+        const hourStartMs = Math.floor(now / 3600000) * 3600000;
         
-        // Format: analytics_rollup:{projectId}:{periodStartMs}:{type}
-        const key = `analytics_rollup:${projectId}:${periodStartMs}:${type}`;
+        // 1. Minute-level key for realtime line chart (TTL 2 hours)
+        const minuteKey = `analytics_minute:${projectId}:${minuteStartMs}:${type}`;
+        
+        // 2. Rollup key for hourly aggregation in postgres
+        const hourKey = `analytics_rollup:${projectId}:${hourStartMs}:${type}`;
 
         const p = redis.pipeline();
-        p.incr(key);
-        p.sadd('analytics_keys_to_flush', key);
+        p.incr(minuteKey);
+        p.expire(minuteKey, 7200);
+        p.incr(hourKey);
+        p.sadd('analytics_keys_to_flush', hourKey);
         await p.exec();
 
     } catch (error) {

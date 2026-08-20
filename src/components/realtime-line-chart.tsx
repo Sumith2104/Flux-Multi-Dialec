@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useRef, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { getRealtimeHistoryAction } from '@/app/(app)/dashboard/analytics-actions';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AnalyticsStats, useRealtimeAnalytics } from '@/hooks/use-realtime-analytics';
@@ -39,15 +41,23 @@ const renderCustomDot = (props: any) => {
 export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
     const stats = useRealtimeAnalytics(projectId);
 
+    const { data: initialHistory } = useQuery({
+        queryKey: ['realtime-line-history', projectId],
+        queryFn: () => getRealtimeHistoryAction(projectId),
+        enabled: !!projectId,
+        staleTime: 15000,
+        gcTime: 5 * 60 * 1000
+    });
+
     const [data, setData] = useState<DataPoint[]>(() => {
         const initialData: DataPoint[] = [];
         const now = Date.now();
         for (let i = 59; i >= 0; i--) {
-            const time = now - i * 2500;
+            const time = now - i * 60000;
             const date = new Date(time);
             initialData.push({
                 timestamp: time,
-                timeLabel: date.toLocaleTimeString([], { hour12: false, minute: '2-digit', second: '2-digit' }),
+                timeLabel: date.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' }),
                 requests: 0,
                 api: 0,
                 sql: 0,
@@ -58,6 +68,14 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
         }
         return initialData;
     });
+
+    useEffect(() => {
+        if (initialHistory && initialHistory.length > 0) {
+            setData(initialHistory);
+            const maxVal = Math.max(...initialHistory.map(d => d.requests || 0), 0);
+            if (maxVal > 0) setPeakRPS(maxVal);
+        }
+    }, [initialHistory]);
     const [isHovered, setIsHovered] = useState(false);
     const [peakRPS, setPeakRPS] = useState(0);
 

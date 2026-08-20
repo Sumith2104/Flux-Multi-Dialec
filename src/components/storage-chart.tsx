@@ -97,8 +97,8 @@ export function StorageChart({ data }: StorageChartProps) {
         <CardDescription className="text-muted-foreground text-xs">Size of each table's documents</CardDescription>
       </CardHeader>
       <CardContent className="pt-6 flex-1 flex flex-col">
-        <div style={{ width: '100%' }} className="flex-1 min-h-[300px]">
-          <ResponsiveContainer>
+        <div style={{ width: '100%' }} className="flex-1 min-h-[300px] h-[300px]">
+          <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={data}
               margin={{

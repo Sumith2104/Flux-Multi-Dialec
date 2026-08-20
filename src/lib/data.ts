@@ -2029,6 +2029,16 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
                 rows: Math.max(0, parseInt(r.rows || '0', 10)),
                 size: parseInt(r.size || '0', 10)
             }));
+
+            // Fallback for tables where reltuples is unanalyzed or 0
+            for (const t of tablesStats) {
+                if (t.rows <= 0) {
+                    try {
+                        const countRes = await pool.query(`SELECT count(*)::bigint as cnt FROM "${schemaName}"."${t.name}"`);
+                        t.rows = parseInt(countRes.rows[0]?.cnt || '0', 10);
+                    } catch {}
+                }
+            }
         }
 
         const totalRows = tablesStats.reduce((sum, stat) => sum + stat.rows, 0);

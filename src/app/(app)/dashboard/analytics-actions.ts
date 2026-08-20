@@ -115,70 +115,89 @@ export async function getAnalyticsStatsAction(projectId: string) {
 export async function getRealtimeHistoryAction(projectId: string) {
     if (!projectId) return [];
     try {
-        const pool = getPgPool();
+        const now = Date.now();
+        const currentMinute = Math.floor(now / 60000) * 60000;
         
-        // Fetch actual last 60 minutes history from postgres rollups table
-        const historyQuery = `
-            SELECT 
-                period_start,
-                event_type,
-                SUM(count) as total
-            FROM fluxbase_global.analytics_rollups
-            WHERE project_id = $1 
-              AND period_start >= NOW() - INTERVAL '60 minutes'
-            GROUP BY period_start, event_type
-            ORDER BY period_start ASC
-        `;
+        const historyPoints: {
+            timestamp: number;
+            timeLabel: string;
+            requests: number;
+            api: number;
+            sql: number;
+            deltaRequests: number;
+            deltaApi: number;
+            deltaSql: number;
+        }[] = [];
 
-        const result = await pool.query(historyQuery, [projectId]);
+        const minuteKeysToFetch: string[] = [];
+        const minutesList: number[] = [];
 
-        // Build array of 60 points representing each of the last 60 minutes
-        const historyMap = new Map();
-        const now = new Date();
-        now.setSeconds(0, 0); // Align to the minute
-
-        // Initialize 60 empty buckets
         for (let i = 59; i >= 0; i--) {
-            const time = now.getTime() - (i * 60000);
+            const time = currentMinute - (i * 60000);
+            minutesList.push(time);
+            minuteKeysToFetch.push(
+                `analytics_minute:${projectId}:${time}:api_call`,
+                `analytics_minute:${projectId}:${time}:sql_execution`
+            );
+        }
+
+        let redisValues: (string | null)[] = [];
+        try {
+            if (minuteKeysToFetch.length > 0) {
+                redisValues = await redis.mget(...minuteKeysToFetch);
+            }
+        } catch (e) {
+            console.warn('Redis mget error in getRealtimeHistoryAction:', e);
+        }
+
+        // Also query PostgreSQL rollups for the past 60 min to ensure durability across restarts
+        const pool = getPgPool();
+        let pgRows: any[] = [];
+        try {
+            const pgRes = await pool.query(`
+                SELECT period_start, event_type, SUM(count) as total
+                FROM fluxbase_global.analytics_rollups
+                WHERE project_id = $1 AND period_start >= NOW() - INTERVAL '60 minutes'
+                GROUP BY period_start, event_type
+            `, [projectId]);
+            pgRows = pgRes.rows || [];
+        } catch {}
+
+        for (let i = 0; i < minutesList.length; i++) {
+            const time = minutesList[i];
             const date = new Date(time);
             const timeLabel = date.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' });
-            historyMap.set(time, { 
-                timestamp: time, 
-                timeLabel, 
-                requests: 0, 
-                api: 0, 
-                sql: 0, 
-                deltaRequests: 0, 
-                deltaApi: 0, 
-                deltaSql: 0 
+
+            let apiVal = parseInt((redisValues[i * 2] as string) || '0', 10);
+            let sqlVal = parseInt((redisValues[i * 2 + 1] as string) || '0', 10);
+
+            // If minute has no redis in-flight, check if postgres rollup had it
+            if (apiVal === 0 && sqlVal === 0 && pgRows.length > 0) {
+                for (const row of pgRows) {
+                    const rowTime = new Date(row.period_start).getTime();
+                    if (Math.abs(rowTime - time) < 60000) {
+                        const count = parseInt(row.total, 10) || 0;
+                        if (row.event_type === 'api_call') apiVal += count;
+                        if (row.event_type === 'sql_execution') sqlVal += count;
+                    }
+                }
+            }
+
+            const totalVal = apiVal + sqlVal;
+
+            historyPoints.push({
+                timestamp: time,
+                timeLabel,
+                requests: totalVal,
+                api: apiVal,
+                sql: sqlVal,
+                deltaRequests: totalVal,
+                deltaApi: apiVal,
+                deltaSql: sqlVal
             });
         }
 
-        // Fill with real data
-        for (const row of result.rows) {
-            const rowTime = new Date(row.period_start).getTime();
-            const matchingBucket = Array.from(historyMap.keys()).find(k => Math.abs(k - rowTime) < 60000);
-            
-            if (matchingBucket) {
-                const bucket = historyMap.get(matchingBucket);
-                const count = parseInt(row.total, 10);
-                
-                if (row.event_type === 'api_call') {
-                    bucket.api += count;
-                    bucket.requests += count;
-                    bucket.deltaApi += count;
-                    bucket.deltaRequests += count;
-                }
-                if (row.event_type === 'sql_execution') {
-                    bucket.sql += count;
-                    bucket.requests += count;
-                    bucket.deltaSql += count;
-                    bucket.deltaRequests += count;
-                }
-            }
-        }
-
-        return Array.from(historyMap.values());
+        return historyPoints;
     } catch (e) {
         console.error('getRealtimeHistoryAction error:', e);
         return [];

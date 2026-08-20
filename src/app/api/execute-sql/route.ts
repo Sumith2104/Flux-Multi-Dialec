@@ -10,6 +10,7 @@ import { getPgPool, handleDatabaseError } from '@/lib/pg';
 import { type WebhookEvent } from '@/lib/webhooks';
 import { Parser } from 'node-sql-parser';
 import { assertProjectScope } from '@/lib/project-auth';
+import { trackApiRequest } from '@/lib/analytics';
 
 export const dynamic = 'force-dynamic';
 
@@ -223,6 +224,21 @@ export async function POST(req: NextRequest) {
                 logAuditAction(projectId, userId, 'SQL_EXECUTION', query, auditMeta)
                     .catch(e => console.error('[Audit Error]', e))
             );
+
+            // Track Real-time Analytics
+            backgroundTasks.push(trackApiRequest(projectId, 'sql_execution'));
+            backgroundTasks.push(trackApiRequest(projectId, 'api_call'));
+            if (upperQuery.startsWith('SELECT') || upperQuery.startsWith('WITH')) {
+                backgroundTasks.push(trackApiRequest(projectId, 'sql_select'));
+            } else if (upperQuery.startsWith('INSERT')) {
+                backgroundTasks.push(trackApiRequest(projectId, 'sql_insert'));
+            } else if (upperQuery.startsWith('UPDATE')) {
+                backgroundTasks.push(trackApiRequest(projectId, 'sql_update'));
+            } else if (upperQuery.startsWith('DELETE')) {
+                backgroundTasks.push(trackApiRequest(projectId, 'sql_delete'));
+            } else if (upperQuery.startsWith('ALTER') || upperQuery.startsWith('CREATE') || upperQuery.startsWith('DROP')) {
+                backgroundTasks.push(trackApiRequest(projectId, 'sql_alter'));
+            }
 
             // --- ABSOLUTE TABLE DETECTION (AST-BASED) ---
             let mutatedTable: string | null = null;

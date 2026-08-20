@@ -5,6 +5,7 @@ import { getProjectById } from '@/lib/data';
 import { redis } from '@/lib/redis';
 
 import { getProjectDbAndSchema } from '@/lib/tenant-pools';
+import { trackApiRequest } from '@/lib/analytics';
 
 // Response Schema: { tables: { tableName: ["col1", "col2"] } }
 export async function GET(request: Request) {
@@ -28,6 +29,8 @@ export async function GET(request: Request) {
         if (!project) {
             return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
         }
+
+        trackApiRequest(projectId, 'api_call');
 
         if (project.ai_schema_inference === false) {
             return NextResponse.json({

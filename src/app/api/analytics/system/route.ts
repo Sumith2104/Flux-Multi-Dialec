@@ -53,9 +53,19 @@ export async function GET(req: NextRequest) {
         `, [projectId]);
 
         return NextResponse.json({
-            heatmap: heatmapResult.rows.map(r => ({ date: r.date.toISOString().split('T')[0], count: parseInt(r.count) })),
-            latency: latencyResult.rows.map(r => ({ range: r.range, count: parseInt(r.count) })),
-            status: statusResult.rows.map(r => ({ success: r.success, count: parseInt(r.count) }))
+            heatmap: heatmapResult.rows.map(r => {
+                let dateStr = '';
+                if (r.date instanceof Date) {
+                    dateStr = r.date.toISOString().split('T')[0];
+                } else if (typeof r.date === 'string') {
+                    dateStr = r.date.split('T')[0];
+                } else {
+                    dateStr = new Date(r.date).toISOString().split('T')[0];
+                }
+                return { date: dateStr, count: parseInt(r.count, 10) || 0 };
+            }),
+            latency: latencyResult.rows.map(r => ({ range: r.range, count: parseInt(r.count, 10) || 0 })),
+            status: statusResult.rows.map(r => ({ success: r.success, count: parseInt(r.count, 10) || 0 }))
         });
 
     } catch (e: any) {
