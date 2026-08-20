@@ -371,7 +371,7 @@ export class SqlEngine {
                     // This is standard for Supabase-style RLS policies but might fail on standard PG RDS.
                     try {
                         await client.query(`SELECT set_config('role', 'authenticated', true)`);
-                    } catch (roleErr) {
+                    } catch {
                         // Ignore if role does not exist
                         console.warn('[SqlEngine] "authenticated" role does not exist on this database, skipping role config.');
                     }

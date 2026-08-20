@@ -375,7 +375,7 @@ Provide your response in Markdown formatting. Do NOT use HTML. Keep code snippet
                                         fullText += content;
                                         ws.send(JSON.stringify({ type: 'chat_token', token: content }));
                                     }
-                                } catch (e) {
+                                } catch {
                                     // ignore incomplete chunk parsing errors
                                 }
                             }

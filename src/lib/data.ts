@@ -349,7 +349,7 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
             if (activeDb) {
                 project.active_db = activeDb;
             }
-        } catch (e) {
+        } catch {
             // ignore: not in request context
         }
     }
@@ -663,7 +663,7 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
 
         if (project.dialect?.toLowerCase() === 'mysql') {
             const mysqlPool = await getTenantMysqlPool(project);
-            let { dbName } = getProjectDbAndSchema(project);
+            const { dbName } = getProjectDbAndSchema(project);
 
             let [rows]: any = await mysqlPool.query(`
                 SELECT DISTINCT table_name 
@@ -710,7 +710,7 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
 
         } else {
             const pool = await getTenantPgPool(project);
-            let { schemaName } = getProjectDbAndSchema(project);
+            const { schemaName } = getProjectDbAndSchema(project);
 
             let result = await pool.query(`
                 SELECT DISTINCT table_name 
@@ -932,8 +932,6 @@ export async function deleteTable(projectId: string, tableId: string, explicitUs
 
     const project = await ensureRole(await getProjectById(projectId, userId), ['admin', 'developer']);
 
-    const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
-
     if (project.dialect?.toLowerCase() === 'mysql') {
         const mysqlPool = await getTenantMysqlPool(project);
         const { dbName } = getProjectDbAndSchema(project);
@@ -968,7 +966,7 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
     try {
         if (project.dialect?.toLowerCase() === 'mysql') {
             const mysqlPool = await getTenantMysqlPool(project);
-            let { dbName } = getProjectDbAndSchema(project);
+            const { dbName } = getProjectDbAndSchema(project);
 
             let [result]: any = await mysqlPool.query(`
                 SELECT 
@@ -1011,7 +1009,7 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
 
         } else {
             const pool = await getTenantPgPool(project);
-            let { schemaName } = getProjectDbAndSchema(project);
+            const { schemaName } = getProjectDbAndSchema(project);
 
             // Fetch columns and identify primary keys
             let result = await pool.query(`
@@ -1104,8 +1102,6 @@ export async function addColumn(projectId: string, tableId: string, column: Omit
 
     const project = await ensureRole(await getProjectById(projectId, userId), ['admin', 'developer']);
 
-    const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
-
     if (project.dialect?.toLowerCase() === 'mysql') {
         const mysqlPool = await getTenantMysqlPool(project);
         const { dbName } = getProjectDbAndSchema(project);
@@ -1177,9 +1173,6 @@ export async function deleteColumn(projectId: string, tableId: string, columnId:
 
     const project = await ensureRole(await getProjectById(projectId, userId), ['admin', 'developer']);
 
-    const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
-    const safeColName = columnId.replace(/[^a-zA-Z0-9_]/g, '');
-
     if (project.dialect?.toLowerCase() === 'mysql') {
         const mysqlPool = await getTenantMysqlPool(project);
         const { dbName } = getProjectDbAndSchema(project);
@@ -1206,8 +1199,6 @@ export async function updateColumn(projectId: string, tableId: string, columnId:
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
     const project = await ensureRole(await getProjectById(projectId, userId), ['admin', 'developer']);
-    const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
-    const safeColName = columnId.replace(/[^a-zA-Z0-9_]/g, '');
 
     if (project.dialect?.toLowerCase() === 'mysql') {
         const mysqlPool = await getTenantMysqlPool(project);
@@ -1488,9 +1479,6 @@ export async function deleteConstraint(projectId: string, constraintId: string, 
 
     const project = await ensureRole(await getProjectById(projectId, userId), ['admin', 'developer']);
 
-    const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
-    const safeConstraint = constraintId.replace(/[^a-zA-Z0-9_]/g, '');
-
     if (project.dialect?.toLowerCase() === 'mysql') {
         const mysqlPool = await getTenantMysqlPool(project);
         const { dbName } = getProjectDbAndSchema(project);
@@ -1693,7 +1681,6 @@ export async function getTableData(
             const targetSchema = (!project.connection_type || project.connection_type === 'internal')
                 ? schemaName
                 : await resolvePgSchemaForTable(pool, schemaName, safeTableName);
-            const fromTable = `"${targetSchema}"."${safeTableName}"`;
             const { clause: wClause, params: wParams } = _pgWhere(filters, 3);
             const orderBy = _pgOrder(sorts);
 
@@ -1704,7 +1691,7 @@ export async function getTableData(
                     pool.query(`SELECT COUNT(*) FROM "${targetSchema}"."${safeTableName}" ${wClause}`, wParams),
                     pool.query(`SELECT kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = $1 AND tc.table_name = $2 LIMIT 1`, [targetSchema, safeTableName]),
                 ]);
-            } catch (pgError: any) {
+            } catch {
                 // Direct table fallback if schema qualification fails
                 [dataResult, countResult, pkColResult] = await Promise.all([
                     pool.query(`SELECT * FROM "${safeTableName}" ${wClause} ${orderBy} LIMIT $1 OFFSET $2`, [limit, offset, ...wParams]),
@@ -1999,7 +1986,7 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
             }));
         } else {
             const pool = await getTenantPgPool(project);
-            let { schemaName } = getProjectDbAndSchema(project);
+            const { schemaName } = getProjectDbAndSchema(project);
             let result = await pool.query(`
                 SELECT 
                     c.relname AS name,

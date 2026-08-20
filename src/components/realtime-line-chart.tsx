@@ -69,6 +69,9 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
         return initialData;
     });
 
+    const [isHovered, setIsHovered] = useState(false);
+    const [peakRPS, setPeakRPS] = useState(0);
+
     useEffect(() => {
         if (initialHistory && initialHistory.length > 0) {
             setData(initialHistory);
@@ -76,8 +79,6 @@ export function RealtimeLineChart({ projectId }: RealtimeLineChartProps) {
             if (maxVal > 0) setPeakRPS(maxVal);
         }
     }, [initialHistory]);
-    const [isHovered, setIsHovered] = useState(false);
-    const [peakRPS, setPeakRPS] = useState(0);
 
     const reqColor = isHovered ? "#f97316" : "#71717a";
     const apiColor = isHovered ? "#ea580c" : "#52525b";

@@ -43,7 +43,7 @@ export const redis = new Proxy({} as Redis, {
                         if (pProp === 'exec') {
                             return async () => [];
                         }
-                        return (...args: any[]) => {
+                        return () => {
                             return mockPipeline; // chainable
                         };
                     }
