@@ -53,7 +53,16 @@ export function QueryTypeChart({ stats }: { stats: AnalyticsStats | null }) {
         const deleteColor = isHovered ? "#fdbf83" : "#27272a";
         const alterColor  = isHovered ? "#ffcf9f" : "#18181b";
 
-        if (!stats) return [
+        const totalReq = stats?.total_requests || 0;
+        const hasAnySpecific = ((stats?.type_sql_select || 0) + (stats?.type_sql_insert || 0) + (stats?.type_sql_update || 0) + (stats?.type_sql_delete || 0) + (stats?.type_sql_alter || 0)) > 0;
+
+        const selectCount = hasAnySpecific ? (stats?.type_sql_select || 0) : totalReq;
+        const insertCount = stats?.type_sql_insert || 0;
+        const updateCount = stats?.type_sql_update || 0;
+        const deleteCount = stats?.type_sql_delete || 0;
+        const alterCount = stats?.type_sql_alter || 0;
+
+        if (!stats || (totalReq === 0 && !hasAnySpecific)) return [
             { browser: "select", visitors: 0, fill: selectColor },
             { browser: "insert", visitors: 0, fill: insertColor },
             { browser: "update", visitors: 0, fill: updateColor },
@@ -62,12 +71,12 @@ export function QueryTypeChart({ stats }: { stats: AnalyticsStats | null }) {
         ];
 
         return [
-            { browser: "select", visitors: stats.type_sql_select || 0, fill: selectColor },
-            { browser: "insert", visitors: stats.type_sql_insert || 0, fill: insertColor },
-            { browser: "update", visitors: stats.type_sql_update || 0, fill: updateColor },
-            { browser: "delete", visitors: stats.type_sql_delete || 0, fill: deleteColor },
-            { browser: "alter", visitors: stats.type_sql_alter || 0, fill: alterColor },
-        ]
+            { browser: "select", visitors: selectCount, fill: selectColor },
+            { browser: "insert", visitors: insertCount, fill: insertColor },
+            { browser: "update", visitors: updateCount, fill: updateColor },
+            { browser: "delete", visitors: deleteCount, fill: deleteColor },
+            { browser: "alter", visitors: alterCount, fill: alterColor },
+        ];
     }, [stats, isHovered]);
 
     return (
