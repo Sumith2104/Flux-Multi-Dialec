@@ -189,6 +189,7 @@ export default function DashboardPage() {
                         subtitle="Real-time Interactions"
                         type="line"
                         color="#f97316"
+                        defaultColor="#52525b"
                         data={historyStats.requests}
                     />
 
@@ -197,7 +198,8 @@ export default function DashboardPage() {
                         value={realtimeStats?.type_api_call ?? 0}
                         subtitle="Data Fetches"
                         type="bar"
-                        color="#78716c"
+                        color="#fb923c"
+                        defaultColor="#3f3f46"
                         data={historyStats.apiCalls}
                     />
 
@@ -209,6 +211,7 @@ export default function DashboardPage() {
                         subtitle="Active Connections"
                         type="area"
                         color="#10b981"
+                        defaultColor="#52525b"
                         data={historyStats.sessions}
                     />
                 </div>

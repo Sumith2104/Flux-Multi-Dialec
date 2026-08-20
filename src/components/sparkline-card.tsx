@@ -9,13 +9,22 @@ interface SparklineCardProps {
     value: number;           // The real current total from realtimeStats
     subtitle: React.ReactNode;
     type: "line" | "bar" | "area";
-    color: string;
+    color?: string;          // Vibrant color on hover
+    defaultColor?: string;   // Default grey color
     data: { val: number, timeLabel?: string }[]; // 24-hour history buckets from DB
 }
 
-export function SparklineCard({ title, value, subtitle, type, color, data }: SparklineCardProps) {
+export function SparklineCard({ 
+    title, 
+    value, 
+    subtitle, 
+    type, 
+    color = "#f97316", 
+    defaultColor = "#52525b", 
+    data 
+}: SparklineCardProps) {
     const [isHovered, setIsHovered] = useState(false);
-    const activeColor = isHovered ? "#ea580c" : color;
+    const activeColor = isHovered ? color : defaultColor;
 
     const [now, setNow] = useState(0);
     useEffect(() => {

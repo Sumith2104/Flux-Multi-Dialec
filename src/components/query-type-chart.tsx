@@ -48,10 +48,10 @@ export function QueryTypeChart({ stats }: { stats: AnalyticsStats | null }) {
 
     const chartData = React.useMemo(() => {
         const selectColor = isHovered ? "#f97316" : "#71717a";
-        const insertColor = isHovered ? "#fb923c" : "#52525b";
-        const updateColor = isHovered ? "#fdba74" : "#3f3f46";
-        const deleteColor = isHovered ? "#fdbf83" : "#27272a";
-        const alterColor  = isHovered ? "#ffcf9f" : "#18181b";
+        const insertColor = isHovered ? "#10b981" : "#52525b";
+        const updateColor = isHovered ? "#38bdf8" : "#3f3f46";
+        const deleteColor = isHovered ? "#f43f5e" : "#27272a";
+        const alterColor  = isHovered ? "#a855f7" : "#18181b";
 
         const totalReq = stats?.total_requests || 0;
         const hasAnySpecific = ((stats?.type_sql_select || 0) + (stats?.type_sql_insert || 0) + (stats?.type_sql_update || 0) + (stats?.type_sql_delete || 0) + (stats?.type_sql_alter || 0)) > 0;
