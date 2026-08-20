@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { getAnalyticsStatsAction } from '@/app/(app)/dashboard/analytics-actions';
 import { useRealtimeSubscription } from '@/hooks/use-realtime-subscription';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 export interface AnalyticsStats {
     total_requests: number;
@@ -18,8 +18,8 @@ export interface AnalyticsStats {
 }
 
 export function useRealtimeAnalytics(projectId: string | undefined): AnalyticsStats | null {
-
     const { lastEvent } = useRealtimeSubscription(projectId);
+    const lastRefetchTimeRef = useRef<number>(0);
 
     const queryKey = ['analytics_stats', projectId];
 
@@ -28,17 +28,28 @@ export function useRealtimeAnalytics(projectId: string | undefined): AnalyticsSt
         queryFn: () => getAnalyticsStatsAction(projectId!),
         enabled: !!projectId,
         staleTime: 8000,
-        // CRITICAL FIX: was 30 * 60 * 1000 (30 minutes!) — analytics objects
-        // were kept alive in the JS heap for 30 min after the dashboard unmounted.
-        // Now set to 3 minutes, aligned with other queries.
+        refetchInterval: 12000, // Smooth background refresh every 12s
+        refetchOnWindowFocus: false,
         gcTime: 3 * 60 * 1000,
     });
 
-    // Instant refresh when a WebSocket event arrives
+    // Throttled refresh when a real database mutation event arrives
     useEffect(() => {
-        if (lastEvent) {
-            console.log('[Realtime Analytics] Pushing update for event:', lastEvent.type);
-            refetch();
+        if (!lastEvent) return;
+
+        const isMutation = lastEvent.type === 'update' || 
+                           lastEvent.type === 'raw_sql_mutation' || 
+                           lastEvent.type === 'schema_update' || 
+                           lastEvent.action === 'INSERT' || 
+                           lastEvent.action === 'UPDATE' || 
+                           lastEvent.action === 'DELETE';
+
+        if (isMutation) {
+            const now = Date.now();
+            if (now - lastRefetchTimeRef.current >= 4000) {
+                lastRefetchTimeRef.current = now;
+                refetch();
+            }
         }
     }, [lastEvent, refetch]);
 
