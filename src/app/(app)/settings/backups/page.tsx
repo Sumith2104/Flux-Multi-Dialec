@@ -40,6 +40,15 @@ export default function BackupsPage() {
     const [confirmDelete, setConfirmDelete] = useState<Backup | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
     const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+    const [downloading, setDownloading] = useState<string | null>(null);
+
+    const extractErrorMessage = (data: any, fallback: string) => {
+        if (!data) return fallback;
+        if (typeof data.error === 'string') return data.error;
+        if (data.error?.message && typeof data.error.message === 'string') return data.error.message;
+        if (data.message && typeof data.message === 'string') return data.message;
+        return fallback;
+    };
 
     const load = useCallback(async () => {
         if (!projectId) return;
@@ -65,8 +74,8 @@ export default function BackupsPage() {
                 body: JSON.stringify({ projectId }),
             });
             const data = await res.json();
-            if (!data.success) throw new Error(data.error || 'Failed to create backup');
-            setActionSuccess('Backup created successfully. It will be ready in a few moments.');
+            if (!data.success) throw new Error(extractErrorMessage(data, 'Failed to create backup'));
+            setActionSuccess('Backup created successfully. Snapshot saved.');
             load();
         } catch (e: any) { setActionError(e.message); }
         finally { setCreating(false); }
@@ -83,14 +92,39 @@ export default function BackupsPage() {
                 body: JSON.stringify({ projectId, backupId: backup.id }),
             });
             const data = await res.json();
-            if (!data.success) throw new Error(data.error || 'Restore failed. Please try again.');
+            if (!data.success) throw new Error(extractErrorMessage(data, 'Restore failed. Please try again.'));
             setConfirmRestore(null);
-            setActionSuccess('Restore initiated successfully. Your database will be ready shortly.');
+            setActionSuccess('Database restored successfully from snapshot.');
             load();
         } catch (e: any) {
             setActionError(e.message);
             setConfirmRestore(null);
         } finally { setRestoring(null); }
+    };
+
+    const handleDownload = async (backup: Backup) => {
+        setDownloading(backup.id);
+        setActionError(null);
+        try {
+            const res = await fetch(`/api/backups?projectId=${projectId}&backupId=${backup.id}`);
+            const data = await res.json();
+            if (!data.success || !data.backup?.data) throw new Error(extractErrorMessage(data, 'Failed to download backup data.'));
+
+            const jsonStr = JSON.stringify(data.backup.data, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `backup_${projectId}_${backup.id.substring(0, 8)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (e: any) {
+            setActionError(e.message);
+        } finally {
+            setDownloading(null);
+        }
     };
 
     const handleDelete = async (backup: Backup) => {
@@ -102,7 +136,7 @@ export default function BackupsPage() {
                 method: 'DELETE',
             });
             const data = await res.json();
-            if (!data.success) throw new Error(data.error || 'Delete failed.');
+            if (!data.success) throw new Error(extractErrorMessage(data, 'Delete failed.'));
             setConfirmDelete(null);
             setActionSuccess('Backup deleted successfully.');
             load();
@@ -200,13 +234,13 @@ export default function BackupsPage() {
                     {manualBackups.length > 0 && (
                         <div>
                             <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1.5"><Download className="h-3.5 w-3.5" />Manual Backups</h3>
-                            <BackupList backups={manualBackups} onRestore={setConfirmRestore} onDelete={setConfirmDelete} restoring={restoring} deleting={deleting} statusConfig={statusConfig} />
+                            <BackupList backups={manualBackups} onRestore={setConfirmRestore} onDelete={setConfirmDelete} onDownload={handleDownload} downloading={downloading} restoring={restoring} deleting={deleting} statusConfig={statusConfig} />
                         </div>
                     )}
                     {autoBackups.length > 0 && (
                         <div>
                             <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />Automatic Backups</h3>
-                            <BackupList backups={autoBackups} onRestore={setConfirmRestore} onDelete={setConfirmDelete} restoring={restoring} deleting={deleting} statusConfig={statusConfig} />
+                            <BackupList backups={autoBackups} onRestore={setConfirmRestore} onDelete={setConfirmDelete} onDownload={handleDownload} downloading={downloading} restoring={restoring} deleting={deleting} statusConfig={statusConfig} />
                         </div>
                     )}
                 </div>
@@ -228,7 +262,7 @@ export default function BackupsPage() {
                         </p>
                         <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 text-xs text-yellow-300 flex items-center gap-2">
                             <AlertCircle className="h-4 w-4 shrink-0 text-yellow-400" />
-                            <span>This action is irreversible. All data changes made after this backup snapshot will be permanently lost.</span>
+                            <span>This action is irreversible. All data changes made after this backup snapshot will be replaced.</span>
                         </div>
                     </div>
                     <DialogFooter>
@@ -274,7 +308,7 @@ export default function BackupsPage() {
     );
 }
 
-function BackupList({ backups, onRestore, onDelete, restoring, deleting, statusConfig }: any) {
+function BackupList({ backups, onRestore, onDelete, onDownload, downloading, restoring, deleting, statusConfig }: any) {
     return (
         <div className="space-y-2">
             {backups.map((b: Backup) => {
@@ -301,10 +335,17 @@ function BackupList({ backups, onRestore, onDelete, restoring, deleting, statusC
                             </div>
                             <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 {b.status === 'completed' && (
-                                    <Button variant="outline" size="sm" className="h-8 text-xs border-border/80 hover:border-orange-500/50 hover:text-orange-400 shrink-0"
-                                        onClick={() => onRestore(b)} disabled={!!restoring || !!deleting} id={`restore-${b.id}`}>
-                                        <RotateCcw className="h-3.5 w-3.5 mr-1.5" />Restore
-                                    </Button>
+                                    <>
+                                        <Button variant="outline" size="sm" className="h-8 text-xs border-border/80 hover:border-blue-500/50 hover:text-blue-400 shrink-0"
+                                            onClick={() => onDownload?.(b)} disabled={downloading === b.id} id={`download-${b.id}`}>
+                                            {downloading === b.id ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Download className="h-3.5 w-3.5 mr-1.5" />}
+                                            Download
+                                        </Button>
+                                        <Button variant="outline" size="sm" className="h-8 text-xs border-border/80 hover:border-orange-500/50 hover:text-orange-400 shrink-0"
+                                            onClick={() => onRestore(b)} disabled={!!restoring || !!deleting} id={`restore-${b.id}`}>
+                                            <RotateCcw className="h-3.5 w-3.5 mr-1.5" />Restore
+                                        </Button>
+                                    </>
                                 )}
                                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground/75 hover:text-destructive hover:bg-destructive/10 shrink-0"
                                     onClick={() => onDelete(b)} disabled={!!restoring || !!deleting} id={`delete-${b.id}`}>
