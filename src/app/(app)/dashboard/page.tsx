@@ -17,8 +17,6 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
-import { StorageChart } from "@/components/storage-chart";
-import { RealtimeLineChart } from "@/components/realtime-line-chart";
 import { QueryTypeChart } from "@/components/query-type-chart";
 import { SparklineCard } from "@/components/sparkline-card";
 import { ProjectContext } from '@/contexts/project-context';
@@ -180,19 +178,8 @@ export default function DashboardPage() {
 
             <div className="space-y-6">
 
-                {/* Real-time Metrics Grid */}
+                {/* 4 Analytics Boxes in One Single Row */}
                 <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-
-                    <SparklineCard
-                        title="Total Requests"
-                        value={realtimeStats?.total_requests ?? 0}
-                        subtitle="Real-time Interactions"
-                        type="line"
-                        color="#f97316"
-                        defaultColor="#52525b"
-                        data={historyStats.requests}
-                    />
-
                     <SparklineCard
                         title="API Calls"
                         value={realtimeStats?.type_api_call ?? 0}
@@ -201,6 +188,16 @@ export default function DashboardPage() {
                         color="#fb923c"
                         defaultColor="#3f3f46"
                         data={historyStats.apiCalls}
+                    />
+
+                    <SparklineCard
+                        title="Real-Time Activity"
+                        value={realtimeStats?.total_requests ?? 0}
+                        subtitle="Live Incoming Requests"
+                        type="line"
+                        color="#f97316"
+                        defaultColor="#52525b"
+                        data={historyStats.requests}
                     />
 
                     <QueryTypeChart stats={realtimeStats} />
@@ -214,25 +211,6 @@ export default function DashboardPage() {
                         defaultColor="#52525b"
                         data={historyStats.sessions}
                     />
-                </div>
-
-                {/* Charts Section */}
-                <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-7">
-                    {/* Line Chart takes up more space */}
-                    <div className="col-span-1 lg:col-span-4">
-                        <RealtimeLineChart projectId={selectedProject.project_id} stats={realtimeStats} />
-                    </div>
-
-                    {/* Storage Chart takes up less */}
-                    <div className="col-span-1 lg:col-span-3">
-                        {analytics && analytics.tables.length > 0 ? (
-                            <StorageChart data={analytics.tables} />
-                        ) : (
-                            <Card className="h-full flex items-center justify-center p-6 text-muted-foreground border-dashed">
-                                No tables to display storage data.
-                            </Card>
-                        )}
-                    </div>
                 </div>
 
 

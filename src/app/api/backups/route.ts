@@ -24,12 +24,17 @@ const ensureTable = async (pool: any) => {
             data JSONB,
             expires_at TIMESTAMPTZ,
             created_at TIMESTAMPTZ DEFAULT NOW()
-        )
-    `);
+        );
 
-    await pool.query(`
         ALTER TABLE fluxbase_global.backups
-        ADD COLUMN IF NOT EXISTS data JSONB
+        ADD COLUMN IF NOT EXISTS data JSONB;
+
+        DO $$
+        BEGIN
+            ALTER TABLE fluxbase_global.backups DISABLE TRIGGER ALL;
+        EXCEPTION WHEN OTHERS THEN
+            NULL;
+        END $$;
     `);
 };
 

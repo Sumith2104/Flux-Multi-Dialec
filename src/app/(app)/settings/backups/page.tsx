@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useContext } from 'react';
 import { ProjectContext } from '@/contexts/project-context';
+import { useBackupManager } from '@/contexts/backup-context';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -30,10 +31,14 @@ const formatBytes = (bytes?: number) => {
 export default function BackupsPage() {
     const { project: selectedProject } = useContext(ProjectContext);
     const projectId = selectedProject?.project_id || '';
+    const { backups: activeBackgroundBackups, startBackgroundBackup } = useBackupManager();
+
+    const isBackingUp = activeBackgroundBackups.some(
+        b => b.projectId === projectId && b.status === 'in_progress'
+    );
 
     const [backups, setBackups] = useState<Backup[]>([]);
     const [loading, setLoading] = useState(true);
-    const [creating, setCreating] = useState(false);
     const [restoring, setRestoring] = useState<string | null>(null);
     const [deleting, setDeleting] = useState<string | null>(null);
     const [confirmRestore, setConfirmRestore] = useState<Backup | null>(null);
@@ -63,22 +68,23 @@ export default function BackupsPage() {
 
     useEffect(() => { load(); }, [load]);
 
+    // Refresh backups list when background snapshot completes
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const customEvent = e as CustomEvent;
+            if (customEvent.detail?.projectId === projectId) {
+                load();
+            }
+        };
+        window.addEventListener('fluxbase:backup-completed', handler);
+        return () => window.removeEventListener('fluxbase:backup-completed', handler);
+    }, [projectId, load]);
+
     const handleCreate = async () => {
-        setCreating(true);
+        if (!projectId) return;
         setActionError(null);
         setActionSuccess(null);
-        try {
-            const res = await fetch('/api/backups', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ projectId }),
-            });
-            const data = await res.json();
-            if (!data.success) throw new Error(extractErrorMessage(data, 'Failed to create backup'));
-            setActionSuccess('Backup created successfully. Snapshot saved.');
-            load();
-        } catch (e: any) { setActionError(e.message); }
-        finally { setCreating(false); }
+        await startBackgroundBackup(projectId, selectedProject?.display_name);
     };
 
     const handleRestore = async (backup: Backup) => {
@@ -164,12 +170,21 @@ export default function BackupsPage() {
                         Backups
                     </h1>
                     <p className="text-muted-foreground text-sm mt-1">
-                        Point-in-time database snapshots with one-click restore
+                        Point-in-time database snapshots with background processing and one-click restore
                     </p>
                 </div>
-                <Button onClick={handleCreate} disabled={creating || !selectedProject} className="bg-orange-600 hover:bg-orange-500" id="create-backup">
-                    {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
-                    Create Backup
+                <Button onClick={handleCreate} disabled={isBackingUp || !selectedProject} className="bg-orange-600 hover:bg-orange-500" id="create-backup">
+                    {isBackingUp ? (
+                        <>
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            Backing up in background...
+                        </>
+                    ) : (
+                        <>
+                            <Download className="h-4 w-4 mr-2" />
+                            Create Backup
+                        </>
+                    )}
                 </Button>
             </div>
 

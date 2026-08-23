@@ -391,9 +391,9 @@ export default function StoragePage() {
                 </div>
             )}
 
-            <div className="flex min-h-[500px] max-w-full flex-col gap-4 lg:flex-row">
+            <div className="flex min-h-[500px] max-w-full flex-col gap-4 lg:flex-row items-start">
                 {/* Bucket Sidebar Desktop */}
-                <div className="hidden lg:block lg:w-[20%] shrink-0">
+                <div className="hidden lg:block lg:w-64 shrink-0 lg:sticky lg:top-0 lg:self-start">
                     {bucketsSidebarContent}
                 </div>
 

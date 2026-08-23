@@ -70,8 +70,8 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
                 </div>
             </div>
             
-            <div className="flex min-w-0 flex-col space-y-6 lg:flex-row lg:space-x-12 lg:space-y-0">
-                <aside className="max-w-full lg:w-1/4">
+            <div className="flex min-w-0 flex-col space-y-6 lg:flex-row lg:space-x-8 lg:space-y-0 items-start">
+                <aside className="max-w-full lg:w-56 shrink-0 lg:sticky lg:top-0 lg:self-start">
                     <nav className="flex space-x-2 lg:flex-col lg:space-x-0 lg:space-y-1 overflow-x-auto pb-2 lg:pb-0 hide-scrollbar">
                         {sidebarNavItems.map((item) => {
                             const Icon = item.icon;
@@ -93,7 +93,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
                         })}
                     </nav>
                 </aside>
-                <div className="min-w-0 flex-1">{children}</div>
+                <div className="min-w-0 flex-1 w-full">{children}</div>
             </div>
         </div>
     );
