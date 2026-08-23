@@ -263,13 +263,17 @@ export default function DashboardPage() {
                                     </TableHeader>
                                     <TableBody>
                                         {tables.map((table: DbTable) => {
-                                            const tableAnalytics = analytics?.tables.find(t => t.name === table.table_name);
+                                            const tableAnalytics = analytics?.tables?.find(
+                                                t => t.name.toLowerCase() === table.table_name.toLowerCase() ||
+                                                     t.name.toLowerCase() === table.table_id?.toLowerCase()
+                                            );
+                                            const rowCount = tableAnalytics?.rows ?? (table as any).rows ?? 0;
                                             return (
                                                 <TableRow key={table.table_id}>
                                                     <TableCell className="font-medium">{table.table_name}</TableCell>
                                                     <TableCell>
                                                         <Badge variant="outline" className="font-mono text-xs">
-                                                            {tableAnalytics?.rows?.toLocaleString() ?? '0'}
+                                                            {typeof rowCount === 'number' ? rowCount.toLocaleString() : rowCount}
                                                         </Badge>
                                                     </TableCell>
                                                     <TableCell className="text-muted-foreground">{table.description}</TableCell>

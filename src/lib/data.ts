@@ -1969,7 +1969,7 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
         if (project.dialect?.toLowerCase() === 'mysql') {
             const mysqlPool = await getTenantMysqlPool(project);
             const { dbName } = getProjectDbAndSchema(project);
-            const [rows]: any = await mysqlPool.query(`
+            let [rows]: any = await mysqlPool.query(`
                 SELECT 
                     table_name AS name,
                     COALESCE(table_rows, 0) AS row_count,
@@ -1979,53 +1979,118 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
                 AND table_name NOT LIKE '\\_flux\\_internal\\_%'
             `, [dbName]);
 
+            if (!rows || rows.length === 0) {
+                [rows] = await mysqlPool.query(`
+                    SELECT 
+                        table_name AS name,
+                        COALESCE(table_rows, 0) AS row_count,
+                        COALESCE(data_length + index_length, 0) AS size
+                    FROM information_schema.tables
+                    WHERE table_schema NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') 
+                    AND table_type = 'BASE TABLE'
+                    AND table_name NOT LIKE '\\_flux\\_internal\\_%'
+                `);
+            }
+
             tablesStats = (rows || []).map((r: any) => ({
                 name: r.name || r.NAME,
-                rows: parseInt(r.row_count || r.rows || r.ROWS || '0', 10),
+                rows: Math.max(0, parseInt(r.row_count || r.rows || r.ROWS || '0', 10)),
                 size: parseInt(r.size || r.SIZE || '0', 10)
             }));
+
+            // Parallel live exact COUNT(*) for accuracy
+            await Promise.all(
+                tablesStats.map(async (t) => {
+                    try {
+                        const [cntRes]: any = await mysqlPool.query(`SELECT COUNT(*) as cnt FROM \`${dbName}\`.\`${t.name}\``);
+                        if (cntRes && cntRes[0]?.cnt !== undefined) {
+                            t.rows = parseInt(cntRes[0].cnt, 10);
+                        }
+                    } catch {
+                        try {
+                            const [cntRes]: any = await mysqlPool.query(`SELECT COUNT(*) as cnt FROM \`${t.name}\``);
+                            if (cntRes && cntRes[0]?.cnt !== undefined) {
+                                t.rows = parseInt(cntRes[0].cnt, 10);
+                            }
+                        } catch {}
+                    }
+                })
+            );
         } else {
             const pool = await getTenantPgPool(project);
             const { schemaName } = getProjectDbAndSchema(project);
+            let activeSchema = schemaName;
+
             let result = await pool.query(`
                 SELECT 
-                    c.relname AS name,
+                    t.table_name AS name,
+                    t.table_schema AS schema_name,
                     COALESCE(c.reltuples, 0)::bigint AS rows,
                     COALESCE(pg_total_relation_size(c.oid), 0)::bigint AS size
-                FROM pg_class c
-                JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE n.nspname = $1 AND c.relkind = 'r'
-                AND c.relname NOT LIKE '_flux_internal_%';
+                FROM information_schema.tables t
+                LEFT JOIN pg_class c ON c.relname = t.table_name
+                LEFT JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
+                WHERE t.table_schema = $1 AND t.table_type = 'BASE TABLE'
+                AND t.table_name NOT LIKE '_flux_internal_%';
             `, [schemaName]);
 
             if (result.rows.length === 0 && schemaName !== 'public') {
                 result = await pool.query(`
                     SELECT 
-                        c.relname AS name,
+                        t.table_name AS name,
+                        t.table_schema AS schema_name,
                         COALESCE(c.reltuples, 0)::bigint AS rows,
                         COALESCE(pg_total_relation_size(c.oid), 0)::bigint AS size
-                    FROM pg_class c
-                    JOIN pg_namespace n ON n.oid = c.relnamespace
-                    WHERE n.nspname = 'public' AND c.relkind = 'r'
-                    AND c.relname NOT LIKE '_flux_internal_%';
+                    FROM information_schema.tables t
+                    LEFT JOIN pg_class c ON c.relname = t.table_name
+                    LEFT JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
+                    WHERE t.table_schema = 'public' AND t.table_type = 'BASE TABLE'
+                    AND t.table_name NOT LIKE '_flux_internal_%';
+                `);
+                if (result.rows.length > 0) activeSchema = 'public';
+            }
+
+            if (result.rows.length === 0) {
+                result = await pool.query(`
+                    SELECT 
+                        t.table_name AS name,
+                        t.table_schema AS schema_name,
+                        COALESCE(c.reltuples, 0)::bigint AS rows,
+                        COALESCE(pg_total_relation_size(c.oid), 0)::bigint AS size
+                    FROM information_schema.tables t
+                    LEFT JOIN pg_class c ON c.relname = t.table_name
+                    LEFT JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
+                    WHERE t.table_schema NOT IN ('pg_catalog', 'information_schema') AND t.table_type = 'BASE TABLE'
+                    AND t.table_name NOT LIKE '_flux_internal_%';
                 `);
             }
 
             tablesStats = result.rows.map(r => ({
                 name: r.name,
+                schemaName: r.schema_name || activeSchema,
                 rows: Math.max(0, parseInt(r.rows || '0', 10)),
                 size: parseInt(r.size || '0', 10)
             }));
 
-            // Fallback for tables where reltuples is unanalyzed or 0
-            for (const t of tablesStats) {
-                if (t.rows <= 0) {
+            // Parallel live exact count(*) for 100% accurate rows count
+            await Promise.all(
+                tablesStats.map(async (t: any) => {
                     try {
-                        const countRes = await pool.query(`SELECT count(*)::bigint as cnt FROM "${schemaName}"."${t.name}"`);
-                        t.rows = parseInt(countRes.rows[0]?.cnt || '0', 10);
-                    } catch {}
-                }
-            }
+                        const targetSchema = t.schemaName || activeSchema;
+                        const countRes = await pool.query(`SELECT count(*)::bigint as cnt FROM "${targetSchema}"."${t.name}"`);
+                        if (countRes.rows[0]?.cnt !== undefined) {
+                            t.rows = parseInt(countRes.rows[0].cnt, 10);
+                        }
+                    } catch {
+                        try {
+                            const directRes = await pool.query(`SELECT count(*)::bigint as cnt FROM "${t.name}"`);
+                            if (directRes.rows[0]?.cnt !== undefined) {
+                                t.rows = parseInt(directRes.rows[0].cnt, 10);
+                            }
+                        } catch {}
+                    }
+                })
+            );
         }
 
         const totalRows = tablesStats.reduce((sum, stat) => sum + stat.rows, 0);
@@ -2037,7 +2102,7 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
             tables: tablesStats
         };
 
-        await redis.set(cacheKey, analyticsResult, { ex: 30 }); // Cache for 30s
+        await redis.set(cacheKey, analyticsResult, { ex: 15 }); // Fast 15s refresh
         return analyticsResult;
 
     } catch (error) {

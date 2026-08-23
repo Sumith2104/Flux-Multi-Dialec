@@ -336,6 +336,7 @@ export function useRealtimeSubscription(projectId: string | undefined) {
                 // Invalidate analytics lazily (stale-while-revalidate)
                 queryClient.invalidateQueries({ queryKey: ['analytics_stats', projectId] });
                 queryClient.invalidateQueries({ queryKey: ['analytics_history', projectId] });
+                queryClient.invalidateQueries({ queryKey: ['dashboard-analytics', projectId] });
 
                 lastRefetchTimeRef.current = Date.now();
                 throttleTimerRef.current = null;
