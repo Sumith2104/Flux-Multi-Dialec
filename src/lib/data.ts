@@ -718,7 +718,6 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
                 WHERE table_schema = $1 AND table_type = 'BASE TABLE'
                 AND table_name NOT LIKE '_flux_internal_%'
                 AND table_schema NOT IN ('fluxbase_global', 'pg_catalog', 'information_schema', 'cron', 'pgsodium', 'vault')
-                AND table_name NOT IN ('audit_logs', 'webhook_deliveries', 'api_keys', 'users', 'projects', 'flux_migrations', 'backups')
             `, [schemaName]);
 
             if (isExternal && result.rows.length === 0 && schemaName !== 'public') {
@@ -727,7 +726,7 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
                     FROM information_schema.tables 
                     WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
                     AND table_name NOT LIKE '_flux_internal_%'
-                    AND table_name NOT IN ('audit_logs', 'webhook_deliveries', 'api_keys', 'users', 'projects', 'flux_migrations', 'backups')
+                    AND table_schema NOT IN ('fluxbase_global', 'pg_catalog', 'information_schema', 'cron', 'pgsodium', 'vault')
                 `);
             }
 
@@ -1972,7 +1971,6 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
                 FROM information_schema.tables
                 WHERE table_schema = ? AND table_type = 'BASE TABLE'
                 AND table_name NOT LIKE '\\_flux\\_internal\\_%'
-                AND table_name NOT IN ('audit_logs', 'webhook_deliveries', 'api_keys', 'users', 'projects', 'flux_migrations', 'backups')
             `, [targetDb]);
 
             tablesStats = (rows || []).map((r: any) => ({
@@ -2009,8 +2007,7 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
                 LEFT JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
                 WHERE t.table_schema = $1 AND t.table_type = 'BASE TABLE'
                 AND t.table_name NOT LIKE '_flux_internal_%'
-                AND t.table_schema NOT IN ('fluxbase_global', 'pg_catalog', 'information_schema', 'cron', 'pgsodium', 'vault')
-                AND t.table_name NOT IN ('audit_logs', 'webhook_deliveries', 'api_keys', 'users', 'projects', 'flux_migrations', 'backups');
+                AND t.table_schema NOT IN ('fluxbase_global', 'pg_catalog', 'information_schema', 'cron', 'pgsodium', 'vault');
             `, [activeSchema]);
 
             if (isExternal && result.rows.length === 0 && activeSchema !== 'public') {
@@ -2025,7 +2022,7 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
                     LEFT JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
                     WHERE t.table_schema = 'public' AND t.table_type = 'BASE TABLE'
                     AND t.table_name NOT LIKE '_flux_internal_%'
-                    AND t.table_name NOT IN ('audit_logs', 'webhook_deliveries', 'api_keys', 'users', 'projects', 'flux_migrations', 'backups');
+                    AND t.table_schema NOT IN ('fluxbase_global', 'pg_catalog', 'information_schema', 'cron', 'pgsodium', 'vault');
                 `);
             }
 

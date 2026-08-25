@@ -147,8 +147,7 @@ export async function POST(req: NextRequest) {
                  FROM information_schema.tables 
                  WHERE table_schema = $1 AND table_type = 'BASE TABLE'
                  AND table_name NOT LIKE '_flux_internal_%'
-                 AND table_schema NOT IN ('fluxbase_global', 'pg_catalog', 'information_schema', 'cron', 'pgsodium', 'vault')
-                 AND table_name NOT IN ('audit_logs', 'webhook_deliveries', 'api_keys', 'users', 'projects', 'flux_migrations', 'backups')`,
+                 AND table_schema NOT IN ('fluxbase_global', 'pg_catalog', 'information_schema', 'cron', 'pgsodium', 'vault')`,
                 [schemaName]
             );
 
@@ -158,7 +157,7 @@ export async function POST(req: NextRequest) {
                      FROM information_schema.tables 
                      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
                      AND table_name NOT LIKE '_flux_internal_%'
-                     AND table_name NOT IN ('audit_logs', 'webhook_deliveries', 'api_keys', 'users', 'projects', 'flux_migrations', 'backups')`
+                     AND table_schema NOT IN ('fluxbase_global', 'pg_catalog', 'information_schema', 'cron', 'pgsodium', 'vault')`
                 );
                 if (tablesRes.rows.length > 0) activeSchema = 'public';
             }
