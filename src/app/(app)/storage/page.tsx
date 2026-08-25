@@ -1,20 +1,65 @@
 'use client';
 
-import { useState, useContext, useRef, useEffect } from 'react';
+import { useState, useContext, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ProjectContext } from '@/contexts/project-context';
 import { useUploadManager } from '@/contexts/upload-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
-    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
-    Folder, FolderOpen, Upload, Plus, Trash2, Copy, Check, Edit2,
-    File, Image as ImageIcon, FileText, FileArchive, Loader2, HardDrive, X, Menu
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+    Folder,
+    FolderOpen,
+    Upload,
+    Plus,
+    Trash2,
+    Copy,
+    Check,
+    Edit2,
+    File,
+    Image as ImageIcon,
+    FileText,
+    FileArchive,
+    Loader2,
+    HardDrive,
+    X,
+    Menu,
+    Search,
+    Download,
+    Eye,
+    Globe,
+    Lock,
+    LayoutGrid,
+    List as ListIcon,
+    MoreVertical,
+    CloudUpload,
+    ExternalLink
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -23,67 +68,79 @@ import {
     SheetTrigger,
 } from '@/components/ui/sheet';
 
-interface Bucket { id: string; name: string; is_public: boolean; created_at: string; total_size?: number; }
+interface Bucket {
+    id: string;
+    name: string;
+    is_public: boolean;
+    created_at: string;
+    total_size?: number;
+}
+
 interface StorageFile {
-    id: string; name: string; s3_key: string; size: number;
-    mime_type: string; created_at: string;
+    id: string;
+    name: string;
+    s3_key: string;
+    size: number;
+    mime_type: string;
+    created_at: string;
 }
 
 function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
-    const k = 1024, sizes = ['B', 'KB', 'MB', 'GB'];
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
 function getFileIcon(mime: string) {
-    if (mime.startsWith('image/')) return <ImageIcon className="h-4 w-4 text-blue-400" />;
-    if (mime === 'application/pdf') return <FileText className="h-4 w-4 text-red-400" />;
-    if (mime.includes('zip')) return <FileArchive className="h-4 w-4 text-yellow-400" />;
-    return <File className="h-4 w-4 text-muted-foreground" />;
+    if (mime.startsWith('image/')) return <ImageIcon className="h-4 w-4 text-blue-400 shrink-0" />;
+    if (mime === 'application/pdf') return <FileText className="h-4 w-4 text-red-400 shrink-0" />;
+    if (mime.includes('zip') || mime.includes('tar') || mime.includes('rar') || mime.includes('gzip')) {
+        return <FileArchive className="h-4 w-4 text-yellow-400 shrink-0" />;
+    }
+    if (mime.includes('json') || mime.includes('javascript') || mime.includes('typescript') || mime.includes('sql') || mime.includes('html')) {
+        return <FileText className="h-4 w-4 text-emerald-400 shrink-0" />;
+    }
+    return <File className="h-4 w-4 text-muted-foreground shrink-0" />;
 }
 
 export default function StoragePage() {
     const { project } = useContext(ProjectContext);
     const { enqueueUpload } = useUploadManager();
     const queryClient = useQueryClient();
+
     const [selectedBucket, setSelectedBucket] = useState<Bucket | null>(null);
-    const [uploading, setUploading] = useState(false);
-    const [uploadProgress, setUploadProgress] = useState<string | null>(null);
     const [dragOver, setDragOver] = useState(false);
     const [copiedId, setCopiedId] = useState<string | null>(null);
+    const [downloadingId, setDownloadingId] = useState<string | null>(null);
+    const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [bucketSearchQuery, setBucketSearchQuery] = useState('');
+
+    // Bucket creation modal
+    const [isCreateBucketOpen, setIsCreateBucketOpen] = useState(false);
     const [newBucketName, setNewBucketName] = useState('');
+    const [isPublicBucket, setIsPublicBucket] = useState(false);
     const [creatingBucket, setCreatingBucket] = useState(false);
-    const [showNewBucket, setShowNewBucket] = useState(false);
-    const [deletingId, setDeletingId] = useState<string | null>(null);
-    const [editingBucketId, setEditingBucketId] = useState<string | null>(null);
+
+    // Bucket renaming & deleting
+    const [editingBucket, setEditingBucket] = useState<Bucket | null>(null);
     const [editBucketName, setEditBucketName] = useState('');
-    const [deletingBucketId, setDeletingBucketId] = useState<string | null>(null);
+    const [updatingBucket, setUpdatingBucket] = useState(false);
     const [bucketToDelete, setBucketToDelete] = useState<Bucket | null>(null);
+    const [deletingBucketId, setDeletingBucketId] = useState<string | null>(null);
+
+    // File actions
     const [fileToDelete, setFileToDelete] = useState<StorageFile | null>(null);
+    const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
+    const [previewFileUrl, setPreviewFileUrl] = useState<{ name: string; url: string; mime: string } | null>(null);
+
     const [error, setError] = useState<string | null>(null);
     const [isMobileBucketsOpen, setIsMobileBucketsOpen] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const projectId = project?.project_id;
-
-    // Warn user before navigating away while upload is in progress
-    useEffect(() => {
-        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-            if (uploading) {
-                e.preventDefault();
-                e.returnValue = 'An upload is currently in progress. If you leave now, the upload will be cancelled.';
-                return e.returnValue;
-            }
-        };
-
-        if (uploading) {
-            window.addEventListener('beforeunload', handleBeforeUnload);
-        }
-        return () => {
-            window.removeEventListener('beforeunload', handleBeforeUnload);
-        };
-    }, [uploading]);
 
     // Load buckets (Smart Cached)
     const { data: buckets = [], isLoading: loadingBuckets } = useQuery<Bucket[]>({
@@ -95,12 +152,27 @@ export default function StoragePage() {
             return data.success ? data.buckets : [];
         },
         enabled: !!projectId,
-        staleTime: 60 * 1000,
+        staleTime: 30 * 1000,
     });
 
-    const totalProjectSize = buckets.reduce((acc, b) => acc + (Number(b.total_size) || 0), 0);
+    // Auto-select first bucket if none is selected
+    useEffect(() => {
+        if (buckets.length > 0 && !selectedBucket) {
+            setSelectedBucket(buckets[0]);
+        } else if (buckets.length > 0 && selectedBucket) {
+            // Keep selected bucket data updated
+            const updated = buckets.find(b => b.id === selectedBucket.id);
+            if (updated) setSelectedBucket(updated);
+        } else if (buckets.length === 0) {
+            setSelectedBucket(null);
+        }
+    }, [buckets, selectedBucket]);
 
-    // Load files in selected bucket (Smart Cached)
+    const totalProjectSize = useMemo(() => {
+        return buckets.reduce((acc, b) => acc + (Number(b.total_size) || 0), 0);
+    }, [buckets]);
+
+    // Load files in selected bucket
     const { data: files = [], isLoading: loadingFiles } = useQuery<StorageFile[]>({
         queryKey: ['storage-files', projectId, selectedBucket?.id],
         queryFn: async () => {
@@ -110,92 +182,98 @@ export default function StoragePage() {
             return data.success ? data.files : [];
         },
         enabled: !!projectId && !!selectedBucket,
-        staleTime: 60 * 1000,
+        staleTime: 15 * 1000,
     });
 
-    // Upload file via Global Background Worker
-    const uploadFile = async (file: File) => {
-        if (!projectId || !selectedBucket) return;
-        enqueueUpload(file, selectedBucket.id, projectId);
+    const filteredFiles = useMemo(() => {
+        if (!searchQuery.trim()) return files;
+        const q = searchQuery.toLowerCase();
+        return files.filter(f => f.name.toLowerCase().includes(q) || f.mime_type.toLowerCase().includes(q));
+    }, [files, searchQuery]);
+
+    const filteredBuckets = useMemo(() => {
+        if (!bucketSearchQuery.trim()) return buckets;
+        const q = bucketSearchQuery.toLowerCase();
+        return buckets.filter(b => b.name.toLowerCase().includes(q));
+    }, [buckets, bucketSearchQuery]);
+
+    // Upload files via Global Background Worker
+    const uploadFiles = async (selectedFiles: File[]) => {
+        if (!projectId || !selectedBucket || selectedFiles.length === 0) return;
+        for (const file of selectedFiles) {
+            await enqueueUpload(file, selectedBucket.id, projectId);
+        }
     };
 
     const onDrop = async (e: React.DragEvent) => {
         e.preventDefault();
         setDragOver(false);
         const droppedFiles = Array.from(e.dataTransfer.files);
-        for (const file of droppedFiles) {
-            await uploadFile(file);
+        if (droppedFiles.length > 0) {
+            await uploadFiles(droppedFiles);
         }
     };
 
     // Create bucket
-    const createBucket = async () => {
-        if (!projectId || !newBucketName.trim()) return;
+    const handleCreateBucket = async () => {
+        const cleanName = newBucketName.trim().toLowerCase();
+        if (!projectId || !cleanName) return;
         setCreatingBucket(true);
         setError(null);
         try {
             const res = await fetch('/api/storage/buckets', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ projectId, name: newBucketName.trim().toLowerCase() })
+                body: JSON.stringify({ projectId, name: cleanName, isPublic: isPublicBucket })
             });
             const data = await res.json();
-            if (!data.success) { setError(typeof data.error === 'object' ? data.error.message : (data.error || 'Failed to create bucket')); return; }
+            if (!data.success) {
+                setError(typeof data.error === 'object' ? data.error.message : (data.error || 'Failed to create bucket'));
+                return;
+            }
             setNewBucketName('');
-            setShowNewBucket(false);
-            queryClient.invalidateQueries({ queryKey: ['storage-buckets', projectId] });
+            setIsPublicBucket(false);
+            setIsCreateBucketOpen(false);
+            await queryClient.invalidateQueries({ queryKey: ['storage-buckets', projectId] });
             setSelectedBucket(data.bucket);
+        } catch (err: any) {
+            setError(err.message || 'Error creating bucket');
         } finally {
             setCreatingBucket(false);
         }
     };
 
-    // Delete file
-    const deleteFile = async (file: StorageFile) => {
-        if (!projectId) return;
-        setDeletingId(file.id);
-        try {
-            const res = await fetch('/api/storage/files', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fileId: file.id, s3Key: file.s3_key, projectId })
-            });
-            const data = await res.json();
-            if (data.success) {
-                queryClient.setQueryData(['storage-files', projectId, selectedBucket?.id], (old: StorageFile[] | undefined) => 
-                    old ? old.filter(f => f.id !== file.id) : []
-                );
-            }
-        } finally {
-            setDeletingId(null);
-        }
-    };
-
     // Rename bucket
-    const updateBucket = async (bucket: Bucket) => {
-        if (!projectId || !editBucketName.trim() || editBucketName === bucket.name) {
-            setEditingBucketId(null);
+    const handleUpdateBucket = async () => {
+        if (!projectId || !editingBucket || !editBucketName.trim() || editBucketName === editingBucket.name) {
+            setEditingBucket(null);
             return;
         }
+        setUpdatingBucket(true);
         setError(null);
         try {
             const res = await fetch('/api/storage/buckets', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ bucketId: bucket.id, projectId, name: editBucketName.trim().toLowerCase() })
+                body: JSON.stringify({ bucketId: editingBucket.id, projectId, name: editBucketName.trim().toLowerCase() })
             });
             const data = await res.json();
-            if (!data.success) { setError(typeof data.error === 'object' ? data.error.message : (data.error || 'Failed to rename bucket')); return; }
-            setEditingBucketId(null);
-            queryClient.invalidateQueries({ queryKey: ['storage-buckets', projectId] });
-            if (selectedBucket?.id === bucket.id) setSelectedBucket(data.bucket);
+            if (!data.success) {
+                setError(typeof data.error === 'object' ? data.error.message : (data.error || 'Failed to rename bucket'));
+                return;
+            }
+            setEditingBucket(null);
+            await queryClient.invalidateQueries({ queryKey: ['storage-buckets', projectId] });
+            if (selectedBucket?.id === editingBucket.id) setSelectedBucket(data.bucket);
         } catch (e: any) {
             setError(e.message);
+        } finally {
+            setUpdatingBucket(false);
         }
     };
 
     // Delete bucket
-    const deleteBucket = async (bucket: Bucket) => {
+    const handleDeleteBucket = async (bucket: Bucket) => {
         if (!projectId) return;
         setDeletingBucketId(bucket.id);
         setError(null);
@@ -206,13 +284,43 @@ export default function StoragePage() {
                 body: JSON.stringify({ bucketId: bucket.id, projectId })
             });
             const data = await res.json();
-            if (!data.success) { setError(typeof data.error === 'object' ? data.error.message : (data.error || 'Failed to delete bucket')); return; }
-            if (selectedBucket?.id === bucket.id) setSelectedBucket(null);
-            queryClient.invalidateQueries({ queryKey: ['storage-buckets', projectId] });
+            if (!data.success) {
+                setError(typeof data.error === 'object' ? data.error.message : (data.error || 'Failed to delete bucket'));
+                return;
+            }
+            if (selectedBucket?.id === bucket.id) {
+                const remaining = buckets.filter(b => b.id !== bucket.id);
+                setSelectedBucket(remaining.length > 0 ? remaining[0] : null);
+            }
+            await queryClient.invalidateQueries({ queryKey: ['storage-buckets', projectId] });
         } catch (e: any) {
             setError(e.message);
         } finally {
             setDeletingBucketId(null);
+            setBucketToDelete(null);
+        }
+    };
+
+    // Delete file
+    const handleDeleteFile = async (file: StorageFile) => {
+        if (!projectId) return;
+        setDeletingFileId(file.id);
+        try {
+            const res = await fetch('/api/storage/files', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fileId: file.id, s3Key: file.s3_key, projectId })
+            });
+            const data = await res.json();
+            if (data.success) {
+                queryClient.setQueryData(['storage-files', projectId, selectedBucket?.id], (old: StorageFile[] | undefined) =>
+                    old ? old.filter(f => f.id !== file.id) : []
+                );
+                queryClient.invalidateQueries({ queryKey: ['storage-buckets', projectId] });
+            }
+        } finally {
+            setDeletingFileId(null);
+            setFileToDelete(null);
         }
     };
 
@@ -225,299 +333,539 @@ export default function StoragePage() {
             if (data.url) {
                 await navigator.clipboard.writeText(data.url);
                 setCopiedId(file.id);
-                setTimeout(() => setCopiedId(null), 2000);
+                setTimeout(() => setCopiedId(null), 2500);
+            }
+        } catch {}
+    };
+
+    // Download file
+    const handleDownloadFile = async (file: StorageFile) => {
+        if (!projectId) return;
+        setDownloadingId(file.id);
+        try {
+            const res = await fetch(`/api/storage/url?s3Key=${encodeURIComponent(file.s3_key)}&projectId=${projectId}`);
+            const data = await res.json();
+            if (data.url) {
+                const a = document.createElement('a');
+                a.href = data.url;
+                a.download = file.name;
+                a.target = '_blank';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+        } catch {} finally {
+            setDownloadingId(null);
+        }
+    };
+
+    // Preview File
+    const handlePreviewFile = async (file: StorageFile) => {
+        if (!projectId) return;
+        try {
+            const res = await fetch(`/api/storage/url?s3Key=${encodeURIComponent(file.s3_key)}&projectId=${projectId}`);
+            const data = await res.json();
+            if (data.url) {
+                setPreviewFileUrl({ name: file.name, url: data.url, mime: file.mime_type });
             }
         } catch {}
     };
 
     if (!projectId) {
         return (
-            <div className="flex flex-col items-center justify-center h-64 text-muted-foreground gap-3">
+            <div className="flex flex-col items-center justify-center min-h-[500px] text-muted-foreground gap-3">
                 <HardDrive className="h-12 w-12 opacity-25" />
                 <p className="text-lg font-medium">No project selected</p>
-                <p className="text-sm">Select a project to manage its storage.</p>
+                <p className="text-sm">Select a project to manage its S3 storage buckets.</p>
             </div>
         );
     }
 
     const bucketsSidebarContent = (
-        <Card className="h-full relative overflow-hidden group border-border/80 bg-secondary/60 backdrop-blur-md shadow-lg transition-colors hover:bg-secondary/70">
-            <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Buckets</CardTitle>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); setShowNewBucket(v => !v); }}>
-                        <Plus className="h-3.5 w-3.5" />
-                    </Button>
+        <div className="flex flex-col h-full bg-card/60 border border-border/80 rounded-xl overflow-hidden shadow-sm backdrop-blur-md">
+            <div className="p-3.5 border-b border-border/70 flex items-center justify-between gap-2 bg-muted/20">
+                <div className="flex items-center gap-2">
+                    <Folder className="h-4 w-4 text-orange-400" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-foreground">Buckets</span>
+                    <Badge variant="secondary" className="h-4 px-1 text-[10px] font-mono">{buckets.length}</Badge>
                 </div>
-            </CardHeader>
-            <CardContent className="pt-0 space-y-1">
-                {showNewBucket && (
-                    <div className="flex gap-2 mb-3" onClick={(e) => e.stopPropagation()}>
-                        <Input
-                            value={newBucketName}
-                            onChange={e => setNewBucketName(e.target.value)}
-                            placeholder="bucket-name"
-                            className="h-8 text-xs"
-                            onKeyDown={e => e.key === 'Enter' && createBucket()}
-                            autoFocus
-                        />
-                        <Button size="sm" className="h-8 px-2" onClick={createBucket} disabled={creatingBucket}>
-                            {creatingBucket ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                        </Button>
-                    </div>
-                )}
-                {loadingBuckets ? (
-                    <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-                ) : buckets.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                        <Folder className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                        <p className="text-xs">No buckets yet.<br />Click + to create one.</p>
-                    </div>
-                ) : buckets.map(bucket => (
-                    <div
-                        key={bucket.id}
-                        className={cn(
-                            'w-full flex justify-between items-center group px-3 py-2 rounded-lg text-sm transition-colors text-left cursor-pointer',
-                            selectedBucket?.id === bucket.id
-                                ? 'bg-primary/15 text-primary border border-primary/20'
-                                : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground/90'
-                        )}
-                        onClick={() => {
-                            if (editingBucketId !== bucket.id) {
-                                setSelectedBucket(bucket);
-                                setIsMobileBucketsOpen(false);
-                            }
-                        }}
-                    >
-                        {editingBucketId === bucket.id ? (
-                            <div className="flex gap-2 w-full" onClick={e => e.stopPropagation()}>
-                                <Input
-                                    value={editBucketName}
-                                    onChange={e => setEditBucketName(e.target.value)}
-                                    className="h-7 text-xs flex-1"
-                                    autoFocus
-                                    onKeyDown={e => {
-                                        if (e.key === 'Enter') updateBucket(bucket);
-                                        if (e.key === 'Escape') setEditingBucketId(null);
-                                    }}
-                                    onClick={e => e.stopPropagation()}
-                                />
-                                <Button size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); updateBucket(bucket); }}>
-                                    <Check className="h-3 w-3" />
-                                </Button>
-                            </div>
-                        ) : (
-                            <>
-                                <div className="flex items-center gap-2.5 overflow-hidden flex-1">
-                                    {selectedBucket?.id === bucket.id
-                                        ? <FolderOpen className="h-4 w-4 shrink-0" />
-                                        : <Folder className="h-4 w-4 shrink-0" />}
-                                    <div className="flex flex-col min-w-0">
-                                        <span className="truncate font-medium">{bucket.name}</span>
-                                        <span className="text-[10px] opacity-60 font-mono">{formatBytes(Number(bucket.total_size) || 0)}</span>
-                                    </div>
-                                </div>
-                                
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <Button
-                                        variant="ghost" 
-                                        size="icon" 
-                                        className="h-6 w-6 hover:bg-muted/80 hover:text-white"
-                                        title="Rename bucket"
-                                        onClick={(e) => { 
-                                            e.stopPropagation(); 
-                                            setEditingBucketId(bucket.id); 
-                                            setEditBucketName(bucket.name); 
-                                        }}
-                                    >
-                                        <Edit2 className="h-3 w-3" />
-                                    </Button>
-                                    <Button
-                                        variant="ghost" 
-                                        size="icon" 
-                                        className="h-6 w-6 hover:bg-red-500/20 hover:text-red-400"
-                                        title="Delete bucket"
-                                        disabled={deletingBucketId === bucket.id}
-                                        onClick={(e) => { 
-                                            e.stopPropagation(); 
-                                            setBucketToDelete(bucket);
-                                        }}
-                                    >
-                                        {deletingBucketId === bucket.id ? <Loader2 className="h-3 w-3 animate-spin text-red-400" /> : <Trash2 className="h-3 w-3" />}
-                                    </Button>
-                                </div>
-                            </>
-                        )}
-                    </div>
-                ))}
-            </CardContent>
-        </Card>
-    );
-
-    return (
-        <div className="max-w-full space-y-5 overflow-x-hidden sm:space-y-6">
-            {/* Header */}
-            <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
-                <div className="min-w-0">
-                    <h1 className="flex items-center gap-3 text-2xl font-bold sm:text-3xl">
-                        <HardDrive className="h-7 w-7 shrink-0 text-primary sm:h-8 sm:w-8" /> Storage
-                    </h1>
-                    <p className="mt-1 text-sm leading-6 text-muted-foreground sm:text-base">
-                        Secure file storage backed by AWS S3 — private by default, signed URLs on demand.
-                    </p>
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <Badge variant="outline" className="bg-primary/5 border-primary/20 text-primary font-mono text-xs px-2.5 py-1">
-                            Total Project Usage: {formatBytes(totalProjectSize)}
-                        </Badge>
-                    </div>
-                </div>
-                {selectedBucket && (
-                    <Button className="w-full sm:w-auto" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-                        {uploading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
-                        Upload File
-                    </Button>
-                )}
-                <input ref={fileInputRef} type="file" className="hidden" multiple onChange={async (e) => { 
-                    const selectedFiles = Array.from(e.target.files || []);
-                    for (const f of selectedFiles) { await uploadFile(f); }
-                    e.target.value = ''; 
-                }} />
+                <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-xs border-orange-500/30 hover:bg-orange-500/10 hover:text-orange-400 gap-1 font-medium"
+                    onClick={() => {
+                        setNewBucketName('');
+                        setIsCreateBucketOpen(true);
+                    }}
+                >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>New</span>
+                </Button>
             </div>
 
-            {error && (
-                <div className="flex items-center gap-3 bg-destructive/15 border border-destructive/30 text-destructive rounded-lg px-4 py-3 text-sm">
-                    <X className="h-4 w-4 shrink-0" /> {typeof error === 'object' ? (error as any).message || JSON.stringify(error) : error}
-                    <button onClick={() => setError(null)} className="ml-auto"><X className="h-3 w-3" /></button>
+            {buckets.length > 5 && (
+                <div className="p-2 border-b border-border/40">
+                    <div className="relative">
+                        <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                        <Input
+                            placeholder="Filter buckets..."
+                            value={bucketSearchQuery}
+                            onChange={e => setBucketSearchQuery(e.target.value)}
+                            className="h-7 pl-8 text-xs bg-background/50 border-border/60"
+                        />
+                    </div>
                 </div>
             )}
 
-            <div className="flex min-h-[500px] max-w-full flex-col gap-4 lg:flex-row items-start">
-                {/* Bucket Sidebar Desktop */}
-                <div className="hidden lg:block lg:w-64 shrink-0 lg:sticky lg:top-0 lg:self-start">
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                {loadingBuckets ? (
+                    <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground text-xs">
+                        <Loader2 className="h-5 w-5 animate-spin text-orange-400" />
+                        <span>Loading buckets...</span>
+                    </div>
+                ) : filteredBuckets.length === 0 ? (
+                    <div className="text-center py-10 px-3 text-muted-foreground">
+                        <Folder className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                        <p className="text-xs font-medium">No buckets found</p>
+                        <p className="text-[11px] text-muted-foreground/70 mt-1">Create your first S3 bucket to start storing files.</p>
+                        <Button
+                            size="sm"
+                            className="mt-3 h-7 text-xs bg-orange-600 hover:bg-orange-500"
+                            onClick={() => setIsCreateBucketOpen(true)}
+                        >
+                            <Plus className="h-3 w-3 mr-1" /> Create Bucket
+                        </Button>
+                    </div>
+                ) : (
+                    filteredBuckets.map(bucket => {
+                        const isSelected = selectedBucket?.id === bucket.id;
+                        return (
+                            <div
+                                key={bucket.id}
+                                onClick={() => {
+                                    setSelectedBucket(bucket);
+                                    setIsMobileBucketsOpen(false);
+                                }}
+                                className={cn(
+                                    'w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-all cursor-pointer group border',
+                                    isSelected
+                                        ? 'bg-orange-500/10 text-orange-400 border-orange-500/30 font-medium shadow-sm'
+                                        : 'border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                                )}
+                            >
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                    {isSelected ? (
+                                        <FolderOpen className="h-4 w-4 shrink-0 text-orange-400" />
+                                    ) : (
+                                        <Folder className="h-4 w-4 shrink-0 opacity-70 group-hover:opacity-100" />
+                                    )}
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="truncate text-foreground font-medium text-[13px]">{bucket.name}</span>
+                                        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono">
+                                            <span>{formatBytes(Number(bucket.total_size) || 0)}</span>
+                                            <span>•</span>
+                                            {bucket.is_public ? (
+                                                <span className="flex items-center gap-0.5 text-blue-400"><Globe className="h-2.5 w-2.5" /> Public</span>
+                                            ) : (
+                                                <span className="flex items-center gap-0.5"><Lock className="h-2.5 w-2.5" /> Private</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild onClick={e => e.stopPropagation()}>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted/80 text-muted-foreground hover:text-foreground"
+                                        >
+                                            <MoreVertical className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-36">
+                                        <DropdownMenuItem
+                                            onClick={e => {
+                                                e.stopPropagation();
+                                                setEditingBucket(bucket);
+                                                setEditBucketName(bucket.name);
+                                            }}
+                                            className="text-xs"
+                                        >
+                                            <Edit2 className="h-3.5 w-3.5 mr-2" /> Rename
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                            onClick={e => {
+                                                e.stopPropagation();
+                                                setBucketToDelete(bucket);
+                                            }}
+                                            className="text-xs text-red-400 focus:text-red-400"
+                                        >
+                                            <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            </div>
+                        );
+                    })
+                )}
+            </div>
+        </div>
+    );
+
+    return (
+        <div className="max-w-full space-y-4 overflow-x-hidden pb-12">
+            {/* Header & Metrics Strip */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2">
+                <div>
+                    <h1 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight sm:text-3xl text-foreground">
+                        <HardDrive className="h-7 w-7 text-orange-400" />
+                        Storage
+                    </h1>
+                    <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+                        High-performance object storage backed by AWS S3 with signed instant URLs & private bucket isolation.
+                    </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <Badge variant="outline" className="bg-orange-500/10 border-orange-500/20 text-orange-400 font-mono text-xs px-3 py-1.5 gap-1.5">
+                        <HardDrive className="h-3.5 w-3.5" />
+                        Total Project Usage: <strong className="text-white">{formatBytes(totalProjectSize)}</strong>
+                    </Badge>
+                    {selectedBucket && (
+                        <Button
+                            className="bg-orange-600 hover:bg-orange-500 text-white font-medium text-xs h-8 px-3.5 gap-1.5 shadow-sm"
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                            <Upload className="h-3.5 w-3.5" />
+                            Upload Files
+                        </Button>
+                    )}
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        className="hidden"
+                        multiple
+                        onChange={async e => {
+                            const selected = Array.from(e.target.files || []);
+                            if (selected.length > 0) {
+                                await uploadFiles(selected);
+                            }
+                            e.target.value = '';
+                        }}
+                    />
+                </div>
+            </div>
+
+            {/* Error banner */}
+            {error && (
+                <div className="flex items-center gap-3 bg-destructive/15 border border-destructive/30 text-destructive rounded-lg px-4 py-2.5 text-xs">
+                    <X className="h-4 w-4 shrink-0" />
+                    <span className="flex-1">{typeof error === 'object' ? (error as any).message || JSON.stringify(error) : error}</span>
+                    <button onClick={() => setError(null)} className="ml-auto opacity-70 hover:opacity-100">
+                        <X className="h-3.5 w-3.5" />
+                    </button>
+                </div>
+            )}
+
+            {/* Main Split Layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start min-h-[calc(100vh-14rem)]">
+                {/* Desktop Left Sidebar: Buckets */}
+                <div className="hidden lg:block lg:col-span-3 h-[calc(100vh-14rem)] sticky top-0 self-start">
                     {bucketsSidebarContent}
                 </div>
 
-                {/* Mobile/Tablet Drawer Trigger */}
+                {/* Mobile Drawer Trigger for Buckets */}
                 <div className="lg:hidden w-full">
                     <SheetRoot open={isMobileBucketsOpen} onOpenChange={setIsMobileBucketsOpen}>
                         <SheetTrigger asChild>
-                            <Button variant="outline" className="w-full flex justify-between items-center gap-2 mb-2 bg-secondary/60 border-border/80 text-sm">
+                            <Button variant="outline" className="w-full flex justify-between items-center gap-2 bg-card border-border/80 text-xs h-9">
                                 <span className="flex items-center gap-2">
-                                    <Folder className="h-4 w-4 text-primary" />
-                                    <span>{selectedBucket ? `Bucket: ${selectedBucket.name}` : 'Select a Bucket'}</span>
+                                    <Folder className="h-4 w-4 text-orange-400" />
+                                    <span>{selectedBucket ? `Bucket: ${selectedBucket.name}` : 'Select or Create a Bucket'}</span>
                                 </span>
                                 <Menu className="h-4 w-4 text-muted-foreground" />
                             </Button>
                         </SheetTrigger>
-                        <SheetContent side="left" className="p-0 w-72 flex flex-col h-full bg-background border-r">
-                            <div className="p-4 border-b">
-                                <h2 className="text-lg font-semibold">Buckets</h2>
-                            </div>
-                            <div className="flex-grow overflow-y-auto p-4">
+                        <SheetContent side="left" className="p-3 w-80 flex flex-col h-full bg-background border-r">
+                            <div className="flex-1 overflow-hidden mt-6">
                                 {bucketsSidebarContent}
                             </div>
                         </SheetContent>
                     </SheetRoot>
                 </div>
 
-                {/* File Browser */}
-                <div className="min-w-0 flex-1">
-                    <Card className="h-full relative overflow-hidden group border-border/80 bg-secondary/60 backdrop-blur-md shadow-lg transition-colors hover:bg-secondary/70">
-                        <CardHeader className="pb-3 border-b border-border/60">
-                            <div className="flex items-center justify-between">
-                                <CardTitle className="text-base">
-                                    {selectedBucket ? (
-                                        <span className="flex items-center gap-2">
-                                            <FolderOpen className="h-4 w-4 text-primary" />
-                                            {selectedBucket.name}
-                                            <Badge variant="secondary" className="text-xs ml-1">{files.length} files</Badge>
-                                        </span>
-                                    ) : 'Select a Bucket'}
-                                </CardTitle>
+                {/* Right Workspace: File Browser */}
+                <div className="lg:col-span-9 h-[calc(100vh-14rem)] flex flex-col">
+                    <Card className="flex-1 flex flex-col border-border/80 bg-card/60 backdrop-blur-md overflow-hidden shadow-sm">
+                        {/* Bucket Toolbar */}
+                        <CardHeader className="py-3 px-4 border-b border-border/70 bg-muted/20 flex flex-row items-center justify-between space-y-0 shrink-0">
+                            <div className="flex items-center gap-3 min-w-0">
+                                {selectedBucket ? (
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <FolderOpen className="h-4 w-4 text-orange-400 shrink-0" />
+                                        <span className="font-semibold text-sm text-foreground truncate">{selectedBucket.name}</span>
+                                        <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-mono bg-background/50 border-border/60">
+                                            {files.length} file{files.length === 1 ? '' : 's'}
+                                        </Badge>
+                                        <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-mono hidden sm:inline-flex">
+                                            {formatBytes(Number(selectedBucket.total_size) || 0)}
+                                        </Badge>
+                                    </div>
+                                ) : (
+                                    <span className="text-sm font-semibold text-muted-foreground">Select a Bucket</span>
+                                )}
                             </div>
+
+                            {selectedBucket && (
+                                <div className="flex items-center gap-2">
+                                    <div className="relative w-36 sm:w-52">
+                                        <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                                        <Input
+                                            placeholder="Search files..."
+                                            value={searchQuery}
+                                            onChange={e => setSearchQuery(e.target.value)}
+                                            className="h-7 pl-8 text-xs bg-background/60 border-border/60"
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center border border-border/60 rounded-md bg-background/60 p-0.5">
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className={cn('h-6 w-6 rounded-sm', viewMode === 'list' && 'bg-muted text-foreground')}
+                                            onClick={() => setViewMode('list')}
+                                            title="List View"
+                                        >
+                                            <ListIcon className="h-3.5 w-3.5" />
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className={cn('h-6 w-6 rounded-sm', viewMode === 'grid' && 'bg-muted text-foreground')}
+                                            onClick={() => setViewMode('grid')}
+                                            title="Grid View"
+                                        >
+                                            <LayoutGrid className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
                         </CardHeader>
-                        <CardContent className="p-0 h-[calc(100%-65px)]">
+
+                        {/* File Content Body */}
+                        <CardContent className="p-0 flex-1 overflow-y-auto relative">
                             {!selectedBucket ? (
-                                <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
-                                    <Folder className="h-16 w-16 opacity-15" />
-                                    <p className="text-sm">Select or create a bucket to view files.</p>
+                                <div className="flex flex-col items-center justify-center h-full p-8 text-center gap-4">
+                                    <div className="p-4 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400">
+                                        <CloudUpload className="h-10 w-10" />
+                                    </div>
+                                    <div className="max-w-md">
+                                        <h3 className="text-base font-semibold text-foreground">Welcome to Fluxbase S3 Storage</h3>
+                                        <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                                            Create an S3 bucket from the left panel to upload files, generate private 15-minute signed URLs, and stream media to your frontend apps.
+                                        </p>
+                                    </div>
+                                    <Button
+                                        className="bg-orange-600 hover:bg-orange-500 text-xs h-8 px-4 font-medium"
+                                        onClick={() => setIsCreateBucketOpen(true)}
+                                    >
+                                        <Plus className="h-3.5 w-3.5 mr-1.5" /> Create New Bucket
+                                    </Button>
                                 </div>
                             ) : (
                                 <div
                                     className={cn(
                                         'h-full flex flex-col transition-colors',
-                                        dragOver && 'bg-primary/5 border-2 border-dashed border-primary/40'
+                                        dragOver && 'bg-orange-500/5 ring-2 ring-inset ring-orange-500/50'
                                     )}
-                                    onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                                    onDragOver={e => {
+                                        e.preventDefault();
+                                        setDragOver(true);
+                                    }}
                                     onDragLeave={() => setDragOver(false)}
                                     onDrop={onDrop}
                                 >
-                                    {uploadProgress && (
-                                        <div className="flex items-center gap-3 bg-primary/10 border-b border-primary/20 px-4 py-2.5 text-sm text-primary">
-                                            <Loader2 className="h-4 w-4 animate-spin" /> {uploadProgress}
-                                        </div>
-                                    )}
                                     {loadingFiles ? (
-                                        <div className="flex justify-center items-center h-full">
-                                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                                        <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground text-xs">
+                                            <Loader2 className="h-6 w-6 animate-spin text-orange-400" />
+                                            <span>Loading files in {selectedBucket.name}...</span>
                                         </div>
                                     ) : files.length === 0 ? (
                                         <div
-                                            className="flex flex-col items-center justify-center h-full gap-3 cursor-pointer"
+                                            className="flex flex-col items-center justify-center h-full p-8 text-center gap-3 cursor-pointer hover:bg-muted/10 transition-colors"
                                             onClick={() => fileInputRef.current?.click()}
                                         >
-                                            <Upload className="h-14 w-14 opacity-15" />
-                                            <p className="font-medium text-muted-foreground">Drop files here or click Upload</p>
-                                            <p className="text-xs text-muted-foreground/60">All file types supported (Images, PDFs, CSVs, JSON, ZIP, etc.)</p>
+                                            <div className="p-4 rounded-2xl bg-muted/40 border border-border/80">
+                                                <Upload className="h-8 w-8 text-orange-400/80" />
+                                            </div>
+                                            <p className="font-semibold text-sm text-foreground">Drag & drop files here, or click to browse</p>
+                                            <p className="text-xs text-muted-foreground/80 max-w-sm">
+                                                Supports Images, PDFs, Videos, ZIP, CSV, JSON and documents. Files upload seamlessly in the background.
+                                            </p>
+                                            <Button size="sm" variant="outline" className="h-7 text-xs border-orange-500/30 text-orange-400 hover:bg-orange-500/10 mt-1">
+                                                Select Files
+                                            </Button>
+                                        </div>
+                                    ) : filteredFiles.length === 0 ? (
+                                        <div className="flex flex-col items-center justify-center h-full p-8 text-center text-muted-foreground text-xs gap-2">
+                                            <Search className="h-6 w-6 opacity-30" />
+                                            <p>No files matching &quot;{searchQuery}&quot;</p>
+                                        </div>
+                                    ) : viewMode === 'grid' ? (
+                                        /* Grid Cards View */
+                                        <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
+                                            {filteredFiles.map(file => (
+                                                <Card
+                                                    key={file.id}
+                                                    className="group border-border/70 bg-card/40 hover:bg-card/90 hover:border-orange-500/40 transition-all overflow-hidden flex flex-col text-xs"
+                                                >
+                                                    <div
+                                                        className="h-28 bg-muted/30 flex items-center justify-center p-2 relative overflow-hidden border-b border-border/40 cursor-pointer"
+                                                        onClick={() => {
+                                                            if (file.mime_type.startsWith('image/')) handlePreviewFile(file);
+                                                            else copySignedUrl(file);
+                                                        }}
+                                                    >
+                                                        {file.mime_type.startsWith('image/') ? (
+                                                            <div className="flex flex-col items-center gap-1">
+                                                                <ImageIcon className="h-8 w-8 text-blue-400" />
+                                                                <span className="text-[10px] text-muted-foreground">Click to Preview</span>
+                                                            </div>
+                                                        ) : (
+                                                            getFileIcon(file.mime_type)
+                                                        )}
+                                                    </div>
+                                                    <CardContent className="p-2.5 flex flex-col gap-1.5 flex-1">
+                                                        <span className="font-medium text-foreground truncate" title={file.name}>
+                                                            {file.name}
+                                                        </span>
+                                                        <div className="flex items-center justify-between text-[10px] text-muted-foreground font-mono">
+                                                            <span>{formatBytes(file.size)}</span>
+                                                            <span>{file.mime_type.split('/')[1]?.toUpperCase() || 'FILE'}</span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between pt-1 border-t border-border/40 mt-auto">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-6 w-6 hover:bg-muted text-muted-foreground hover:text-foreground"
+                                                                title="Copy signed URL"
+                                                                onClick={() => copySignedUrl(file)}
+                                                            >
+                                                                {copiedId === file.id ? <Check className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-6 w-6 hover:bg-muted text-muted-foreground hover:text-foreground"
+                                                                title="Download file"
+                                                                onClick={() => handleDownloadFile(file)}
+                                                                disabled={downloadingId === file.id}
+                                                            >
+                                                                {downloadingId === file.id ? <Loader2 className="h-3 w-3 animate-spin text-orange-400" /> : <Download className="h-3 w-3" />}
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-6 w-6 hover:bg-red-500/10 text-muted-foreground hover:text-red-400"
+                                                                title="Delete file"
+                                                                onClick={() => setFileToDelete(file)}
+                                                                disabled={deletingFileId === file.id}
+                                                            >
+                                                                <Trash2 className="h-3 w-3" />
+                                                            </Button>
+                                                        </div>
+                                                    </CardContent>
+                                                </Card>
+                                            ))}
                                         </div>
                                     ) : (
-                                        <div className="mobile-scroll">
-                                            <table className="w-max min-w-full text-sm">
+                                        /* Table List View */
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-xs text-left">
                                                 <thead>
-                                                    <tr className="border-b border-border text-left text-xs text-muted-foreground/75 uppercase tracking-wide">
-                                                        <th className="px-4 py-3 font-medium">Name</th>
-                                                        <th className="px-4 py-3 font-medium">Type</th>
-                                                        <th className="px-4 py-3 font-medium">Size</th>
-                                                        <th className="px-4 py-3 font-medium">Uploaded</th>
-                                                        <th className="px-4 py-3 font-medium text-right">Actions</th>
+                                                    <tr className="border-b border-border/70 text-muted-foreground uppercase text-[10px] font-semibold tracking-wider bg-muted/10">
+                                                        <th className="px-4 py-2.5">Name</th>
+                                                        <th className="px-3 py-2.5">Type</th>
+                                                        <th className="px-3 py-2.5">Size</th>
+                                                        <th className="px-3 py-2.5">Uploaded</th>
+                                                        <th className="px-4 py-2.5 text-right">Actions</th>
                                                     </tr>
                                                 </thead>
-                                                <tbody>
-                                                    {files.map(file => (
-                                                        <tr key={file.id} className="border-b border-border/40 hover:bg-muted/40 group transition-colors">
-                                                            <td className="px-4 py-3 font-medium text-foreground/90">
-                                                                <div className="flex items-center gap-2.5">
+                                                <tbody className="divide-y divide-border/40">
+                                                    {filteredFiles.map(file => (
+                                                        <tr key={file.id} className="hover:bg-muted/30 group transition-colors">
+                                                            <td className="px-4 py-2.5 font-medium text-foreground">
+                                                                <div className="flex items-center gap-2.5 min-w-0">
                                                                     {getFileIcon(file.mime_type)}
-                                                                    <span className="truncate max-w-[200px]">{file.name}</span>
+                                                                    <span className="truncate max-w-[280px]" title={file.name}>{file.name}</span>
                                                                 </div>
                                                             </td>
-                                                            <td className="px-4 py-3 text-muted-foreground/75 text-xs">{file.mime_type.split('/')[1]?.toUpperCase() || 'FILE'}</td>
-                                                            <td className="px-4 py-3 text-muted-foreground">{formatBytes(file.size)}</td>
-                                                            <td className="px-4 py-3 text-muted-foreground/75 text-xs">
-                                                                {new Date(file.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                            <td className="px-3 py-2.5 text-muted-foreground">
+                                                                <Badge variant="outline" className="h-4 px-1 text-[9px] font-mono uppercase bg-background/40">
+                                                                    {file.mime_type.split('/')[1]?.slice(0, 8) || 'FILE'}
+                                                                </Badge>
                                                             </td>
-                                                            <td className="px-4 py-3">
-                                                                <div className="flex items-center gap-1.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <td className="px-3 py-2.5 text-muted-foreground font-mono">
+                                                                {formatBytes(file.size)}
+                                                            </td>
+                                                            <td className="px-3 py-2.5 text-muted-foreground font-mono text-[11px]">
+                                                                {new Date(file.created_at).toLocaleDateString(undefined, {
+                                                                    day: 'numeric',
+                                                                    month: 'short',
+                                                                    year: 'numeric'
+                                                                })}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-right">
+                                                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                    {file.mime_type.startsWith('image/') && (
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground"
+                                                                            title="Preview Image"
+                                                                            onClick={() => handlePreviewFile(file)}
+                                                                        >
+                                                                            <Eye className="h-3.5 w-3.5" />
+                                                                        </Button>
+                                                                    )}
                                                                     <Button
-                                                                        variant="ghost" size="icon"
-                                                                        className="h-7 w-7 hover:bg-muted"
-                                                                        title="Copy signed URL (15 min)"
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground"
+                                                                        title="Copy Signed 15-Min URL"
                                                                         onClick={() => copySignedUrl(file)}
                                                                     >
-                                                                        {copiedId === file.id
-                                                                            ? <Check className="h-3.5 w-3.5 text-green-400" />
-                                                                            : <Copy className="h-3.5 w-3.5 text-muted-foreground" />}
+                                                                        {copiedId === file.id ? (
+                                                                            <Check className="h-3.5 w-3.5 text-green-400" />
+                                                                        ) : (
+                                                                            <Copy className="h-3.5 w-3.5" />
+                                                                        )}
                                                                     </Button>
                                                                     <Button
-                                                                        variant="ghost" size="icon"
-                                                                        className="h-7 w-7 hover:bg-red-500/10 hover:text-red-400"
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-7 w-7 hover:bg-muted text-muted-foreground hover:text-foreground"
+                                                                        title="Download File"
+                                                                        onClick={() => handleDownloadFile(file)}
+                                                                        disabled={downloadingId === file.id}
+                                                                    >
+                                                                        {downloadingId === file.id ? (
+                                                                            <Loader2 className="h-3.5 w-3.5 animate-spin text-orange-400" />
+                                                                        ) : (
+                                                                            <Download className="h-3.5 w-3.5" />
+                                                                        )}
+                                                                    </Button>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-7 w-7 hover:bg-red-500/10 text-muted-foreground hover:text-red-400"
                                                                         title="Delete file"
                                                                         onClick={() => setFileToDelete(file)}
-                                                                        disabled={deletingId === file.id}
+                                                                        disabled={deletingFileId === file.id}
                                                                     >
-                                                                        {deletingId === file.id
-                                                                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                                                            : <Trash2 className="h-3.5 w-3.5" />}
+                                                                        <Trash2 className="h-3.5 w-3.5" />
                                                                     </Button>
                                                                 </div>
                                                             </td>
@@ -534,26 +882,147 @@ export default function StoragePage() {
                 </div>
             </div>
 
+            {/* Create Bucket Modal */}
+            <Dialog open={isCreateBucketOpen} onOpenChange={setIsCreateBucketOpen}>
+                <DialogContent className="border-border bg-card max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-foreground">
+                            <Folder className="h-5 w-5 text-orange-400" /> Create S3 Bucket
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-muted-foreground">
+                            Buckets are isolated containers for your project&apos;s files and assets.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-foreground">Bucket Name</label>
+                            <Input
+                                placeholder="e.g. avatars, invoices, user-uploads"
+                                value={newBucketName}
+                                onChange={e => setNewBucketName(e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, ''))}
+                                className="h-9 text-xs font-mono"
+                                autoFocus
+                                onKeyDown={e => e.key === 'Enter' && handleCreateBucket()}
+                            />
+                            <p className="text-[11px] text-muted-foreground">Lowercase letters, numbers, hyphens and underscores (1-63 chars).</p>
+                        </div>
+
+                        <div className="flex items-center justify-between p-3 rounded-lg border border-border/70 bg-muted/20">
+                            <div>
+                                <p className="text-xs font-medium text-foreground">Public Bucket</p>
+                                <p className="text-[11px] text-muted-foreground">Allow public direct access without signing URLs.</p>
+                            </div>
+                            <input
+                                type="checkbox"
+                                checked={isPublicBucket}
+                                onChange={e => setIsPublicBucket(e.target.checked)}
+                                className="h-4 w-4 rounded accent-orange-500 cursor-pointer"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" size="sm" onClick={() => setIsCreateBucketOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            size="sm"
+                            className="bg-orange-600 hover:bg-orange-500 text-white font-medium"
+                            onClick={handleCreateBucket}
+                            disabled={creatingBucket || !newBucketName.trim()}
+                        >
+                            {creatingBucket ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Plus className="h-4 w-4 mr-1.5" />}
+                            Create Bucket
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Rename Bucket Modal */}
+            <Dialog open={!!editingBucket} onOpenChange={() => setEditingBucket(null)}>
+                <DialogContent className="border-border bg-card max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-foreground">
+                            <Edit2 className="h-4 w-4 text-orange-400" /> Rename Bucket
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3 py-2">
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-foreground">New Bucket Name</label>
+                            <Input
+                                value={editBucketName}
+                                onChange={e => setEditBucketName(e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, ''))}
+                                className="h-9 text-xs font-mono"
+                                autoFocus
+                                onKeyDown={e => e.key === 'Enter' && handleUpdateBucket()}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" size="sm" onClick={() => setEditingBucket(null)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            size="sm"
+                            className="bg-orange-600 hover:bg-orange-500"
+                            onClick={handleUpdateBucket}
+                            disabled={updatingBucket || !editBucketName.trim()}
+                        >
+                            {updatingBucket ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Check className="h-4 w-4 mr-1.5" />}
+                            Save Name
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Image Preview Modal */}
+            <Dialog open={!!previewFileUrl} onOpenChange={() => setPreviewFileUrl(null)}>
+                <DialogContent className="border-border bg-card/95 backdrop-blur-xl max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle className="text-sm font-medium truncate flex items-center justify-between">
+                            <span>{previewFileUrl?.name}</span>
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="py-2 flex justify-center items-center max-h-[70vh] overflow-hidden rounded-lg bg-black/40 border border-border/40">
+                        {previewFileUrl?.url && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                                src={previewFileUrl.url}
+                                alt={previewFileUrl.name}
+                                className="max-h-[65vh] max-w-full object-contain"
+                            />
+                        )}
+                    </div>
+                    <DialogFooter className="flex justify-between items-center sm:justify-between">
+                        <Button variant="outline" size="sm" onClick={() => window.open(previewFileUrl?.url, '_blank')}>
+                            <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Open in New Tab
+                        </Button>
+                        <Button size="sm" onClick={() => setPreviewFileUrl(null)}>
+                            Close
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* Bucket Delete Dialog */}
             <AlertDialog open={!!bucketToDelete} onOpenChange={() => setBucketToDelete(null)}>
-                <AlertDialogContent className="border-border bg-card">
+                <AlertDialogContent className="border-border bg-card max-w-md">
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Bucket</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Are you sure you want to delete <strong className="text-white">{bucketToDelete?.name}</strong>? 
-                            This cannot be undone. The bucket must be completely empty before it can be deleted.
+                        <AlertDialogTitle className="text-red-400">Delete Bucket</AlertDialogTitle>
+                        <AlertDialogDescription className="text-xs text-muted-foreground">
+                            Are you sure you want to delete <strong className="text-white">{bucketToDelete?.name}</strong>? This action is permanent. The bucket must be empty before deletion.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel className="border-border hover:bg-muted hover:text-white">Cancel</AlertDialogCancel>
-                        <AlertDialogAction 
-                            className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                        <AlertDialogCancel className="border-border text-xs">Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-destructive hover:bg-destructive/90 text-destructive-foreground text-xs"
                             onClick={() => {
-                                if (bucketToDelete) deleteBucket(bucketToDelete);
-                                setBucketToDelete(null);
+                                if (bucketToDelete) handleDeleteBucket(bucketToDelete);
                             }}
+                            disabled={deletingBucketId === bucketToDelete?.id}
                         >
-                            Delete
+                            {deletingBucketId === bucketToDelete?.id ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                            Delete Bucket
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
@@ -561,24 +1030,24 @@ export default function StoragePage() {
 
             {/* File Delete Dialog */}
             <AlertDialog open={!!fileToDelete} onOpenChange={() => setFileToDelete(null)}>
-                <AlertDialogContent className="border-border bg-card">
+                <AlertDialogContent className="border-border bg-card max-w-md">
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Delete File</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Are you sure you want to delete <strong className="text-white">{fileToDelete?.name}</strong>? 
-                            This action cannot be undone and the file will be permanently removed from storage.
+                        <AlertDialogTitle className="text-red-400">Delete File</AlertDialogTitle>
+                        <AlertDialogDescription className="text-xs text-muted-foreground">
+                            Are you sure you want to delete <strong className="text-white">{fileToDelete?.name}</strong>? The file will be permanently removed from AWS S3.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel className="border-border hover:bg-muted hover:text-white">Cancel</AlertDialogCancel>
-                        <AlertDialogAction 
-                            className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                        <AlertDialogCancel className="border-border text-xs">Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-destructive hover:bg-destructive/90 text-destructive-foreground text-xs"
                             onClick={() => {
-                                if (fileToDelete) deleteFile(fileToDelete);
-                                setFileToDelete(null);
+                                if (fileToDelete) handleDeleteFile(fileToDelete);
                             }}
+                            disabled={deletingFileId === fileToDelete?.id}
                         >
-                            Delete
+                            {deletingFileId === fileToDelete?.id ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                            Delete File
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
