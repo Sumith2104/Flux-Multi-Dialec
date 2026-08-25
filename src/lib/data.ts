@@ -717,6 +717,8 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
                 FROM information_schema.tables 
                 WHERE table_schema = $1 AND table_type = 'BASE TABLE'
                 AND table_name NOT LIKE '_flux_internal_%'
+                AND table_schema NOT IN ('fluxbase_global', 'pg_catalog', 'information_schema', 'cron', 'pgsodium', 'vault')
+                AND table_name NOT IN ('audit_logs', 'webhook_deliveries', 'api_keys', 'users', 'projects', 'flux_migrations', 'backups')
             `, [schemaName]);
 
             if (isExternal && result.rows.length === 0 && schemaName !== 'public') {
@@ -725,16 +727,7 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
                     FROM information_schema.tables 
                     WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
                     AND table_name NOT LIKE '_flux_internal_%'
-                `);
-            }
-
-            if (isExternal && result.rows.length === 0) {
-                // Fallback ONLY for external databases with non-standard schemas
-                result = await pool.query(`
-                    SELECT DISTINCT table_name 
-                    FROM information_schema.tables 
-                    WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_type = 'BASE TABLE'
-                    AND table_name NOT LIKE '_flux_internal_%'
+                    AND table_name NOT IN ('audit_logs', 'webhook_deliveries', 'api_keys', 'users', 'projects', 'flux_migrations', 'backups')
                 `);
             }
 
@@ -1969,7 +1962,9 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
         if (project.dialect?.toLowerCase() === 'mysql') {
             const mysqlPool = await getTenantMysqlPool(project);
             const { dbName } = getProjectDbAndSchema(project);
-            let [rows]: any = await mysqlPool.query(`
+            const targetDb = dbName || `project_${projectId}`;
+
+            const [rows]: any = await mysqlPool.query(`
                 SELECT 
                     table_name AS name,
                     COALESCE(table_rows, 0) AS row_count,
@@ -1977,20 +1972,8 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
                 FROM information_schema.tables
                 WHERE table_schema = ? AND table_type = 'BASE TABLE'
                 AND table_name NOT LIKE '\\_flux\\_internal\\_%'
-            `, [dbName]);
-
-            if (!rows || rows.length === 0) {
-                [rows] = await mysqlPool.query(`
-                    SELECT 
-                        table_name AS name,
-                        COALESCE(table_rows, 0) AS row_count,
-                        COALESCE(data_length + index_length, 0) AS size
-                    FROM information_schema.tables
-                    WHERE table_schema NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') 
-                    AND table_type = 'BASE TABLE'
-                    AND table_name NOT LIKE '\\_flux\\_internal\\_%'
-                `);
-            }
+                AND table_name NOT IN ('audit_logs', 'webhook_deliveries', 'api_keys', 'users', 'projects', 'flux_migrations', 'backups')
+            `, [targetDb]);
 
             tablesStats = (rows || []).map((r: any) => ({
                 name: r.name || r.NAME,
@@ -2002,24 +1985,18 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
             await Promise.all(
                 tablesStats.map(async (t) => {
                     try {
-                        const [cntRes]: any = await mysqlPool.query(`SELECT COUNT(*) as cnt FROM \`${dbName}\`.\`${t.name}\``);
+                        const [cntRes]: any = await mysqlPool.query(`SELECT COUNT(*) as cnt FROM \`${targetDb}\`.\`${t.name}\``);
                         if (cntRes && cntRes[0]?.cnt !== undefined) {
                             t.rows = parseInt(cntRes[0].cnt, 10);
                         }
-                    } catch {
-                        try {
-                            const [cntRes]: any = await mysqlPool.query(`SELECT COUNT(*) as cnt FROM \`${t.name}\``);
-                            if (cntRes && cntRes[0]?.cnt !== undefined) {
-                                t.rows = parseInt(cntRes[0].cnt, 10);
-                            }
-                        } catch {}
-                    }
+                    } catch {}
                 })
             );
         } else {
             const pool = await getTenantPgPool(project);
             const { schemaName } = getProjectDbAndSchema(project);
-            let activeSchema = schemaName;
+            const isExternal = project.connection_type && project.connection_type !== 'internal';
+            const activeSchema = schemaName || `project_${projectId}`;
 
             let result = await pool.query(`
                 SELECT 
@@ -2031,10 +2008,12 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
                 LEFT JOIN pg_class c ON c.relname = t.table_name
                 LEFT JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
                 WHERE t.table_schema = $1 AND t.table_type = 'BASE TABLE'
-                AND t.table_name NOT LIKE '_flux_internal_%';
-            `, [schemaName]);
+                AND t.table_name NOT LIKE '_flux_internal_%'
+                AND t.table_schema NOT IN ('fluxbase_global', 'pg_catalog', 'information_schema', 'cron', 'pgsodium', 'vault')
+                AND t.table_name NOT IN ('audit_logs', 'webhook_deliveries', 'api_keys', 'users', 'projects', 'flux_migrations', 'backups');
+            `, [activeSchema]);
 
-            if (result.rows.length === 0 && schemaName !== 'public') {
+            if (isExternal && result.rows.length === 0 && activeSchema !== 'public') {
                 result = await pool.query(`
                     SELECT 
                         t.table_name AS name,
@@ -2045,23 +2024,8 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
                     LEFT JOIN pg_class c ON c.relname = t.table_name
                     LEFT JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
                     WHERE t.table_schema = 'public' AND t.table_type = 'BASE TABLE'
-                    AND t.table_name NOT LIKE '_flux_internal_%';
-                `);
-                if (result.rows.length > 0) activeSchema = 'public';
-            }
-
-            if (result.rows.length === 0) {
-                result = await pool.query(`
-                    SELECT 
-                        t.table_name AS name,
-                        t.table_schema AS schema_name,
-                        COALESCE(c.reltuples, 0)::bigint AS rows,
-                        COALESCE(pg_total_relation_size(c.oid), 0)::bigint AS size
-                    FROM information_schema.tables t
-                    LEFT JOIN pg_class c ON c.relname = t.table_name
-                    LEFT JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
-                    WHERE t.table_schema NOT IN ('pg_catalog', 'information_schema') AND t.table_type = 'BASE TABLE'
-                    AND t.table_name NOT LIKE '_flux_internal_%';
+                    AND t.table_name NOT LIKE '_flux_internal_%'
+                    AND t.table_name NOT IN ('audit_logs', 'webhook_deliveries', 'api_keys', 'users', 'projects', 'flux_migrations', 'backups');
                 `);
             }
 

@@ -85,28 +85,19 @@ export async function GET(request: Request) {
             resultExtensions = { rows: [] };
         } else {
             [resultTables, resultViews, resultIndexes, resultFunctions, resultExtensions] = await Promise.all([
-                engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = $1 AND table_name NOT LIKE '_flux_internal_%' ORDER BY table_name, ordinal_position;`, [schemaName]),
-                engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = $1 AND table_name NOT LIKE '_flux_internal_%';`, [schemaName]),
-                engine.execute(`SELECT indexname, tablename FROM pg_indexes WHERE schemaname = $1;`, [schemaName]),
-                engine.execute(`SELECT routine_name FROM information_schema.routines WHERE routine_schema = $1 AND routine_type = 'FUNCTION';`, [schemaName]),
+                engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = $1 AND table_name NOT LIKE '_flux_internal_%' AND table_schema NOT IN ('fluxbase_global', 'pg_catalog', 'information_schema', 'cron', 'pgsodium', 'vault') AND table_name NOT IN ('audit_logs', 'webhook_deliveries', 'api_keys', 'users', 'projects', 'flux_migrations', 'backups') ORDER BY table_name, ordinal_position;`, [schemaName]),
+                engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = $1 AND table_name NOT LIKE '_flux_internal_%' AND table_schema NOT IN ('fluxbase_global', 'pg_catalog', 'information_schema', 'cron', 'pgsodium', 'vault') AND table_name NOT IN ('audit_logs', 'webhook_deliveries', 'api_keys', 'users', 'projects', 'flux_migrations', 'backups');`, [schemaName]),
+                engine.execute(`SELECT indexname, tablename FROM pg_indexes WHERE schemaname = $1 AND schemaname NOT IN ('fluxbase_global', 'pg_catalog', 'information_schema', 'cron', 'pgsodium', 'vault');`, [schemaName]),
+                engine.execute(`SELECT routine_name FROM information_schema.routines WHERE routine_schema = $1 AND routine_type = 'FUNCTION' AND routine_schema NOT IN ('fluxbase_global', 'pg_catalog', 'information_schema', 'cron', 'pgsodium', 'vault');`, [schemaName]),
                 engine.execute(`SELECT extname FROM pg_extension;`)
             ]);
 
             if (isExternal && (!resultTables?.rows || resultTables.rows.length === 0) && schemaName !== 'public') {
                 [resultTables, resultViews, resultIndexes, resultFunctions] = await Promise.all([
-                    engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name NOT LIKE '_flux_internal_%' ORDER BY table_name, ordinal_position;`),
-                    engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = 'public' AND table_name NOT LIKE '_flux_internal_%';`),
+                    engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name NOT LIKE '_flux_internal_%' AND table_name NOT IN ('audit_logs', 'webhook_deliveries', 'api_keys', 'users', 'projects', 'flux_migrations', 'backups') ORDER BY table_name, ordinal_position;`),
+                    engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema = 'public' AND table_name NOT LIKE '_flux_internal_%' AND table_name NOT IN ('audit_logs', 'webhook_deliveries', 'api_keys', 'users', 'projects', 'flux_migrations', 'backups');`),
                     engine.execute(`SELECT indexname, tablename FROM pg_indexes WHERE schemaname = 'public';`),
                     engine.execute(`SELECT routine_name FROM information_schema.routines WHERE routine_schema = 'public' AND routine_type = 'FUNCTION';`)
-                ]);
-            }
-
-            if (isExternal && (!resultTables?.rows || resultTables.rows.length === 0)) {
-                [resultTables, resultViews, resultIndexes, resultFunctions] = await Promise.all([
-                    engine.execute(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_name NOT LIKE '_flux_internal_%' ORDER BY table_name, ordinal_position;`),
-                    engine.execute(`SELECT table_name FROM information_schema.views WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_name NOT LIKE '_flux_internal_%';`),
-                    engine.execute(`SELECT indexname, tablename FROM pg_indexes WHERE schemaname NOT IN ('pg_catalog', 'information_schema');`),
-                    engine.execute(`SELECT routine_name FROM information_schema.routines WHERE routine_schema NOT IN ('pg_catalog', 'information_schema') AND routine_type = 'FUNCTION';`)
                 ]);
             }
         }

@@ -146,7 +146,9 @@ export async function POST(req: NextRequest) {
                 `SELECT table_name, table_schema, COALESCE(pg_total_relation_size(format('%I.%I', table_schema, table_name)), 0) as size
                  FROM information_schema.tables 
                  WHERE table_schema = $1 AND table_type = 'BASE TABLE'
-                 AND table_name NOT LIKE '_flux_internal_%'`,
+                 AND table_name NOT LIKE '_flux_internal_%'
+                 AND table_schema NOT IN ('fluxbase_global', 'pg_catalog', 'information_schema', 'cron', 'pgsodium', 'vault')
+                 AND table_name NOT IN ('audit_logs', 'webhook_deliveries', 'api_keys', 'users', 'projects', 'flux_migrations', 'backups')`,
                 [schemaName]
             );
 
@@ -155,18 +157,10 @@ export async function POST(req: NextRequest) {
                     `SELECT table_name, table_schema, COALESCE(pg_total_relation_size(format('%I.%I', table_schema, table_name)), 0) as size
                      FROM information_schema.tables 
                      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-                     AND table_name NOT LIKE '_flux_internal_%'`
+                     AND table_name NOT LIKE '_flux_internal_%'
+                     AND table_name NOT IN ('audit_logs', 'webhook_deliveries', 'api_keys', 'users', 'projects', 'flux_migrations', 'backups')`
                 );
                 if (tablesRes.rows.length > 0) activeSchema = 'public';
-            }
-
-            if (tablesRes.rows.length === 0) {
-                tablesRes = await tenantPgPool.query(
-                    `SELECT table_name, table_schema, COALESCE(pg_total_relation_size(format('%I.%I', table_schema, table_name)), 0) as size
-                     FROM information_schema.tables 
-                     WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_type = 'BASE TABLE'
-                     AND table_name NOT LIKE '_flux_internal_%'`
-                );
             }
 
             for (const row of tablesRes.rows) {
