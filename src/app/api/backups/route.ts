@@ -8,6 +8,8 @@ import {
     quotePgIdentifier,
 } from '@/lib/sql-safety';
 import { ERROR_CODES, FluxbaseError } from '@/lib/error-codes';
+import { requireWriteScope } from '@/lib/require-scope';
+import logger from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +46,7 @@ export async function GET(req: NextRequest) {
         const projectId = searchParams.get('projectId');
         const backupId = searchParams.get('backupId');
         const auth = await getAuthContextFromRequest(req);
+  requireWriteScope(auth);
         if (!projectId) throw new FluxbaseError('projectId is required', ERROR_CODES.MISSING_FIELD, 400);
 
         await requireProjectAccess(projectId, auth);
@@ -206,7 +209,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ success: true, backup: res.rows[0] });
     } catch (error) {
-        console.error('Backup creation failed:', error);
+        logger.error('Backup creation failed:', error);
         const { body, status } = jsonError(error);
         return NextResponse.json(body, { status });
     }
@@ -237,7 +240,7 @@ export async function DELETE(req: NextRequest) {
 
         return NextResponse.json({ success: true });
     } catch (error) {
-        console.error('Delete backup failed:', error);
+        logger.error('Delete backup failed:', error);
         const { body, status } = jsonError(error);
         return NextResponse.json(body, { status });
     }

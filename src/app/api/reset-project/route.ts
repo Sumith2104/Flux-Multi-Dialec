@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { resetProjectData } from '@/lib/data';
 import { getCurrentUserId } from '@/lib/auth';
+import logger from '@/lib/logger';
 
 export async function POST(request: Request) {
     try {
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: true, message: 'Database reset successfully.' });
 
     } catch (error: any) {
-        console.error('Failed to reset database:', error);
+        logger.error('Failed to reset database:', error);
         return NextResponse.json({ error: error.message || 'Failed to reset database' }, { status: 500 });
     }
 }

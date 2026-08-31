@@ -1,0 +1,7 @@
+# PgBouncer userlist for Fluxbase
+# Format: "username" "password"
+# In production, use md5-hashed passwords.
+# Generate with: echo -n "passwordusername" | md5sum
+# Or use SCRAM-SHA-256 if your Postgres supports it.
+
+# "fluxbase" "md5<hash>"

@@ -11,15 +11,9 @@ import { type WebhookEvent } from '@/lib/webhooks';
 import { Parser } from 'node-sql-parser';
 import { assertProjectScope } from '@/lib/project-auth';
 import { trackApiRequest } from '@/lib/analytics';
+import logger from '@/lib/logger';
 
-export const dynamic = 'force-dynamic';
-
-const CORS_HEADERS = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-project-id, x-api-key, apiKey, projectId',
-    'Access-Control-Max-Age': '86400',
-};
+import { getCorsOrigin, buildCorsHeaders, corsPreflightResponse } from '@/lib/cors';
 
 const CACHE_TTL_SECONDS = 30; // 30s burst cache for identical SELECTs
 
@@ -32,12 +26,17 @@ interface CacheEntry {
 
 export async function POST(req: NextRequest) {
     try {
+        // Body size guard
+        const { enforceBodySizeLimit } = await import('@/lib/body-size-limit');
+        const sizeCheck = enforceBodySizeLimit(req);
+        if (sizeCheck) return sizeCheck;
+
         // --- 1. Robust JSON Parsing ---
         let body;
         try {
             body = await req.json();
         } catch (e) {
-            console.error('[API JSON Error] Malformed body received:', e);
+            logger.error('[API JSON Error] Malformed body received:', e);
             throw new FluxbaseError(
                 "Malformed JSON. Ensure your client is sending valid, completed JSON bodies.",
                 ERROR_CODES.BAD_REQUEST,
@@ -78,7 +77,7 @@ export async function POST(req: NextRequest) {
                     if (Array.isArray(rawData) && rawData.length > 0) {
                         // Case: Client sent Array of Arrays (Matrix), e.g. [[1, '..'], [2, '..']]
                         if (Array.isArray(rawData[0])) {
-                            console.log(`[SqlEngine] Auto-Transforming Matrix to Objects for ${expectedKeys.join(', ')}`);
+                            logger.info(`[SqlEngine] Auto-Transforming Matrix to Objects for ${expectedKeys.join(', ')}`);
                             finalParams = [
                                 rawData.map((row: any[]) => {
                                     const obj: Record<string, any> = {};
@@ -105,7 +104,7 @@ export async function POST(req: NextRequest) {
                 }
             } catch (err: any) {
                 if (err instanceof FluxbaseError) throw err;
-                console.warn('[Validation Error] Failed to parse bulk insert metadata:', err);
+                logger.warn('[Validation Error] Failed to parse bulk insert metadata:', err);
                 // Continue to DB if it's an unknown parsing error, let DB handle it
             }
         }
@@ -113,6 +112,15 @@ export async function POST(req: NextRequest) {
 
         const auth = await getAuthContextFromRequest(req);
         if (!auth?.userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
+
+        // Enforce API key scopes for mutating operations
+        const firstWord = query.trim().split(/\s+/)[0]?.toUpperCase() || '';
+        const isReadOnly = ['SELECT', 'EXPLAIN', 'SHOW', 'DESCRIBE', 'WITH'].includes(firstWord);
+        if (!isReadOnly && auth.scopes && auth.scopes.length > 0) {
+            const { requireWriteScope } = await import('@/lib/require-scope');
+            const scopeErr = requireWriteScope(auth);
+            if (scopeErr) return scopeErr;
+        }
 
         // Project-level suspension check is handled more granularly later after fetching the project.
         // But we keep the global check for immediate block.
@@ -164,7 +172,7 @@ export async function POST(req: NextRequest) {
                     cachedResult.result.tableName = selectTableName;
                     cachedResult.result.primaryKeyColumn = primaryKeyColumn;
                 } catch (err) {
-                    console.warn('[Cache Table Match Error]', err);
+                    logger.warn('[Cache Table Match Error]', err);
                 }
             }
 
@@ -222,7 +230,7 @@ export async function POST(req: NextRequest) {
 
             backgroundTasks.push(
                 logAuditAction(projectId, userId, 'SQL_EXECUTION', query, auditMeta)
-                    .catch(e => console.error('[Audit Error]', e))
+                    .catch(e => logger.error('[Audit Error]', e))
             );
 
             // Track Real-time Analytics
@@ -277,7 +285,7 @@ export async function POST(req: NextRequest) {
                     }
                 }
             } catch (err) {
-                console.warn('[AST Parser Fallback] Falling back to regex for detection:', err);
+                logger.warn('[AST Parser Fallback] Falling back to regex for detection:', err);
             }
 
             // Fallback: Use regex if AST extraction was unsuccessful
@@ -298,7 +306,7 @@ export async function POST(req: NextRequest) {
 
                 backgroundTasks.push((async () => {
                     await invalidateTableCache(projectId, cleanMutatedTable).catch(err => {
-                        console.warn(`[Upstash Invalidation Error] Failed to invalidate cache for ${cleanMutatedTable}:`, err);
+                        logger.warn(`[Upstash Invalidation Error] Failed to invalidate cache for ${cleanMutatedTable}:`, err);
                     });
 
                     const webhookEvent = upperQuery.startsWith('INSERT') ? 'row.inserted' : upperQuery.startsWith('UPDATE') ? 'row.updated' : 'row.deleted';
@@ -309,7 +317,7 @@ export async function POST(req: NextRequest) {
                         cleanMutatedTable,
                         webhookEvent as WebhookEvent,
                         newDataParsed || (upperQuery.startsWith('INSERT') && Array.isArray(params) ? { raw_params: params } : undefined)
-                    ).catch(err => console.error(`[Webhook Dispatch Error]`, err));
+                    ).catch(err => logger.error(`[Webhook Dispatch Error]`, err));
 
                     const pool = getPgPool();
                     const payload = {
@@ -332,7 +340,7 @@ export async function POST(req: NextRequest) {
                         payloadString = JSON.stringify(truncatedPayload).replace(/'/g, "''");
                     }
                     await pool.query(`NOTIFY flux_realtime, '${payloadString}'`).catch(err => {
-                        console.warn(`[SSE Broadcast Error] Failed to fire NOTIFY:`, err);
+                        logger.warn(`[SSE Broadcast Error] Failed to fire NOTIFY:`, err);
                     });
                 })());
             }
@@ -340,7 +348,7 @@ export async function POST(req: NextRequest) {
             const isSchemaChange = upperQuery.includes('CREATE ') || upperQuery.includes('DROP ') || upperQuery.includes('ALTER ') || upperQuery.includes('RENAME ');
             if (isSchemaChange) {
                 backgroundTasks.push((async () => {
-                    await redis.del(`schema_inference_${projectId}`).catch(err => console.warn('Cache del error:', err));
+                    await redis.del(`schema_inference_${projectId}`).catch(err => logger.warn('Cache del error:', err));
 
                     const pool = getPgPool();
                     const payload = {
@@ -350,7 +358,7 @@ export async function POST(req: NextRequest) {
                     };
                     const payloadString = JSON.stringify(payload).replace(/'/g, "''");
                     await pool.query(`NOTIFY flux_realtime, '${payloadString}'`).catch(err => {
-                        console.warn(`[SSE Broadcast Error] Failed to fire schema_update NOTIFY:`, err);
+                        logger.warn(`[SSE Broadcast Error] Failed to fire schema_update NOTIFY:`, err);
                     });
                 })());
             }
@@ -364,7 +372,7 @@ export async function POST(req: NextRequest) {
                     primaryKeyColumn = pk.column_name;
                 }
             } catch (err) {
-                console.warn(`[Primary Key Detection Failed] For table ${selectTableName}:`, err);
+                logger.warn(`[Primary Key Detection Failed] For table ${selectTableName}:`, err);
             }
         }
 
@@ -396,34 +404,36 @@ export async function POST(req: NextRequest) {
                     executionInfo: responseData.executionInfo,
                     expiresAt: Date.now() + (CACHE_TTL_SECONDS * 1000)
                 }, { ex: CACHE_TTL_SECONDS }).catch(redisErr => {
-                    console.warn('[Redis Error] Failed to write to global cache:', redisErr);
+                    logger.warn('[Redis Error] Failed to write to global cache:', redisErr);
                 })
             );
         }
 
         // Fire background tasks
-        Promise.all(backgroundTasks).catch(e => console.error('[Background Task Group Error]', e));
+        Promise.all(backgroundTasks).catch(e => logger.error('[Background Task Group Error]', e));
+
+        const origin = getCorsOrigin(req.headers.get('origin'));
+        const corsHeaders = buildCorsHeaders(origin);
 
         return NextResponse.json(responseData, {
-            headers: CORS_HEADERS
+            headers: corsHeaders
         });
 
     } catch (error: any) {
-        console.error('SQL Execution Failed:', error);
+        logger.error('SQL Execution Failed:', error);
+        const origin = getCorsOrigin(req.headers.get('origin'));
+        const corsHeaders = buildCorsHeaders(origin);
         const response = error instanceof FluxbaseError
             ? NextResponse.json(error.toJSON(), { status: error.status })
             : handleDatabaseError(error);
 
-        Object.entries(CORS_HEADERS).forEach(([key, val]) => {
+        Object.entries(corsHeaders).forEach(([key, val]) => {
             response.headers.set(key, val);
         });
         return response;
     }
 }
 
-export async function OPTIONS() {
-    return new Response(null, {
-        status: 204,
-        headers: CORS_HEADERS,
-    });
+export async function OPTIONS(req: NextRequest) {
+    return corsPreflightResponse(getCorsOrigin(req.headers.get('origin')));
 }

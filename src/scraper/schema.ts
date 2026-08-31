@@ -1,3 +1,5 @@
+import logger from '@/lib/logger';
+
 /**
  * Infers SQL column structures automatically based on the extracted JSON keys.
  * By default, web scraped data is extremely unpredictable, so we map everything to TEXT.
@@ -7,7 +9,7 @@
  * @returns Array of SQL Column Definition Strings like ["price TEXT", "title TEXT"]
  */
 export function inferSchema(sampleRow: Record<string, any>): { columnName: string, sqlDefinition: string }[] {
-    console.log(`[Scraper Schema] Inferring dynamic schema...`);
+    logger.info(`[Scraper Schema] Inferring dynamic schema...`);
 
     const columns: { columnName: string, sqlDefinition: string }[] = [];
 

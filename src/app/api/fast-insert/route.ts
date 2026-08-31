@@ -4,30 +4,30 @@ import { ensureNotSuspended } from "@/lib/data";
 import { pool } from "@/lib/pg";
 import { requireProjectAccess } from "@/lib/project-auth";
 import { quotePgIdentifier, quotePgProjectSchema } from "@/lib/sql-safety";
+import logger from '@/lib/logger';
+
+import { getCorsOrigin, buildCorsHeaders, corsPreflightResponse } from '@/lib/cors';
 
 export const dynamic = 'force-dynamic';
 
-const CORS_HEADERS = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-project-id, x-api-key, apiKey, projectId',
-    'Access-Control-Max-Age': '86400',
-};
+let _reqOrigin: string | undefined;
 
 function sendResponse(body: string | null, init?: ResponseInit) {
     const headers = new Headers(init?.headers);
-    Object.entries(CORS_HEADERS).forEach(([k, v]) => headers.set(k, v));
+    Object.entries(buildCorsHeaders(_reqOrigin)).forEach(([k, v]) => headers.set(k, v));
     return new Response(body, { ...init, headers });
 }
 
-export async function OPTIONS() {
-    return new Response(null, {
-        status: 204,
-        headers: CORS_HEADERS,
-    });
+export async function OPTIONS(req: NextRequest) {
+    return corsPreflightResponse(getCorsOrigin(req.headers.get('origin')));
 }
 
 export async function POST(req: NextRequest) {
+    _reqOrigin = getCorsOrigin(req.headers.get('origin'));
+    const { enforceBodySizeLimit } = await import("@/lib/body-size-limit");
+    const sizeCheck = enforceBodySizeLimit(req);
+    if (sizeCheck) return sizeCheck;
+
     let body;
 
     try {
@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
         if (err.name === 'AbortError') {
             return sendResponse("Database Timeout", { status: 504 });
         }
-        console.error('[Fast Insert Error]', err);
+        logger.error('[Fast Insert Error]', err);
         return sendResponse("Database Error", { status: 500 });
     } finally {
         clearTimeout(timeout);

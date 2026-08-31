@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { sendPasswordResetEmail } from '@/lib/email';
 import crypto from 'crypto';
+import logger from '@/lib/logger';
 
 export async function POST(req: Request) {
     try {
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
 
         return NextResponse.json({ success: true });
     } catch (error: any) {
-        console.error("Password reset request error:", error);
+        logger.error("Password reset request error:", error);
         return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 });
     }
 }

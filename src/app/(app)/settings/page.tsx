@@ -52,7 +52,7 @@ function CopyableField({ label, value }: { label: string, value: string }) {
     const [hasCopied, setHasCopied] = useState(false);
 
     const copyToClipboard = () => {
-        navigator.clipboard.writeText(value);
+        navigator.clipboard.writeText(value).catch(() => {});
         setHasCopied(true);
         toast({ title: "Copied!", description: `${label} has been copied to your clipboard.` });
         setTimeout(() => setHasCopied(false), 2000);
@@ -212,7 +212,7 @@ export default function GeneralSettingsPage() {
                 const dataUrl = await QRCode.toDataURL(res.qrUrl);
                 setQrCodeDataUrl(dataUrl);
             } catch (err) {
-                console.error('Failed to generate QR code:', err);
+                toast({ variant: 'destructive', title: 'QR Error', description: 'Could not generate 2FA QR code. Try again.' });
             }
         } else {
             toast({ variant: 'destructive', title: 'Error', description: res.error || 'Failed to initialize 2FA setup' });
@@ -463,7 +463,7 @@ export default function GeneralSettingsPage() {
                                                     <div className="flex items-center justify-between text-xs p-2 bg-secondary rounded border border-border">
                                                         <span className="text-muted-foreground truncate mr-2">Secret: <span className="text-foreground font-mono">{setupData.secret}</span></span>
                                                         <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => {
-                                                            navigator.clipboard.writeText(setupData.secret);
+                                                            navigator.clipboard.writeText(setupData.secret).catch(() => {});
                                                             toast({ title: "Copied secret" });
                                                         }}>
                                                             <Copy className="h-3 w-3" />

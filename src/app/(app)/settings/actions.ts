@@ -39,7 +39,7 @@ export async function updateProjectSettingsAction(projectId: string, timezone: s
         revalidatePath('/api');
         return { success: true };
     } catch (error) {
-        console.error('Failed to update project settings:', error);
+        logger.error('Failed to update project settings:', error);
         return { error: `An unexpected error occurred: ${(error as Error).message}` };
     }
 }
@@ -60,7 +60,7 @@ export async function updateProjectAiSettingsAction(projectId: string, allowDest
 
         return { success: true };
     } catch (error) {
-        console.error('Failed to update AI settings:', error);
+        logger.error('Failed to update AI settings:', error);
         return { error: `An unexpected error occurred: ${(error as Error).message}` };
     }
 }
@@ -79,7 +79,7 @@ export async function deleteProjectAction(projectId: string) {
         return { success: true };
 
     } catch (error) {
-        console.error('Failed to delete project:', error);
+        logger.error('Failed to delete project:', error);
         return { error: `An unexpected error occurred: ${(error as Error).message}` };
     }
 }
@@ -97,7 +97,7 @@ export async function clearOrganizationAction() {
         return { success: true };
 
     } catch (error) {
-        console.error('Failed to clear organization:', error);
+        logger.error('Failed to clear organization:', error);
         return { error: `An unexpected error occurred: ${(error as Error).message}` };
     }
 }
@@ -123,7 +123,7 @@ export async function toggleOrganizationSuspensionAction(status: 'suspended' | '
         return { success: true };
 
     } catch (error) {
-        console.error(`Failed to ${status === 'suspended' ? 'suspend' : 'resume'} organization:`, error);
+        logger.error(`Failed to ${status === 'suspended' ? 'suspend' : 'resume'} organization:`, error);
         return { error: `An unexpected error occurred: ${(error as Error).message}` };
     }
 }
@@ -131,6 +131,7 @@ export async function toggleOrganizationSuspensionAction(status: 'suspended' | '
 // --- Webhooks Actions ---
 
 import { createWebhook, deleteWebhook, getWebhooksForProject, updateWebhook, type WebhookEvent } from '@/lib/webhooks';
+import logger from '@/lib/logger';
 
 export async function getWebhooksAction(projectId: string) {
     try {

@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
+import logger from '@/lib/logger';
 
-// In production, configure SMS_WEBHOOK_SECRET in .env.local
-const SMS_WEBHOOK_SECRET = process.env.SMS_WEBHOOK_SECRET || 'my_super_secure_secret_token';
+const SMS_WEBHOOK_SECRET = process.env.SMS_WEBHOOK_SECRET;
+
+if (!SMS_WEBHOOK_SECRET) {
+    console.error('[SMS Webhook] SMS_WEBHOOK_SECRET env var is not set. All requests will be rejected.');
+}
 
 export async function POST(req: NextRequest) {
     try {
+        if (!SMS_WEBHOOK_SECRET) {
+            return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 });
+        }
+
         const authHeader = req.headers.get('Authorization');
         const expected = `Bearer ${SMS_WEBHOOK_SECRET}`;
-        const expectedAlternative = SMS_WEBHOOK_SECRET;
-
-        if (authHeader !== expected && authHeader !== expectedAlternative) {
-            console.warn(`[SMS Webhook] Unauthorized request. Received Authorization: "${authHeader}". Expected: "${expected}" or "${expectedAlternative}"`);
+        if (!authHeader || authHeader !== expected) {
+            logger.warn(`[SMS Webhook] Unauthorized request.`);
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
@@ -31,7 +37,7 @@ export async function POST(req: NextRequest) {
             smsText.includes('accepted');
 
         if (!isCredit) {
-            console.log(`[SMS Webhook] Ignored non-credit SMS: "${body}"`);
+            logger.info(`[SMS Webhook] Ignored non-credit SMS: "${body}"`);
             return NextResponse.json({ success: false, message: 'Ignored non-credit notification' });
         }
 
@@ -42,7 +48,7 @@ export async function POST(req: NextRequest) {
             body.match(/([\d,]+(?:\.\d{1,2})?)\s*[^0-9]*?(?:credited|received|deposited)/i);
 
         if (!amountMatch) {
-            console.warn(`[SMS Webhook] Could not parse amount from SMS: "${body}"`);
+            logger.warn(`[SMS Webhook] Could not parse amount from SMS: "${body}"`);
             return NextResponse.json({ success: false, message: 'Could not parse amount' }, { status: 400 });
         }
         
@@ -50,10 +56,9 @@ export async function POST(req: NextRequest) {
         const amount = parseFloat(rawAmount);
 
         // 3. Extract 12-digit UTR/Ref No
-        // UPI transaction references are always 12-digit numeric sequences
         const utrMatch = body.match(/\b(\d{12})\b/);
         if (!utrMatch) {
-            console.warn(`[SMS Webhook] Could not parse 12-digit UTR from SMS: "${body}"`);
+            logger.warn(`[SMS Webhook] Could not parse 12-digit UTR from SMS: "${body}"`);
             return NextResponse.json({ success: false, message: 'Could not parse UTR' });
         }
         
@@ -67,11 +72,11 @@ export async function POST(req: NextRequest) {
             ON CONFLICT (utr) DO NOTHING
         `, [body, sender, utr, amount]);
 
-        console.log(`[SMS Webhook] Successfully logged payment SMS: UTR=${utr}, Amount=₹${amount}`);
+        logger.info(`[SMS Webhook] Successfully logged payment SMS: UTR=${utr}, Amount=₹${amount}`);
         return NextResponse.json({ success: true, utr, amount });
 
     } catch (error: any) {
-        console.error(`[SMS Webhook Error]:`, error);
+        logger.error(`[SMS Webhook Error]:`, error);
         return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
     }
 }

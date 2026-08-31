@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import realtimeManager from '@/lib/realtime-manager';
+import logger from '@/lib/logger';
 
 export async function POST(req: Request) {
     try {
@@ -9,9 +10,12 @@ export async function POST(req: Request) {
         const validSecrets = [
             process.env.PAYMENT_WEBHOOK_SECRET,
             process.env.SMS_WEBHOOK_SECRET,
-            'sumith@fluxbase',
-            'fluxbase_payment_webhook_secret_key_2026'
         ].filter(Boolean);
+
+        if (!validSecrets.length) {
+            logger.error('[Webhook] No PAYMENT_WEBHOOK_SECRET or SMS_WEBHOOK_SECRET configured');
+            return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 });
+        }
 
         if (token && !validSecrets.includes(token)) {
             return NextResponse.json({ error: 'Unauthorized webhook request' }, { status: 401 });
@@ -95,7 +99,7 @@ export async function POST(req: Request) {
                 winning_source VARCHAR(30),
                 received_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             );
-        `).catch(err => console.error('[Schema Init Warning]:', err.message));
+        `).catch(err => logger.error('[Schema Init Warning]:', err.message));
 
         const client = await pool.connect();
 
@@ -108,7 +112,7 @@ export async function POST(req: Request) {
             const paymentTime = now.toTimeString().split(' ')[0];
 
             // Terminal Log: Initial Scraper Hit
-            console.log(`[SCRAPER RECEIVE] Channel: ${finalSource.toUpperCase()} | UTR: ${utr} | Amount: ₹${parsedAmount} | Time: ${paymentTime}`);
+            logger.info(`[SCRAPER RECEIVE] Channel: ${finalSource.toUpperCase()} | UTR: ${utr} | Amount: ₹${parsedAmount} | Time: ${paymentTime}`);
 
             // 1. FCFS Idempotent Insert into bank_payments table (PRIMARY KEY on utr)
             const insertRes = await client.query(`
@@ -133,7 +137,7 @@ export async function POST(req: Request) {
                 await client.query('COMMIT');
 
                 // Terminal Log: FCFS Rejection
-                console.log(`[FCFS DUPLICATE REJECTED] Channel '${finalSource}' attempted UTR ${utr}, but channel '${winningSource}' ALREADY WON and claimed it!`);
+                logger.info(`[FCFS DUPLICATE REJECTED] Channel '${finalSource}' attempted UTR ${utr}, but channel '${winningSource}' ALREADY WON and claimed it!`);
 
                 return NextResponse.json({
                     success: true,
@@ -150,7 +154,7 @@ export async function POST(req: Request) {
             `, [utr, parsedAmount, finalSource]);
 
             // Terminal Log: FCFS Winner
-            console.log(`[FCFS WINNER] Channel '${finalSource.toUpperCase()}' PROCESSED UTR ${utr} FIRST! Stored in DB.`);
+            logger.info(`[FCFS WINNER] Channel '${finalSource.toUpperCase()}' PROCESSED UTR ${utr} FIRST! Stored in DB.`);
 
             // 2. Fractional Amount Matching (e.g. ₹100.02) against Active Pending Orders
             const orderRes = await client.query(`
@@ -186,7 +190,7 @@ export async function POST(req: Request) {
                     WHERE utr = $2;
                 `, [matchedOrderId, utr]);
 
-                console.log(`[ORDER MATCHED] Order ID '${matchedOrderId}' for User '${matchedUserId}' verified and marked PAID!`);
+                logger.info(`[ORDER MATCHED] Order ID '${matchedOrderId}' for User '${matchedUserId}' verified and marked PAID!`);
             } else {
                 // Check pending web checkout sessions
                 const sessionRes = await client.query(`
@@ -220,7 +224,7 @@ export async function POST(req: Request) {
                         [planType, matchedUserId]
                     );
 
-                    console.log(`[SESSION MATCHED] Checkout Session '${session.id}' for User '${matchedUserId}' verified and completed!`);
+                    logger.info(`[SESSION MATCHED] Checkout Session '${session.id}' for User '${matchedUserId}' verified and completed!`);
                 }
             }
 
@@ -266,7 +270,7 @@ export async function POST(req: Request) {
         }
 
     } catch (error: any) {
-        console.error('[Webhook Ingestion Error]:', error);
+        logger.error('[Webhook Ingestion Error]:', error);
         return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
     }
 }

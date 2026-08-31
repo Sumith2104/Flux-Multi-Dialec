@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { getCurrentUserId } from '@/lib/auth';
 import { getProjectById } from '@/lib/data';
 import { getPgPool } from '@/lib/pg';
+import logger from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,7 +64,7 @@ export async function GET(
                             sendEvent('schema_update', JSON.stringify(payload));
                         }
                     } catch (e) {
-                        console.error('Error parsing NOTIFY payload:', e);
+                        logger.error('Error parsing NOTIFY payload:', e);
                     }
                 };
 
@@ -72,7 +73,7 @@ export async function GET(
                 try {
                     await client.query('LISTEN fluxbase_live');
                 } catch (listenError) {
-                    console.error('Failed to LISTEN:', listenError);
+                    logger.error('Failed to LISTEN:', listenError);
                     controller.error(listenError);
                     releaseClient();
                     return;
@@ -105,7 +106,7 @@ export async function GET(
         });
 
     } catch (error) {
-        console.error('Error in Schema SSE setup:', error);
+        logger.error('Error in Schema SSE setup:', error);
         return new Response('Internal Server Error', { status: 500 });
     }
 }

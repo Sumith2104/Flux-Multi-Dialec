@@ -6,6 +6,10 @@ import { Ratelimit } from '@upstash/ratelimit';
 import { getPgPool } from '@/lib/pg';
 import { ERROR_CODES, FluxbaseError, FluxbaseErrorCode } from '@/lib/error-codes';
 import { getTenantPgPool, getTenantMysqlPool, getProjectDbAndSchema } from '@/lib/tenant-pools';
+import logger from '@/lib/logger';
+
+// --- Result Size Limit ---
+const MAX_SELECT_ROWS = parseInt(process.env.FLUX_MAX_SELECT_ROWS || '10000', 10);
 
 // --- 1. Distributed Rate Limiting Configuration ---
 const tenantRateLimit = new Ratelimit({
@@ -34,6 +38,8 @@ export interface SqlResult {
     message?: string;
     explanation?: string[];
     hasMore?: boolean;
+    truncated?: boolean;
+    totalRows?: number;
     /** For SELECT: number of rows returned. For INSERT/UPDATE/DELETE: always 0. */
     rowsReturned?: number;
     /** For INSERT/UPDATE/DELETE: actual rows affected (from pg rowCount). For SELECT: same as rowsReturned. */
@@ -210,7 +216,7 @@ export class SqlEngine {
             }
             
             finalQuery = `SELECT * FROM (${strippedQuery}) AS _fluxbase_paginate_subquery LIMIT ${limit} OFFSET ${offset};`;
-            console.log(`[SqlEngine] Paginated query generated: ${finalQuery}`);
+            logger.info(`[SqlEngine] Paginated query generated: ${finalQuery}`);
         }
 
         this.validateAstScope(queryCleaned, options.allowMulti);
@@ -276,7 +282,7 @@ export class SqlEngine {
                         pipe.sadd('analytics_keys_to_flush', key);
                     }
                 }
-                pipe.exec().catch(e => console.warn('[SqlEngine] Analytics batch failed:', e));
+                pipe.exec().catch(e => logger.warn('[SqlEngine] Analytics batch failed:', e));
             }
 
             if (this.projectDialect?.toLowerCase() === 'mysql') {
@@ -372,9 +378,12 @@ export class SqlEngine {
                     try {
                         await client.query(`SELECT set_config('role', 'authenticated', true)`);
                     } catch {
-                        // Ignore if role does not exist
-                        console.warn('[SqlEngine] "authenticated" role does not exist on this database, skipping role config.');
+                        // Ignore if role does not exist — expected on non-Supabase databases
                     }
+
+                    // Set query timeout for this session
+                    const queryTimeoutMs = parseInt(process.env.FLUX_QUERY_TIMEOUT_MS || '30000', 10);
+                    await client.query(`SET statement_timeout = '${queryTimeoutMs}'`);
 
                     const result = await client.query(finalQuery, params || []);
 
@@ -418,19 +427,19 @@ export class SqlEngine {
                     `INSERT INTO fluxbase_global.audit_logs (project_id, user_id, action, statement, duration_ms, success) 
                      VALUES ($1, $2, $3, $4, $5, $6)`,
                     [this.projectId, this.userId, firstWord, queryCleaned, durationMs, true]
-                ).catch(err => console.error('[SqlEngine] Audit log failed:', err));
+                ).catch(err => logger.error('[SqlEngine] Audit log failed:', err));
             }
 
             if (['ALTER', 'CREATE', 'DROP'].includes(firstWord)) {
                 try {
                     await redis.del(`schema_inference_${this.projectId}`);
                 } catch (e) {
-                    console.warn('Failed to invalidate AI schema cache:', e);
+                    logger.warn('Failed to invalidate AI schema cache:', e);
                 }
             }
 
         } catch (e: any) {
-            console.error("[AWS Native Proxy Error]", e);
+            logger.error("[AWS Native Proxy Error]", e);
             
             const errorMessage = e.message || '';
             let code: FluxbaseErrorCode = ERROR_CODES.SQL_EXECUTION_ERROR;
@@ -453,7 +462,7 @@ export class SqlEngine {
                     `INSERT INTO fluxbase_global.audit_logs (project_id, user_id, action, statement, duration_ms, success, error) 
                      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                     [this.projectId, this.userId, firstWord, queryCleaned, durationMs, false, errorMessage]
-                ).catch(err => console.error('[SqlEngine] Audit log failure track failed:', err));
+                ).catch(err => logger.error('[SqlEngine] Audit log failure track failed:', err));
             }
 
             throw new FluxbaseError(`AWS Database Error: ${errorMessage}`, code, status);
@@ -467,6 +476,14 @@ export class SqlEngine {
             } else {
                 lastResult.hasMore = false;
             }
+        }
+
+        // --- Result Size Truncation for unbounded SELECTs ---
+        if (isSelectOrWith && lastResult.rows && lastResult.rows.length > MAX_SELECT_ROWS) {
+            logger.warn(`[SqlEngine] Result truncated: ${lastResult.rows.length} rows exceeded limit of ${MAX_SELECT_ROWS}`);
+            lastResult.totalRows = lastResult.rows.length;
+            lastResult.rows = lastResult.rows.slice(0, MAX_SELECT_ROWS);
+            lastResult.truncated = true;
         }
 
         return lastResult;
@@ -573,7 +590,7 @@ export class SqlEngine {
                 };
             }
         } catch (e: any) {
-            console.error('Generate Data Error:', e);
+            logger.error('Generate Data Error:', e);
             throw new Error('Data Generation Failed: ' + e.message);
         }
     }
@@ -599,7 +616,7 @@ export class SqlEngine {
                     403
                 );
             }
-            console.log('[SqlEngine] Bypassing AST parsing validation for schema/procedural operation.');
+            logger.debug('[SqlEngine] Bypassing AST parsing validation for schema/procedural operation.');
             return;
         }
 

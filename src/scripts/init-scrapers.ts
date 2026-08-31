@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import fs from 'fs';
+import logger from '@/lib/logger';
 
 // @ts-ignore
 const __filename = fileURLToPath(import.meta.url);
@@ -12,16 +13,16 @@ const envPath = path.resolve(__dirname, '../../.env.local');
 
 // 1. Manually load .env.local
 if (fs.existsSync(envPath)) {
-    console.log(`Loading environment from ${envPath}`);
+    logger.info(`Loading environment from ${envPath}`);
     dotenv.config({ path: envPath });
 } else {
-    console.warn(`.env.local not found at ${envPath}, relying on system boundaries.`);
+    logger.warn(`.env.local not found at ${envPath}, relying on system boundaries.`);
 }
 
 const connectionString = process.env.AWS_RDS_POSTGRES_URL;
 
 if (!connectionString) {
-    console.error("[ERROR] AWS_RDS_POSTGRES_URL is missing in environment variables.");
+    logger.error("[ERROR] AWS_RDS_POSTGRES_URL is missing in environment variables.");
     process.exit(1);
 }
 
@@ -31,16 +32,16 @@ const pool = new Pool({
 });
 
 async function initScrapers() {
-    console.log("Connecting to AWS RDS to provision Scraper Tables...");
+    logger.info("Connecting to AWS RDS to provision Scraper Tables...");
     const client = await pool.connect();
 
     try {
         await client.query('BEGIN');
 
-        console.log("Creating Schema: fluxbase_global (if not exists)");
+        logger.info("Creating Schema: fluxbase_global (if not exists)");
         await client.query('CREATE SCHEMA IF NOT EXISTS fluxbase_global');
 
-        console.log("Creating Table: fluxbase_global.fluxbase_scrapers");
+        logger.info("Creating Table: fluxbase_global.fluxbase_scrapers");
         await client.query(`
             CREATE TABLE IF NOT EXISTS fluxbase_global.fluxbase_scrapers (
                 id UUID PRIMARY KEY,
@@ -57,7 +58,7 @@ async function initScrapers() {
             );
         `);
 
-        console.log("Creating Table: fluxbase_global.fluxbase_scraper_runs");
+        logger.info("Creating Table: fluxbase_global.fluxbase_scraper_runs");
         await client.query(`
             CREATE TABLE IF NOT EXISTS fluxbase_global.fluxbase_scraper_runs (
                 id UUID PRIMARY KEY,
@@ -71,17 +72,17 @@ async function initScrapers() {
         `);
 
         // Create indexes for faster queries
-        console.log("Creating Indexes...");
+        logger.info("Creating Indexes...");
         await client.query(`CREATE INDEX IF NOT EXISTS idx_scrapers_project ON fluxbase_global.fluxbase_scrapers(project_id);`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_scrapers_user ON fluxbase_global.fluxbase_scrapers(user_id);`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_scraper_runs_parent ON fluxbase_global.fluxbase_scraper_runs(scraper_id);`);
 
         await client.query('COMMIT');
-        console.log("[SUCCESS] Scraper schemas provisioned successfully.");
+        logger.info("[SUCCESS] Scraper schemas provisioned successfully.");
 
     } catch (error) {
         await client.query('ROLLBACK');
-        console.error("[ERROR] Transaction Failed, rolling back.", error);
+        logger.error("[ERROR] Transaction Failed, rolling back.", error);
     } finally {
         client.release();
     }
@@ -90,10 +91,10 @@ async function initScrapers() {
 initScrapers()
     .then(() => {
         pool.end();
-        console.log("Disconnected.");
+        logger.info("Disconnected.");
     })
     .catch((err) => {
-        console.error("Critical Failure:", err);
+        logger.error("Critical Failure:", err);
         pool.end();
         process.exit(1);
     });

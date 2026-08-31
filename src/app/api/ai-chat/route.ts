@@ -3,6 +3,88 @@ import { ai } from '@/ai/genkit';
 import fs from 'fs';
 import path from 'path';
 import { getAuthContextFromRequest } from '@/lib/auth';
+import logger from '@/lib/logger';
+
+// ── Schema Cache ──────────────────────────────────────────────────────────────
+// Avoids querying information_schema on every chat message.
+// TTL: 60 seconds per project.
+const schemaCache = new Map<string, { data: string; expires: number }>();
+const SCHEMA_TTL_MS = 60_000;
+
+async function getSchemaContext(projectId: string | undefined, userId: string, projectInfo: any): Promise<string> {
+    if (!projectId) return '';
+
+    const cached = schemaCache.get(projectId);
+    if (cached && Date.now() < cached.expires) return cached.data;
+
+    try {
+        const { SqlEngine } = await import('@/lib/sql-engine');
+        const { getProjectById } = await import('@/lib/data');
+        const { getProjectDbAndSchema } = await import('@/lib/tenant-pools');
+
+        const project = await getProjectById(projectId, userId);
+        if (!project) return '';
+
+        const { dbName, schemaName } = getProjectDbAndSchema(project);
+        const isMysql = project.dialect?.toLowerCase() === 'mysql';
+        const targetSchemaOrDb = isMysql ? dbName : schemaName;
+        const engine = new SqlEngine(projectId, userId, undefined, undefined, project);
+
+        const colQuery = isMysql
+            ? `SELECT table_name, column_name, data_type, is_nullable, column_key FROM information_schema.columns WHERE table_schema = ? AND table_name NOT LIKE '\_flux\_internal\_%' ORDER BY table_name, ordinal_position;`
+            : `SELECT table_name, column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema = $1 AND table_name NOT LIKE '\_flux\_internal\_%' ORDER BY table_name, ordinal_position;`;
+
+        const fkQuery = isMysql
+            ? `SELECT TABLE_NAME as table_name, COLUMN_NAME as column_name, REFERENCED_TABLE_NAME as referenced_table, REFERENCED_COLUMN_NAME as referenced_column
+               FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+               WHERE TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME IS NOT NULL;`
+            : `SELECT tc.table_name, kcu.column_name, ccu.table_name AS referenced_table, ccu.column_name AS referenced_column
+               FROM information_schema.table_constraints AS tc
+               JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+               JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
+               WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = $1;`;
+
+        const [colRes, fkRes] = await Promise.all([
+            engine.execute(colQuery, [targetSchemaOrDb]).catch(() => null),
+            engine.execute(fkQuery, [targetSchemaOrDb]).catch(() => null)
+        ]);
+
+        let result = '';
+        if (colRes?.rows?.length) {
+            const schemaMap: Record<string, string[]> = {};
+            colRes.rows.forEach((r: any) => {
+                const t = r.table_name || r.TABLE_NAME;
+                const c = r.column_name || r.COLUMN_NAME;
+                const dt = r.data_type || r.DATA_TYPE || '';
+                const key = (r.column_key || r.COLUMN_KEY) === 'PRI' ? ' [PK]' : '';
+                if (!schemaMap[t]) schemaMap[t] = [];
+                schemaMap[t].push(`${c} (${dt}${key})`);
+            });
+
+            const fkList: string[] = [];
+            if (fkRes?.rows?.length) {
+                fkRes.rows.forEach((r: any) => {
+                    fkList.push(`  ${r.table_name}.${r.column_name} -> ${r.referenced_table}.${r.referenced_column}`);
+                });
+            }
+
+            result = `\n\n=== LIVE DATABASE SCHEMA ===\n` +
+                Object.entries(schemaMap)
+                    .map(([tbl, cols]) => `- ${tbl}: [${cols.join(', ')}]`)
+                    .join('\n') +
+                (fkList.length > 0 ? `\n- Foreign Keys:\n${fkList.join('\n')}` : '') +
+                `\n\nCRITICAL: Use EXACT table/column names above. NEVER invent fake tables or columns.\n============================\n`;
+        }
+
+        schemaCache.set(projectId, { data: result, expires: Date.now() + SCHEMA_TTL_MS });
+        return result;
+    } catch (err) {
+        logger.warn('[AI Chat] Schema introspection failed:', err);
+        return '';
+    }
+}
+
+// ── Main Handler ─────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
     try {
@@ -13,7 +95,7 @@ export async function POST(req: Request) {
 
         const { messages, currentPath, model, activeProject, screenContext } = await req.json();
 
-        // Retrieve RAG Error Memory lessons
+        // RAG Error Memory
         let ragLessonsPrompt = '';
         try {
             const { getRelevantErrorLessons, formatLessonsForPrompt } = await import('@/lib/ai-memory');
@@ -22,205 +104,177 @@ export async function POST(req: Request) {
             const lessons = await getRelevantErrorLessons(activeProject?.project_id, dialect, userLastMsg);
             ragLessonsPrompt = formatLessonsForPrompt(lessons, dialect);
         } catch (memErr) {
-            console.warn('[AI Chat] Could not fetch RAG lessons:', memErr);
+            logger.warn('[AI Chat] RAG fetch failed:', memErr);
         }
 
-        // Load Integration Guide for context
+        // Integration guide (cached in memory)
         let docsContext = '';
         try {
             const docsPath = path.join(process.cwd(), 'fluxbase-client', 'INTEGRATION_GUIDE.md');
             if (fs.existsSync(docsPath)) {
-                docsContext = fs.readFileSync(docsPath, 'utf-8');
+                docsContext = fs.readFileSync(docsPath, 'utf-8').substring(0, 6000);
             } else {
-                docsContext = "Fluxbase Integration Guide: To upload files, POST to /api/storage/upload with multipart/form-data (bucketId, projectId, file). To execute SQL, POST to /api/execute-sql with JSON { query: '...' }. To listen for realtime changes, connect to /api/realtime/subscribe via SSE.";
+                docsContext = 'Fluxbase API: POST /api/execute-sql {query}, POST /api/storage/upload (multipart), SSE /api/realtime/subscribe.';
             }
-        } catch (e) {
-            console.warn("Could not load integration guide for AI context", e);
-        }
+        } catch {}
 
-        let projectContext = '';
-        if (activeProject) {
-            projectContext = `\nACTIVE PROJECT CONTEXT:\n- Name: "${activeProject.display_name || ''}"\n- ID: "${activeProject.project_id || ''}"\n- Database Dialect: "${activeProject.dialect || 'postgresql'}"\n- Timezone: "${activeProject.timezone || 'UTC'}"\n`;
-        } else {
-            projectContext = `\nACTIVE PROJECT CONTEXT: No active project is currently selected by the user. If they want to perform project-specific actions or execute SQL, instruct them to select or create a project first.\n`;
-        }
+        // Project context
+        const projectContext = activeProject
+            ? `\nPROJECT: "${activeProject.display_name || ''}" (ID: ${activeProject.project_id}) | Dialect: ${activeProject.dialect || 'postgresql'} | TZ: ${activeProject.timezone || 'UTC'}\n`
+            : '\nNo active project. Ask user to select/create one first for SQL operations.\n';
 
-        let screenContextStr = '';
-        if (screenContext) {
-            screenContextStr = `\nLIVE SCREEN VISION & CONTEXT:\n- Active Table: "${screenContext.activeTable || 'none'}"\n- Open Columns: ${JSON.stringify(screenContext.visibleColumns || [])}\n- Total Rows in View: ${screenContext.rowCount || 0}\n${screenContext.activeError ? `- Active UI Error: "${screenContext.activeError}"\n` : ''}`;
-        }
+        const screenContextStr = screenContext
+            ? `\nSCREEN: Table="${screenContext.activeTable || 'none'}" Cols=${JSON.stringify(screenContext.visibleColumns?.slice(0, 15) || [])} Rows=${screenContext.rowCount || 0}${screenContext.activeError ? ` Error="${screenContext.activeError.slice(0, 100)}"` : ''}\n`
+            : '';
 
-        let schemaContext = '';
-        if (activeProject?.project_id) {
-            try {
-                const { SqlEngine } = await import('@/lib/sql-engine');
-                const { getProjectById } = await import('@/lib/data');
-                const { getProjectDbAndSchema } = await import('@/lib/tenant-pools');
+        // Schema (cached)
+        const schemaContext = await getSchemaContext(activeProject?.project_id, auth.userId, activeProject);
 
-                const project = await getProjectById(activeProject.project_id, auth.userId);
-                if (project) {
-                    const { dbName, schemaName } = getProjectDbAndSchema(project);
-                    const isMysql = project.dialect?.toLowerCase() === 'mysql';
-                    const targetSchemaOrDb = isMysql ? dbName : schemaName;
-                    const engine = new SqlEngine(activeProject.project_id, auth.userId, undefined, undefined, project);
+        const systemPrompt = `You are Flux AI, an autonomous agent inside the Fluxbase database platform. You can navigate pages, execute SQL, create tables, insert data, and analyze results.
 
-                    const colQuery = isMysql
-                        ? `SELECT table_name, column_name, data_type, is_nullable, column_key FROM information_schema.columns WHERE table_schema = ? AND table_name NOT LIKE '\\_flux\\_internal\\_%' ORDER BY table_name, ordinal_position;`
-                        : `SELECT table_name, column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema = $1 AND table_name NOT LIKE '\\_flux\\_internal\\_%' ORDER BY table_name, ordinal_position;`;
+AVAILABLE ROUTES (use exact paths — never wrap in angle brackets):
+/ (Home — landing page, demo showcases, auth dialogs)
+/dashboard (Real-time analytics, API throughput, query metrics)
+/dashboard/projects (Project switcher, database management)
+/editor (Spreadsheet-style interactive data grid for viewing/editing table rows)
+/query (Monaco SQL editor with AI query generation, explain plans, data exports)
+/database (Visual schema explorer, tables, relationships)
+/storage (AWS S3 file browser, drag-and-drop uploader, presigned URLs)
+/scraper (Automated web data scraping into database tables)
+/docs (Interactive REST API & SDK developer documentation)
+/settings (Project configurations, API keys, team members, backups)
 
-                    const fkQuery = isMysql
-                        ? `SELECT TABLE_NAME as table_name, COLUMN_NAME as column_name, REFERENCED_TABLE_NAME as referenced_table, REFERENCED_COLUMN_NAME as referenced_column 
-                           FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
-                           WHERE TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME IS NOT NULL;`
-                        : `SELECT tc.table_name, kcu.column_name, ccu.table_name AS referenced_table, ccu.column_name AS referenced_column
-                           FROM information_schema.table_constraints AS tc
-                           JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-                           JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
-                           WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = $1;`;
+RULES:
+1. Use ONLY real table/column names from the LIVE DATABASE SCHEMA below. Never invent names.
+2. When the user asks about data, write a precise SQL query with WHERE/ORDER BY/LIMIT. Never do bare SELECT * unless asked.
+3. When query results are in the conversation, READ them and answer directly.
+4. Be concise. No 4-step plans for simple queries. Execute directly.
+5. For destructive operations (DROP, DELETE, TRUNCATE, ALTER), warn the user in your response text. The query will be loaded into the editor where the user reviews before executing.
+6. Use exact route paths from the AVAILABLE ROUTES list above. Never guess or fabricate paths.
 
-                    const [colRes, fkRes] = await Promise.all([
-                        engine.execute(colQuery, [targetSchemaOrDb]).catch(() => null),
-                        engine.execute(fkQuery, [targetSchemaOrDb]).catch(() => null)
-                    ]);
+CURRENT PATH: ${currentPath}
+${projectContext}${screenContextStr}${schemaContext}${ragLessonsPrompt}
 
-                    if (colRes && colRes.rows && colRes.rows.length > 0) {
-                        const schemaMap: Record<string, string[]> = {};
-                        colRes.rows.forEach((r: any) => {
-                            const t = r.table_name || r.TABLE_NAME;
-                            const c = r.column_name || r.COLUMN_NAME;
-                            const dt = r.data_type || r.DATA_TYPE || '';
-                            const key = (r.column_key || r.COLUMN_KEY) === 'PRI' ? ' [PK]' : '';
-                            if (!schemaMap[t]) schemaMap[t] = [];
-                            schemaMap[t].push(`${c} (${dt}${key})`);
-                        });
+ACTION TAGS (output at end of response if needed):
+- Run safe SQL directly and show results: [EXECUTE_SQL:<query>]
+  Use for ALL read-only queries: SELECT, SHOW, EXPLAIN, DESCRIBE, WITH/CTE.
+  This executes immediately and returns results in the chat. No user review needed.
+- Load dangerous SQL into editor for review: [CONFIRM_ACTION:INJECT_SQL:<query>]
+  Use ONLY for data-modifying or destructive operations: DROP, DELETE, TRUNCATE, ALTER, INSERT, UPDATE, CREATE TABLE.
+  The user reviews and executes manually.
+- Create project: [CONFIRM_ACTION:CREATE_PROJECT:<name>:<postgresql|mysql>]
+- Navigate: [NAVIGATE:/path] — NEVER wrap the path in angle brackets. Use [NAVIGATE:/editor] NOT [NAVIGATE:</editor>]
+- Click: [CLICK:<label>]
+- Type: [TYPE:<value>:<field>]
 
-                        const fkList: string[] = [];
-                        if (fkRes && fkRes.rows && fkRes.rows.length > 0) {
-                            fkRes.rows.forEach((r: any) => {
-                                fkList.push(`• ${r.table_name}.${r.column_name} -> ${r.referenced_table}.${r.referenced_column}`);
-                            });
-                        }
+--- INTEGRATION GUIDE ---
+${docsContext}
+--- END GUIDE ---
 
-                        schemaContext = `\n\n=== FULL DATABASE INTROSPECTION (DESCRIBE ALL TABLES & RELATIONS) ===\n` +
-                            Object.entries(schemaMap)
-                                .map(([tbl, cols]) => `- Table "${tbl}": [${cols.join(', ')}]`)
-                                .join('\n') +
-                            (fkList.length > 0 ? `\n- Foreign Key Relations:\n${fkList.join('\n')}` : '') +
-                            `\n\nCRITICAL SQL ACCURACY MANDATE:
-1. You already have the complete, live database structure above. You DO NOT need to run describe queries or guess table names.
-2. ONLY query the exact table names and column names listed above.
-3. When writing a query for a user request (e.g. "when balance > 4570 in predictions"), write the exact SQL query with proper WHERE filters and ORDER BY.
-4. Put the actual SQL statement into the tag: [CONFIRM_ACTION:EXECUTE_SQL:SELECT timestamp, balance FROM predictions WHERE balance > 4570 ORDER BY balance DESC]. NEVER output the placeholder string "RawSQLQuery".\n=====================================================================\n`;
-                    }
-                }
-            } catch (schemaErr) {
-                console.warn('[AI Chat] Failed to load live schema:', schemaErr);
-            }
-        }
+7. NEVER output only navigation tags without text. Always explain what you're doing and why.
+8. When the user asks to query, analyze, or read data, use EXECUTE_SQL to run the query immediately. Use INJECT_SQL ONLY for writes/destructive ops.
+9. Respond in Markdown. No HTML. No emojis.
 
-        const systemPrompt = `You are Flux AI, an autonomous, highly agentic AI developer assistant embedded inside the Fluxbase dashboard. 
-Your job is to act as an intelligent co-pilot: formulating queries, analyzing data, executing database actions, navigating pages, and directly solving developer requests.
+Respond in Markdown. No HTML. No emojis.`;
 
-AGENTIC WORKFLOW & ACTION INSTRUCTIONS:
-1. TARGETED SQL & DIRECT DATA ANALYSIS:
-   - When the user asks a question about their data (e.g. "when was my balance above 4570" or "show users from NY"), formulate the EXACT, TARGETED SQL query with appropriate WHERE conditions, ORDER BY, and LIMIT clauses matching the REAL DATABASE SCHEMA below.
-   - NEVER generate generic "SELECT * FROM table" if the user specified a filter or condition.
-   - When query results or data rows are provided in the conversation (e.g. from System feedback), READ and ANALYZE the returned data directly, and provide the user with the final answer in clear English.
-2. ACCURACY & REAL SCHEMA GROUNDING:
-   - Current URL path: "${currentPath}".
-   - ${projectContext}${screenContextStr}${schemaContext}${ragLessonsPrompt}
-   - STRICT MANDATE: ONLY query table names and column names that exist in the REAL DATABASE SCHEMA above. Never invent fake tables like "Table_Editor" or "balance_history" or columns like "date_column".
-3. AGENTIC EXECUTION TAGS:
-   - To Execute SQL / Create Tables / Seed Data: output the tag at the end of your response: [CONFIRM_ACTION:EXECUTE_SQL:RawSQLQuery]
-   - To Create a Project: [CONFIRM_ACTION:CREATE_PROJECT:ProjectName:dialect]
-   - To Teleport/Navigate: [NAVIGATE:/the_path] (/editor, /query, /settings, /storage, /analytics)
-   - To Click UI: [CLICK:Button Label]
-   - To Type into Forms: [TYPE:Value:Field Label]
-4. BE DIRECT & CONCISE:
-   - If a request can be answered or executed immediately, provide the action directly. Do not output repetitive boilerplate 4-step plans for straightforward queries.
-   - Format cleanly in Markdown. Do not use emojis.
-
---- START OFFICIAL INTEGRATION GUIDE ---
-${docsContext.substring(0, 8000)}
---- END OFFICIAL INTEGRATION GUIDE ---
-
-Provide your response in Markdown formatting. Do NOT use HTML. Keep code snippets short and sweet.`;
-
-        // Format conversation into a continuous prompt to ensure Genkit compatibility
-        let fullPrompt = systemPrompt + "\n\n--- CONVERSATION HISTORY ---\n";
-        
-        // Take the last 6 messages for recent context to save tokens
-        const recentMessages = messages.slice(-6);
+        // Build conversation (last 10 messages for token efficiency)
+        const recentMessages = messages.slice(-10);
+        let fullPrompt = systemPrompt + '\n\n--- CONVERSATION ---\n';
         for (const msg of recentMessages) {
-            fullPrompt += `${msg.role.toUpperCase()}: ${msg.content}\n\n`;
+            // Skip hidden system messages from the history we send to the model
+            if (msg.hidden) continue;
+            const role = msg.role.toUpperCase();
+            fullPrompt += `${role}: ${msg.content}\n\n`;
         }
-        fullPrompt += "ASSISTANT: ";
+        fullPrompt += 'ASSISTANT: ';
 
-        // Import our real physical constraints tools
         const { fluxTools } = await import('@/ai/tools');
 
         const response = await ai.generate({
             model: model || 'glm',
             prompt: fullPrompt,
             tools: fluxTools,
-            config: {
-                temperature: 0.2, // Be precise when executing tools
-            }
+            config: { temperature: 0.2 }
         });
 
         let responseText = response.text;
 
-        // Process tool requests from response to guarantee tags are returned even if the model omits them
+        // Extract tool calls and append as action tags
         try {
             const actionTags: string[] = [];
             const content = response.message?.content || (response as any).output?.content || [];
             if (Array.isArray(content)) {
                 for (const part of content) {
-                    if (part.toolRequest) {
-                        const req = part.toolRequest;
-                        if (req.name === 'navigatePageTool' && req.input?.path) {
-                            actionTags.push(`[NAVIGATE:${req.input.path}]`);
-                        } else if (req.name === 'clickElementTool' && req.input?.elementId) {
-                            actionTags.push(`[CLICK:${req.input.elementId}]`);
-                        } else if (req.name === 'typeInputTool' && req.input?.value && req.input?.locator) {
-                            actionTags.push(`[TYPE:${req.input.value}:${req.input.locator}]`);
-                        } else if (req.name === 'createProjectTool' && req.input?.projectName && req.input?.dialect) {
-                            actionTags.push(`[CONFIRM_ACTION:CREATE_PROJECT:${req.input.projectName}:${req.input.dialect}]`);
-                        } else if (req.name === 'runSqlTool' && req.input?.query) {
-                            actionTags.push(`[CONFIRM_ACTION:EXECUTE_SQL:${req.input.query}]`);
-                        } else if (req.name === 'createTableDirectTool') {
-                            const { createTableDirectTool } = await import('@/ai/tools');
-                            const res = await (createTableDirectTool as any).fn?.(req.input);
-                            if (res?.action) actionTags.push(res.action);
-                        } else if (req.name === 'insertRowsTool') {
-                            const { insertRowsTool } = await import('@/ai/tools');
-                            const res = await (insertRowsTool as any).fn?.(req.input);
-                            if (res?.action) actionTags.push(res.action);
+                    if (!part.toolRequest) continue;
+                    const req = part.toolRequest;
+                    if (req.name === 'navigatePageTool' && req.input?.path) {
+                        const p = req.input.path.replace(/^<\/+/, '/').replace(/>+$/, '');
+                        actionTags.push(`[NAVIGATE:${p}]`);
+                    } else if (req.name === 'clickElementTool' && req.input?.elementId) {
+                        actionTags.push(`[CLICK:${req.input.elementId}]`);
+                    } else if (req.name === 'typeInputTool' && req.input?.value && req.input?.locator) {
+                        actionTags.push(`[TYPE:${req.input.value}:${req.input.locator}]`);
+                    } else if (req.name === 'createProjectTool' && req.input?.projectName) {
+                        actionTags.push(`[CONFIRM_ACTION:CREATE_PROJECT:${req.input.projectName}:${req.input.dialect || 'postgresql'}]`);
+                    } else if (req.name === 'runSqlTool' && req.input?.query) {
+                        actionTags.push(`[CONFIRM_ACTION:INJECT_SQL:${req.input.query}]`);
+                    } else if (req.name === 'createTableDirectTool') {
+                        const input = req.input as any;
+                        const isM = (input.dialect || 'postgresql').toLowerCase() === 'mysql';
+                        const q = isM ? '`' : '"';
+                        const cols = (input.columns || []).map((c: any) => {
+                            let d = `${q}${c.name}${q} ${c.type}`;
+                            if (c.isPrimaryKey) d += isM && c.type.toUpperCase().includes('INT') ? ' AUTO_INCREMENT PRIMARY KEY' : ' PRIMARY KEY';
+                            if (c.isNullable === false) d += ' NOT NULL';
+                            if (c.defaultValue) d += ` DEFAULT ${c.defaultValue}`;
+                            return d;
+                        });
+                        const sql = `CREATE TABLE IF NOT EXISTS ${q}${input.tableName}${q} (\n  ${cols.join(',\n  ')}\n);`;
+                        actionTags.push(`[CONFIRM_ACTION:INJECT_SQL:${sql}]`);
+                    } else if (req.name === 'insertRowsTool') {
+                        const input = req.input as any;
+                        const rows = input.rows || [];
+                        if (rows.length) {
+                            const columns = Object.keys(rows[0]);
+                            const fmt = (v: any) => v === null || v === undefined ? 'NULL' : typeof v === 'number' || typeof v === 'boolean' ? String(v) : `'${String(v).replace(/'/g, "''")}'`;
+                            const vals = rows.map((r: any) => `(${columns.map((c: string) => fmt(r[c])).join(', ')})`).join(',\n  ');
+                            const sql = `INSERT INTO "${input.tableName}" (${columns.map((c: string) => `"${c}"`).join(', ')})\nVALUES\n  ${vals};`;
+                            actionTags.push(`[CONFIRM_ACTION:INJECT_SQL:${sql}]`);
                         }
                     }
                 }
             }
-
-            // Deduplicate tags to prevent rendering duplicate actions in one message turn
-            const uniqueTags = Array.from(new Set(actionTags));
+            const uniqueTags = [...new Set(actionTags.filter(Boolean))];
             if (uniqueTags.length > 0) {
                 responseText += '\n' + uniqueTags.join('\n');
             }
-        } catch (historyError) {
-            console.error('[AI Chat] Failed to extract tool calls:', historyError);
+        } catch (toolErr) {
+            logger.error('[AI Chat] Tool extraction failed:', toolErr);
         }
 
         return NextResponse.json({ success: true, text: responseText });
     } catch (error: any) {
-        console.error('AI Chat Error:', error);
-        let userFacingError = error.message || 'Failed to process AI chat request.';
-        
+        logger.error('AI Chat Error:', error);
+        let userFacingError = error.message || 'Failed to process request.';
         if (userFacingError.includes('1113') || userFacingError.includes('余额不足')) {
-            userFacingError = "Zhipu/GLM quota is exhausted (Error 1113). Please add a free GEMINI_API_KEY, GROQ_API_KEY, or OPENAI_API_KEY to your .env.local file to continue.";
+            userFacingError = 'GLM quota exhausted. Add GEMINI_API_KEY, GROQ_API_KEY, or OPENAI_API_KEY to .env.local.';
         } else if (userFacingError.includes('API_KEY_INVALID') || userFacingError.includes('API key not valid')) {
-            userFacingError = "Gemini API key is missing or invalid. Please configure a valid GEMINI_API_KEY, GROQ_API_KEY, or GLM_API_KEY in your .env.local file.";
+            userFacingError = 'API key invalid. Configure GEMINI_API_KEY, GROQ_API_KEY, or GLM_API_KEY in .env.local.';
         }
-
         return NextResponse.json({ success: false, error: userFacingError }, { status: 500 });
+    }
+}
+
+// Allow schema cache invalidation via POST (called after DDL operations)
+export async function DELETE(req: Request) {
+    try {
+        const { projectId } = await req.json();
+        if (projectId) {
+            schemaCache.delete(projectId);
+            logger.info('[AI Chat] Schema cache invalidated for', projectId);
+        }
+        return NextResponse.json({ success: true });
+    } catch {
+        return NextResponse.json({ success: false }, { status: 400 });
     }
 }

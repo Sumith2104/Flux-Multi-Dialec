@@ -7,6 +7,7 @@ import { sendOtpEmail, sendWelcomeEmail, sendMagicLoginEmail } from "@/lib/email
 import { cookies } from "next/headers";
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
+import logger from '@/lib/logger';
 
 export async function signupAction(formData: FormData) {
   const email = formData.get("email") as string;
@@ -45,7 +46,7 @@ export async function signupAction(formData: FormData) {
     `, [email, name, passwordHash, otp, expiresAt]);
 
     // Send OTP email asynchronously
-    sendOtpEmail(email, name, otp).catch(console.error);
+    sendOtpEmail(email, name, otp).catch((e) => { logger.error(e); });
 
     return { success: true, requireOtp: true, email };
   } catch (error: any) {
@@ -98,11 +99,11 @@ export async function verifyOtpAction(formData: FormData) {
     await createSessionCookie(userId, true);
 
     // Send uniform Welcome Email for native registration
-    sendWelcomeEmail(email, pendingUser.name).catch(console.error);
+    sendWelcomeEmail(email, pendingUser.name).catch((e) => { logger.error(e); });
 
     return { success: true };
   } catch (error: any) {
-    console.error("OTP Verification Error:", error);
+    logger.error("OTP Verification Error:", error);
     return { error: error.message };
   }
 }
@@ -143,7 +144,7 @@ export async function loginAction(formData: FormData) {
     await createSessionCookie(user.id, true);
     return { success: true };
   } catch (error: any) {
-    console.error("Native Login Error:", error);
+    logger.error("Native Login Error:", error);
     return { error: "Authentication failed. Please try again." };
   }
 }
@@ -196,7 +197,7 @@ export async function sendPasswordlessOtpAction(formData: FormData) {
 
     return { success: true, email };
   } catch (error: any) {
-    console.error("Passwordless OTP request error:", error);
+    logger.error("Passwordless OTP request error:", error);
     return { error: error.message || "Failed to send login code" };
   }
 }
@@ -263,7 +264,7 @@ export async function verifyPasswordlessOtpAction(formData: FormData) {
     await createSessionCookie(user.id, true);
     return { success: true };
   } catch (error: any) {
-    console.error("Passwordless OTP Verification Error:", error);
+    logger.error("Passwordless OTP Verification Error:", error);
     return { error: error.message || "Verification failed" };
   }
 }
@@ -293,7 +294,7 @@ export async function verify2FALoginAction(userId: string, code: string) {
       return { error: "Invalid verification code" };
     }
   } catch (error: any) {
-    console.error("2FA Verification Error:", error);
+    logger.error("2FA Verification Error:", error);
     return { error: "Verification failed. Please try again." };
   }
 }
@@ -354,7 +355,7 @@ export async function resetPasswordAction(formData: FormData) {
 
     return { success: true };
   } catch (error: any) {
-    console.error("Password Reset Confirmation Error:", error);
+    logger.error("Password Reset Confirmation Error:", error);
     return { error: "Failed to reset password. Please try again later." };
   }
 }

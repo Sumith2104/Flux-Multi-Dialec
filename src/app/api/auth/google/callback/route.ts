@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
-import { createSessionCookie } from '@/lib/auth';
+import { createSessionCookie, createRefreshToken } from '@/lib/auth';
 import { sendWelcomeEmail } from '@/lib/email';
 import { getOAuthConfig, getBaseOrigin } from '@/lib/oauth-config';
 import crypto from 'crypto';
+import logger from '@/lib/logger';
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest) {
     const { clientId, clientSecret, redirectUri } = getOAuthConfig(request, 'google');
 
     if (!code || !clientId || !clientSecret) {
-        console.error("Missing Google Code or Environment Variables for this platform");
+        logger.error("Missing Google Code or Environment Variables for this platform");
         return NextResponse.redirect(new URL('/?error=GoogleServerAuthFailed', getBaseOrigin(request)));
     }
 
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
         const accessToken = tokenData.access_token;
         
         if (!accessToken) {
-            console.error("Google OAuth token exchange failed:", tokenData);
+            logger.error("Google OAuth token exchange failed:", tokenData);
             return NextResponse.redirect(new URL('/?error=GoogleTokenFailed', getBaseOrigin(request)));
         }
 
@@ -80,7 +81,7 @@ export async function GET(request: NextRequest) {
             );
 
             // Send Welcome Email natively
-            sendWelcomeEmail(email, name).catch(console.error);
+            sendWelcomeEmail(email, name).catch((e) => { logger.error(e); });
         }
 
         // 4. Check for 2FA requirement (Security Hardening)
@@ -100,13 +101,25 @@ export async function GET(request: NextRequest) {
         // 5. Create active session cookie identically to native login systems
         await createSessionCookie(userId, true); // Marked as verified to prevent middleware loops
 
+        // Set refresh token cookie
+        const refreshToken = await createRefreshToken(userId);
+        const isProd = process.env.NODE_ENV === 'production';
+
         // 6. Redirect seamlessly
         const redirectPath = isNewUser ? '/pricing?onboarding=true' : '/dashboard/projects';
         const finalOrigin = getBaseOrigin(request);
-        return NextResponse.redirect(new URL(redirectPath, finalOrigin));
+        const response = NextResponse.redirect(new URL(redirectPath, finalOrigin));
+        response.cookies.set('refresh_token', refreshToken, {
+            httpOnly: true,
+            secure: isProd,
+            path: '/',
+            sameSite: 'lax',
+            maxAge: 7 * 24 * 60 * 60,
+        });
+        return response;
 
     } catch (error) {
-        console.error("Google Auth Exception:", error);
+        logger.error("Google Auth Exception:", error);
         return NextResponse.redirect(new URL('/?error=GoogleServerException', getBaseOrigin(request)));
     }
 }

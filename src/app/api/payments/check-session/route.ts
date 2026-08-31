@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { getCurrentUserId } from '@/lib/auth';
+import logger from '@/lib/logger';
 
 export async function GET(req: NextRequest) {
     const userId = await getCurrentUserId();
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest) {
         });
 
     } catch (error: any) {
-        console.error('[Check Session Error]:', error);
+        logger.error('[Check Session Error]:', error);
         return NextResponse.json({ error: 'Internal server error occurred while checking status.' }, { status: 500 });
     }
 }

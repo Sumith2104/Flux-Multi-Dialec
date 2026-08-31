@@ -1,6 +1,7 @@
 import { getAnalyticsStatsAction } from '@/app/(app)/dashboard/analytics-actions';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { jsonError, requireProjectAccess } from '@/lib/project-auth';
+import logger from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,7 +45,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ projectI
                         isClosed = true;
                         break;
                     }
-                    console.error("SSE Streaming Error:", err);
+                    logger.error("SSE Streaming Error:", err);
                     if (!isClosed) await new Promise((resolve) => setTimeout(resolve, 5000));
                 }
             }

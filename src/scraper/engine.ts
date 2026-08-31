@@ -4,6 +4,7 @@ import { fetchPage } from './fetcher';
 import { parseHTML } from './parser';
 import { inferSchema } from './schema';
 import { createTable, insertRows } from './ingestion';
+import logger from '@/lib/logger';
 
 /**
  * Core Modular Scraper Engine Orchestrator
@@ -18,7 +19,7 @@ export async function runScraper(scraper: any, userId: string): Promise<{ rows: 
     const pool = getPgPool();
 
     try {
-        console.log(`[Engine] Starting execution for scraper ${scraper.id}...`);
+        logger.info(`[Engine] Starting execution for scraper ${scraper.id}...`);
 
         // 1. Fetch
         const html = await fetchPage(scraper.url);
@@ -56,7 +57,7 @@ export async function runScraper(scraper: any, userId: string): Promise<{ rows: 
             const { invalidateTableCache } = await import('@/lib/cache');
             invalidateTableCache(scraper.project_id, safeTableName);
         } catch (e) {
-            console.error("Cache invalidation error:", e);
+            logger.error("Cache invalidation error:", e);
         }
 
         const duration = Date.now() - start;
@@ -73,7 +74,7 @@ export async function runScraper(scraper: any, userId: string): Promise<{ rows: 
         return { rows: rows.length, duration };
 
     } catch (error: any) {
-        console.error('[Engine Fatal Error]', error);
+        logger.error('[Engine Fatal Error]', error);
 
         // 8. Failure Telemetry Logging
         try {
@@ -83,7 +84,7 @@ export async function runScraper(scraper: any, userId: string): Promise<{ rows: 
             );
             await pool.query(`UPDATE fluxbase_global.fluxbase_scrapers SET status = 'failed' WHERE id = $1`, [scraper.id]);
         } catch (telemetryError) {
-            console.error('Failed to write failure telemetry record', telemetryError);
+            logger.error('Failed to write failure telemetry record', telemetryError);
         }
 
         throw error;

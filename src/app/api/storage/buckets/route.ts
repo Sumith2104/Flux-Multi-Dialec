@@ -4,6 +4,7 @@ import { getAuthContextFromRequest } from '@/lib/auth';
 import { getProjectById } from '@/lib/data';
 import { ERROR_CODES } from '@/lib/error-codes';
 import crypto from 'crypto';
+import { requireWriteScope } from '@/lib/require-scope';
 
 // GET /api/storage/buckets?projectId=xxx  - list buckets
 // POST /api/storage/buckets               - create bucket
@@ -13,6 +14,7 @@ export async function GET(req: NextRequest) {
     if (!projectId) return NextResponse.json({ success: false, error: { message: 'projectId required', code: ERROR_CODES.BAD_REQUEST } }, { status: 400 });
 
     const auth = await getAuthContextFromRequest(req);
+  requireWriteScope(auth);
     if (!auth?.userId) return NextResponse.json({ success: false, error: { message: 'Unauthorized', code: ERROR_CODES.UNAUTHORIZED } }, { status: 401 });
 
     const project = await getProjectById(projectId, auth.userId);

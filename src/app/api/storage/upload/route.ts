@@ -5,11 +5,14 @@ import { getProjectById } from '@/lib/data';
 import { uploadToS3, buildS3Key, PLAN_STORAGE_LIMITS, PLAN_STORAGE_TOTAL_LIMITS } from '@/lib/storage';
 import { ERROR_CODES } from '@/lib/error-codes';
 import crypto from 'crypto';
+import { requireWriteScope } from '@/lib/require-scope';
+import logger from '@/lib/logger';
 
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
     const auth = await getAuthContextFromRequest(req);
+  requireWriteScope(auth);
     if (!auth?.userId) return NextResponse.json({ success: false, error: { message: 'Unauthorized', code: ERROR_CODES.UNAUTHORIZED } }, { status: 401 });
 
     let formData: FormData;
@@ -93,7 +96,7 @@ export async function POST(req: NextRequest) {
     try {
         await uploadToS3(s3Key, buffer, mimeType);
     } catch (e: any) {
-        console.error('S3 upload error:', e);
+        logger.error('S3 upload error:', e);
         return NextResponse.json({ success: false, error: { message: 'S3 storage backend failure', code: ERROR_CODES.INTERNAL_ERROR } }, { status: 500 });
     }
 

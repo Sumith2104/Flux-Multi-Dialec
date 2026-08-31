@@ -2,6 +2,7 @@
 
 import { getPgPool } from '@/lib/pg';
 import type { User } from '@/lib/auth';
+import logger from '@/lib/logger';
 
 export async function findUserById(userId: string): Promise<User | null> {
     try {
@@ -18,7 +19,7 @@ export async function findUserById(userId: string): Promise<User | null> {
             created_at: row.created_at.toISOString(),
         } as User;
     } catch (error) {
-        console.error("Failed to fetch user:", error);
+        logger.error("Failed to fetch user:", error);
         return null;
     }
 }

@@ -5,6 +5,8 @@ import crypto from 'crypto';
 import { jsonError, requireProjectAccess } from '@/lib/project-auth';
 import { checkInstanceSizeLimit } from '@/lib/limits';
 import { ERROR_CODES, FluxbaseError } from '@/lib/error-codes';
+import { requireWriteScope } from '@/lib/require-scope';
+import logger from '@/lib/logger';
 
 function instancePrefixForProject(projectId: string): string {
     return `fluxbase-tenant-${projectId.toLowerCase().replace(/[^a-z0-9-]/g, '')}-`;
@@ -13,6 +15,7 @@ function instancePrefixForProject(projectId: string): string {
 export async function POST(request: Request) {
     try {
         const auth = await getAuthContextFromRequest(request);
+  requireWriteScope(auth);
         const body = await request.json();
         const { engine } = body;
         const size = body.size || 'db.t3.micro';
@@ -49,7 +52,7 @@ export async function POST(request: Request) {
         });
 
     } catch (error) {
-        console.error('[Provisioning API Error]', error);
+        logger.error('[Provisioning API Error]', error);
         const { body, status } = jsonError(error);
         return NextResponse.json(body, { status });
     }

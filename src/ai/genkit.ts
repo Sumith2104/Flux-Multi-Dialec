@@ -2,6 +2,7 @@ process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AP
 
 import {genkit} from 'genkit';
 import {googleAI} from '@genkit-ai/googleai';
+import logger from '@/lib/logger';
 
 const baseAi = genkit({
   plugins: [googleAI()],
@@ -92,7 +93,7 @@ async function tryThirdPartyProvider(provider: string, prompt: string, schema: a
 
     for (const glmModel of uniqueModels) {
       try {
-        console.log(`[AI] Dispatching fetch to GLM (${glmModel})...`);
+        logger.info(`[AI] Dispatching fetch to GLM (${glmModel})...`);
         const response = await fetch(url, {
           method: 'POST',
           headers: {
@@ -120,7 +121,7 @@ async function tryThirdPartyProvider(provider: string, prompt: string, schema: a
           try {
             output = JSON.parse(rawText.trim().replace(/^```json\s*/i, '').replace(/```$/, '').trim());
           } catch (e: any) {
-            console.error(`[AI] Failed to parse JSON response from GLM (${glmModel}):`, e);
+            logger.error(`[AI] Failed to parse JSON response from GLM (${glmModel}):`, e);
             throw new Error(`Invalid JSON format returned by GLM (${glmModel})`);
           }
         }
@@ -132,13 +133,13 @@ async function tryThirdPartyProvider(provider: string, prompt: string, schema: a
         };
       } catch (e: any) {
         lastGlmErr = e;
-        console.warn(`[AI] GLM model ${glmModel} failed, trying next tier:`, e.message || e);
+        logger.warn(`[AI] GLM model ${glmModel} failed, trying next tier:`, e.message || e);
       }
     }
     throw lastGlmErr;
   }
 
-  console.log(`[AI] Dispatching fetch to third-party provider ${provider} (${model})...`);
+  logger.info(`[AI] Dispatching fetch to third-party provider ${provider} (${model})...`);
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -166,7 +167,7 @@ async function tryThirdPartyProvider(provider: string, prompt: string, schema: a
     try {
       output = JSON.parse(rawText.trim().replace(/^```json\s*/i, '').replace(/```$/, '').trim());
     } catch (e: any) {
-      console.error(`[AI] Failed to parse JSON response from ${provider}:`, e);
+      logger.error(`[AI] Failed to parse JSON response from ${provider}:`, e);
       throw new Error(`Invalid JSON format returned by ${provider}`);
     }
   }
@@ -185,7 +186,7 @@ export const ai = new Proxy(baseAi, {
         let lastError: any = null;
         const requestedModel = options.model || 'glm';
 
-        console.log(`[AI] Requested model/provider: ${requestedModel}`);
+        logger.info(`[AI] Requested model/provider: ${requestedModel}`);
 
         // We will build a prioritized chain of actions to try:
         const chain: Array<{ name: string; run: () => Promise<any> }> = [];
@@ -249,12 +250,12 @@ export const ai = new Proxy(baseAi, {
         // Execute the chain in order
         for (const step of chain) {
           try {
-            console.log(`[AI] Attempting ${step.name}`);
+            logger.info(`[AI] Attempting ${step.name}`);
             const res = await step.run();
-            console.log(`[AI] Success with ${step.name}`);
+            logger.info(`[AI] Success with ${step.name}`);
             return res;
           } catch (err: any) {
-            console.error(`[AI] ${step.name} failed:`, err.message || err);
+            logger.error(`[AI] ${step.name} failed:`, err.message || err);
             lastError = err;
           }
         }

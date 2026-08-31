@@ -4,6 +4,8 @@ import { getAuthContextFromRequest } from '@/lib/auth';
 import { deleteFromS3 } from '@/lib/storage';
 import { ERROR_CODES } from '@/lib/error-codes';
 import { jsonError, requireProjectAccess } from '@/lib/project-auth';
+import { requireWriteScope } from '@/lib/require-scope';
+import logger from '@/lib/logger';
 
 // GET /api/storage/files?bucketId=xxx&projectId=xxx
 export async function GET(req: NextRequest) {
@@ -16,6 +18,7 @@ export async function GET(req: NextRequest) {
     }
 
     const auth = await getAuthContextFromRequest(req);
+  requireWriteScope(auth);
     if (!auth?.userId) return NextResponse.json({ success: false, error: { message: 'Unauthorized', code: ERROR_CODES.UNAUTHORIZED } }, { status: 401 });
 
     try {
@@ -86,7 +89,7 @@ export async function DELETE(req: NextRequest) {
         try {
             await deleteFromS3(fileRes.rows[0].s3_key);
         } catch (e: any) {
-            console.error('S3 delete error:', e);
+            logger.error('S3 delete error:', e);
             // Continue to delete from DB even if S3 fails (orphan cleanup later)
         }
 

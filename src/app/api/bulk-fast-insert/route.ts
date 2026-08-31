@@ -4,6 +4,8 @@ import { ensureNotSuspended } from "@/lib/data";
 import { pool } from "@/lib/pg";
 import { requireProjectAccess } from "@/lib/project-auth";
 import { quotePgIdentifier, quotePgProjectSchema } from "@/lib/sql-safety";
+import logger from '@/lib/logger';
+import { getCorsOrigin, buildCorsHeaders, corsPreflightResponse } from '@/lib/cors';
 
 /**
  * HIGH-THROUGHPUT BULK INSERT ENDPOINT
@@ -18,27 +20,20 @@ import { quotePgIdentifier, quotePgProjectSchema } from "@/lib/sql-safety";
 export const runtime = 'nodejs'; // Use Node.js for persistent pool support
 export const dynamic = 'force-dynamic';
 
-const CORS_HEADERS = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-project-id, x-api-key, apiKey, projectId',
-    'Access-Control-Max-Age': '86400',
-};
+let _reqOrigin: string | undefined;
 
 function sendResponse(body: string | null, init?: ResponseInit) {
     const headers = new Headers(init?.headers);
-    Object.entries(CORS_HEADERS).forEach(([k, v]) => headers.set(k, v));
+    Object.entries(buildCorsHeaders(_reqOrigin)).forEach(([k, v]) => headers.set(k, v));
     return new Response(body, { ...init, headers });
 }
 
-export async function OPTIONS() {
-    return new Response(null, {
-        status: 204,
-        headers: CORS_HEADERS,
-    });
+export async function OPTIONS(req: NextRequest) {
+    return corsPreflightResponse(getCorsOrigin(req.headers.get('origin')));
 }
 
 export async function POST(req: NextRequest) {
+    _reqOrigin = getCorsOrigin(req.headers.get('origin'));
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s watchdog
 
@@ -60,6 +55,13 @@ export async function POST(req: NextRequest) {
         // Security Check
         const auth = await getAuthContextFromRequest(req);
         if (!auth?.userId) return sendResponse("Unauthorized", { status: 401 });
+
+        // Enforce API key scopes
+        if (auth.scopes && auth.scopes.length > 0) {
+            if (!auth.scopes.includes('write') && !auth.scopes.includes('admin')) {
+                return sendResponse("Insufficient permissions. Requires 'write' or 'admin' scope.", { status: 403 });
+            }
+        }
 
         const project = await requireProjectAccess(projectId, auth, ['admin', 'developer']);
         if (project.dialect?.toLowerCase() === 'mysql') {
@@ -92,7 +94,7 @@ export async function POST(req: NextRequest) {
         if (error.name === 'AbortError') {
             return sendResponse('Request Timeout', { status: 504 });
         }
-        console.error('[Bulk Fast Insert Error]:', error.message);
+        logger.error('[Bulk Fast Insert Error]:', error.message);
         return sendResponse(error.message || 'Internal Error', { status: 500 });
     } finally {
         clearTimeout(timeoutId);

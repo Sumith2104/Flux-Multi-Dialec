@@ -112,6 +112,38 @@ export default function QueryPage() {
     setQueryResponse(null);
   }, [project?.project_id]);
 
+  // Listen for SQL injection from Flux AI assistant
+  useEffect(() => {
+    if (!project?.project_id) return;
+    const handler = (e: any) => {
+      const { query, projectId } = e.detail || {};
+      if (projectId && projectId !== project.project_id) return;
+      if (!query) return;
+      setQuery(query);
+      try { localStorage.setItem(`sqlQuery_${project.project_id}`, query); } catch {}
+      setQueryResponse(null);
+      toast({ title: "Query loaded", description: "Press Ctrl+Enter to execute." });
+    };
+    window.addEventListener('flux:inject-sql', handler);
+
+    // Check for pending SQL injection from navigation
+    try {
+      const pending = localStorage.getItem('flux_pending_sql_inject');
+      if (pending) {
+        const data = JSON.parse(pending);
+        if (data?.projectId === project.project_id && data?.query && Date.now() - (data.timestamp || 0) < 30000) {
+          setQuery(data.query);
+          localStorage.setItem(`sqlQuery_${project.project_id}`, data.query);
+          setQueryResponse(null);
+          toast({ title: "Query loaded", description: "Press Ctrl+Enter to execute." });
+        }
+        localStorage.removeItem('flux_pending_sql_inject');
+      }
+    } catch {}
+
+    return () => window.removeEventListener('flux:inject-sql', handler);
+  }, [project?.project_id, toast]);
+
   // Sync queries and results executed by Flux AI into the Query Results tab
   useEffect(() => {
     const handleAiSqlExecuted = (e: any) => {

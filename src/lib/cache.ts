@@ -3,6 +3,7 @@
 
 import type { Row } from '@/lib/data';
 import { redis } from '@/lib/redis';
+import logger from '@/lib/logger';
 
 export interface PaginatedCachePayload {
     rows: Row[];
@@ -26,7 +27,7 @@ export async function getCachedTableRows(projectId: string, tableId: string, pag
             return entry.data;
         }
     } catch (e) {
-        console.warn(`[Redis Cache Error] get: ${key}`, e);
+        logger.warn(`[Redis Cache Error] get: ${key}`, e);
     }
     return null;
 }
@@ -39,7 +40,7 @@ export async function setCachedTableRows(projectId: string, tableId: string, pag
             data
         }, { ex: CACHE_TTL_SECONDS });
     } catch (e) {
-        console.warn(`[Redis Cache Error] set: ${key}`, e);
+        logger.warn(`[Redis Cache Error] set: ${key}`, e);
     }
 }
 
@@ -52,10 +53,10 @@ export async function invalidateTableCache(projectId: string, tableId: string): 
         const keys = Array.from({ length: 20 }, (_, p) => `fluxTable_${projectId}_${tableId}_p${p}`);
         await redis.del(...keys);
     } catch (e) {
-        console.warn(`[Redis Cache Error] invalidate: fluxTable_${projectId}_${tableId}`, e);
+        logger.warn(`[Redis Cache Error] invalidate: fluxTable_${projectId}_${tableId}`, e);
     }
 }
 
 export async function invalidateProjectCache(projectId: string): Promise<void> {
-    console.log(`[Redis Cache] Project ${projectId} tables will naturally expire.`);
+    logger.info(`[Redis Cache] Project ${projectId} tables will naturally expire.`);
 }

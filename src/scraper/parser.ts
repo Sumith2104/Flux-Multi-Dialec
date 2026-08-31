@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import logger from '@/lib/logger';
 
 /**
  * Parses raw HTML and extracts data based on a JSON config of CSS Selectors.
@@ -7,7 +8,7 @@ import * as cheerio from "cheerio";
  * @returns An array of string-record objects containing the scraped text.
  */
 export function parseHTML(html: string, selectors: Record<string, string>): Record<string, string>[] {
-    console.log(`[Scraper Parser] Parsing HTML with Cheerio...`);
+    logger.info(`[Scraper Parser] Parsing HTML with Cheerio...`);
     const $ = cheerio.load(html);
     const rows: Record<string, string>[] = [];
 
@@ -69,6 +70,6 @@ export function parseHTML(html: string, selectors: Record<string, string>): Reco
         }
     }
 
-    console.log(`[Scraper Parser] Extraction Complete. Generated ${rows.length} rows.`);
+    logger.info(`[Scraper Parser] Extraction Complete. Generated ${rows.length} rows.`);
     return rows;
 }

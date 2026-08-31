@@ -6,6 +6,7 @@ import { assertReadOnlySelectQuery, quoteMysqlProjectSchema, quotePgProjectSchem
 import { ERROR_CODES, FluxbaseError } from '@/lib/error-codes';
 import { redis } from '@/lib/redis';
 import crypto from 'crypto';
+import logger from '@/lib/logger';
 
 export async function POST(req: Request) {
     try {
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
                     return NextResponse.json({ data: parsed });
                 }
             } catch (cacheError) {
-                console.warn('[Analytics Cache Read Error]:', cacheError);
+                logger.warn('[Analytics Cache Read Error]:', cacheError);
             }
         }
 
@@ -74,13 +75,13 @@ export async function POST(req: Request) {
         try {
             await redis.set(cacheKey, JSON.stringify(resultRows), { ex: 300 });
         } catch (cacheError) {
-            console.warn('[Analytics Cache Write Error]:', cacheError);
+            logger.warn('[Analytics Cache Write Error]:', cacheError);
         }
 
         return NextResponse.json({ data: resultRows });
 
     } catch (error) {
-        console.error('Analytics Execute Error:', error);
+        logger.error('Analytics Execute Error:', error);
         const { body, status } = jsonError(error);
         return NextResponse.json(body, { status });
     }

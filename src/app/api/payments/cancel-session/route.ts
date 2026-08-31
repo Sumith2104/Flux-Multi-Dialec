@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { getCurrentUserId } from '@/lib/auth';
+import logger from '@/lib/logger';
 
 export async function POST(req: NextRequest) {
     const userId = await getCurrentUserId();
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ success: true, message: 'Payment session cancelled successfully.' });
     } catch (error: any) {
-        console.error('[Cancel Session Error]:', error);
+        logger.error('[Cancel Session Error]:', error);
         return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
     }
 }

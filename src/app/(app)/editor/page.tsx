@@ -1,4 +1,4 @@
-
+﻿
 import { Suspense } from 'react';
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -35,20 +35,22 @@ async function Editor({ projectId, tableId, tableName }: { projectId: string; ta
 
     // Rows are now fetched on the client-side
     return (
-        <EditorClient
-            key={`${projectId}_${activeDatabase || ''}`}
-            projectId={projectId}
-            tableId={tableId}
-            tableName={tableName}
-            allTables={allTables}
-            currentTable={currentTable}
-            initialColumns={columns}
-            initialConstraints={constraints}
-            allProjectConstraints={allProjectConstraints}
-            dialect={dialect}
-            connectionType={project?.connection_type}
-            activeDatabase={activeDatabase}
-        />
+        <div className="h-full w-full min-h-0 flex flex-col flex-1 overflow-hidden">
+            <EditorClient
+                key={`${projectId}_${activeDatabase || ''}`}
+                projectId={projectId}
+                tableId={tableId}
+                tableName={tableName}
+                allTables={allTables}
+                currentTable={currentTable}
+                initialColumns={columns}
+                initialConstraints={constraints}
+                allProjectConstraints={allProjectConstraints}
+                dialect={dialect}
+                connectionType={project?.connection_type}
+                activeDatabase={activeDatabase}
+            />
+        </div>
     );
 }
 
@@ -106,3 +108,4 @@ export default async function EditorPage({
         </Suspense>
     );
 }
+

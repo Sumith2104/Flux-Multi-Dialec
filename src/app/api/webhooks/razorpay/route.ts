@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getRazorpayWebhookSecret, validateRazorpaySignature } from '@/lib/razorpay';
 import { getPgPool } from '@/lib/pg';
+import logger from '@/lib/logger';
 
 export async function POST(req: Request) {
     const bodyText = await req.text();
@@ -40,13 +41,13 @@ export async function POST(req: Request) {
                     WHERE id = $5
                 `, [planType, customerId, subscription.id, currentEnd.toISOString(), userId]);
 
-                console.log(`[Billing] Upgrade successful. User: ${userId} -> ${planType.toUpperCase()} Tier.`);
+                logger.info(`[Billing] Upgrade successful. User: ${userId} -> ${planType.toUpperCase()} Tier.`);
             }
         }
 
         return NextResponse.json({ success: true, received: true });
     } catch (err: any) {
-        console.error('[Billing] Webhook processing failed:', err);
+        logger.error('[Billing] Webhook processing failed:', err);
         return NextResponse.json({ error: 'Internal server error processing webhook' }, { status: 500 });
     }
 }

@@ -5,6 +5,7 @@ import { getProjectById, ensureNotSuspended } from '@/lib/data';
 import realtimeManager from '@/lib/realtime-manager';
 import { ERROR_CODES } from '@/lib/error-codes';
 import { redis } from '@/lib/redis';
+import logger from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -146,7 +147,7 @@ export async function GET(req: NextRequest) {
                 }, 15000);
 
             } catch (err) {
-                console.error("[SSE Route Error]", err);
+                logger.error("[SSE Route Error]", err);
                 if (releaseHandler) releaseHandler();
                 try { controller.error(err); } catch { }
             }

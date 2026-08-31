@@ -4,6 +4,7 @@ import { getPgPool } from '@/lib/pg';
 import { getCurrentUserId } from '@/lib/auth';
 import { redis } from '@/lib/redis';
 import { getDashboardWidgets } from '@/lib/dashboards';
+import logger from '@/lib/logger';
 
 export async function getAnalyticsStatsAction(projectId: string) {
     const userId = await getCurrentUserId();
@@ -14,7 +15,7 @@ export async function getAnalyticsStatsAction(projectId: string) {
         const cached = await redis.get(cacheKey) as any;
         if (cached) return cached;
     } catch (e) {
-        console.warn('Redis read error for analytics stats:', e);
+        logger.warn('Redis read error for analytics stats:', e);
     }
 
     try {
@@ -62,7 +63,7 @@ export async function getAnalyticsStatsAction(projectId: string) {
                 }
             }
         } catch (auditErr) {
-            console.warn('Audit logs stats error:', auditErr);
+            logger.warn('Audit logs stats error:', auditErr);
         }
 
         // 2. Fetch rollups
@@ -130,7 +131,7 @@ export async function getAnalyticsStatsAction(projectId: string) {
 
         return stats;
     } catch (e) {
-        console.error('getAnalyticsStatsAction error:', e);
+        logger.error('getAnalyticsStatsAction error:', e);
         return null;
     }
 }
@@ -170,7 +171,7 @@ export async function getRealtimeHistoryAction(projectId: string) {
                 redisValues = await redis.mget(...minuteKeysToFetch);
             }
         } catch (e) {
-            console.warn('Redis mget error in getRealtimeHistoryAction:', e);
+            logger.warn('Redis mget error in getRealtimeHistoryAction:', e);
         }
 
         const pool = getPgPool();
@@ -219,7 +220,7 @@ export async function getRealtimeHistoryAction(projectId: string) {
 
         return historyPoints;
     } catch (e) {
-        console.error('getRealtimeHistoryAction error:', e);
+        logger.error('getRealtimeHistoryAction error:', e);
         return [];
     }
 }
@@ -232,7 +233,7 @@ export async function getProjectHistoryAction(projectId: string) {
         const cached = await redis.get(cacheKey) as any;
         if (cached) return cached;
     } catch (e) {
-        console.warn('Redis read error for project history:', e);
+        logger.warn('Redis read error for project history:', e);
     }
 
     try {
@@ -263,7 +264,7 @@ export async function getProjectHistoryAction(projectId: string) {
                 }
             }
         } catch (auditErr) {
-            console.warn('Audit logs history error:', auditErr);
+            logger.warn('Audit logs history error:', auditErr);
         }
 
         // 2. Fetch from rollups
@@ -347,7 +348,7 @@ export async function getProjectHistoryAction(projectId: string) {
 
         return payload;
     } catch (e) {
-        console.error('getProjectHistoryAction error:', e);
+        logger.error('getProjectHistoryAction error:', e);
         return {
             daily: {}, monthly: {}, yearly: {},
             requests: Array(24).fill({ val: 0 }),

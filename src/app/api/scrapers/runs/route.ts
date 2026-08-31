@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { getPgPool } from '@/lib/pg';
+import logger from '@/lib/logger';
 
 export async function GET(request: Request) {
     try {
@@ -27,7 +28,7 @@ export async function GET(request: Request) {
 
         return NextResponse.json({ success: true, runs: rows });
     } catch (error: any) {
-        console.error('[GET /api/scrapers/runs Error]', error);
+        logger.error('[GET /api/scrapers/runs Error]', error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 }

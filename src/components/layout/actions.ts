@@ -7,6 +7,7 @@ import { getCurrentUserId } from '@/lib/auth';
 import { TenantProvisioner } from '@/lib/tenant-engine';
 import { getPgPool } from '@/lib/pg';
 import crypto from 'crypto';
+import logger from '@/lib/logger';
 
 export async function createProjectAction(formData: FormData) {
   const projectName = formData.get('projectName') as string;
@@ -71,15 +72,15 @@ export async function createProjectAction(formData: FormData) {
           'UPDATE fluxbase_global.projects SET is_serverless = true, schema_name = $1 WHERE project_id = $2',
           [tenantResult.schemaName, project.project_id]
         );
-        console.log(`[Supabase Engine] Instant Serverless Tenant Created: ${tenantResult.schemaName} in ${tenantResult.executionTimeMs}ms`);
+        logger.info(`[Supabase Engine] Instant Serverless Tenant Created: ${tenantResult.schemaName} in ${tenantResult.executionTimeMs}ms`);
       } catch (tenantErr) {
-        console.error(`[Serverless Provisioning Error] Project ${project.project_id}:`, tenantErr);
+        logger.error(`[Serverless Provisioning Error] Project ${project.project_id}:`, tenantErr);
       }
     }
 
     return { success: true, project: project };
   } catch (error: any) {
-    console.error('Project creation failed:', error);
+    logger.error('Project creation failed:', error);
     return { error: error.message || 'Failed to create project.' };
   }
 }
@@ -112,7 +113,7 @@ export async function testExternalConnectionAction(dialect: string, config: any)
         user: config.user,
         password: config.password,
         database: config.database || 'postgres',
-        ssl: config.ssl ? { rejectUnauthorized: false } : false,
+        ssl: config.ssl ? { rejectUnauthorized: true } : false,
         connectionTimeoutMillis: 5000,
       });
       await client.query('SELECT 1');
@@ -125,7 +126,7 @@ export async function testExternalConnectionAction(dialect: string, config: any)
         user: config.user,
         password: config.password,
         database: config.database || undefined,
-        ssl: config.ssl ? { rejectUnauthorized: false } : undefined,
+        ssl: config.ssl ? { rejectUnauthorized: true } : undefined,
         connectTimeout: 5000,
       });
       await connection.ping();
@@ -147,7 +148,7 @@ export async function listExternalDatabasesAction(dialect: string, config: any) 
         user: config.user,
         password: config.password,
         database: config.database || 'postgres', // default admin db to query list
-        ssl: config.ssl ? { rejectUnauthorized: false } : false,
+        ssl: config.ssl ? { rejectUnauthorized: true } : false,
         connectionTimeoutMillis: 5000,
       });
       const res = await client.query('SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname;');
@@ -160,7 +161,7 @@ export async function listExternalDatabasesAction(dialect: string, config: any) 
         port: parseInt(config.port, 10) || 3306,
         user: config.user,
         password: config.password,
-        ssl: config.ssl ? { rejectUnauthorized: false } : undefined,
+        ssl: config.ssl ? { rejectUnauthorized: true } : undefined,
         connectTimeout: 5000,
       });
       const [rows]: any = await connection.query('SHOW DATABASES;');

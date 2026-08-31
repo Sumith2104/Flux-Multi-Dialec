@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useInfiniteQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useGlobalAlert } from '@/components/global-alert-provider';
@@ -154,25 +154,25 @@ export function EditorClient({
     const xlsxInputRef = useRef<HTMLInputElement>(null);
     const sqlInputRef = useRef<HTMLInputElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
-    // ── Tier 1: Column visibility ──────────────────────────────────────────────
+    // â”€â”€ Tier 1: Column visibility â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
     const [showColumnPanel, setShowColumnPanel] = useState(false);
-    // ── Tier 1: Server-side sorts (multi-column) ──────────────────────────────
+    // â”€â”€ Tier 1: Server-side sorts (multi-column) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const [sorts, setSorts] = useState<SortState[]>([]);
-    // ── Tier 1: Server-side multi-filters ─────────────────────────────────────
+    // â”€â”€ Tier 1: Server-side multi-filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const [filters, setFilters] = useState<{id:string;field:string;op:string;value:string}[]>([]);
     const [showFilterPanel, setShowFilterPanel] = useState(false);
 
     const [foreignKeyData, setForeignKeyData] = useState<Record<string, any[]>>({});
     const [constraints, setConstraints] = useState<DbConstraint[]>(initialConstraints);
-    // Phase 3: Diff-set pattern — track only deleted IDs, not full data copies.
+    // Phase 3: Diff-set pattern â€” track only deleted IDs, not full data copies.
     // Eliminates two full array copies of tables/columns from the JS heap.
     const [deletedTableIds, setDeletedTableIds] = useState<Set<string>>(new Set());
     const [deletedColumnIds, setDeletedColumnIds] = useState<Set<string>>(new Set());
 
 
 
-    // Derived local tables/columns — computed from props minus deletions (no copy)
+    // Derived local tables/columns â€” computed from props minus deletions (no copy)
     const localTables = useMemo(
         () => allTables.filter(t => !deletedTableIds.has(t.table_id)),
         [allTables, deletedTableIds]
@@ -270,7 +270,7 @@ export function EditorClient({
         },
     });
 
-    // Rows are now sorted/filtered server-side — just flatten pages
+    // Rows are now sorted/filtered server-side â€” just flatten pages
     const rows = useMemo(() => {
         if (!infiniteData) return [];
         return infiniteData.pages.flatMap((page) => Array.isArray(page?.rows) ? page.rows : []);
@@ -326,22 +326,22 @@ export function EditorClient({
     // Cache refetching is now ALSO handled globally in useRealtimeSubscription.ts
     // to ensure consistency across the sidebar, analytics, and editor.
 
-    // ── JSON sanitizer — fixes common malformed patterns before JSON.parse ──────
+    // â”€â”€ JSON sanitizer â€” fixes common malformed patterns before JSON.parse â”€â”€â”€â”€â”€â”€
     const sanitizeJson = (raw: string): string => raw
-        // "key": ,  or  "key":,  → "key": null
+        // "key": ,  or  "key":,  â†’ "key": null
         .replace(/:\s*,/g, ': null,')
-        // "key":  }  (missing value before closing brace) → "key": null }
+        // "key":  }  (missing value before closing brace) â†’ "key": null }
         .replace(/:\s*([}\]])/g, ': null$1')
         // trailing commas before } or ]
         .replace(/,\s*([}\]])/g, '$1')
-        // bare undefined → null
+        // bare undefined â†’ null
         .replace(/:\s*undefined\b/g, ': null');
 
 
-    // ── Phase 1: Parse file → build preview data (no upload yet) ────────────
+    // â”€â”€ Phase 1: Parse file â†’ build preview data (no upload yet) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const parseForPreview = useCallback(async (file: File, format: ImportFormat) => {
         if (!projectId || !tableName) return;
-        setImportProgress(`Parsing ${file.name}…`);
+        setImportProgress(`Parsing ${file.name}â€¦`);
 
         try {
             let csvBlob: Blob;
@@ -377,7 +377,7 @@ export function EditorClient({
             } else if (format === 'json') {
                 const text = await file.text();
                 let parsed: any;
-                try { parsed = JSON.parse(sanitizeJson(text)); } catch { throw new Error('Invalid JSON — could not parse file.'); }
+                try { parsed = JSON.parse(sanitizeJson(text)); } catch { throw new Error('Invalid JSON â€” could not parse file.'); }
                 let data: Record<string, any>[];
                 if (Array.isArray(parsed)) { data = parsed; }
                 else if (parsed && typeof parsed === 'object') {
@@ -426,11 +426,11 @@ export function EditorClient({
         }
     }, [projectId, tableName, sanitizeJson]);
 
-    // ── Phase 2: Upload confirmed preview data with streaming chunks for large files ──
+    // â”€â”€ Phase 2: Upload confirmed preview data with streaming chunks for large files â”€â”€
     const uploadImport = useCallback(async (data: ImportPreviewData) => {
         if (!projectId || !tableName) return;
         setIsImportingCsv(true);
-        setImportProgress('Preparing data…');
+        setImportProgress('Preparing dataâ€¦');
         try {
             const CHUNK_ROW_LIMIT = 5000;
             const text = await data.csvBlob.text();
@@ -442,7 +442,7 @@ export function EditorClient({
             const totalRows = dataLines.length;
 
             if (totalRows <= CHUNK_ROW_LIMIT) {
-                setImportProgress(`Uploading ${totalRows.toLocaleString()} row(s)…`);
+                setImportProgress(`Uploading ${totalRows.toLocaleString()} row(s)â€¦`);
                 const fd = new FormData();
                 fd.append('projectId', projectId);
                 fd.append('tableName', tableName);
@@ -474,7 +474,7 @@ export function EditorClient({
                     const chunkBlob = new Blob([chunkLines.join('\n')], { type: 'text/csv' });
 
                     const pct = Math.round(((chunkIdx + 1) / totalChunks) * 100);
-                    setImportProgress(`Importing ${startIdx.toLocaleString()}–${endIdx.toLocaleString()} of ${totalRows.toLocaleString()} rows (${pct}%)…`);
+                    setImportProgress(`Importing ${startIdx.toLocaleString()}â€“${endIdx.toLocaleString()} of ${totalRows.toLocaleString()} rows (${pct}%)â€¦`);
 
                     const fd = new FormData();
                     fd.append('projectId', projectId);
@@ -531,11 +531,11 @@ export function EditorClient({
         }));
     }, [localColumns, hiddenColumns]);
 
-    // ── Inline Cell Save (optimistic — no full refetch) ──────────────────────
+    // â”€â”€ Inline Cell Save (optimistic â€” no full refetch) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const handleCellSave = useCallback(async (rowId: string, field: string, value: string) => {
         if (!projectId || !tableId || !tableName) return;
 
-        // 1. Optimistically patch the cache immediately — zero flicker
+        // 1. Optimistically patch the cache immediately â€” zero flicker
         const queryKey = ['table-data', projectId, tableId, sorts, filters];
         queryClient.setQueryData<any>(queryKey, (old: any) => {
             if (!old) return old;
@@ -554,34 +554,22 @@ export function EditorClient({
 
         // 2. Persist to server in background
         try {
-            const { editRowAction } = await import('@/app/(app)/editor/actions');
-            const row = rows.find(r => (r.id || r._id) === rowId);
-            if (!row) return;
-            const fd = new FormData();
-            fd.append('projectId', projectId);
-            fd.append('tableId', tableId);
-            fd.append('tableName', tableName);
-            fd.append('rowId', rowId);
-            for (const [k, v] of Object.entries(row)) {
-                if (k !== 'id' && k !== '_id' && v !== null && v !== undefined) {
-                    fd.append(k, String(v));
-                }
-            }
-            fd.set(field, value);
-            const result = await editRowAction(fd);
+            const { updateCellAction } = await import('@/app/(app)/editor/actions');
+            const pkColName = (Array.from(pkColumns)[0] as string) || 'id';
+            const result = await updateCellAction(projectId, tableId, tableName, rowId, field, value, pkColName);
             if (!result?.success) {
                 // Rollback optimistic update on failure
                 queryClient.invalidateQueries({ queryKey });
                 throw new Error(result?.error || 'Save failed');
             }
-            // No refetch needed — cache is already correct
+            // No refetch needed â€” cache is already correct
         } catch (err) {
             // Re-throw so DataTable can show the error state
             throw err;
         }
     }, [projectId, tableId, tableName, rows, sorts, filters, queryClient]);
 
-    // ── Multi-format Export ───────────────────────────────────────────────────
+    // â”€â”€ Multi-format Export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const handleExport = useCallback(async (format: 'csv' | 'json' | 'sql' | 'excel') => {
         if (!tableName) return;
         // Fetch all rows (no pagination) respecting current sort/filter
@@ -824,7 +812,7 @@ export function EditorClient({
                     onChange={(e) => setTableSearchQuery(e.target.value)} 
                 />
             </div>
-            <nav className="flex-1 overflow-y-auto px-2 space-y-1 py-2">
+            <nav className="flex-1 min-h-0 overflow-y-auto px-2 space-y-1 py-2 custom-scrollbar">
                 {searchedTables.map((table) => (
                     <div
                         key={table.table_id}
@@ -863,7 +851,7 @@ export function EditorClient({
                     </div>
                 ))}
             </nav>
-            <div className="mt-auto p-2 border-t space-y-2">
+            <div className="mt-auto p-2 border-t space-y-2 shrink-0">
                 <Button asChild className="w-full">
                     <Link href={projectId ? `/dashboard/tables/create?projectId=${projectId}` : '#'} onClick={() => setIsMobileExplorerOpen(false)}>
                         <Plus className="mr-2 h-4 w-4" />
@@ -879,7 +867,7 @@ export function EditorClient({
 
     return (
         <>
-            {/* ── Import Preview Sidebar ── */}
+            {/* â”€â”€ Import Preview Sidebar â”€â”€ */}
             <ImportPreviewSidebar
                 data={importPreview}
                 isUploading={isImportingCsv}
@@ -887,9 +875,9 @@ export function EditorClient({
                 onConfirm={uploadImport}
                 onCancel={() => setImportPreview(null)}
             />
-            <div className="flex flex-col md:flex-row w-full items-start h-full">
+            <div className="flex flex-col md:flex-row w-full h-full min-h-0 flex-1 overflow-hidden">
                 {/* Sidebar - Desktop Only */}
-                <aside className="hidden md:flex md:w-64 flex-shrink-0 md:border-r bg-background flex-col md:h-full overflow-hidden">
+                <aside className="hidden md:flex md:w-64 flex-shrink-0 md:border-r bg-background flex-col h-full min-h-0 overflow-hidden">
                     <div className="p-4 border-b">
                         <h2 className="text-sm font-medium tracking-tight">Table Editor</h2>
                     </div>
@@ -899,7 +887,7 @@ export function EditorClient({
                 </aside>
 
                 {/* Main Content */}
-                <main className="flex-1 flex flex-col overflow-hidden w-full">
+                <main className="flex-1 flex flex-col overflow-hidden w-full h-full min-h-0">
                             {currentTable && tableId && tableName ? (
                                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col min-h-0">
                                     <header className="flex flex-col sm:flex-row min-h-12 py-1.5 h-auto items-start sm:items-center gap-3 border-b bg-background px-3 sm:px-4 flex-shrink-0">
@@ -963,18 +951,18 @@ export function EditorClient({
                                                     refreshData();
                                                 }}
                                             />
-                                            {/* ── Hidden file inputs for each import format ── */}
+                                            {/* â”€â”€ Hidden file inputs for each import format â”€â”€ */}
                                             <input ref={csvInputRef}  type="file" accept=".csv,text/csv"                                     className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value=''; if(f) parseForPreview(f,'csv');  }} />
                                             <input ref={jsonInputRef} type="file" accept=".json,application/json"                            className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value=''; if(f) parseForPreview(f,'json'); }} />
                                             <input ref={xlsxInputRef} type="file" accept=".xlsx,.xls,application/vnd.ms-excel"              className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value=''; if(f) parseForPreview(f,'xlsx'); }} />
                                             <input ref={sqlInputRef}  type="file" accept=".sql,text/plain"                                   className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value=''; if(f) parseForPreview(f,'sql');  }} />
 
-                                            {/* ── Import dropdown ── */}
+                                            {/* â”€â”€ Import dropdown â”€â”€ */}
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
                                                     <Button variant="outline" size="sm" disabled={isImportingCsv}>
                                                         {isImportingCsv ? (
-                                                            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{importProgress || 'Importing…'}</>
+                                                            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{importProgress || 'Importingâ€¦'}</>
                                                         ) : (
                                                             <><Upload className="mr-2 h-4 w-4" />Import<ChevronDown className="ml-1 h-3 w-3 opacity-60" /></>
                                                         )}
@@ -1066,7 +1054,7 @@ export function EditorClient({
                                         </AlertDialogContent>
                                     </AlertDialog>
                                 </div>
-                                 {/* ── Right toolbar: Filter, Columns, Export ── */}
+                                 {/* â”€â”€ Right toolbar: Filter, Columns, Export â”€â”€ */}
                                  <div className="flex items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0 sm:ml-auto shrink-0 flex-wrap">
                                      {/* Active filter chips */}
                                      {filters.length > 0 && (
@@ -1075,7 +1063,7 @@ export function EditorClient({
                                                  <Badge key={f.id} variant="secondary" className="gap-1 text-xs py-0.5">
                                                      <span className="font-mono">{f.field}</span>
                                                      <span className="opacity-60">{f.op}</span>
-                                                     {f.value && <span className="font-medium">{f.value.slice(0,12)}{f.value.length>12?'…':''}</span>}
+                                                     {f.value && <span className="font-medium">{f.value.slice(0,12)}{f.value.length>12?'â€¦':''}</span>}
                                                      <button onClick={() => setFilters(prev => prev.filter(x => x.id !== f.id))} className="ml-0.5 rounded-full hover:bg-muted p-0.5">
                                                          <X className="h-2.5 w-2.5" />
                                                      </button>
@@ -1104,7 +1092,7 @@ export function EditorClient({
                                                              onChange={e => setFilters(prev => prev.map(x => x.id === f.id ? { ...x, op: e.target.value } : x))}>
                                                              <option value="contains">contains</option>
                                                              <option value="equals">equals</option>
-                                                             <option value="not_equals">≠</option>
+                                                             <option value="not_equals">â‰ </option>
                                                              <option value="starts_with">starts</option>
                                                              <option value="ends_with">ends</option>
                                                              <option value="gt">&gt;</option>
@@ -1187,9 +1175,9 @@ export function EditorClient({
                                  </div>
                             </header>
 
-                            <div className="flex-grow flex flex-col overflow-hidden">
-                                <TabsContent value="data" className="mt-0 pt-0 md:flex-1 md:flex md:flex-col md:min-h-0 h-[600px] md:h-auto relative overflow-hidden">
-                                        <div className="relative flex-1 min-h-0" onClick={() => { setShowFilterPanel(false); setShowColumnPanel(false); }}>
+                            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                                <TabsContent value="data" className="mt-0 pt-0 flex-1 flex flex-col h-full min-h-0 relative overflow-hidden">
+                                        <div className="relative flex-1 h-full min-h-0 flex flex-col" onClick={() => { setShowFilterPanel(false); setShowColumnPanel(false); }}>
                                             <DataTable
                                                 columns={columns}
                                                 rows={filteredAndSortedRows}
@@ -1288,7 +1276,7 @@ export function EditorClient({
                                                                         <span className="font-semibold font-mono">{c.column_names}</span>
                                                                         <span className="text-sm text-muted-foreground">
                                                                             {c.type === 'PRIMARY KEY' ? 'Primary Key' :
-                                                                                `→ ${getReferencedTable(c)?.table_name}.${c.referenced_column_names}`
+                                                                                `â†’ ${getReferencedTable(c)?.table_name}.${c.referenced_column_names}`
                                                                             }
                                                                         </span>
                                                                     </div>
@@ -1447,3 +1435,6 @@ export function EditorClient({
         </>
     );
 }
+
+
+

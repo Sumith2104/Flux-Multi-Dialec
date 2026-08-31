@@ -3,6 +3,8 @@ import { getPgPool, handleDatabaseError } from '@/lib/pg';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { sendTeamInviteEmail } from '@/lib/email';
 import crypto from 'crypto';
+import { requireWriteScope } from '@/lib/require-scope';
+import logger from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +13,7 @@ export async function GET(req: NextRequest) {
     const projectId = searchParams.get('projectId');
     const scope = searchParams.get('scope'); // 'project' or 'my-invites'
     const auth = await getAuthContextFromRequest(req);
+  requireWriteScope(auth);
     if (!auth?.userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     try {
@@ -107,7 +110,7 @@ export async function POST(req: NextRequest) {
 
         // 2. Persistent Action: Reset state and create fresh invitation
         const inviteId = crypto.randomUUID();
-        console.log(`[Invitation DEBUG] Resetting and creating invite: ${inviteId} for ${email} in project ${projectId}`);
+        logger.info(`[Invitation DEBUG] Resetting and creating invite: ${inviteId} for ${email} in project ${projectId}`);
         
         // Use a transaction or sequential queries to ensure we clear stale ones first
         await pool.query('BEGIN');
@@ -132,7 +135,7 @@ export async function POST(req: NextRequest) {
 
         // 3. Background Action: Email
         sendTeamInviteEmail(email, inviterName, projectName, role).catch(err => {
-            console.error("[Email Dispatch Failed]", err.message);
+            logger.error("[Email Dispatch Failed]", err.message);
         });
 
         return NextResponse.json({ success: true, invited: true });

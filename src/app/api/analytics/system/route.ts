@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { getAuthContextFromRequest } from '@/lib/auth';
+import logger from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,7 +70,7 @@ export async function GET(req: NextRequest) {
         });
 
     } catch (e: any) {
-        console.error('Failed to fetch system metrics:', e);
+        logger.error('Failed to fetch system metrics:', e);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }

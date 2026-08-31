@@ -1,4 +1,5 @@
 import { getPgPool } from '@/lib/pg';
+import logger from '@/lib/logger';
 
 export async function logLoginActivity(userId: string, email: string, ip: string, userAgent: string) {
     try {
@@ -8,6 +9,6 @@ export async function logLoginActivity(userId: string, email: string, ip: string
             [userId, email, ip, userAgent]
         );
     } catch (error) {
-        console.error("Failed to log login activity:", error);
+        logger.error("Failed to log login activity:", error);
     }
 }

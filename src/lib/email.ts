@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import path from 'path';
+import logger from '@/lib/logger';
 
 function getTransporter() {
     const host = process.env.SMTP_HOST || '';
@@ -44,7 +45,7 @@ function htmlToPlainText(html: string): string {
 
 export async function sendEmail(to: string, subject: string, html: string, attachments?: any[], text?: string) {
     if (!process.env.SMTP_HOST && !process.env.SMTP_USER) {
-        console.log("SMTP not configured. Skipping email:", { to, subject });
+        logger.info("SMTP not configured. Skipping email:", { to, subject });
         return;
     }
 
@@ -65,10 +66,10 @@ export async function sendEmail(to: string, subject: string, html: string, attac
                 'X-Priority': '3',
             }
         });
-        console.log("Message sent: %s", info.messageId);
+        logger.info("Message sent: %s", info.messageId);
         return info;
     } catch (error) {
-        console.error("Error sending email:", error);
+        logger.error("Error sending email:", error);
         throw error;
     }
 }

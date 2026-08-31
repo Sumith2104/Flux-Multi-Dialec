@@ -1,4 +1,4 @@
-'use server';
+﻿'use server';
 
 import { v4 as uuidv4 } from 'uuid';
 import { getCurrentUserId } from '@/lib/auth';
@@ -22,6 +22,7 @@ import {
 } from '@/lib/data';
 import { getLocalTimestamp } from '@/lib/utils';
 import { getPgPool } from '@/lib/pg';
+import logger from '@/lib/logger';
 
 async function broadcastSchemaUpdate(projectId: string) {
     try {
@@ -34,7 +35,7 @@ async function broadcastSchemaUpdate(projectId: string) {
         const payloadString = JSON.stringify(payload).replace(/'/g, "''");
         await pool.query(`NOTIFY fluxbase_live, '${payloadString}'`);
     } catch (e) {
-        console.warn('Failed to broadcast schema update:', e);
+        logger.warn('Failed to broadcast schema update:', e);
     }
 }
 
@@ -174,7 +175,7 @@ export async function addRowAction(formData: FormData) {
                     try {
                         value = new Date(value).toISOString();
                     } catch {
-                        console.error("Invalid date value", value);
+                        logger.error("Invalid date value", value);
                     }
                 }
             }
@@ -202,8 +203,78 @@ export async function addRowAction(formData: FormData) {
         // revalidatePath(`/editor?projectId=${projectId}&tableId=${tableId}&tableName=${tableName}`);
         return { success: true };
     } catch (error) {
-        console.error('Failed to add row:', error);
+        logger.error('Failed to add row:', error);
         return { error: `An unexpected error occurred: ${(error as Error).message}` };
+    }
+}
+
+/**
+ * Ultra-fast single cell update action for inline spreadsheet editing.
+ * Executes a single direct UPDATE query (~20ms) instead of 10+ sequential roundtrips.
+ */
+/**
+ * Ultra-fast single cell update action for inline spreadsheet editing.
+ * Executes a single direct UPDATE query (~20ms) instead of 10+ sequential roundtrips.
+ */
+/**
+ * Ultra-fast single cell update action for inline spreadsheet editing.
+ * Executes a single direct UPDATE query (~20ms) instead of 10+ sequential roundtrips.
+ */
+export async function updateCellAction(
+    projectId: string,
+    tableId: string,
+    tableName: string,
+    rowId: string,
+    field: string,
+    value: string,
+    pkColName?: string
+) {
+    const userId = await getCurrentUserId();
+    if (!projectId || !tableName || !userId || !rowId || !field) {
+        return { error: 'Missing required parameters.' };
+    }
+
+    try {
+        const project = await getProjectById(projectId, userId);
+        if (!project) return { error: 'Project not found.' };
+
+        const isMysql = project.dialect?.toLowerCase() === 'mysql';
+        const safeTable = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+        const safeField = field.replace(/[^a-zA-Z0-9_]/g, '');
+        const pk = (pkColName || 'id').replace(/[^a-zA-Z0-9_]/g, '');
+
+        if (isMysql) {
+            const { getTenantMysqlPool, getProjectDbAndSchema } = await import('@/lib/tenant-pools');
+            const mysqlPool = await getTenantMysqlPool(project);
+            const { dbName } = getProjectDbAndSchema(project);
+            const targetDb = (!project.connection_type || project.connection_type === 'internal')
+                ? dbName
+                : (project.active_db || dbName);
+
+            const ddl = `UPDATE \`${targetDb}\`.\`${safeTable}\` SET \`${safeField}\` = ? WHERE \`${pk}\` = ?`;
+            await mysqlPool.query(ddl as any, [value === '' ? null : value, rowId]);
+        } else {
+            const { getTenantPgPool, getProjectDbAndSchema } = await import('@/lib/tenant-pools');
+            const pool = await getTenantPgPool(project);
+            const { schemaName } = getProjectDbAndSchema(project);
+            const targetSchema = (!project.connection_type || project.connection_type === 'internal')
+                ? schemaName
+                : ((project as any).schema_name || 'public');
+
+            const ddl = `UPDATE "${targetSchema}"."${safeTable}" SET "${safeField}" = $1 WHERE "${pk}"::text = $2`;
+            await pool.query(ddl, [value === '' ? null : value, rowId]);
+        }
+
+        // Invalidate cache and webhooks in background (non-blocking)
+        import('@/lib/cache').then(m => m.invalidateTableCache(projectId, tableId)).catch(() => {});
+        import('@/lib/webhooks').then(m => {
+            m.fireWebhooks(projectId, userId, tableId, 'row.updated', { [safeField]: value, [pk]: rowId }, undefined).catch(() => {});
+        }).catch(() => {});
+
+        return { success: true };
+    } catch (error: any) {
+        logger.error('Failed to update cell:', error);
+        return { error: error.message || 'Update failed' };
     }
 }
 
@@ -276,7 +347,7 @@ export async function editRowAction(formData: FormData) {
         // revalidatePath(`/editor?projectId=${projectId}&tableId=${tableId}&tableName=${tableName}`);
         return { success: true };
     } catch (error) {
-        console.error('Failed to edit row:', error);
+        logger.error('Failed to edit row:', error);
         return { error: `An unexpected error occurred: ${(error as Error).message}` };
     }
 }
@@ -294,7 +365,7 @@ export async function deleteRowAction(projectId: string, tableId: string, tableN
         // Resolve the PK column once (not N times)
         const cols = await getColumnsForTable(projectId, tableId);
         const pkCol = cols.find(c => c.is_primary_key);
-        if (!pkCol) return { error: 'Table has no primary key — cannot delete rows.' };
+        if (!pkCol) return { error: 'Table has no primary key â€” cannot delete rows.' };
 
         const safeTable = tableName.replace(/[^a-zA-Z0-9_]/g, '');
         const pkName = pkCol.column_name;
@@ -330,7 +401,7 @@ export async function deleteRowAction(projectId: string, tableId: string, tableN
         return { success: true, deletedCount };
 
     } catch (error) {
-        console.error('Failed to delete row(s):', error);
+        logger.error('Failed to delete row(s):', error);
         return { error: `An unexpected error occurred: ${(error as Error).message}` };
     }
 }
@@ -365,7 +436,7 @@ export async function addColumnAction(formData: FormData) {
         await broadcastSchemaUpdate(projectId);
         return { success: true };
     } catch (error) {
-        console.error('Failed to add column:', error);
+        logger.error('Failed to add column:', error);
         return { error: `An unexpected error occurred: ${(error as Error).message}` };
     }
 }
@@ -387,7 +458,7 @@ export async function editColumnAction(formData: FormData) {
         // revalidatePath(`/editor?projectId=${projectId}&tableId=${tableId}&tableName=${tableName}`);
         return { success: true };
     } catch (error) {
-        console.error('Failed to edit column:', error);
+        logger.error('Failed to edit column:', error);
         return { error: `An unexpected error occurred: ${(error as Error).message}` };
     }
 }
@@ -457,7 +528,7 @@ export async function addConstraintAction(formData: FormData) {
         return { success: true };
 
     } catch (error) {
-        console.error('Failed to add constraint:', error);
+        logger.error('Failed to add constraint:', error);
         return { error: `An unexpected error occurred: ${(error as Error).message}` };
     }
 }
@@ -527,7 +598,7 @@ export async function updateTableCellValueAction(
         await updateRow(projectId, tableName, rowId, updates);
         return { success: true };
     } catch (error: any) {
-        console.error('Failed to update table cell:', error);
+        logger.error('Failed to update table cell:', error);
         return { error: error.message || 'Failed to update cell.' };
     }
 }
@@ -545,7 +616,9 @@ export async function updateFullRowAction(
         await updateRow(projectId, tableName, rowId, updates);
         return { success: true };
     } catch (error: any) {
-        console.error('Failed to update row:', error);
+        logger.error('Failed to update row:', error);
         return { error: error.message || 'Failed to update row.' };
     }
 }
+
+

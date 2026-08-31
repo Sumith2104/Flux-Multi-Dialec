@@ -6,6 +6,7 @@ import { getS3Client, getS3Bucket, buildS3Key, PLAN_STORAGE_LIMITS, PLAN_STORAGE
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { ERROR_CODES } from '@/lib/error-codes';
+import logger from '@/lib/logger';
 
 export async function POST(req: NextRequest) {
     const auth = await getAuthContextFromRequest(req);
@@ -96,7 +97,7 @@ export async function POST(req: NextRequest) {
         const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 }); // 1 hour expiration
         return NextResponse.json({ success: true, uploadUrl, s3Key, actualBucketId });
     } catch (e: any) {
-        console.error('Presigned URL generation error:', e);
+        logger.error('Presigned URL generation error:', e);
         return NextResponse.json({ success: false, error: { message: 'Failed to generate S3 upload URL', code: ERROR_CODES.INTERNAL_ERROR } }, { status: 500 });
     }
 }

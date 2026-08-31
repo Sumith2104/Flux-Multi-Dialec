@@ -1,4 +1,5 @@
 import mysql from 'mysql2/promise';
+import { readFileSync } from 'fs';
 
 const globalForMysql = globalThis as unknown as {
     mysqlPool: mysql.Pool | undefined;
@@ -17,6 +18,8 @@ export function getMysqlPool(): mysql.Pool {
         parsedUrl.pathname = '';
 
         // connectionLimit 20 to match pg max
+        const caPath = process.env.MYSQL_SSL_CA_PATH || process.env.NODE_EXTRA_CA_CERTS;
+        const ca = caPath ? readFileSync(caPath) : undefined;
         const pool = mysql.createPool({
             uri: parsedUrl.toString(),
             connectionLimit: 20,
@@ -26,8 +29,9 @@ export function getMysqlPool(): mysql.Pool {
             enableKeepAlive: true, // Prevent AWS RDS from dropping idle connections
             keepAliveInitialDelay: 10000,
             ssl: {
-                rejectUnauthorized: false
-            } // Essential for AWS RDS
+                rejectUnauthorized: process.env.MYSQL_SSL_REJECT_UNAUTHORIZED !== 'false',
+                ca,
+            }
         });
 
         if (typeof process !== 'undefined') {

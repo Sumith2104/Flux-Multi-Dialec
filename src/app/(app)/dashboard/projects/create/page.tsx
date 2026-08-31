@@ -400,7 +400,7 @@ export default function CreateProjectPage() {
                                             onChange={e => setSsl(e.target.checked)}
                                             className="h-4 w-4 rounded border-white/20 bg-background accent-primary text-primary focus:ring-0"
                                         />
-                                        <Label htmlFor="ext-ssl" className="text-sm cursor-pointer select-none">Require SSL (rejectUnauthorized: false)</Label>
+                                        <Label htmlFor="ext-ssl" className="text-sm cursor-pointer select-none">Require verified SSL certificate</Label>
                                     </div>
 
                                     {/* Connection Type-Specific Inputs */}

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
-import { createSessionCookie } from '@/lib/auth';
+import { createSessionCookie, createRefreshToken } from '@/lib/auth';
 import { sendWelcomeEmail } from '@/lib/email';
 import { getOAuthConfig, getBaseOrigin } from '@/lib/oauth-config';
 import crypto from 'crypto';
 import { logToFluxDB } from '@/lib/fluxdb-logger';
+import logger from '@/lib/logger';
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
     const { clientId, clientSecret } = getOAuthConfig(request, 'github');
 
     if (!code || !clientId || !clientSecret) {
-        console.error("Missing GitHub Code or Environment Variables for this platform");
+        logger.error("Missing GitHub Code or Environment Variables for this platform");
         return NextResponse.redirect(new URL('/?error=GithubAuthFailed', getBaseOrigin(request)));
     }
 
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
         const accessToken = tokenData.access_token;
         
         if (!accessToken) {
-            console.error("GitHub OAuth Error:", tokenData);
+            logger.error("GitHub OAuth Error:", tokenData);
             return NextResponse.redirect(new URL('/?error=GithubTokenFailed', getBaseOrigin(request)));
         }
 
@@ -91,7 +92,7 @@ export async function GET(request: NextRequest) {
                 [userId, email, name, photoUrl]
             );
 
-            sendWelcomeEmail(email, name).catch(console.error);
+            sendWelcomeEmail(email, name).catch((e) => { logger.error(e); });
         }
 
         // 5. Check for 2FA
@@ -110,6 +111,10 @@ export async function GET(request: NextRequest) {
         // 6. Create active session cookie 
         await createSessionCookie(userId, true);
 
+        // Set refresh token cookie
+        const refreshToken = await createRefreshToken(userId);
+        const isProd = process.env.NODE_ENV === 'production';
+
         // Log to FluxDB desktop (no-op if FLUXDB_WEBHOOK_URL is not set)
         logToFluxDB({
             level: isNewUser ? 'INFO' : 'INFO',
@@ -126,10 +131,18 @@ export async function GET(request: NextRequest) {
         // 7. Redirect seamlessly
         const redirectPath = isNewUser ? '/pricing?onboarding=true' : '/dashboard/projects';
         const baseOrigin = getBaseOrigin(request);
-        return NextResponse.redirect(new URL(redirectPath, baseOrigin));
+        const response = NextResponse.redirect(new URL(redirectPath, baseOrigin));
+        response.cookies.set('refresh_token', refreshToken, {
+            httpOnly: true,
+            secure: isProd,
+            path: '/',
+            sameSite: 'lax',
+            maxAge: 7 * 24 * 60 * 60,
+        });
+        return response;
 
     } catch (error) {
-        console.error("GitHub Auth Exception:", error);
+        logger.error("GitHub Auth Exception:", error);
         return NextResponse.redirect(new URL('/?error=GithubServerException', getBaseOrigin(request)));
     }
 }

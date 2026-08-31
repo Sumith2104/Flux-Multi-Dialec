@@ -1,4 +1,5 @@
 import { getPgPool } from '@/lib/pg';
+import logger from '@/lib/logger';
 
 export interface AiErrorLesson {
     id: string;
@@ -106,7 +107,7 @@ export async function recordAiErrorSolution(
         }
         return true;
     } catch (e) {
-        console.warn('[AiMemory] Failed to record error lesson:', e);
+        logger.warn('[AiMemory] Failed to record error lesson:', e);
         return false;
     }
 }
@@ -183,7 +184,7 @@ export async function getRelevantErrorLessons(
             });
         }
     } catch (e) {
-        console.warn('[AiMemory] Failed to query dynamic memory:', e);
+        logger.warn('[AiMemory] Failed to query dynamic memory:', e);
     }
 
     // Deduplicate and limit

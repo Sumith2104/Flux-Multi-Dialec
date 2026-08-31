@@ -1,6 +1,7 @@
 import { getPgPool } from '@/lib/pg';
 import { getProjectById, getTablesForProject } from '@/lib/data';
 import { sendLimitAlertEmail } from '@/lib/email';
+import logger from '@/lib/logger';
 
 const PLAN_LIMITS = {
     free: {
@@ -135,10 +136,10 @@ export async function checkRowLimit(projectId: string, userId: string, tableName
             // Only send one email every 24 hours per resource to prevent spam
             if (now - lastAlert > 24 * 60 * 60 * 1000) {
                 // Fire and forget email dispatch
-                sendLimitAlertEmail(pConfig.alert_email, pConfig.display_name, `Rows in table '${tableName}'`, activeLimit, projectedRows >= activeLimit).catch(console.error);
+                sendLimitAlertEmail(pConfig.alert_email, pConfig.display_name, `Rows in table '${tableName}'`, activeLimit, projectedRows >= activeLimit).catch((e) => { logger.error(e); });
                 
                 // Update alert timestamp
-                pgPool.query('UPDATE fluxbase_global.projects SET last_row_alert_at = NOW() WHERE project_id = $1', [projectId]).catch(console.error);
+                pgPool.query('UPDATE fluxbase_global.projects SET last_row_alert_at = NOW() WHERE project_id = $1', [projectId]).catch((e) => { logger.error(e); });
             }
         }
     }
@@ -167,7 +168,7 @@ export async function checkProjectTrafficLimits(projectId: string): Promise<void
             }
         }
     } catch (e) {
-        console.warn('[Redis Error] checkProjectTrafficLimits cache read failed:', e);
+        logger.warn('[Redis Error] checkProjectTrafficLimits cache read failed:', e);
     }
 
     try {
@@ -230,8 +231,8 @@ export async function checkProjectTrafficLimits(projectId: string): Promise<void
                 if (current >= threshold) {
                     const lastAlert = pConfig.last_api_alert_at ? new Date(pConfig.last_api_alert_at).getTime() : 0;
                     if (Date.now() - lastAlert > 24 * 60 * 60 * 1000) {
-                        sendLimitAlertEmail(pConfig.alert_email, pConfig.display_name, resourceName, limit, current >= limit).catch(console.error);
-                        pool.query('UPDATE fluxbase_global.projects SET last_api_alert_at = NOW() WHERE project_id = $1', [projectId]).catch(console.error);
+                        sendLimitAlertEmail(pConfig.alert_email, pConfig.display_name, resourceName, limit, current >= limit).catch((e) => { logger.error(e); });
+                        pool.query('UPDATE fluxbase_global.projects SET last_api_alert_at = NOW() WHERE project_id = $1', [projectId]).catch((e) => { logger.error(e); });
                     }
                 }
             };
@@ -249,7 +250,7 @@ export async function checkProjectTrafficLimits(projectId: string): Promise<void
 
     } catch (error) {
         if (error instanceof LimitExceededError) throw error;
-        console.error("Critical error in checkProjectTrafficLimits:", error);
+        logger.error("Critical error in checkProjectTrafficLimits:", error);
         // On other errors (DB down etc), fail safe and don't block
     }
 }

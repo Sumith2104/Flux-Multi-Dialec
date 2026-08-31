@@ -1,5 +1,6 @@
 import { RDSClient, CreateDBInstanceCommand, DescribeDBInstancesCommand, DeleteDBInstanceCommand, CreateDBSnapshotCommand, DescribeDBSnapshotsCommand } from "@aws-sdk/client-rds";
 import { fromEnv } from "@aws-sdk/credential-providers";
+import logger from '@/lib/logger';
 
 // Initialize the RDS client using Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION)
 const getRdsClient = () => {
@@ -41,10 +42,10 @@ export async function provisionDatabaseInstance(config: ProvisionDBConfig) {
     try {
         const command = new CreateDBInstanceCommand(params);
         const response = await client.send(command);
-        console.log(`[AWS RDS] Provisioning started for ${config.instanceIdentifier}`);
+        logger.info(`[AWS RDS] Provisioning started for ${config.instanceIdentifier}`);
         return response.DBInstance;
     } catch (error) {
-        console.error(`[AWS RDS Error] Failed to provision instance ${config.instanceIdentifier}:`, error);
+        logger.error(`[AWS RDS Error] Failed to provision instance ${config.instanceIdentifier}:`, error);
         throw error;
     }
 }
@@ -70,7 +71,7 @@ export async function getDatabaseStatus(instanceIdentifier: string) {
         }
         return null;
     } catch (error) {
-        console.error(`[AWS RDS Error] Failed to fetch status for ${instanceIdentifier}:`, error);
+        logger.error(`[AWS RDS Error] Failed to fetch status for ${instanceIdentifier}:`, error);
         throw error;
     }
 }
@@ -86,7 +87,7 @@ export async function createDatabaseSnapshot(instanceIdentifier: string, snapsho
         const response = await client.send(command);
         return response.DBSnapshot;
     } catch (error) {
-        console.error(`[AWS RDS Error] Failed to create snapshot ${snapshotIdentifier}:`, error);
+        logger.error(`[AWS RDS Error] Failed to create snapshot ${snapshotIdentifier}:`, error);
         throw error;
     }
 }
@@ -102,7 +103,7 @@ export async function listDatabaseSnapshots(instanceIdentifier: string) {
         const response = await client.send(command);
         return response.DBSnapshots || [];
     } catch (error) {
-        console.error(`[AWS RDS Error] Failed to list snapshots for ${instanceIdentifier}:`, error);
+        logger.error(`[AWS RDS Error] Failed to list snapshots for ${instanceIdentifier}:`, error);
         throw error;
     }
 }
@@ -122,10 +123,10 @@ export async function terminateDatabaseInstance(instanceIdentifier: string, skip
     try {
         const command = new DeleteDBInstanceCommand(params);
         const response = await client.send(command);
-        console.log(`[AWS RDS] Terminating instance ${instanceIdentifier}`);
+        logger.info(`[AWS RDS] Terminating instance ${instanceIdentifier}`);
         return response.DBInstance;
     } catch (error) {
-        console.error(`[AWS RDS Error] Failed to terminate instance ${instanceIdentifier}:`, error);
+        logger.error(`[AWS RDS Error] Failed to terminate instance ${instanceIdentifier}:`, error);
         throw error;
     }
 }

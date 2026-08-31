@@ -1,6 +1,7 @@
 'use server';
 
 import { createTable, getTablesForProject, getProjectById, ensureRole, Column } from '@/lib/data';
+import logger from '@/lib/logger';
 
 export async function createTableAction(formData: FormData) {
   const tableName = formData.get('tableName') as string;
@@ -110,7 +111,7 @@ export async function createTableAction(formData: FormData) {
 
       // If type is still not recognized, fall back to varchar safely
       if (!validTypes.has(type)) {
-        console.warn(`Unknown column type "${type}" — falling back to varchar.`);
+        logger.warn(`Unknown column type "${type}" — falling back to varchar.`);
         type = 'varchar';
       }
 
@@ -133,7 +134,7 @@ export async function createTableAction(formData: FormData) {
     return { success: true, tableId: table.table_id };
 
   } catch (error) {
-    console.error('Table creation failed:', error);
+    logger.error('Table creation failed:', error);
     return { error: `An unexpected error occurred: ${(error as Error).message}` };
   }
 }

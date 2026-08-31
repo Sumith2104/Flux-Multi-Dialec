@@ -4,9 +4,12 @@ import { getAuthContextFromRequest } from '@/lib/auth';
 import { getProjectById } from '@/lib/data';
 import { ERROR_CODES } from '@/lib/error-codes';
 import crypto from 'crypto';
+import { requireWriteScope } from '@/lib/require-scope';
+import logger from '@/lib/logger';
 
 export async function POST(req: NextRequest) {
     const auth = await getAuthContextFromRequest(req);
+  requireWriteScope(auth);
     if (!auth?.userId) {
         return NextResponse.json({ success: false, error: { message: 'Unauthorized', code: ERROR_CODES.UNAUTHORIZED } }, { status: 401 });
     }
@@ -40,7 +43,7 @@ export async function POST(req: NextRequest) {
         );
         return NextResponse.json({ success: true, file: result.rows[0] });
     } catch (e: any) {
-        console.error('Finalize save error:', e);
+        logger.error('Finalize save error:', e);
         return NextResponse.json({ success: false, error: { message: 'Failed to record object metadata', code: ERROR_CODES.INTERNAL_ERROR } }, { status: 500 });
     }
 }

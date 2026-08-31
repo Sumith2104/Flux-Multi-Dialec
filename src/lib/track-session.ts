@@ -1,5 +1,6 @@
 'use server';
 import { redis } from '@/lib/redis';
+import logger from '@/lib/logger';
 
 // In-memory cache to throttle Redis writes across warm serverless instances
 // Key: {projectId}:{userId}, Value: last_tracked_timestamp
@@ -67,6 +68,6 @@ export async function trackSession(projectId: string, userId: string): Promise<v
         }
 
     } catch (error) {
-        console.warn('[SessionTracking] Failed to track session:', error);
+        logger.warn('[SessionTracking] Failed to track session:', error);
     }
 }

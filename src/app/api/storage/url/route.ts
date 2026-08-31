@@ -5,6 +5,7 @@ import { getProjectById } from '@/lib/data';
 import { getPresignedUrl } from '@/lib/storage';
 
 import { ERROR_CODES } from '@/lib/error-codes';
+import logger from '@/lib/logger';
 
 // GET /api/storage/url?s3Key=xxx&projectId=xxx
 // Returns a 15-minute presigned download URL for a private S3 object
@@ -39,7 +40,7 @@ export async function GET(req: NextRequest) {
         const url = await getPresignedUrl(actualS3Key, 900); // 15 minutes
         return NextResponse.json({ success: true, url, expiresIn: 900 });
     } catch (e: any) {
-        console.error('Presign error:', e);
+        logger.error('Presign error:', e);
         return NextResponse.json({ success: false, error: { message: 'Failed to generate URL', code: ERROR_CODES.INTERNAL_ERROR } }, { status: 500 });
     }
 }

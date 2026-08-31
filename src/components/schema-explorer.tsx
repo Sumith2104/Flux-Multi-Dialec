@@ -1,23 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Database, Table2, Columns, ChevronRight, ChevronDown, Hash, Folder, FolderOpen, Box, Binary, FileCode2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-
-interface ColumnDef {
-    name: string;
-    type: string;
-}
-
-interface IndexDef {
-    name: string;
-    table: string;
-}
-
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRealtimeSubscription } from '@/hooks/use-realtime-subscription';
 
+interface ColumnDef { name: string; type: string; }
+interface IndexDef { name: string; table: string; }
 interface SchemaData {
     tables: Record<string, ColumnDef[]>;
     views: string[];
@@ -30,12 +21,18 @@ interface SchemaData {
 
 export function SchemaExplorer({ projectId, onInsertQuery }: { projectId?: string, onInsertQuery: (query: string) => void }) {
     const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
-
-    // Core structural folders
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['tables']));
+    const queryClient = useQueryClient();
 
     // Register with the global sync layer to catch CREATE/DROP/ALTER events
     useRealtimeSubscription(projectId);
+
+    // Invalidate schema cache when DDL changes happen
+    useEffect(() => {
+        const handler = () => { if (projectId) queryClient.invalidateQueries({ queryKey: ['schema', projectId] }); };
+        window.addEventListener('flux:schema-change', handler);
+        return () => window.removeEventListener('flux:schema-change', handler);
+    }, [projectId, queryClient]);
 
     const { data: schema, isLoading: loading } = useQuery({
         queryKey: ['schema', projectId],
@@ -146,7 +143,7 @@ export function SchemaExplorer({ projectId, onInsertQuery }: { projectId?: strin
                                                 className="h-5 px-1.5 text-[9px] bg-muted/50 border-transparent"
                                                 onClick={(e) => { e.stopPropagation(); onInsertQuery(`SELECT count(*) FROM ${tableName};`); }}
                                             >
-                                                Count Count
+                                                Count
                                             </Button>
                                         </div>
                                     </div>

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { getAuthContextFromRequest } from '@/lib/auth';
+import { requireWriteScope } from '@/lib/require-scope';
+import logger from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +10,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { projectId, userId, role } = body;
     const auth = await getAuthContextFromRequest(req);
+  requireWriteScope(auth);
 
     if (!auth?.userId || !projectId || !userId || !role) {
         return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -63,7 +66,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ success: true, role: updateRes.rows[0].role });
     } catch (e: any) {
-        console.error('[API Team Role] Error:', e);
+        logger.error('[API Team Role] Error:', e);
         return NextResponse.json({ success: false, error: e.message }, { status: 500 });
     }
 }

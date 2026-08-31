@@ -4,6 +4,7 @@ import { getTablesForProject, getColumnsForTable, getProjectById } from '@/lib/d
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 import { Redis } from '@upstash/redis';
+import logger from '@/lib/logger';
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL || '',
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
                 return NextResponse.json({ success: true, suggestions: cached });
             }
         } catch (e) {
-            console.error('Cache read error:', e);
+            logger.error('Cache read error:', e);
         }
 
         // 2. Introspect Schema
@@ -83,7 +84,7 @@ Do not suggest queries for tables that do not exist.`;
         try {
             await redis.set(cacheKey, JSON.stringify(response.output.suggestions), { ex: 60 });
         } catch (e) {
-            console.error('Cache write error:', e);
+            logger.error('Cache write error:', e);
         }
 
         return NextResponse.json({ 
@@ -92,7 +93,7 @@ Do not suggest queries for tables that do not exist.`;
         });
 
     } catch (error: any) {
-        console.error('Analytics Suggestions Error:', error);
+        logger.error('Analytics Suggestions Error:', error);
         return NextResponse.json({ error: error.message || 'AI Generation failed' }, { status: 500 });
     }
 }

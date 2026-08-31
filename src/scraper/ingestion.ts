@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import logger from '@/lib/logger';
 
 /**
  * Creates a new table dynamically if it doesn't already exist.
@@ -33,7 +34,7 @@ export async function createTable(
                 ${definitions}
             );
         `;
-        console.log(`[Scraper Ingestion] Ensuring MySQL Database and table \`${schemaName}\`.\`${tableName}\` exist...`);
+        logger.info(`[Scraper Ingestion] Ensuring MySQL Database and table \`${schemaName}\`.\`${tableName}\` exist...`);
         await mysqlPool.query(createDbDdl as any);
         await mysqlPool.query(createTableDdl as any);
     } else {
@@ -48,7 +49,7 @@ export async function createTable(
             );
         `;
 
-        console.log(`[Scraper Ingestion] Ensuring PG schema and table "${schemaName}"."${tableName}" exist...`);
+        logger.info(`[Scraper Ingestion] Ensuring PG schema and table "${schemaName}"."${tableName}" exist...`);
         await pgPool.query(createSchemaDdl);
         await pgPool.query(createTableDdl);
     }
@@ -75,7 +76,7 @@ export async function insertRows(
     const CHUNK_SIZE = 500;
     const safeKeys = columns.map(c => c.columnName);
 
-    console.log(`[Scraper Ingestion] Beginning bulk insert of ${rows.length} rows in chunks of ${CHUNK_SIZE}...`);
+    logger.info(`[Scraper Ingestion] Beginning bulk insert of ${rows.length} rows in chunks of ${CHUNK_SIZE}...`);
 
     if (dialect.toLowerCase() === 'mysql') {
         const { getMysqlPool } = await import('@/lib/mysql');
@@ -122,5 +123,5 @@ export async function insertRows(
         }
     }
 
-    console.log(`[Scraper Ingestion] Completed bulk insert successfully.`);
+    logger.info(`[Scraper Ingestion] Completed bulk insert successfully.`);
 }

@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
 import crypto from 'crypto';
+import logger from '@/lib/logger';
 
 // ─── Upstash Redis client (REST-based — works in Vercel Edge/Serverless) ─────
 const redis = new Redis({
@@ -137,7 +138,7 @@ export async function POST(req: NextRequest) {
         pipeline.hincrby(STATS_KEY, 'batches_total', 1);
         await pipeline.exec();
     } catch (err: any) {
-        console.error('[PRODUCER] Redis enqueue error:', err.message);
+        logger.error('[PRODUCER] Redis enqueue error:', err.message);
         return NextResponse.json({ error: 'Queue unavailable. Please retry.' }, { status: 503 });
     }
 

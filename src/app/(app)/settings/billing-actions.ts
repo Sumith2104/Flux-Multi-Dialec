@@ -2,6 +2,7 @@
 
 import { getCurrentUserId } from '@/lib/auth';
 import { getPgPool } from '@/lib/pg';
+import logger from '@/lib/logger';
 
 export async function getUserPlanAction() {
     const userId = await getCurrentUserId();
@@ -23,7 +24,7 @@ export async function getUserPlanAction() {
         }
         return { plan: 'free', billing_cycle_end: null, status: 'active' };
     } catch (error) {
-        console.error('[Billing] Failed to fetch user plan:', error);
+        logger.error('[Billing] Failed to fetch user plan:', error);
         return { plan: 'free', billing_cycle_end: null, status: 'active' };
     }
 }

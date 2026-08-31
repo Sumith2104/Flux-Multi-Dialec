@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { recordAiErrorSolution } from '@/lib/ai-memory';
+import logger from '@/lib/logger';
 
 export async function POST(req: Request) {
     try {
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
 
         return NextResponse.json({ success });
     } catch (e: any) {
-        console.error('[AI Memory Route Error]:', e);
+        logger.error('[AI Memory Route Error]:', e);
         return NextResponse.json({ success: false, error: e.message }, { status: 500 });
     }
 }

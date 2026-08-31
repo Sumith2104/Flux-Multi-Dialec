@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthContextFromRequest } from '@/lib/auth';
-import jwt from 'jsonwebtoken';
+import { SignJWT } from 'jose';
+import logger from '@/lib/logger';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fluxbase_dev_secret_key_123';
+function getWsSecret(): Uint8Array {
+    const secret = process.env.JWT_SECRET;
+    if (!secret || secret.trim() === '') {
+        throw new Error('JWT_SECRET environment variable is required.');
+    }
+    return new TextEncoder().encode(secret);
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -14,15 +21,15 @@ export async function GET(req: NextRequest) {
         }
 
         // Issue a short-lived token (1 minute) for WebSocket handshake
-        const token = jwt.sign(
-            { uid: auth.userId, type: 'ws_ticket' },
-            JWT_SECRET,
-            { expiresIn: '1m' }
-        );
+        const token = await new SignJWT({ uid: auth.userId, type: 'ws_ticket' })
+            .setProtectedHeader({ alg: 'HS256' })
+            .setIssuedAt()
+            .setExpirationTime('1m')
+            .sign(getWsSecret());
 
         return NextResponse.json({ token });
     } catch (error) {
-        console.error('[Realtime Token] Error:', error);
+        logger.error('[Realtime Token] Error:', error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
 }

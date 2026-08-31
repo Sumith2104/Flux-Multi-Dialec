@@ -5,9 +5,12 @@ import { ERROR_CODES } from '@/lib/error-codes';
 import crypto from 'crypto';
 import { requireProjectAccess } from '@/lib/project-auth';
 import { validatePublicWebhookUrl } from '@/lib/url-safety';
+import { requireWriteScope } from '@/lib/require-scope';
+import logger from '@/lib/logger';
 
 export async function POST(req: NextRequest) {
     const auth = await getAuthContextFromRequest(req);
+  requireWriteScope(auth);
     if (!auth?.userId) {
         return NextResponse.json(
             { success: false, error: { message: 'Unauthorized', code: ERROR_CODES.UNAUTHORIZED } },
@@ -80,7 +83,7 @@ export async function POST(req: NextRequest) {
             }
         });
     } catch (e: any) {
-        console.error("Error creating webhook:", e);
+        logger.error("Error creating webhook:", e);
         return NextResponse.json(
             { success: false, error: { message: 'Failed to create webhook', code: 'INTERNAL_ERROR' } },
             { status: 500 }
@@ -129,7 +132,7 @@ export async function GET(req: NextRequest) {
             webhooks: res.rows
         });
     } catch (e: any) {
-        console.error("Error fetching webhooks:", e);
+        logger.error("Error fetching webhooks:", e);
         return NextResponse.json(
             { success: false, error: { message: 'Failed to fetch webhooks', code: 'INTERNAL_ERROR' } },
             { status: 500 }
@@ -191,7 +194,7 @@ export async function DELETE(req: NextRequest) {
 
         return NextResponse.json({ success: true });
     } catch (e: any) {
-        console.error("Error deleting webhook:", e);
+        logger.error("Error deleting webhook:", e);
         return NextResponse.json(
             { success: false, error: { message: 'Failed to delete webhook', code: 'INTERNAL_ERROR' } },
             { status: 500 }

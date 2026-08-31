@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
-import { createSessionCookie } from '@/lib/auth';
+import { createSessionCookie, createRefreshToken } from '@/lib/auth';
 import crypto from 'crypto';
+import logger from '@/lib/logger';
 
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
@@ -72,9 +73,20 @@ export async function GET(req: NextRequest) {
 
         // 6. Create session cookie and redirect to dashboard
         await createSessionCookie(user.id, true);
-        return NextResponse.redirect(`${baseUrl}/dashboard/projects`);
+
+        const refreshToken = await createRefreshToken(user.id);
+        const isProd = process.env.NODE_ENV === 'production';
+        const response = NextResponse.redirect(`${baseUrl}/dashboard/projects`);
+        response.cookies.set('refresh_token', refreshToken, {
+            httpOnly: true,
+            secure: isProd,
+            path: '/',
+            sameSite: 'lax',
+            maxAge: 7 * 24 * 60 * 60,
+        });
+        return response;
     } catch (error: any) {
-        console.error("Magic Login Error:", error);
+        logger.error("Magic Login Error:", error);
         return NextResponse.redirect(`${baseUrl}/?error=authentication_failed`);
     }
 }

@@ -3,11 +3,12 @@ config({ path: '.env.local' });
 
 import { WebSocketServer, WebSocket } from 'ws';
 import { Pool } from 'pg';
-import jwt from 'jsonwebtoken';
+import { SignJWT, jwtVerify } from 'jose';
 import http from 'http';
 import { Redis } from '@upstash/redis';
 import fs from 'fs';
 import path from 'path';
+import logger from '@/lib/logger';
 
 let docsContext = '';
 try {
@@ -18,17 +19,17 @@ try {
         docsContext = "Fluxbase Integration Guide: To upload files, POST to /api/storage/upload with multipart/form-data (bucketId, projectId, file). To execute SQL, POST to /api/execute-sql with JSON { query: '...' }. To listen for realtime changes, connect to /api/realtime/subscribe via SSE.";
     }
 } catch (e) {
-    console.warn("Could not load integration guide for WS context", e);
+    logger.warn("Could not load integration guide for WS context", e);
 }
 
 const url = process.env.UPSTASH_REDIS_REST_URL || 'https://dummy.upstash.io';
 const token = process.env.UPSTASH_REDIS_REST_TOKEN || 'dummy';
 const redis = new Redis({ url, token });
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fluxbase_dev_secret_key_123';
+function getWsSecret(): Uint8Array { const s = process.env.JWT_SECRET; if (!s || s.trim() === '') throw new Error('JWT_SECRET required'); return new TextEncoder().encode(s); }
 const PORT = parseInt(process.env.WS_PORT || '4000', 10);
 const wss = new WebSocketServer({ port: PORT });
-console.log(`[WS] Server starting on port ${PORT}...`);
+logger.info(`[WS] Server starting on port ${PORT}...`);
 const clients = new Map<string, Set<WebSocket>>();
 const userConnectionCounts = new Map<string, number>();
 
@@ -38,7 +39,7 @@ if (!process.env.AWS_RDS_POSTGRES_URL) {
 
 const pool = new Pool({
     connectionString: process.env.AWS_RDS_POSTGRES_URL,
-    ssl: { rejectUnauthorized: false }
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: true } : false
 });
 
 // Broadcast helper
@@ -96,13 +97,13 @@ async function setupPgListener() {
                 }
             }
         } catch (e) {
-            console.error('Error parsing pg_notify payload:', e);
+            logger.error('Error parsing pg_notify payload:', e);
         }
     });
 
-    console.log('PostgreSQL realtime listener active on "fluxbase_changes", "flux_realtime", and "fluxbase_live"');
+    logger.info('PostgreSQL realtime listener active on "fluxbase_changes", "flux_realtime", and "fluxbase_live"');
 }
-setupPgListener().catch(console.error);
+setupPgListener().catch((e) => { logger.error(e); });
 
 // Auth helper — supports session cookies (browser) AND API keys (external clients)
 async function authenticateRequest(req: http.IncomingMessage): Promise<{ userId: string; allowedProjectId?: string } | null> {
@@ -118,7 +119,7 @@ async function authenticateRequest(req: http.IncomingMessage): Promise<{ userId:
         const session = cookies['session'];
         if (session) {
             try {
-                const decoded = jwt.verify(session, JWT_SECRET) as { uid: string };
+                const { payload: p1 } = await jwtVerify(session, getWsSecret()); const decoded = p1 as any;
                 return { userId: decoded.uid };
             } catch {
                 // Invalid cookie — fall through to API key check
@@ -148,7 +149,7 @@ async function authenticateRequest(req: http.IncomingMessage): Promise<{ userId:
     if (apiKey) {
         // 2a. Try verifying as a short-lived JWT ticket first
         try {
-            const decoded = jwt.verify(apiKey, JWT_SECRET) as any;
+            const { payload: p2 } = await jwtVerify(apiKey, getWsSecret()); const decoded = p2 as any;
             if (decoded && decoded.uid) {
                 return { userId: decoded.uid };
             }
@@ -171,7 +172,7 @@ async function authenticateRequest(req: http.IncomingMessage): Promise<{ userId:
                 };
             }
         } catch (e) {
-            console.error('[WS] API key validation error:', e);
+            logger.error('[WS] API key validation error:', e);
         }
     }
 
@@ -249,7 +250,7 @@ wss.on('connection', async (ws, req) => {
                 // Track this active session in Redis
                 await redis.incr(`live_sessions:${projectId}`).catch(() => {});
 
-                console.log(`[WS] Client subscribed to ${channelId}`);
+                logger.info(`[WS] Client subscribed to ${channelId}`);
                 ws.send(JSON.stringify({ type: 'subscribed', channel: channelId }));
             }
 
@@ -264,7 +265,7 @@ wss.on('connection', async (ws, req) => {
                 // Untrack this session in Redis
                 await redis.decr(`live_sessions:${projectId}`).catch(() => {});
                 
-                console.log(`[WS] Client unsubscribed from ${channelId}`);
+                logger.info(`[WS] Client unsubscribed from ${channelId}`);
             }
 
             if (data.type === 'chat_request') {
@@ -385,13 +386,13 @@ Provide your response in Markdown formatting. Do NOT use HTML. Keep code snippet
                     ws.send(JSON.stringify({ type: 'chat_done', text: fullText }));
 
                 } catch (err: any) {
-                    console.error('[WS Chat Error]:', err);
+                    logger.error('[WS Chat Error]:', err);
                     ws.send(JSON.stringify({ type: 'chat_error', message: err.message || 'Failed to call Zhipu API' }));
                 }
             }
 
         } catch (e) {
-            console.error('WebSocket message error:', e);
+            logger.error('WebSocket message error:', e);
         }
     });
 
@@ -413,4 +414,4 @@ Provide your response in Markdown formatting. Do NOT use HTML. Keep code snippet
     });
 });
 
-console.log('WebSocket Realtime Server running on ws://localhost:4000');
+logger.info('WebSocket Realtime Server running on ws://localhost:4000');

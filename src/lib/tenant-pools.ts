@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import mysql from 'mysql2/promise';
 import { type Project } from '@/lib/data';
+import logger from '@/lib/logger';
 
 // Declare global cache for external database pools to avoid leaking connections
 declare global {
@@ -8,7 +9,7 @@ declare global {
   var _poolReaperStarted: boolean | undefined;
 }
 
-function getExternalPools(): Record<string, any> {
+export function getExternalPools(): Record<string, any> {
   if (!globalThis._externalPools) {
     globalThis._externalPools = {};
   }
@@ -21,7 +22,7 @@ function startPoolReaper() {
   if (globalThis._poolReaperStarted) return;
   globalThis._poolReaperStarted = true;
 
-  console.log('[TenantPools] Starting Pool Reaper...');
+  logger.info('[TenantPools] Starting Pool Reaper...');
   const EVICTION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
   setInterval(async () => {
@@ -30,11 +31,11 @@ function startPoolReaper() {
     for (const [poolId, entry] of Object.entries(pools)) {
       if (entry && entry.pool && entry.lastUsed) {
         if (now - entry.lastUsed > EVICTION_TIMEOUT_MS) {
-          console.log(`[TenantPools] Reaper: Evicting inactive pool ${poolId} (unused for ${Math.round((now - entry.lastUsed) / 1000)}s)`);
+          logger.info(`[TenantPools] Reaper: Evicting inactive pool ${poolId} (unused for ${Math.round((now - entry.lastUsed) / 1000)}s)`);
           try {
             await entry.pool.end();
           } catch (e) {
-            console.error(`[TenantPools] Reaper: Error closing inactive pool ${poolId}:`, e);
+            logger.error(`[TenantPools] Reaper: Error closing inactive pool ${poolId}:`, e);
           }
           delete pools[poolId];
         }
@@ -90,7 +91,7 @@ export async function getTenantPgPool(project: Project): Promise<Pool> {
       ? JSON.parse(project.connection_config)
       : project.connection_config;
 
-    console.log(`[TenantPools] Creating new Postgres pool for external project ${project.project_id} (Host: ${config.host}, Database: ${dbName})`);
+    logger.info(`[TenantPools] Creating new Postgres pool for external project ${project.project_id} (Host: ${config.host}, Database: ${dbName})`);
     
     const pool = new Pool({
       host: config.host,
@@ -98,8 +99,8 @@ export async function getTenantPgPool(project: Project): Promise<Pool> {
       user: config.user,
       password: config.password,
       database: dbName,
-      ssl: config.ssl ? { rejectUnauthorized: false } : false,
-      max: 5, // smaller pool for external databases to respect serverless limits
+      ssl: config.ssl ? { rejectUnauthorized: true, ca: config.ca ? Buffer.from(config.ca, 'base64') : undefined } : false,
+      max: 5,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
     });
@@ -140,7 +141,7 @@ export async function getTenantMysqlPool(project: Project): Promise<mysql.Pool> 
       ? JSON.parse(project.connection_config)
       : project.connection_config;
 
-    console.log(`[TenantPools] Creating new MySQL pool for external project ${project.project_id} (Host: ${config.host}, Database: ${dbName})`);
+    logger.info(`[TenantPools] Creating new MySQL pool for external project ${project.project_id} (Host: ${config.host}, Database: ${dbName})`);
 
     const pool = mysql.createPool({
       host: config.host,
@@ -150,10 +151,10 @@ export async function getTenantMysqlPool(project: Project): Promise<mysql.Pool> 
       database: dbName,
       connectionLimit: 5,
       waitForConnections: true,
-      queueLimit: 0,
+      queueLimit: 10,
       enableKeepAlive: false, // Turn off TCP keep-alive to allow idle connections to close
       idleTimeout: 30000,     // Close idle connections after 30 seconds
-      ssl: config.ssl ? { rejectUnauthorized: false } : undefined,
+      ssl: config.ssl ? { rejectUnauthorized: true } : undefined,
     });
 
     pools[poolId] = {
@@ -184,24 +185,24 @@ export async function closeTenantPool(projectId: string): Promise<void> {
 
   for (const key of keys) {
     if (key.startsWith(`pg_${projectId}_`) || key === `pg_${projectId}`) {
-      console.log(`[TenantPools] Releasing Postgres pool: ${key}`);
+      logger.info(`[TenantPools] Releasing Postgres pool: ${key}`);
       try {
         const entry = pools[key];
         const pool = entry && entry.pool ? entry.pool : entry;
         await pool.end();
       } catch (e) {
-        console.error('[TenantPools] Error closing Postgres pool:', e);
+        logger.error('[TenantPools] Error closing Postgres pool:', e);
       }
       delete pools[key];
     }
     if (key.startsWith(`mysql_${projectId}_`) || key === `mysql_${projectId}`) {
-      console.log(`[TenantPools] Releasing MySQL pool: ${key}`);
+      logger.info(`[TenantPools] Releasing MySQL pool: ${key}`);
       try {
         const entry = pools[key];
         const pool = entry && entry.pool ? entry.pool : entry;
         await pool.end();
       } catch (e) {
-        console.error('[TenantPools] Error closing MySQL pool:', e);
+        logger.error('[TenantPools] Error closing MySQL pool:', e);
       }
       delete pools[key];
     }
@@ -227,7 +228,7 @@ export async function replicateExternalDatabase(
       user: config.user,
       password: config.password,
       database: config.database || 'postgres',
-      ssl: config.ssl ? { rejectUnauthorized: false } : false,
+      ssl: config.ssl ? { rejectUnauthorized: true } : false,
       connectionTimeoutMillis: 10000,
     });
 
@@ -333,12 +334,12 @@ export async function replicateExternalDatabase(
         }
       }
     } catch (err) {
-      console.error(`[Replication Error] Failed to import PG schema/data for ${projectId}:`, err);
+      logger.error(`[Replication Error] Failed to import PG schema/data for ${projectId}:`, err);
       // Cleanup partially created schema
       try {
         await internalPool.query(`DROP SCHEMA IF EXISTS "project_${projectId}" CASCADE`);
       } catch (cleanErr) {
-        console.error('[Replication Cleanup Error]', cleanErr);
+        logger.error('[Replication Cleanup Error]', cleanErr);
       }
       throw err;
     } finally {
@@ -354,7 +355,7 @@ export async function replicateExternalDatabase(
       user: config.user,
       password: config.password,
       database: config.database,
-      ssl: config.ssl ? { rejectUnauthorized: false } : undefined,
+      ssl: config.ssl ? { rejectUnauthorized: true } : undefined,
       connectTimeout: 10000,
     });
 
@@ -449,12 +450,12 @@ export async function replicateExternalDatabase(
         }
       }
     } catch (err) {
-      console.error(`[Replication Error] Failed to import MySQL schema/data for ${projectId}:`, err);
+      logger.error(`[Replication Error] Failed to import MySQL schema/data for ${projectId}:`, err);
       // Cleanup partially created DB
       try {
         await internalPool.query(`DROP DATABASE IF EXISTS \`project_${projectId}\`` as any);
       } catch (cleanErr) {
-        console.error('[Replication Cleanup Error]', cleanErr);
+        logger.error('[Replication Cleanup Error]', cleanErr);
       }
       throw err;
     } finally {

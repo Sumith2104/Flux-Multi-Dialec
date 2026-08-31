@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { ReactNode } from 'react';
 import Link from 'next/link';
@@ -71,7 +71,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
             </div>
             
             <div className="flex min-w-0 flex-col space-y-6 lg:flex-row lg:space-x-8 lg:space-y-0 items-start">
-                <aside className="max-w-full lg:w-56 shrink-0 lg:sticky lg:top-0 lg:self-start">
+                <aside className="w-full lg:w-56 shrink-0 lg:sticky lg:top-4 lg:self-start max-h-[calc(100vh-8rem)] overflow-y-auto custom-scrollbar">
                     <nav className="flex space-x-2 lg:flex-col lg:space-x-0 lg:space-y-1 overflow-x-auto pb-2 lg:pb-0 hide-scrollbar">
                         {sidebarNavItems.map((item) => {
                             const Icon = item.icon;
@@ -98,3 +98,4 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
         </div>
     );
 }
+

@@ -1,6 +1,7 @@
 import { getPgPool } from '@/lib/pg';
 import { randomBytes, createHash } from 'crypto';
 import { redis } from '@/lib/redis';
+import logger from '@/lib/logger';
 
 export interface ApiKey {
     id: string; // The document ID (which is the hash of the key)
@@ -55,12 +56,12 @@ export async function validateApiKey(rawKey: string): Promise<{ userId: string, 
             // Async update last used (non-blocking)
             const pool = getPgPool();
             pool.query('UPDATE fluxbase_global.api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE id = $1', [hash]).catch(err =>
-                console.error('Failed to update API key stats:', err)
+                logger.error('Failed to update API key stats:', err)
             );
             return cached;
         }
     } catch (e) {
-        console.warn('[Redis Error] validateApiKey cache read failed:', e);
+        logger.warn('[Redis Error] validateApiKey cache read failed:', e);
     }
 
     const pool = getPgPool();
@@ -77,12 +78,12 @@ export async function validateApiKey(rawKey: string): Promise<{ userId: string, 
     try {
         await redis.set(redisKey, apiKeyInfo, { ex: 300 }); // Cache in Redis for 5 minutes
     } catch (e) {
-        console.warn('[Redis Error] validateApiKey cache write failed:', e);
+        logger.warn('[Redis Error] validateApiKey cache write failed:', e);
     }
 
     // Async update last used
     pool.query('UPDATE fluxbase_global.api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE id = $1', [hash]).catch(err =>
-        console.error('Failed to update API key stats:', err)
+        logger.error('Failed to update API key stats:', err)
     );
 
     return apiKeyInfo;
@@ -118,6 +119,6 @@ export async function revokeApiKey(userId: string, keyId: string): Promise<void>
     try {
         await redis.del(redisKey);
     } catch (e) {
-        console.warn('[Redis Error] revokeApiKey cache delete failed:', e);
+        logger.warn('[Redis Error] revokeApiKey cache delete failed:', e);
     }
 }

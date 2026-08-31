@@ -1,4 +1,5 @@
 import { chromium } from "playwright";
+import logger from '@/lib/logger';
 
 /**
  * Headlessly fetches a webpage and waits for network idling.
@@ -6,7 +7,7 @@ import { chromium } from "playwright";
  * @returns The fully rendered HTML source string.
  */
 export async function fetchPage(url: string): Promise<string> {
-    console.log(`[Scraper Fetcher] Launching Chromium to fetch: ${url}`);
+    logger.info(`[Scraper Fetcher] Launching Chromium to fetch: ${url}`);
 
     // Launch headless chromium instance
     const browser = await chromium.launch({ headless: true });

@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { getAuthContextFromRequest } from '@/lib/auth';
+import { requireWriteScope } from '@/lib/require-scope';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
     const auth = await getAuthContextFromRequest(req);
+  requireWriteScope(auth);
     if (!auth?.userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json();

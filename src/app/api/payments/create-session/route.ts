@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { getCurrentUserId } from '@/lib/auth';
+import logger from '@/lib/logger';
 
 export async function POST(req: NextRequest) {
     const userId = await getCurrentUserId();
@@ -99,7 +100,7 @@ export async function POST(req: NextRequest) {
 
         const session = insertQuery.rows[0];
 
-        console.log(`[UPI Session] Created session ${session.id} for User ${userId}. Expected Amount: ₹${session.amount}, Expires: ${session.expires_at}`);
+        logger.info(`[UPI Session] Created session ${session.id} for User ${userId}. Expected Amount: ₹${session.amount}, Expires: ${session.expires_at}`);
 
         return NextResponse.json({
             success: true,
@@ -110,7 +111,7 @@ export async function POST(req: NextRequest) {
         });
 
     } catch (error: any) {
-        console.error('[Create Session Error]:', error);
+        logger.error('[Create Session Error]:', error);
         return NextResponse.json({ error: 'Internal server error occurred while initializing checkout.' }, { status: 500 });
     }
 }

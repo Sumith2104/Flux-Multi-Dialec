@@ -1,4 +1,4 @@
-
+﻿
 'use client';
 
 import { usePathname, useRouter } from "next/navigation";
@@ -17,7 +17,7 @@ import { LogoutButton } from "@/components/logout-button";
 import { ProjectProvider, ProjectContext } from "@/contexts/project-context";
 import { TimezoneSelector } from "@/components/timezone-selector";
 import Dock from "@/components/dock";
-// Phase 5+6: Lazy-load heavy components — they are NOT needed on initial page render.
+// Phase 5+6: Lazy-load heavy components â€” they are NOT needed on initial page render.
 // FluxAiAssistant: 555 lines, speech synthesis, complex state.
 // CommandPalette: opened only on Ctrl+K.
 const FluxAiAssistant = dynamic(
@@ -165,7 +165,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
     }, [userLoading, projectContextLoading, userId, selectedProject, pathname, router, isOffline]);
 
-    const isEditorOrDbPage = pathname.startsWith('/editor') || pathname.startsWith('/database');
+    const isEditorOrDbPage = pathname.startsWith('/editor') || pathname.startsWith('/database') || pathname.startsWith('/query');
     const isLoading = userLoading || projectContextLoading;
 
     const dockItems = navItems.map(item => {
@@ -262,7 +262,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     const shouldShowDock = userId && (selectedProject || pathname.startsWith('/dashboard/projects'));
 
     return (
-        <div className="flex min-h-screen w-full max-w-full flex-col overflow-x-hidden bg-background text-foreground">
+        <div className="flex h-screen w-full max-w-full flex-col overflow-hidden bg-background text-foreground">
             {isSuspended ? (
                 <div className="bg-destructive text-destructive-foreground text-center py-1.5 px-4 text-xs font-semibold flex items-center justify-center gap-2 z-50">
                     <AlertTriangle className="h-4 w-4" />
@@ -359,12 +359,12 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                 )}
             </header>
             <div className="relative flex min-w-0 flex-1 overflow-hidden">
-                <main className={cn("flex-1 overflow-auto bg-background", {
+                <main className={cn("flex-1 flex flex-col overflow-hidden bg-background", {
                     "pt-0 px-0 pb-36 md:pb-0": isEditorOrDbPage,
                     "p-3 sm:p-4 md:p-6 pb-36 md:pb-24": !isEditorOrDbPage,
                 })}>
                     {userId && <InvitationAlerts initialInvites={invitations} />}
-                    {children}
+                    <div className={cn("flex-1 min-h-0 h-full flex flex-col", isEditorOrDbPage ? "overflow-hidden" : "overflow-auto")}>{children}</div>
                     {shouldShowDock && (
                         <div className="pointer-events-none fixed bottom-3 left-0 right-0 z-50 flex justify-center px-2 sm:bottom-4">
                             <Dock items={dockItems} className="pointer-events-auto" />
@@ -397,3 +397,5 @@ export default function AppLayoutWrapper({ children }: { children: React.ReactNo
         </ProjectProvider>
     );
 }
+
+

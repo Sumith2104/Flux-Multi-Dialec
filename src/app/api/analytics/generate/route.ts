@@ -3,6 +3,7 @@ import { getCurrentUserId } from '@/lib/auth';
 import { getTablesForProject, getColumnsForTable, getProjectById } from '@/lib/data';
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
+import logger from '@/lib/logger';
 
 const OutputSchema = z.object({
     schema_analysis: z.string().describe("CRITICAL FIRST STEP: Explain step-by-step how you analyzed the schema to select valid tables, relations, and columns for this specific chart. You MUST write this before configuring widgets to ensure no hallucination."),
@@ -70,7 +71,7 @@ ${schemaString}
         });
 
     } catch (error: any) {
-        console.error('Analytics Generate Error:', error);
+        logger.error('Analytics Generate Error:', error);
         return NextResponse.json({ error: error.message || 'AI Generation failed' }, { status: 500 });
     }
 }

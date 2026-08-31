@@ -1,12 +1,42 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { GlobalAlertProvider } from "@/components/global-alert-provider";
 import { QueryProvider } from "@/components/query-provider";
+import ErrorBoundary from "@/components/error-boundary";
+
+export const viewport: Viewport = {
+  themeColor: '#0a0a0a',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+};
 
 export const metadata: Metadata = {
-  title: 'Fluxbase',
-  description: 'The modern, AI-powered spreadsheet and data analysis tool.',
+  title: {
+    default: 'Fluxbase — AI-Powered SQL Database Platform',
+    template: '%s | Fluxbase',
+  },
+  description: 'The modern, AI-powered SQL database platform. Create, query, and manage databases with natural language and real-time collaboration.',
+  keywords: ['sql database', 'postgresql', 'mysql', 'serverless database', 'ai sql', 'database platform', 'fluxbase'],
+  authors: [{ name: 'Fluxbase' }],
+  openGraph: {
+    type: 'website',
+    locale: 'en_US',
+    url: process.env.NEXT_PUBLIC_APP_URL || 'https://fluxbase.com',
+    siteName: 'Fluxbase',
+    title: 'Fluxbase — AI-Powered SQL Database Platform',
+    description: 'Create, query, and manage databases with natural language and real-time collaboration.',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Fluxbase — AI-Powered SQL Database Platform',
+    description: 'Create, query, and manage databases with natural language and real-time collaboration.',
+  },
+  icons: {
+    icon: '/favicon.ico',
+    apple: '/apple-touch-icon.png',
+  },
   verification: {
     google: 'JhrAGACmQgsrw96rM9LhMCQBNnDm2AhDLtE6NtVHEfw',
   },
@@ -54,10 +84,12 @@ export default function RootLayout({
       </head>
       <body className="font-body antialiased" suppressHydrationWarning>
           <QueryProvider>
-            <GlobalAlertProvider>
-              {children}
-              <Toaster />
-            </GlobalAlertProvider>
+            <ErrorBoundary>
+              <GlobalAlertProvider>
+                {children}
+                <Toaster />
+              </GlobalAlertProvider>
+            </ErrorBoundary>
           </QueryProvider>
       </body>
     </html>

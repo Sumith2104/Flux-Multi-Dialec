@@ -3,10 +3,12 @@ import { getAuthContextFromRequest } from '@/lib/auth';
 import { getPgPool } from '@/lib/pg';
 import { v4 as uuidv4 } from 'uuid';
 import { requireProjectAccess } from '@/lib/project-auth';
+import { requireWriteScope } from '@/lib/require-scope';
 
 export async function GET(request: Request) {
     try {
         const auth = await getAuthContextFromRequest(request);
+  requireWriteScope(auth);
         if (!auth) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 
         const { searchParams } = new URL(request.url);

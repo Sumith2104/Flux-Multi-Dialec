@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import logger from '@/lib/logger';
 
 // Native SSE-based realtime subscription.
 // MODULE-LEVEL SINGLETON: All consumers of this hook share ONE SSE connection per projectId.
@@ -64,7 +65,7 @@ function scheduleReconnect(projectId: string) {
     state.status = 'closed';
     state.retryCount += 1;
     const delay = Math.min(1000 * Math.pow(2, state.retryCount - 1), 15000);
-    console.log(`[Realtime:${projectId}] Reconnecting in ${delay}ms…`);
+    logger.info(`[Realtime:${projectId}] Reconnecting in ${delay}ms…`);
     state.retryTimer = setTimeout(() => {
         if (connections.has(projectId) && connections.get(projectId)!.listeners.size > 0) {
             startConnection(projectId);
@@ -82,7 +83,7 @@ function resetWatchdog(projectId: string) {
 
     // 45s threshold (server pings every 30s)
     state.watchdogTimer = setTimeout(() => {
-        console.warn(`[Realtime:${projectId}] Watchdog timeout — connection stale. Reconnecting…`);
+        logger.warn(`[Realtime:${projectId}] Watchdog timeout — connection stale. Reconnecting…`);
         const s = (state as any).socket;
         if (s) s.close();
     }, 45000);
@@ -112,7 +113,7 @@ async function startConnection(projectId: string) {
                 wsOpened = true;
                 state.status = 'open';
                 state.retryCount = 0;
-                console.log(`[Realtime] WebSocket connected to Render for ${projectId}`);
+                logger.info(`[Realtime] WebSocket connected to Render for ${projectId}`);
                 resetWatchdog(projectId);
 
                 // Send subscription handshake to Render room system
@@ -120,7 +121,7 @@ async function startConnection(projectId: string) {
                     ws.send(JSON.stringify({ type: 'subscribe', roomId: `project_${projectId}` }));
                     ws.send(JSON.stringify({ type: 'subscribe', roomId: projectId }));
                 } catch (err) {
-                    console.warn('[Realtime] Failed to send subscribe handshake:', err);
+                    logger.warn('[Realtime] Failed to send subscribe handshake:', err);
                 }
             };
 
@@ -143,14 +144,14 @@ async function startConnection(projectId: string) {
                     };
                     notifyListeners(projectId, normalized);
                 } catch (e) {
-                    console.warn('[Realtime] WS message parse error:', e);
+                    logger.warn('[Realtime] WS message parse error:', e);
                 }
             };
 
             ws.onclose = () => {
                 (state as any).socket = null;
                 if (!wsOpened) {
-                    console.warn(`[Realtime] Render WebSocket failed to connect for ${projectId}, falling back to SSE...`);
+                    logger.warn(`[Realtime] Render WebSocket failed to connect for ${projectId}, falling back to SSE...`);
                     connectSSE(projectId, state);
                 } else {
                     scheduleReconnect(projectId);
@@ -162,7 +163,7 @@ async function startConnection(projectId: string) {
             };
             return;
         } catch (e) {
-            console.warn('[Realtime] WebSocket connect failed, falling back to SSE:', e);
+            logger.warn('[Realtime] WebSocket connect failed, falling back to SSE:', e);
         }
     }
 
@@ -174,7 +175,7 @@ async function connectSSE(projectId: string, state: ConnectionState) {
     const abortController = new AbortController();
     state.abortController = abortController;
 
-    console.log(`[Realtime] Connecting SSE for project ${projectId}…`);
+    logger.info(`[Realtime] Connecting SSE for project ${projectId}…`);
 
     try {
         const response = await fetch(`/api/realtime/subscribe?projectId=${projectId}`, {
@@ -189,7 +190,7 @@ async function connectSSE(projectId: string, state: ConnectionState) {
 
         state.status = 'open';
         state.retryCount = 0;
-        console.log(`[Realtime] SSE connected for ${projectId}`);
+        logger.info(`[Realtime] SSE connected for ${projectId}`);
         resetWatchdog(projectId);
 
         const reader = response.body.getReader();
@@ -232,16 +233,16 @@ async function connectSSE(projectId: string, state: ConnectionState) {
                     };
                     notifyListeners(projectId, normalized);
                 } catch (e) {
-                    console.warn('[Realtime] SSE parse error:', e);
+                    logger.warn('[Realtime] SSE parse error:', e);
                 }
             }
         }
     } catch (err: any) {
         if (err?.name === 'AbortError') {
-            console.log(`[Realtime] SSE intentionally closed for ${projectId}.`);
+            logger.info(`[Realtime] SSE intentionally closed for ${projectId}.`);
             return;
         }
-        console.error(`[Realtime] SSE error for ${projectId}:`, err);
+        logger.error(`[Realtime] SSE error for ${projectId}:`, err);
     }
 
     // Connection ended — schedule reconnect if still needed
@@ -269,7 +270,7 @@ function subscribe(projectId: string, listener: Listener): () => void {
         s.listeners.delete(listener);
         if (s.listeners.size === 0) {
             // Last subscriber left — tear down
-            console.log(`[Realtime] No more subscribers for ${projectId}. Closing.`);
+            logger.info(`[Realtime] No more subscribers for ${projectId}. Closing.`);
             if (s.retryTimer) clearTimeout(s.retryTimer);
             if (s.abortController) s.abortController.abort();
             connections.delete(projectId);
@@ -296,7 +297,7 @@ export function useRealtimeSubscription(projectId: string | undefined) {
         // 1. Handle Schema Changes (Tables created/dropped/altered)
         if (event.type === 'schema_update' || event.event_type === 'schema_update') {
             const pid = event.project_id || projectId;
-            console.log(`[Realtime Sync] Schema changed. Instant Triple-Pass Pass 1...`);
+            logger.info(`[Realtime Sync] Schema changed. Instant Triple-Pass Pass 1...`);
 
             // Pass 1: IMMEDIATE (0ms)
             queryClient.invalidateQueries({ queryKey: ['schema', pid] });
@@ -378,7 +379,7 @@ export function useRealtimeSubscription(projectId: string | undefined) {
         const handleLocalSchemaChange = (e: Event) => {
             const customEvent = e as CustomEvent;
             if (customEvent.detail?.projectId === projectId) {
-                console.log(`[Realtime Sync] Local schema change event received. Triggering sync...`);
+                logger.info(`[Realtime Sync] Local schema change event received. Triggering sync...`);
                 syncDatabase({ type: 'schema_update', project_id: projectId });
             }
         };
@@ -406,7 +407,7 @@ export function useRealtimeSubscription(projectId: string | undefined) {
     }, [projectId, syncDatabase]);
 
     const sendMessage = () => {
-        console.warn('[Realtime] sendMessage is a no-op in SSE mode.');
+        logger.warn('[Realtime] sendMessage is a no-op in SSE mode.');
     };
 
     return {

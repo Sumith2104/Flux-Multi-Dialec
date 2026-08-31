@@ -2,6 +2,7 @@
 
 import { getTablesForProject, getColumnsForTable } from '@/lib/data';
 import { generateSQL } from '@/ai/flows/generate-sql';
+import logger from '@/lib/logger';
 
 export async function generateSQLAction(projectId: string, userInput: string) {
     try {
@@ -43,7 +44,7 @@ export async function generateSQLAction(projectId: string, userInput: string) {
                     }
                 }
             } catch (e) {
-                console.warn('[AI SQL Engine] Redis read error, falling back to DB', e);
+                logger.warn('[AI SQL Engine] Redis read error, falling back to DB', e);
             }
 
             // Fallback to DB if Redis is empty or errors
@@ -76,7 +77,7 @@ export async function generateSQLAction(projectId: string, userInput: string) {
 
         // 5. Destructive Query Trap Intercept
         if (result.isDangerous && !aiAllowDestructive) {
-            console.warn("[AI SQL Engine] Destructive query blocked by Project Settings.");
+            logger.warn("[AI SQL Engine] Destructive query blocked by Project Settings.");
             return {
                 success: false,
                 error: "The AI generated a destructive query (e.g. DROP, DELETE, TRUNCATE) which is blocked by your current project settings. Go to Settings -> AI Assistant to allow this behavior."
@@ -99,7 +100,7 @@ export async function generateSQLAction(projectId: string, userInput: string) {
         };
 
     } catch (error: any) {
-        console.error('Error generating SQL:', error);
+        logger.error('Error generating SQL:', error);
         return { success: false, error: error.message || 'Failed to generate SQL' };
     }
 }

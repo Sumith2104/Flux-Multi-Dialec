@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { getCurrentUserId } from '@/lib/auth';
+import logger from '@/lib/logger';
 
 export async function POST(req: Request) {
     const userId = await getCurrentUserId();
@@ -32,6 +33,25 @@ export async function POST(req: Request) {
         try {
             await client.query('BEGIN');
 
+            // A user-entered reference is not proof of payment. It must first
+            // have been received through an authenticated payment webhook.
+            const verifiedPayment = await client.query(
+                `SELECT amount FROM fluxbase_global.bank_payments WHERE utr = $1 FOR UPDATE`,
+                [cleanUtr]
+            );
+            if (verifiedPayment.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return NextResponse.json({ error: 'Payment reference has not been verified by the payment provider.' }, { status: 409 });
+            }
+            const alreadyConsumed = await client.query(
+                `SELECT 1 FROM fluxbase_global.payments WHERE razorpay_payment_id = $1 LIMIT 1`,
+                [`manual_utr_${cleanUtr}`]
+            );
+            if (alreadyConsumed.rows.length > 0) {
+                await client.query('ROLLBACK');
+                return NextResponse.json({ error: 'Payment reference has already been used.' }, { status: 409 });
+            }
+
             // 1. Check active session or existing scraped records
             let sessionAmount = 0;
             let activeSessionId = sessionId ? parseInt(sessionId, 10) : null;
@@ -59,13 +79,18 @@ export async function POST(req: Request) {
                 }
             }
 
-            const amountToLog = sessionAmount > 0 ? sessionAmount : 1.01;
+            if (!activeSessionId || sessionAmount <= 0) {
+                await client.query('ROLLBACK');
+                return NextResponse.json({ error: 'No active checkout session found.' }, { status: 409 });
+            }
 
-            // 2. Always store manually entered UTR into DB tables (scraped_sms & bank_payments)
-            const now = new Date();
-            const dayName = now.toLocaleDateString('en-US', { weekday: 'long' });
-            const paymentDate = now.toISOString().split('T')[0];
-            const paymentTime = now.toTimeString().split(' ')[0];
+            const amountToLog = parseFloat(verifiedPayment.rows[0].amount);
+            if (amountToLog !== sessionAmount) {
+                await client.query('ROLLBACK');
+                return NextResponse.json({ error: 'Payment amount does not match the checkout session.' }, { status: 409 });
+            }
+
+            // 2. Mark the independently verified notification as consumed.
 
             await client.query(`
                 CREATE TABLE IF NOT EXISTS fluxbase_global.scraped_sms (
@@ -79,37 +104,23 @@ export async function POST(req: Request) {
                 );
             `).catch(() => {});
 
-            await client.query(`
-                INSERT INTO fluxbase_global.scraped_sms (sms_body, sender, utr, amount, is_used)
-                VALUES ($1, $2, $3, $4, true)
-                ON CONFLICT (utr) DO UPDATE SET is_used = true;
-            `, [`Manually entered UTR by user: ${cleanUtr}`, 'manual_entry', cleanUtr, amountToLog]);
-
-            await client.query(`
-                CREATE TABLE IF NOT EXISTS fluxbase_global.bank_payments (
-                    utr VARCHAR(64) PRIMARY KEY,
-                    amount NUMERIC(10, 2) NOT NULL,
-                    day_name VARCHAR(10) NOT NULL,
-                    payment_date DATE NOT NULL,
-                    payment_time TIME NOT NULL,
-                    source VARCHAR(30) NOT NULL,
-                    order_id VARCHAR(64),
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                );
-            `).catch(() => {});
-
-            await client.query(`
-                INSERT INTO fluxbase_global.bank_payments (utr, amount, day_name, payment_date, payment_time, source)
-                VALUES ($1, $2, $3, $4, $5, 'manual_entry')
-                ON CONFLICT (utr) DO NOTHING;
-            `, [cleanUtr, amountToLog, dayName, paymentDate, paymentTime]);
+            await client.query(
+                `UPDATE fluxbase_global.scraped_sms SET is_used = true WHERE utr = $1`,
+                [cleanUtr]
+            );
 
             // 3. Complete the payment session if present
             if (activeSessionId) {
-                await client.query(
-                    `UPDATE fluxbase_global.payment_sessions SET status = 'completed' WHERE id = $1`,
-                    [activeSessionId]
+                const completeSession = await client.query(
+                    `UPDATE fluxbase_global.payment_sessions
+                     SET status = 'completed'
+                     WHERE id = $1 AND user_id = $2 AND status = 'pending' AND expires_at > NOW()`,
+                    [activeSessionId, userId]
                 );
+                if (completeSession.rowCount !== 1) {
+                    await client.query('ROLLBACK');
+                    return NextResponse.json({ error: 'Checkout session is no longer pending.' }, { status: 409 });
+                }
             }
 
             // 4. Log record in payments table
@@ -128,7 +139,7 @@ export async function POST(req: Request) {
             );
 
             await client.query('COMMIT');
-            console.log(`[Manual UTR Entry] Successfully stored UTR ${cleanUtr} in DB and upgraded User ${userId} to ${cleanPlan}`);
+            logger.info(`[Manual UTR Entry] Successfully stored UTR ${cleanUtr} in DB and upgraded User ${userId} to ${cleanPlan}`);
             
             return NextResponse.json({ 
                 success: true, 
@@ -143,7 +154,7 @@ export async function POST(req: Request) {
         }
 
     } catch (err: any) {
-        console.error('[Verify UTR Error]:', err);
+        logger.error('[Verify UTR Error]:', err);
         return NextResponse.json({ error: err.message || 'Internal server error occurred while verifying payment.' }, { status: 500 });
     }
 }

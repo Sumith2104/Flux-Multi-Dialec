@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack --port 8000",
+    "dev": "next dev --turbopack --port 3000",
     "dev:ws": "npx tsx src/server/websocket.ts",
     "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
     "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
@@ -11,7 +11,10 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "postinstall": "npx playwright install chromium && node scripts/copy-monaco.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "postinstall": "node scripts/copy-monaco.js",
+    "setup:browser": "npx playwright install chromium",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -28,6 +31,11 @@
     "@monaco-editor/react": "^4.7.0",
     "@mui/material": "^5.15.20",
     "@mui/x-data-grid": "^7.7.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.79.0",
+    "@opentelemetry/exporter-trace-otlp-grpc": "^0.221.0",
+    "@opentelemetry/resources": "^2.10.0",
+    "@opentelemetry/sdk-node": "^0.221.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0",
     "@radix-ui/react-accordion": "^1.2.3",
     "@radix-ui/react-alert-dialog": "^1.1.6",
     "@radix-ui/react-avatar": "^1.1.3",
@@ -77,7 +85,7 @@
     "firebase-admin": "^13.6.0",
     "framer-motion": "^11.2.10",
     "genkit": "^1.14.1",
-    "jose": "^6.2.2",
+    "jose": "^6.2.10",
     "js-cookie": "^3.0.5",
     "lru-cache": "^11.2.6",
     "lucide-react": "^0.475.0",
@@ -92,8 +100,11 @@
     "patch-package": "^8.0.0",
     "pdf.js-extract": "^0.2.1",
     "pg": "^8.19.0",
+    "pino": "^10.3.1",
+    "pino-pretty": "^13.1.3",
     "playwright": "^1.58.2",
     "qrcode": "^1.5.4",
+    "rate-limiter-flexible": "^11.2.0",
     "razorpay": "^2.9.6",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
@@ -110,6 +121,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^1.6.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/cheerio": "^1.0.0",
     "@types/dagre": "^0.7.52",
@@ -122,9 +134,11 @@
     "@types/react-dom": "^18",
     "@types/react-grid-layout": "^1.3.6",
     "@types/uuid": "^9.0.8",
+    "@vitejs/plugin-react": "^6.1.0",
     "eslint": "9.39.3",
     "eslint-config-next": "16.1.6",
     "genkit-cli": "^1.14.1",
+    "jsdom": "^29.1.1",
     "jspdf": "^4.2.0",
     "mammoth": "^1.11.0",
     "pdf-parse": "^2.4.5",
@@ -132,6 +146,6 @@
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "typescript": "^5",
-    "@tauri-apps/cli": "^1.6.0"
+    "vitest": "^4.1.11"
   }
 }

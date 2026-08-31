@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import * as dotenv from 'dotenv';
+import logger from '@/lib/logger';
 dotenv.config({ path: '.env.local' });
 
 async function migrate() {
@@ -40,9 +41,9 @@ async function migrate() {
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
         `);
-        console.log("[SUCCESS] Security & RBAC Tables Successfully Deployed");
+        logger.info("[SUCCESS] Security & RBAC Tables Successfully Deployed");
     } catch (e) {
-        console.error("Migration failed:", e);
+        logger.error("Migration failed:", e);
     } finally {
         await pool.end();
     }

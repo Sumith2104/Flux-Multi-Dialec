@@ -59,6 +59,16 @@ __pycache__/
 # Generated Monaco editor assets
 public/monaco-editor/
 
+# build artifacts
+dist/
+realtime-server/dist/
+packages/*/dist/
+
+# agent & editor metadata
+.openclaw/
+.openclaw-attachments/
+.opencode/
+
 # Security scan runs & logs
 strix_runs/
 *.log

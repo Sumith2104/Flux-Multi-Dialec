@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import * as React from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -50,7 +50,7 @@ export function DataTable({
 }: DataTableProps) {
   const parentRef = React.useRef<HTMLDivElement>(null);
 
-  // Column Resizing State — persisted in localStorage per storageKey
+  // Column Resizing State â€” persisted in localStorage per storageKey
   const lsKey = storageKey ? `col_widths_${storageKey}` : null;
   const [columnWidths, setColumnWidths] = React.useState<Record<string, number>>(() => {
     if (lsKey && typeof window !== 'undefined') {
@@ -95,7 +95,7 @@ export function DataTable({
     return ctx.measureText(text).width;
   }, []);
 
-  /** Double-click on handle → auto-fit column width to its widest value */
+  /** Double-click on handle â†’ auto-fit column width to its widest value */
   const handleResizeDoubleClick = React.useCallback((e: React.MouseEvent, field: string) => {
     e.stopPropagation();
     e.preventDefault();
@@ -151,7 +151,7 @@ export function DataTable({
     }
   }, [handleResizeMove]);
 
-  // ── Sort header click ──────────────────────────────────────────────────────
+  // â”€â”€ Sort header click â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleHeaderClick = React.useCallback((e: React.MouseEvent, field: string) => {
     if (!onSortsChange) return;
     const isMulti = e.shiftKey;
@@ -179,7 +179,7 @@ export function DataTable({
   const getSortIcon = (field: string) => {
     const sort = sorts.find(s => s.field === field);
     const idx = sorts.indexOf(sort!);
-    // Always show the indicator — dim (opacity-30) when inactive, full when active
+    // Always show the indicator â€” dim (opacity-30) when inactive, full when active
     if (!sort) return <ArrowUpDown className="h-3 w-3 opacity-30 group-hover/hdr:opacity-70 transition-opacity shrink-0" />;
     const badge = sorts.length > 1 ? (
       <span className="text-[9px] font-bold ml-0.5 opacity-80">{idx + 1}</span>
@@ -194,7 +194,7 @@ export function DataTable({
     );
   };
 
-  // ── Inline Editing ─────────────────────────────────────────────────────────
+  // â”€â”€ Inline Editing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const startEdit = React.useCallback((rowId: string, field: string, currentValue: any) => {
     if (!onCellSave) return;
     setEditingCell({ rowId, field });
@@ -269,7 +269,7 @@ export function DataTable({
 
   if (loading && rows.length === 0) {
     return (
-      <div className="relative flex h-[60dvh] w-full flex-col overflow-hidden rounded-lg border border-border/70 bg-card/90 shadow-2xl shadow-black/25 sm:h-[70vh]">
+      <div className="relative flex h-full min-h-[300px] w-full flex-1 flex-col overflow-hidden rounded-lg border border-border/70 bg-card/90 shadow-2xl shadow-black/25">
         <div className="sticky top-0 z-20 inline-flex w-max min-w-full border-b border-border bg-secondary text-xs font-bold uppercase tracking-widest text-muted-foreground">
           <div className="flex w-16 shrink-0 items-center justify-center border-r border-border/60 bg-muted/50 py-3.5">#</div>
           <div className="flex w-14 shrink-0 items-center justify-center border-r border-border/60 bg-secondary py-3.5"><Checkbox disabled /></div>
@@ -287,7 +287,7 @@ export function DataTable({
   }
 
   return (
-    <div className="relative flex h-[60dvh] max-w-full flex-col overflow-hidden rounded-lg border border-border/70 bg-card/90 text-foreground shadow-2xl shadow-black/25 backdrop-blur-xl sm:h-[70vh]">
+    <div className="relative flex h-full min-h-[300px] w-full max-w-full flex-1 flex-col overflow-hidden rounded-lg border border-border/70 bg-card/90 text-foreground shadow-2xl shadow-black/25 backdrop-blur-xl">
       {/* Unified Scrolling Container */}
       <div ref={parentRef} className="flex-1 overflow-auto bg-transparent relative custom-scrollbar">
 
@@ -308,7 +308,7 @@ export function DataTable({
                 className={`group/hdr relative flex shrink-0 items-center gap-1.5 bg-secondary px-4 py-3.5 ${i !== visibleColumns.length - 1 ? 'border-r border-border/60' : ''} ${onSortsChange ? 'cursor-pointer select-none hover:bg-muted/60 transition-colors' : ''} ${isSorted ? 'text-primary bg-primary/5' : ''}`}
                 style={{ width: `${getColWidth(c.field)}px` }}
                 onClick={(e) => handleHeaderClick(e, c.field)}
-                title={onSortsChange ? 'Click to sort · Shift+click for multi-sort' : undefined}
+                title={onSortsChange ? 'Click to sort Â· Shift+click for multi-sort' : undefined}
               >
                 <span className="truncate flex-1">{c.headerName}</span>
                 {onSortsChange && getSortIcon(c.field)}
@@ -317,7 +317,7 @@ export function DataTable({
                   className="absolute right-0 top-0 bottom-0 w-3 cursor-col-resize z-10 -mr-1.5 group/handle flex items-center justify-center"
                   onMouseDown={(e) => { e.stopPropagation(); handleResizeStart(e, c.field); }}
                   onDoubleClick={(e) => { e.stopPropagation(); handleResizeDoubleClick(e, c.field); }}
-                  title="Drag to resize · Double-click to auto-fit"
+                  title="Drag to resize Â· Double-click to auto-fit"
                 >
                   <div className="h-4 w-px bg-border transition-all duration-100 group-hover/handle:h-full group-hover/handle:w-0.5 group-hover/handle:bg-primary/70" />
                 </div>
@@ -403,7 +403,7 @@ export function DataTable({
                           ) : isSavingThis ? (
                             <span className="flex items-center gap-1.5 w-full truncate">
                               <Loader2 className="h-3 w-3 animate-spin shrink-0 text-amber-400" />
-                              <span className="truncate text-muted-foreground">{displayValue}</span>
+                              <span className="truncate text-foreground/90 font-medium">{displayValue}</span>
                             </span>
                           ) : (
                             <span className="truncate w-full">{displayValue}</span>
@@ -411,7 +411,7 @@ export function DataTable({
                           {/* Double-click hint on hover (only when edit is available) */}
                           {onCellSave && !isEditingThis && !isSavingThis && (
                             <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground/30 opacity-0 group-hover/cell:opacity-100 transition-opacity pointer-events-none select-none">
-                              2×
+                              2Ã—
                             </span>
                           )}
                         </div>
@@ -437,3 +437,5 @@ export function DataTable({
     </div>
   );
 }
+
+

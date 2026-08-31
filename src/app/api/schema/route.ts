@@ -6,6 +6,7 @@ import { redis } from '@/lib/redis';
 
 import { getProjectDbAndSchema } from '@/lib/tenant-pools';
 import { trackApiRequest } from '@/lib/analytics';
+import logger from '@/lib/logger';
 
 // Response Schema: { tables: { tableName: ["col1", "col2"] } }
 export async function GET(request: Request) {
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
                     return NextResponse.json(cachedSchema);
                 }
             } catch (e) {
-                console.warn('Redis schema cache read error:', e);
+                logger.warn('Redis schema cache read error:', e);
             }
         }
 
@@ -134,13 +135,13 @@ export async function GET(request: Request) {
         try {
             await redis.set(cacheKey, payload, { ex: 3600 }); // Cache for 1 hour
         } catch (e) {
-            console.warn('Redis schema cache write error:', e);
+            logger.warn('Redis schema cache write error:', e);
         }
 
         return NextResponse.json(payload);
 
     } catch (error: any) {
-        console.error('[Schema API Error]', error);
+        logger.error('[Schema API Error]', error);
         return NextResponse.json({ success: false, error: error.message || 'Internal Error' }, { status: 500 });
     }
 }

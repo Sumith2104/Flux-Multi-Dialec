@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { getProjectsForCurrentUser } from '@/lib/data';
+import logger from '@/lib/logger';
 
 export async function GET(req: Request) {
     try {
@@ -12,7 +13,7 @@ export async function GET(req: Request) {
         const projects = await getProjectsForCurrentUser();
         return NextResponse.json({ success: true, projects });
     } catch (error: any) {
-        console.error('API /api/projects error:', error);
+        logger.error('API /api/projects error:', error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
+import logger from '@/lib/logger';
 
 export async function GET() {
     try {
@@ -32,7 +33,7 @@ export async function GET() {
             }
         });
     } catch (err: any) {
-        console.error('[Pricing Config API Error]:', err);
+        logger.error('[Pricing Config API Error]:', err);
         return NextResponse.json({
             success: false,
             error: 'Internal server error occurred while retrieving pricing configurations.'

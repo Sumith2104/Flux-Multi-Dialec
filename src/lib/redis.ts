@@ -1,4 +1,5 @@
 import { Redis } from '@upstash/redis';
+import logger from '@/lib/logger';
 
 // Provide dummy fallback for build environments or missing keys
 const url = process.env.UPSTASH_REDIS_REST_URL;
@@ -15,9 +16,9 @@ if (isConfigured) {
             // Fail fast on DNS / network errors so SSE heartbeats don't hang
             automaticDeserialization: true,
         });
-        console.log('[Redis] Successfully initialized Upstash Redis client.');
+        logger.info('[Redis] Successfully initialized Upstash Redis client.');
     } catch (err) {
-        console.error('[Redis] Failed to initialize Upstash Redis client:', err);
+        logger.error('[Redis] Failed to initialize Upstash Redis client:', err);
     }
 }
 let _lastQuotaLogTime = 0;
@@ -30,7 +31,7 @@ export const redis = new Proxy({} as Redis, {
                     try {
                         return client.pipeline();
                     } catch (e) {
-                        console.error('[Redis] Pipeline initialization error:', e);
+                        logger.error('[Redis] Pipeline initialization error:', e);
                     }
                 }
                 // Return a mock pipeline that chains and does nothing
@@ -76,15 +77,15 @@ export const redis = new Proxy({} as Redis, {
                             if (isQuotaExceeded) {
                                 const now = Date.now();
                                 if (now - _lastQuotaLogTime > 600000) { // 10 minutes throttle
-                                    console.warn(`[Redis] Upstash request limit reached — failing open to in-memory/database fallbacks.`);
+                                    logger.warn(`[Redis] Upstash request limit reached — failing open to in-memory/database fallbacks.`);
                                     _lastQuotaLogTime = now;
                                 }
                             } else if (isNetworkError) {
-                                console.warn(`[Redis] Network error during "${String(prop)}" — Redis unreachable, failing open.`);
+                                logger.warn(`[Redis] Network error during "${String(prop)}" — Redis unreachable, failing open.`);
                             } else if (isNoScript) {
-                                console.log(`[Redis] NOSCRIPT detected during "${String(prop)}" — letting client fallback to EVAL.`);
+                                logger.info(`[Redis] NOSCRIPT detected during "${String(prop)}" — letting client fallback to EVAL.`);
                             } else {
-                                console.error(`[Redis] Error during "${String(prop)}" operation:`, err);
+                                logger.error(`[Redis] Error during "${String(prop)}" operation:`, err);
                             }
 
                             if (isNoScript) {
@@ -106,7 +107,7 @@ export const redis = new Proxy({} as Redis, {
             } catch (err) {
                 const isNoScript = (err as any)?.message?.includes('NOSCRIPT');
                 if (!isNoScript) {
-                    console.error(`[Redis] Error accessing property/method "${String(prop)}":`, err);
+                    logger.error(`[Redis] Error accessing property/method "${String(prop)}":`, err);
                 }
                 if (isNoScript) {
                     throw err;

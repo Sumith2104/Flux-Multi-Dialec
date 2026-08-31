@@ -2,6 +2,7 @@
 
 import { getPgPool } from '@/lib/pg';
 import { getCurrentUserId } from '@/lib/auth';
+import logger from '@/lib/logger';
 
 export async function getProjectLimitsAction(projectId: string) {
     const userId = await getCurrentUserId();
@@ -19,7 +20,7 @@ export async function getProjectLimitsAction(projectId: string) {
 
         return { success: true, data: res.rows[0] };
     } catch (e: any) {
-        console.error('Failed to get project limits:', e);
+        logger.error('Failed to get project limits:', e);
         return { success: false, error: e.message || 'Server error' };
     }
 }
@@ -62,7 +63,7 @@ export async function updateProjectLimitsAction(
 
         return { success: true, data: res.rows[0] };
     } catch (e: any) {
-        console.error('Failed to update project limits:', e);
+        logger.error('Failed to update project limits:', e);
         return { success: false, error: e.message || 'Server error' };
     }
 }

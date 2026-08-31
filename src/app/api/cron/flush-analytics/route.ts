@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { redis } from '@/lib/redis';
 import { getPgPool } from '@/lib/pg';
+import logger from '@/lib/logger';
 
 export const maxDuration = 60; // 1 minute max for cron execution
 
@@ -64,7 +65,7 @@ export async function GET(request: Request) {
         return NextResponse.json({ success: true, processed: inserted });
 
     } catch (e: any) {
-        console.error('Flush Error:', e);
+        logger.error('Flush Error:', e);
         return NextResponse.json({ success: false, error: e.message }, { status: 500 });
     }
 }

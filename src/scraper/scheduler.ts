@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import { getPgPool } from "@/lib/pg";
 import { runScraper } from "./engine";
+import logger from '@/lib/logger';
 
 /**
  * Bootstraps the background cron scheduler for automated scrapers.
@@ -13,7 +14,7 @@ let isScheduled = false;
 export function initScraperScheduler() {
     if (isScheduled) return;
 
-    console.log(`[Scraper Scheduler] Bootstrapping background cron jobs for automated data extraction...`);
+    logger.info(`[Scraper Scheduler] Bootstrapping background cron jobs for automated data extraction...`);
 
     // Run every 5 minutes and look for jobs that are scheduled and idle
     cron.schedule("*/5 * * * *", async () => {
@@ -28,7 +29,7 @@ export function initScraperScheduler() {
             `);
 
             if (jobs.length > 0) {
-                console.log(`[Scraper Scheduler] Picked up ${jobs.length} scheduled jobs. Dispatching to engine...`);
+                logger.info(`[Scraper Scheduler] Picked up ${jobs.length} scheduled jobs. Dispatching to engine...`);
             }
 
             for (const job of jobs) {
@@ -37,11 +38,11 @@ export function initScraperScheduler() {
 
                 // Dispatch to exactly the same engine the UI uses
                 runScraper(job, job.user_id).catch(err => {
-                    console.error(`[Scraper Scheduler] Automated job ${job.id} failed:`, err);
+                    logger.error(`[Scraper Scheduler] Automated job ${job.id} failed:`, err);
                 });
             }
         } catch (error) {
-            console.error(`[Scraper Scheduler] Error checking for scheduled jobs:`, error);
+            logger.error(`[Scraper Scheduler] Error checking for scheduled jobs:`, error);
         }
     });
 

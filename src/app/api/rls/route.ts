@@ -9,6 +9,8 @@ import {
     validateRlsExpression,
 } from '@/lib/sql-safety';
 import { ERROR_CODES, FluxbaseError } from '@/lib/error-codes';
+import { requireWriteScope } from '@/lib/require-scope';
+import logger from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +45,7 @@ export async function GET(req: NextRequest) {
         const { searchParams } = new URL(req.url);
         const projectId = searchParams.get('projectId');
         const auth = await getAuthContextFromRequest(req);
+  requireWriteScope(auth);
         if (!projectId) throw new FluxbaseError('projectId is required', ERROR_CODES.MISSING_FIELD, 400);
 
         const project = await requireProjectAccess(projectId, auth);
@@ -127,7 +130,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ success: true });
     } catch (error) {
-        console.error('[RLS Save Error]', error);
+        logger.error('[RLS Save Error]', error);
         const { body, status } = jsonError(error);
         return NextResponse.json(body, { status });
     }

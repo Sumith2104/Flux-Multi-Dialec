@@ -1,5 +1,6 @@
 import { pool } from './pg';
 import mysql from 'mysql2/promise';
+import logger from '@/lib/logger';
 
 export interface TenantConfig {
     tenantId: string;
@@ -64,7 +65,7 @@ export class TenantProvisioner {
                 await client.query('COMMIT');
             } catch (error) {
                 await client.query('ROLLBACK');
-                console.error(`[Tenant Engine Error] Failed to create PG schema ${schemaName}:`, error);
+                logger.error(`[Tenant Engine Error] Failed to create PG schema ${schemaName}:`, error);
                 throw error;
             } finally {
                 client.release();
@@ -95,7 +96,7 @@ export class TenantProvisioner {
         }
 
         const executionTimeMs = Date.now() - startTime;
-        console.log(`[Tenant Engine] Created ${dialect} tenant schema "${schemaName}" in ${executionTimeMs}ms`);
+        logger.info(`[Tenant Engine] Created ${dialect} tenant schema "${schemaName}" in ${executionTimeMs}ms`);
 
         return {
             success: true,

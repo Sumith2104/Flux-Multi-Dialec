@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getRazorpayClient } from '@/lib/razorpay';
 import { getCurrentUserId } from '@/lib/auth';
+import logger from '@/lib/logger';
 
 export async function POST(req: Request) {
     const userId = await getCurrentUserId();
@@ -23,8 +24,8 @@ export async function POST(req: Request) {
         );
         const currentPlan = (userRes.rows[0]?.plan_type || 'free').toLowerCase();
 
-        const proPlanId = process.env.NEXT_PUBLIC_RAZORPAY_PRO_PLAN_ID || '';
-        const maxPlanId = process.env.NEXT_PUBLIC_RAZORPAY_MAX_PLAN_ID || '';
+        const proPlanId = process.env.RAZORPAY_PRO_PLAN_ID || '';
+        const maxPlanId = process.env.RAZORPAY_MAX_PLAN_ID || '';
 
         const requestedPlan = planId === maxPlanId ? 'max' : planId === proPlanId ? 'pro' : 'unknown';
 
@@ -51,7 +52,7 @@ export async function POST(req: Request) {
         });
 
     } catch (err: any) {
-        console.error('[Billing] Subscription creation failed:', err);
+        logger.error('[Billing] Subscription creation failed:', err);
         return NextResponse.json({ error: err.error?.description || err.message || 'Failed to initialize checkout' }, { status: 500 });
     }
 }

@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.env*
+*.md
+.cluster
+docker-compose*.yml
+Dockerfile
+packages/cli/dist
+pgbouncer
+__pycache__
+*.pyc
+.openclaw
+tmp

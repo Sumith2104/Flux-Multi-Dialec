@@ -1,6 +1,7 @@
 import { config } from 'dotenv';
 config({ path: '.env.local' });
 import { Pool } from 'pg';
+import logger from '@/lib/logger';
 
 async function retrofitTriggers() {
     if (!process.env.AWS_RDS_POSTGRES_URL) {
@@ -16,7 +17,7 @@ async function retrofitTriggers() {
         const client = await pool.connect();
 
         // 1. Get all relevant schemas (all project schemas + global AI schema)
-        console.log('Fetching target schemas...');
+        logger.info('Fetching target schemas...');
         const schemasRes = await client.query(`
             SELECT schema_name 
             FROM information_schema.schemata 
@@ -24,7 +25,7 @@ async function retrofitTriggers() {
         `);
 
         for (const { schema_name } of schemasRes.rows) {
-            console.log(`\nProcessing schema: ${schema_name}`);
+            logger.info(`\nProcessing schema: ${schema_name}`);
             
             // Extract project_id or default to 'global'
             const projectId = schema_name === 'fluxbase_global' ? 'global' : schema_name.replace('project_', '');
@@ -76,9 +77,9 @@ async function retrofitTriggers() {
 
             try {
                 await client.query(triggerFunctionSql);
-                console.log(`  ✓ Created New RT function for ${schema_name}`);
+                logger.info(`  ✓ Created New RT function for ${schema_name}`);
             } catch (e) {
-                console.error(`  ✗ Failed to create RT function for ${schema_name}:`, e);
+                logger.error(`  ✗ Failed to create RT function for ${schema_name}:`, e);
                 continue;
             }
 
@@ -102,17 +103,17 @@ async function retrofitTriggers() {
 
                 try {
                     await client.query(attachTriggerSql);
-                    console.log(`    ✓ Attached trigger to ${table_name}`);
+                    logger.info(`    ✓ Attached trigger to ${table_name}`);
                 } catch (e) {
-                    console.error(`    ✗ Failed to attach trigger to ${table_name}:`, e);
+                    logger.error(`    ✗ Failed to attach trigger to ${table_name}:`, e);
                 }
             }
         }
 
         client.release();
-        console.log('\nRetrofit complete!');
+        logger.info('\nRetrofit complete!');
     } catch (e) {
-        console.error('Migration failed', e);
+        logger.error('Migration failed', e);
     } finally {
         await pool.end();
     }

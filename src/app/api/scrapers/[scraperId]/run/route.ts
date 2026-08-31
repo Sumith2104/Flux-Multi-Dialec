@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { getPgPool } from '@/lib/pg';
 import { runScraper } from '@/scraper/engine';
+import logger from '@/lib/logger';
 
 export const maxDuration = 60; // Allow Vercel proxy to wait up to 60s
 
@@ -37,7 +38,7 @@ export async function POST(request: Request, context: any) {
 
         return NextResponse.json({ success: true, message: `Scraped ${result.rows} items successfully.`, rows: result.rows, duration: result.duration });
     } catch (error: any) {
-        console.error('[Native Scraper Endpoint Error]', error);
+        logger.error('[Native Scraper Endpoint Error]', error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 }

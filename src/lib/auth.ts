@@ -1,20 +1,24 @@
 'use server';
 import { cookies } from 'next/headers';
-import jwt from 'jsonwebtoken';
+import { SignJWT, jwtVerify } from 'jose';
 import { validateApiKey } from '@/lib/api-keys';
 import { LRUCache } from 'lru-cache';
 import crypto from 'crypto';
 import { logToFluxDB } from '@/lib/fluxdb-logger';
+import logger from '@/lib/logger';
 
-function getJwtSecret(): string {
+function getJwtSecret(): Uint8Array {
     const secret = process.env.JWT_SECRET;
-    if (secret) return secret;
-
-    if (process.env.NODE_ENV === 'production') {
-        throw new Error('Missing required JWT_SECRET environment variable');
+    if (!secret || secret.trim() === '') {
+        throw new Error('JWT_SECRET environment variable is required. Set it in .env.local.');
     }
-    return 'fluxbase_dev_secret_key_123';
+    return new TextEncoder().encode(secret);
 }
+
+// Access token TTL: 15 minutes (short-lived)
+const ACCESS_TOKEN_TTL = 15 * 60; // seconds
+// Refresh token TTL: 7 days
+const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60; // seconds
 
 // Cache user suspension status for 30s — avoids a DB query on every API request.
 // If a user is suspended it takes at most 30s to take effect, which is acceptable.
@@ -47,10 +51,10 @@ export async function getSessionContext(): Promise<{ uid: string; mfa?: boolean 
     if (!sessionCookie) return null;
 
     try {
-        const decoded = jwt.verify(sessionCookie, getJwtSecret()) as { uid: string; mfa?: boolean };
-        return { uid: decoded.uid, mfa: decoded.mfa };
+        const { payload } = await jwtVerify(sessionCookie, getJwtSecret());
+        return { uid: payload.uid as string, mfa: payload.mfa as boolean | undefined };
     } catch (error) {
-        console.error("Failed to verify session cookie:", error);
+        logger.error("Failed to verify session cookie:", error);
         return null;
     }
 }
@@ -61,15 +65,18 @@ export async function getSessionContext(): Promise<{ uid: string; mfa?: boolean 
  * @param isMfaVerified Whether 2FA has been completed for this session
  */
 export async function createSessionCookie(uid: string, isMfaVerified: boolean = false) {
-    const expiresIn = 60 * 60 * 24 * 30; // 30 days in seconds
     try {
-        const sessionCookie = jwt.sign({ uid, mfa: isMfaVerified }, getJwtSecret(), { expiresIn });
+        const sessionCookie = await new SignJWT({ uid, mfa: isMfaVerified })
+            .setProtectedHeader({ alg: 'HS256' })
+            .setIssuedAt()
+            .setExpirationTime(`${ACCESS_TOKEN_TTL}s`)
+            .sign(getJwtSecret());
+
         const isProduction = process.env.NODE_ENV === 'production';
-        const expiresAt = new Date(Date.now() + expiresIn * 1000);
 
         (await cookies()).set('session', sessionCookie, {
-            expires: expiresAt,
-            maxAge: expiresIn,
+            expires: new Date(Date.now() + ACCESS_TOKEN_TTL * 1000),
+            maxAge: ACCESS_TOKEN_TTL,
             httpOnly: true,
             secure: isProduction,
             path: '/',
@@ -77,8 +84,94 @@ export async function createSessionCookie(uid: string, isMfaVerified: boolean = 
         });
 
     } catch (error) {
-        console.error("Failed to create session cookie:", error);
+        logger.error("Failed to create session cookie:", error);
         throw new Error("Authentication failed");
+    }
+}
+
+/**
+ * Creates a refresh token for a user. Stores a hashed version in the database.
+ * Returns the raw token (to be sent to the client in an httpOnly cookie).
+ */
+export async function createRefreshToken(uid: string): Promise<string> {
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    try {
+        const { getPgPool } = await import('@/lib/pg');
+        await getPgPool().query(
+            `INSERT INTO fluxbase_global.refresh_tokens (user_id, token_hash, expires_at)
+             VALUES ($1, $2, NOW() + INTERVAL '7 days')
+             ON CONFLICT (user_id) DO UPDATE SET
+               token_hash = EXCLUDED.token_hash,
+               expires_at = EXCLUDED.expires_at`,
+            [uid, hashedToken]
+        );
+    } catch (e) {
+        logger.error('[Auth] Failed to store refresh token:', e);
+        // If table doesn't exist yet, log but don't fail — this is a soft dependency
+    }
+
+    return rawToken;
+}
+
+/**
+ * Verifies a refresh token against the stored hash.
+ * On success: returns userId and rotates the token (one-time use).
+ * On failure: returns null.
+ */
+export async function verifyAndRotateRefreshToken(rawToken: string): Promise<{ uid: string; newToken: string } | null> {
+    if (!rawToken || rawToken.length < 16) return null;
+
+    const hashedInput = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    try {
+        const { getPgPool } = await import('@/lib/pg');
+        const result = await getPgPool().query(
+            `SELECT user_id FROM fluxbase_global.refresh_tokens
+             WHERE token_hash = $1 AND expires_at > NOW()
+             FOR UPDATE`,
+            [hashedInput]
+        );
+
+        if (!result.rows.length) return null;
+
+        const uid = result.rows[0].user_id;
+
+        // Rotate: delete old token, issue new one
+        await getPgPool().query(
+            `DELETE FROM fluxbase_global.refresh_tokens WHERE token_hash = $1`,
+            [hashedInput]
+        );
+
+        const newRawToken = crypto.randomBytes(32).toString('hex');
+        const newHashedToken = crypto.createHash('sha256').update(newRawToken).digest('hex');
+
+        await getPgPool().query(
+            `INSERT INTO fluxbase_global.refresh_tokens (user_id, token_hash, expires_at)
+             VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
+            [uid, newHashedToken]
+        );
+
+        return { uid, newToken: newRawToken };
+    } catch (e) {
+        logger.error('[Auth] Refresh token verification failed:', e);
+        return null;
+    }
+}
+
+/**
+ * Invalidates all refresh tokens for a user (e.g., on password change or suspicious activity).
+ */
+export async function revokeAllRefreshTokens(uid: string): Promise<void> {
+    try {
+        const { getPgPool } = await import('@/lib/pg');
+        await getPgPool().query(
+            `DELETE FROM fluxbase_global.refresh_tokens WHERE user_id = $1`,
+            [uid]
+        );
+    } catch (e) {
+        logger.error('[Auth] Failed to revoke refresh tokens:', e);
     }
 }
 
@@ -86,7 +179,21 @@ export async function createSessionCookie(uid: string, isMfaVerified: boolean = 
  * Logs out the user by clearing the session cookie.
  */
 export async function logout() {
+    const sessionCookie = (await cookies()).get('session')?.value;
+    if (sessionCookie) {
+        try {
+            const { payload } = await jwtVerify(sessionCookie, getJwtSecret());
+            const uid = payload.uid as string;
+            // Revoke all refresh tokens for this user
+            await revokeAllRefreshTokens(uid);
+            // Clear auth caches
+            await invalidateAuthCache(uid);
+        } catch {
+            // Token may be expired — that's fine, just clear cookies
+        }
+    }
     (await cookies()).delete('session');
+    (await cookies()).delete('refresh_token');
 }
 
 /**
@@ -228,7 +335,7 @@ export async function invalidateAuthCache(userId: string) {
         const { redis } = await import('@/lib/redis');
         await redis.del(`user_status:${userId}`);
     } catch (e) {
-        console.warn('[Redis Error] invalidateAuthCache Redis delete failed:', e);
+        logger.warn('[Redis Error] invalidateAuthCache Redis delete failed:', e);
     }
     
     if (_authContextCache.size === 0) return;

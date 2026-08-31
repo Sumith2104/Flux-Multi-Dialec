@@ -3,6 +3,8 @@ import { getTableData, getProjectById, ensureNotSuspended } from '@/lib/data';
 import type { TableSort, TableFilter } from '@/lib/data';
 import { trackApiRequest } from '@/lib/analytics';
 import { getAuthContextFromRequest } from '@/lib/auth';
+import logger from '@/lib/logger';
+import { getCorsOrigin, corsPreflightResponse } from '@/lib/cors';
 
 export const maxDuration = 60; // 1 minute
 export const dynamic = 'force-dynamic';
@@ -84,19 +86,12 @@ export async function GET(request: Request) {
     return NextResponse.json(data);
 
   } catch (error: any) {
-    console.error('Failed to fetch table data:', error);
+    logger.error('Failed to fetch table data:', error);
     return NextResponse.json({ error: `An unexpected error occurred: ${error.message}` }, { status: 500 });
   }
 }
 
-// Explicit CORS Preflight Support for Next.js App Router
-export async function OPTIONS() {
-  return new Response(null, {
-    status: 204,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
-    },
-  });
+// CORS Preflight
+export async function OPTIONS(req: any) {
+  return corsPreflightResponse(getCorsOrigin(req.headers.get('origin')));
 }

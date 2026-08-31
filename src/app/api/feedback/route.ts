@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { getAuthContextFromRequest } from '@/lib/auth';
 import { sendFeedbackEmail } from '@/lib/email';
+import logger from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
         // 1. If Supabase keys are configured, insert directly into external Supabase client_queries table
         if (supabaseUrl && supabaseKey) {
             try {
-                console.log('[Feedback] Inserting query into external Supabase client_queries...');
+                logger.info('[Feedback] Inserting query into external Supabase client_queries...');
                 const cleanedUrl = supabaseUrl.endsWith('/') ? supabaseUrl.slice(0, -1) : supabaseUrl;
                 const supabaseRes = await fetch(`${cleanedUrl}/rest/v1/client_queries`, {
                     method: 'POST',
@@ -44,10 +45,10 @@ export async function POST(req: NextRequest) {
                     throw new Error(`Supabase insert failed with status ${supabaseRes.status}: ${errText}`);
                 }
 
-                console.log('[Feedback] Successfully saved query to Supabase client_queries!');
+                logger.info('[Feedback] Successfully saved query to Supabase client_queries!');
                 storedInSupabase = true;
             } catch (supabaseErr: any) {
-                console.error('[Feedback] Supabase external insert error:', supabaseErr.message || supabaseErr);
+                logger.error('[Feedback] Supabase external insert error:', supabaseErr.message || supabaseErr);
                 // Fallback to local DB storage if Supabase fails so we don't lose the feedback
             }
         }
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
                 `INSERT INTO fluxbase_global.client_queries (message, processed) VALUES ($1, false)`,
                 [message]
             );
-            console.log('[Feedback] Saved query to local DB client_queries.');
+            logger.info('[Feedback] Saved query to local DB client_queries.');
         }
 
         // 3. Send email notification (keeps SMTP notification intact as requested)
@@ -85,14 +86,14 @@ export async function POST(req: NextRequest) {
                     auth?.userId || 'Anonymous'
                 );
             } catch (emailErr) {
-                console.error('Failed to send feedback email:', emailErr);
+                logger.error('Failed to send feedback email:', emailErr);
                 // Don't fail the client request if email fails
             }
         }
 
         return NextResponse.json({ success: true });
     } catch (e: any) {
-        console.error('Feedback API error:', e);
+        logger.error('Feedback API error:', e);
         return NextResponse.json({ success: false, error: e.message }, { status: 500 });
     }
 }

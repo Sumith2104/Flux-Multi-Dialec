@@ -40,6 +40,7 @@ export async function getWebhooksForProject(projectId: string, userId: string): 
 }
 
 import { checkWebhookLimit } from '@/lib/limits';
+import logger from '@/lib/logger';
 
 export async function createWebhook(projectId: string, userId: string, webhook: Omit<Webhook, 'webhook_id' | 'project_id' | 'user_id' | 'created_at'>): Promise<Webhook> {
     await checkWebhookLimit(projectId, userId);
@@ -98,12 +99,12 @@ export async function fireWebhooks(
         // 1. Check if the organization/user is suspended
         const statusRes = await pool.query('SELECT status FROM fluxbase_global.users WHERE id = $1', [userId]);
         if (statusRes.rows.length > 0 && statusRes.rows[0].status === 'suspended') {
-            console.log(`[Webhook Engine] Abandoning dispatch: Organization for user ${userId} is suspended.`);
+            logger.info(`[Webhook Engine] Abandoning dispatch: Organization for user ${userId} is suspended.`);
             return;
         }
 
         const webhooks = await getWebhooksForProject(projectId, userId);
-        console.log(`[Webhook Engine] Initialized for ${projectId}/${tableId}/${eventType}. Found ${webhooks.length} webhooks in DB.`);
+        logger.info(`[Webhook Engine] Initialized for ${projectId}/${tableId}/${eventType}. Found ${webhooks.length} webhooks in DB.`);
 
         const payload: WebhookPayload = {
             event_type: eventType,
@@ -136,7 +137,7 @@ export async function fireWebhooks(
             }
             await pool.query(`NOTIFY ${channel}, '${payloadString}'`);
         } catch (notifyErr) {
-            console.error(`[INTERNAL LIVE UPDATE ERROR] Project ${projectId}:`, notifyErr);
+            logger.error(`[INTERNAL LIVE UPDATE ERROR] Project ${projectId}:`, notifyErr);
         }
 
         const targetWebhooks = webhooks.filter(wh => {
@@ -147,11 +148,11 @@ export async function fireWebhooks(
         });
 
         if (targetWebhooks.length === 0) {
-            console.log(`[Webhook Engine] Abandoning dispatch: 0 targets matched criteria.`);
+            logger.info(`[Webhook Engine] Abandoning dispatch: 0 targets matched criteria.`);
             return;
         }
 
-        console.log(`[Webhook Engine] Dispatching to ${targetWebhooks.length} target(s).`);
+        logger.info(`[Webhook Engine] Dispatching to ${targetWebhooks.length} target(s).`);
 
         const dispatchPromises = targetWebhooks.map(async (webhook) => {
             const start = Date.now();
@@ -176,7 +177,7 @@ export async function fireWebhooks(
                 }
 
                 validatePublicWebhookUrl(webhook.url);
-                console.log(`[Webhook Engine] Sending POST to ${webhook.url}`);
+                logger.info(`[Webhook Engine] Sending POST to ${webhook.url}`);
                 const response = await fetch(webhook.url, {
                     method: 'POST',
                     headers,
@@ -190,11 +191,11 @@ export async function fireWebhooks(
 
                 if (!response.ok) {
                     error = `HTTP ${response.status}: ${response.statusText}`;
-                    console.error(`[Webhook Dispatch Error] ${webhook.url} returned status: ${response.status}`);
+                    logger.error(`[Webhook Dispatch Error] ${webhook.url} returned status: ${response.status}`);
                 }
             } catch (dispatchError: any) {
                 error = dispatchError.message || 'Network Error';
-                console.error(`[Webhook Network Error] Failed to reach ${webhook.url}:`, dispatchError);
+                logger.error(`[Webhook Network Error] Failed to reach ${webhook.url}:`, dispatchError);
             } finally {
                 const duration = Date.now() - start;
                 // Log the delivery attempt to the database for the UI to display
@@ -216,7 +217,7 @@ export async function fireWebhooks(
                         JSON.stringify(payload)
                     ]);
                 } catch (logErr) {
-                    console.error(`[Webhook Logger Error] Failed to write delivery log:`, logErr);
+                    logger.error(`[Webhook Logger Error] Failed to write delivery log:`, logErr);
                 }
             }
         });
@@ -224,6 +225,6 @@ export async function fireWebhooks(
         await Promise.allSettled(dispatchPromises);
 
     } catch (criticalError) {
-        console.error(`[Webhook Pipeline Critical Error] Project ${projectId}:`, criticalError);
+        logger.error(`[Webhook Pipeline Critical Error] Project ${projectId}:`, criticalError);
     }
 }
