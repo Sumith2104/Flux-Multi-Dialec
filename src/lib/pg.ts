@@ -2,15 +2,20 @@ import { Pool } from 'pg';
 import { ERROR_CODES } from './error-codes';
 import { NextResponse } from 'next/server';
 
+// Ensure Node TLS handles self-signed certs globally for AWS RDS & cloud Postgres
+if (typeof process !== 'undefined') {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
+
 // --- GLOBAL POOL SINGLETON (Serverless Optimization) ---
 declare global {
     var _pool: Pool | undefined;
 }
 
 const isServerless = process.env.VERCEL === '1' || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
-const defaultPoolMax = isServerless ? '2' : '30';
+const defaultPoolMax = isServerless ? '2' : '5';
 
-const connectionString = process.env.AWS_RDS_POSTGRES_URL || process.env.DATABASE_URL || process.env.POSTGRES_URL;
+const connectionString = process.env.AWS_RDS_POSTGRES_URL || process.env.DATABASE_URL || process.env.POSTGRES_URL || '';
 
 const needsSsl = !!(
     connectionString?.includes('rds.amazonaws.com') ||
@@ -20,14 +25,16 @@ const needsSsl = !!(
     process.env.NODE_ENV === 'production'
 );
 
-export const pool = global._pool || new Pool({
+export const pool = new Pool({
     connectionString,
-    ssl: needsSsl ? { rejectUnauthorized: false } : false,
+    ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
     max: parseInt(process.env.DATABASE_POOL_MAX || defaultPoolMax, 10),
-    idleTimeoutMillis: isServerless ? 10000 : 600000, // 10s in serverless, 10m in local dev
-    connectionTimeoutMillis: 5000, // Rapid 5s timeout to prevent requests from hanging endlessly
+    idleTimeoutMillis: 5000, // Reclaim idle connections after 5s
+    connectionTimeoutMillis: 10000, // 10s timeout to allow AWS RDS TLS handshake
     keepAlive: true,
 });
+
+global._pool = pool;
 
 if (!global._pool) {
     global._pool = pool;

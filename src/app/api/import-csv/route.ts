@@ -8,30 +8,56 @@ import { Readable } from 'node:stream';
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
+const MAX_CSV_FILE_SIZE = 25 * 1024 * 1024; // 25 MB hard cap
+
 /**
- * Streams a multipart/form-data request body using busboy — completely bypassing
- * Next.js's built-in body-size limit (which blocks files >4 MB via req.formData()).
+ * Streams a multipart/form-data request body using busboy with a strict 25 MB payload limit.
  * Returns { fields, files } where files[name] is a Buffer.
  */
 async function parseMultipart(req: NextRequest): Promise<{
     fields: Record<string, string>;
     files: Record<string, { buffer: Buffer; filename: string; mimetype: string }>;
 }> {
+    const contentLength = parseInt(req.headers.get('content-length') || '0', 10);
+    if (contentLength > MAX_CSV_FILE_SIZE + 1024 * 1024) {
+        throw new Error('PAYLOAD_TOO_LARGE: Request exceeds 25 MB maximum allowed file size');
+    }
+
     const contentType = req.headers.get('content-type') || '';
-    const bb = Busboy({ headers: { 'content-type': contentType }, limits: { fileSize: 500 * 1024 * 1024 } }); // 500 MB hard cap
+    const bb = Busboy({ 
+        headers: { 'content-type': contentType }, 
+        limits: { fileSize: MAX_CSV_FILE_SIZE, files: 1 } 
+    });
     const fields: Record<string, string> = {};
     const files: Record<string, { buffer: Buffer; filename: string; mimetype: string }> = {};
 
     return new Promise((resolve, reject) => {
+        let isRejected = false;
+        const rejectOnce = (err: Error) => {
+            if (!isRejected) {
+                isRejected = true;
+                reject(err);
+            }
+        };
+
         bb.on('field', (name, val) => { fields[name] = val; });
         bb.on('file', (name, stream, info) => {
             const chunks: Buffer[] = [];
             stream.on('data', (d: Buffer) => chunks.push(d));
-            stream.on('end', () => { files[name] = { buffer: Buffer.concat(chunks), filename: info.filename, mimetype: info.mimeType }; });
-            stream.on('error', reject);
+            stream.on('limit', () => {
+                rejectOnce(new Error('PAYLOAD_TOO_LARGE: CSV file exceeds 25 MB limit'));
+            });
+            stream.on('end', () => { 
+                if (!isRejected) {
+                    files[name] = { buffer: Buffer.concat(chunks), filename: info.filename, mimetype: info.mimeType };
+                }
+            });
+            stream.on('error', rejectOnce);
         });
-        bb.on('close', () => resolve({ fields, files }));
-        bb.on('error', reject);
+        bb.on('close', () => {
+            if (!isRejected) resolve({ fields, files });
+        });
+        bb.on('error', rejectOnce);
 
         if (!req.body) { reject(new Error('No request body')); return; }
         const nodeStream = Readable.fromWeb(req.body as any);
@@ -409,6 +435,11 @@ export async function POST(req: NextRequest) {
 
     } catch (error: any) {
         console.error('[import-csv] Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        if (error?.message?.includes('PAYLOAD_TOO_LARGE')) {
+            return NextResponse.json({
+                error: 'Payload Too Large: CSV file exceeds the 25 MB maximum allowed limit.'
+            }, { status: 413 });
+        }
+        return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
     }
 }

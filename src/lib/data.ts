@@ -105,7 +105,7 @@ export async function checkDatabaseHealthAction(): Promise<boolean> {
     try {
         const pool = getPgPool();
         const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Database health check timed out after 5s')), 5000)
+            setTimeout(() => reject(new Error('Database health check timed out after 10s')), 10000)
         );
 
         await Promise.race([
@@ -114,10 +114,10 @@ export async function checkDatabaseHealthAction(): Promise<boolean> {
         ]);
 
         return true;
-    } catch (error) {
+    } catch (error: any) {
         const now = Date.now();
         if (now - _lastHealthLogTime > HEALTH_LOG_THROTTLE_MS) {
-            console.error("[Health Check Failed]:", error instanceof Error ? error.message : error);
+            console.error("[Health Check Failed]:", error?.message || error);
             _lastHealthLogTime = now;
         }
         return false;

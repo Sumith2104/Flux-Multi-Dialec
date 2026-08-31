@@ -1,18 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
+import crypto from 'crypto';
 
-const NOTIFICATION_WEBHOOK_SECRET = process.env.NOTIFICATION_WEBHOOK_SECRET || process.env.SMS_WEBHOOK_SECRET || 'my_super_secure_secret_token';
+function verifyWebhookAuth(authHeader: string | null): boolean {
+    if (!authHeader) return false;
+    const configuredSecret = process.env.NOTIFICATION_WEBHOOK_SECRET || process.env.SMS_WEBHOOK_SECRET;
+    if (!configuredSecret) {
+        console.error('[Notification Webhook] Server configuration error: Missing NOTIFICATION_WEBHOOK_SECRET');
+        return false;
+    }
+
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : authHeader.trim();
+    if (!token) return false;
+
+    try {
+        const tokenBuf = Buffer.from(token, 'utf-8');
+        const secretBuf = Buffer.from(configuredSecret.trim(), 'utf-8');
+        if (tokenBuf.length !== secretBuf.length) return false;
+        return crypto.timingSafeEqual(tokenBuf, secretBuf);
+    } catch {
+        return false;
+    }
+}
 
 export async function POST(req: NextRequest) {
     try {
         const authHeader = req.headers.get('Authorization');
-        const expected = `Bearer ${NOTIFICATION_WEBHOOK_SECRET}`;
-        const expectedAlternative = NOTIFICATION_WEBHOOK_SECRET;
-        const validSecrets = [expected, expectedAlternative, 'Bearer sumith@fluxbase', 'sumith@fluxbase', 'fluxbase_payment_webhook_secret_key_2026'];
-
-        if (authHeader && !validSecrets.includes(authHeader)) {
-            console.warn(`[Notification Webhook] Unauthorized request. Received Authorization: "${authHeader}"`);
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        if (!verifyWebhookAuth(authHeader)) {
+            console.warn('[Notification Webhook] Rejected unauthorized request: Missing or invalid secret.');
+            return NextResponse.json({ error: 'Unauthorized: Valid webhook authorization required' }, { status: 401 });
         }
 
         let body: any = {};

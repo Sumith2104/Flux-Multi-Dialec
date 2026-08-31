@@ -23,27 +23,26 @@ export async function logoutAction() {
  */
 export async function getAppLayoutBootstrapData() {
     try {
-        // Parallelize initial check and ID fetch
-        const [isHealthy, userId] = await Promise.all([
-            checkDatabaseHealthAction(),
-            getCurrentUserId()
-        ]);
-
-        if (!isHealthy) {
-            return { isOffline: true };
-        }
-
+        const userId = await getCurrentUserId();
         if (!userId) {
             return { userId: null, isOffline: false };
         }
 
         // Parallelize data fetching for the authenticated user
         const [user, planRes, projects, invitations] = await Promise.all([
-            findUserById(userId),
-            getUserPlanAction(),
-            getProjectsForCurrentUser(),
-            getPendingInvitationsForCurrentUser()
+            findUserById(userId).catch(() => null),
+            getUserPlanAction().catch(() => null),
+            getProjectsForCurrentUser().catch(() => []),
+            getPendingInvitationsForCurrentUser().catch(() => [])
         ]);
+
+        // If user query failed completely, perform a fallback database health check
+        if (!user && (!projects || projects.length === 0)) {
+            const isHealthy = await checkDatabaseHealthAction();
+            if (!isHealthy) {
+                return { isOffline: true };
+            }
+        }
 
         console.log(`[Bootstrap] User: ${userId}, Projects: ${projects?.length || 0}, Invites: ${invitations?.length || 0}`);
 
@@ -51,12 +50,12 @@ export async function getAppLayoutBootstrapData() {
             userId,
             user,
             plan: planRes?.success ? { type: planRes.plan, status: planRes.status } : null,
-            projects,
-            invitations,
+            projects: projects || [],
+            invitations: invitations || [],
             isOffline: false
         };
     } catch (error) {
         console.error("[Bootstrap Action Error]:", error);
-        return { error: "Failed to initialize application data" };
+        return { isOffline: false, userId: null, error: "Failed to initialize application data" };
     }
 }

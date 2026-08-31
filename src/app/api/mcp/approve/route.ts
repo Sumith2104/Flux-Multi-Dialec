@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { McpGuard } from '@/lib/mcp-guard';
+import { getUserIdFromRequest } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
     try {
+        const userId = await getUserIdFromRequest(req);
+        if (!userId) {
+            return NextResponse.json({
+                success: false,
+                error: 'Unauthorized: You must be logged in to manage MCP connection approvals.'
+            }, { status: 401 });
+        }
+
         const body = await req.json();
         const { requestId, decision } = body;
 
@@ -34,7 +43,15 @@ export async function POST(req: NextRequest) {
     }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) {
+        return NextResponse.json({
+            success: false,
+            error: 'Unauthorized: You must be logged in to view pending MCP requests.'
+        }, { status: 401 });
+    }
+
     const pending = McpGuard.getPendingRequests();
     return NextResponse.json({ success: true, pending });
 }

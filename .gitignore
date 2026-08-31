@@ -58,4 +58,8 @@ __pycache__/
 
 # Generated Monaco editor assets
 public/monaco-editor/
+
+# Security scan runs & logs
+strix_runs/
+*.log
 # End

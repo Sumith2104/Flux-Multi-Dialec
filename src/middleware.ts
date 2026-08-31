@@ -127,11 +127,20 @@ export async function middleware(request: NextRequest) {
         }
     }
 
-    return NextResponse.next();
+    const res = NextResponse.next();
+    res.headers.set('X-Content-Type-Options', 'nosniff');
+    res.headers.set('X-Frame-Options', 'SAMEORIGIN');
+    res.headers.set('X-XSS-Protection', '1; mode=block');
+    res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    return res;
   } catch (globalError) {
     console.error('Middleware Critical Error:', globalError);
     // Safety net: allow the request to proceed if the middleware crashes to avoid site-wide 404/500
-    return NextResponse.next();
+    const fallbackRes = NextResponse.next();
+    fallbackRes.headers.set('X-Content-Type-Options', 'nosniff');
+    fallbackRes.headers.set('X-Frame-Options', 'SAMEORIGIN');
+    return fallbackRes;
   }
 }
 

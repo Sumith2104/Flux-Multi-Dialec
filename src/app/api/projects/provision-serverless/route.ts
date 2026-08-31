@@ -1,16 +1,26 @@
 import { NextResponse } from 'next/server';
 import { TenantProvisioner } from '@/lib/tenant-engine';
 import { pool } from '@/lib/pg';
+import { getUserIdFromRequest } from '@/lib/auth';
 
 export async function POST(req: Request) {
     try {
-        const body = await req.json();
-        const { projectName, dialect = 'postgresql', userId } = body;
-
-        if (!projectName || !userId) {
+        const authenticatedUserId = await getUserIdFromRequest(req);
+        if (!authenticatedUserId) {
             return NextResponse.json({
                 success: false,
-                error: 'projectName and userId are required parameters.'
+                error: 'Unauthorized: You must be logged in to provision a database.'
+            }, { status: 401 });
+        }
+
+        const body = await req.json();
+        const { projectName, dialect = 'postgresql' } = body;
+        const userId = authenticatedUserId;
+
+        if (!projectName) {
+            return NextResponse.json({
+                success: false,
+                error: 'projectName is a required parameter.'
             }, { status: 400 });
         }
 

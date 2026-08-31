@@ -31,7 +31,7 @@ class RealtimeManager extends EventEmitter {
             this.reconnectTimeout = null;
         }
         if (this.client) {
-            try { this.client.release(); } catch {}
+            try { this.client.release(true); } catch {}
             this.client = null;
         }
         this.removeAllListeners();
@@ -121,7 +121,7 @@ class RealtimeManager extends EventEmitter {
         if (this.reconnectTimeout) return; // Already scheduled
 
         if (this.client) {
-            try { this.client.release(); } catch {}
+            try { this.client.release(true); } catch {}
             this.client = null;
         }
 
