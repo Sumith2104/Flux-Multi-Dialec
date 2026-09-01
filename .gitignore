@@ -66,8 +66,10 @@ packages/*/dist/
 
 # agent & editor metadata
 .openclaw/
+openclaw/
 .openclaw-attachments/
 .opencode/
+scratch/
 
 # Security scan runs & logs
 strix_runs/
