@@ -1,4 +1,4 @@
-﻿
+
 'use client';
 
 import { usePathname, useRouter } from "next/navigation";
@@ -382,19 +382,22 @@ import { UploadProvider } from "@/contexts/upload-context";
 import { BackupProvider } from "@/contexts/backup-context";
 import { BackgroundUploadWidget } from "@/components/storage/background-upload-widget";
 import { BackgroundBackupWidget } from "@/components/storage/background-backup-widget";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 export default function AppLayoutWrapper({ children }: { children: React.ReactNode }) {
     return (
-        <ProjectProvider>
-            <UploadProvider>
-                <BackupProvider>
-                    <McpApprovalModal />
-                    <AppLayoutContent>{children}</AppLayoutContent>
-                    <BackgroundUploadWidget />
-                    <BackgroundBackupWidget />
-                </BackupProvider>
-            </UploadProvider>
-        </ProjectProvider>
+        <TooltipProvider delayDuration={150}>
+            <ProjectProvider>
+                <UploadProvider>
+                    <BackupProvider>
+                        <McpApprovalModal />
+                        <AppLayoutContent>{children}</AppLayoutContent>
+                        <BackgroundUploadWidget />
+                        <BackgroundBackupWidget />
+                    </BackupProvider>
+                </UploadProvider>
+            </ProjectProvider>
+        </TooltipProvider>
     );
 }
 
