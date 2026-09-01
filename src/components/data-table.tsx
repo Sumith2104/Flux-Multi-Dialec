@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -836,8 +835,7 @@ export function DataTable({
   const gridCols = ['40px','40px','28px',...visibleColumns.map(c=>getW(c.field)+'px')].join(' ');
 
   return (
-    <TooltipProvider delayDuration={150}>
-      <div className="relative flex flex-col h-full min-h-[200px] w-full max-w-full flex-1 overflow-hidden rounded-lg border border-border/50 bg-white/[0.03] backdrop-blur-2xl text-foreground shadow-2xl shadow-black/40">
+    <div className="relative flex flex-col h-full min-h-[200px] w-full max-w-full flex-1 overflow-hidden rounded-lg border border-border/50 bg-white/[0.03] backdrop-blur-2xl text-foreground shadow-2xl shadow-black/40">
 
       {/* ── Scrollable area ── */}
       <div ref={parentRef} className="flex-1 overflow-auto relative custom-scrollbar" tabIndex={0} onKeyDown={handleKeyDown}>
@@ -856,14 +854,12 @@ export function DataTable({
                 className={`group/hdr relative flex shrink-0 items-center gap-1.5 overflow-hidden bg-secondary px-4 ${DENSITY_HDR[density]} ${i < visibleColumns.length - 1 ? 'border-r border-border/60' : ''} ${onSortsChange ? 'cursor-pointer select-none hover:bg-muted/60 transition-colors' : ''} ${sorted ? 'text-primary bg-primary/5' : ''} ${isPinned ? 'border-l-2 border-l-primary/40' : ''}`}
                 
                 onClick={e => handleSort(e, c.field)}>
-                <Tooltip>
-                  <TooltipTrigger asChild><span className="truncate flex-1 min-w-0">{c.headerName}</span></TooltipTrigger>
-                  <TooltipContent side="bottom" className="text-xs">
-                    <div className="font-mono font-bold">{c.headerName}</div>
-                    {c.dataType && <div className="text-muted-foreground mt-0.5">{c.dataType}</div>}
-                    <div className="text-muted-foreground/60 mt-0.5">Click to sort</div>
-                  </TooltipContent>
-                </Tooltip>
+                <span 
+                  className="truncate flex-1 min-w-0 font-medium"
+                  title={`${c.headerName}${c.dataType ? ` (${c.dataType})` : ''} — Click to sort`}
+                >
+                  {c.headerName}
+                </span>
                 {onSortsChange && sortIcon(c.field)}
                 <button className={`p-0.5 rounded transition-colors ${isPinned ? 'text-primary' : 'text-transparent group-hover/hdr:text-muted-foreground/50 hover:!text-primary'}`}
                   onClick={e => { e.stopPropagation(); setPinned(p => p.includes(c.field) ? p.filter(f => f !== c.field) : [...p, c.field]); }}
@@ -1103,8 +1099,7 @@ export function DataTable({
 
       {/* Toast */}
       {toast && <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-50 px-3 py-1.5 rounded-full bg-foreground text-background text-xs font-medium shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-200">{toast}</div>}
-      </div>
-    </TooltipProvider>
+    </div>
   );
 }
 
