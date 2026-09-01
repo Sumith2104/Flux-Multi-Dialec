@@ -17,8 +17,14 @@ export class MySqlAdapter implements DatabaseAdapter {
     this.pool = pool;
   }
 
+  private formatSql(sql: string): string {
+    // Converts $1, $2, ... placeholders to ? for MySQL
+    return sql.replace(/\$\d+/g, '?');
+  }
+
   async query<T = any>(sql: string, params?: any[]): Promise<QueryResult<T>> {
-    const [rows] = await this.pool.execute(sql, params);
+    const formatted = this.formatSql(sql);
+    const [rows] = await this.pool.execute(formatted, params);
     return {
       rows: rows as T[],
       rowCount: Array.isArray(rows) ? rows.length : (rows as any).affectedRows || 0,
@@ -31,7 +37,8 @@ export class MySqlAdapter implements DatabaseAdapter {
       await conn.beginTransaction();
       const txClient: TransactionClient = {
         query: async (sql, params) => {
-          const [rows] = await conn.execute(sql, params);
+          const formatted = this.formatSql(sql);
+          const [rows] = await conn.execute(formatted, params);
           return { rows: rows as any[], rowCount: Array.isArray(rows) ? rows.length : (rows as any).affectedRows || 0 };
         },
         release: () => {},
@@ -53,7 +60,6 @@ export class MySqlAdapter implements DatabaseAdapter {
     const start = Date.now();
     const qualifiedTable = schema ? `\`${schema}\`.\`${table}\`` : `\`${table}\``;
 
-    // Get column names from first row
     const columns = Object.keys(rows[0]);
     const columnNames = columns.map(c => `\`${c}\``).join(', ');
     const valuePlaceholders = columns.map(() => '?').join(', ');
@@ -80,13 +86,13 @@ export class MySqlAdapter implements DatabaseAdapter {
     const dbFilter = schema || (this.pool as any).config?.database || 'fluxbase';
     const tables = await this.query<{ TABLE_NAME: string }>(`
       SELECT TABLE_NAME FROM information_schema.TABLES
-      WHERE TABLE_SCHEMA = $1 AND TABLE_TYPE = 'BASE TABLE'
+      WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'
       ORDER BY TABLE_NAME
     `, [dbFilter]);
 
     const tableInfos: TableInfo[] = [];
     for (const t of tables.rows) {
-      const columns = await this.getColumns(t.TABLE_NAME);
+      const columns = await this.getColumns(t.TABLE_NAME, dbFilter);
       tableInfos.push({ name: t.TABLE_NAME, columns });
     }
 
@@ -106,7 +112,7 @@ export class MySqlAdapter implements DatabaseAdapter {
         NUMERIC_PRECISION AS numericPrecision,
         NUMERIC_SCALE AS numericScale
       FROM information_schema.COLUMNS
-      WHERE TABLE_NAME = $1 AND TABLE_SCHEMA = $2
+      WHERE TABLE_NAME = ? AND TABLE_SCHEMA = ?
       ORDER BY ORDINAL_POSITION
     `, [table, dbFilter]);
 
@@ -131,7 +137,7 @@ export class MySqlAdapter implements DatabaseAdapter {
 
   async schemaExists(name: string): Promise<boolean> {
     const result = await this.query(
-      `SELECT 1 FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = $1`,
+      `SELECT 1 FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?`,
       [name]
     );
     return result.rowCount > 0;
@@ -140,7 +146,7 @@ export class MySqlAdapter implements DatabaseAdapter {
   async tableExists(table: string, schema?: string): Promise<boolean> {
     const dbFilter = schema || (this.pool as any).config?.database || 'fluxbase';
     const result = await this.query(
-      `SELECT 1 FROM information_schema.TABLES WHERE TABLE_NAME = $1 AND TABLE_SCHEMA = $2`,
+      `SELECT 1 FROM information_schema.TABLES WHERE TABLE_NAME = ? AND TABLE_SCHEMA = ?`,
       [table, dbFilter]
     );
     return result.rowCount > 0;

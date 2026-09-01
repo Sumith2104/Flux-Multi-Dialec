@@ -2,18 +2,13 @@ import { Pool } from 'pg';
 import { ERROR_CODES } from './error-codes';
 import { NextResponse } from 'next/server';
 
-// Ensure Node TLS handles self-signed certs globally for AWS RDS & cloud Postgres
-if (typeof process !== 'undefined') {
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-}
-
 // --- GLOBAL POOL SINGLETON (Serverless Optimization) ---
 declare global {
     var _pool: Pool | undefined;
 }
 
 const isServerless = process.env.VERCEL === '1' || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
-const defaultPoolMax = isServerless ? '2' : '5';
+const defaultPoolMax = isServerless ? '5' : '15';
 
 const connectionString = process.env.AWS_RDS_POSTGRES_URL || process.env.DATABASE_URL || process.env.POSTGRES_URL || '';
 
@@ -25,24 +20,23 @@ const needsSsl = !!(
     process.env.NODE_ENV === 'production'
 );
 
-export const pool = new Pool({
+export const pool: Pool = global._pool || new Pool({
     connectionString,
     ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
     max: parseInt(process.env.DATABASE_POOL_MAX || defaultPoolMax, 10),
-    idleTimeoutMillis: 5000, // Reclaim idle connections after 5s
+    idleTimeoutMillis: 10000, // Reclaim idle connections after 10s
     connectionTimeoutMillis: 10000, // 10s timeout to allow AWS RDS TLS handshake
     keepAlive: true,
 });
 
-global._pool = pool;
-
-if (!global._pool) {
+if (process.env.NODE_ENV !== 'production') {
     global._pool = pool;
+}
 
-    // Trap idle connection errors to prevent unhandled node crashes
-    pool.on('error', (err: any) => {
-        console.warn('[PostgreSQL Pool] Idle client warning (handled safely):', err?.message || err);
-    });
+// Trap idle connection errors to prevent unhandled node crashes
+pool.on('error', (err: any) => {
+    console.warn('[PostgreSQL Pool] Idle client warning (handled safely):', err?.message || err);
+});
 
     if (typeof process !== 'undefined') {
         const handleShutdown = async () => {
@@ -53,7 +47,6 @@ if (!global._pool) {
         process.once('SIGTERM', handleShutdown);
         process.once('SIGINT', handleShutdown);
     }
-}
 
 // Keep backward compatibility for existing routes
 export function getPgPool(): Pool {

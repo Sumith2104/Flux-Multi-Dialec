@@ -139,12 +139,13 @@ export function SqlEditor({ projectId, query, setQuery, onRun, isGenerating, res
     const { data: schema } = useQuery({
         queryKey: ['schema', projectId],
         queryFn: async () => {
-            const res = await fetch(`/api/schema?projectId=${projectId}&refresh=true&_t=${Date.now()}`);
+            const res = await fetch(`/api/schema?projectId=${projectId}`);
             const data = await res.json();
             return (data.success && data.tables) ? data : null;
         },
         enabled: !!projectId,
-        staleTime: 0,
+        staleTime: 5 * 60 * 1000,
+        refetchOnWindowFocus: false,
     });
 
     // Keep the module-level ref in sync with latest schema.

@@ -37,15 +37,15 @@ export function SchemaExplorer({ projectId, onInsertQuery }: { projectId?: strin
     const { data: schema, isLoading: loading } = useQuery({
         queryKey: ['schema', projectId],
         queryFn: async () => {
-            // Bust both browser and server-side Redis cache
-            const res = await fetch(`/api/schema?projectId=${projectId}&refresh=true&_t=${Date.now()}`);
+            const res = await fetch(`/api/schema?projectId=${projectId}`);
             const data = await res.json();
             if (!data.success || !data.tables) return null;
             return data as SchemaData;
         },
         enabled: !!projectId,
-        staleTime: 0,
-        gcTime: 30 * 60 * 1000, 
+        staleTime: 5 * 60 * 1000,
+        gcTime: 30 * 60 * 1000,
+        refetchOnWindowFocus: false,
     });
 
     const toggleFolder = (folder: string) => {

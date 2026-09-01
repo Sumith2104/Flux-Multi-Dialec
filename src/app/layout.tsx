@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { GlobalAlertProvider } from "@/components/global-alert-provider";
 import { QueryProvider } from "@/components/query-provider";
 import ErrorBoundary from "@/components/error-boundary";
@@ -86,8 +87,10 @@ export default function RootLayout({
           <QueryProvider>
             <ErrorBoundary>
               <GlobalAlertProvider>
-                {children}
-                <Toaster />
+                <TooltipProvider delayDuration={200}>
+                  {children}
+                  <Toaster />
+                </TooltipProvider>
               </GlobalAlertProvider>
             </ErrorBoundary>
           </QueryProvider>

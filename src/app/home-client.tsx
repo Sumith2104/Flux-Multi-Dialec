@@ -21,6 +21,7 @@ import Aurora from '@/components/Aurora';
 import Navbar from '@/components/layout/navbar';
 import { Button } from '@/components/ui/button';
 import { checkDatabaseHealthAction } from '@/lib/data';
+import InteractiveShowcase from '@/components/landing/interactive-showcase';
 
 const LoginDialog = dynamic(() => import('@/components/auth/login-dialog').then(mod => mod.LoginDialog), {
     ssr: false,
@@ -132,6 +133,9 @@ export default function Home() {
                     </motion.div>
                 </div>
             </section>
+
+            {/* Interactive Platform Showcase (Live SQL, Schema, Traffic, Storage, SDK) */}
+            <InteractiveShowcase />
 
             {/* Features Section */}
             <section id="features" className="relative z-10 bg-background px-5 py-16 sm:px-4 sm:py-24">

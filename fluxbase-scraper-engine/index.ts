@@ -188,6 +188,17 @@ async function runScraper(job: any) {
 // -------------------------------------------------------------
 
 app.post('/api/run', async (req: any, res: any) => {
+    // Authenticate webhook caller
+    const authHeader = req.headers['authorization'] || req.headers['x-scraper-secret'];
+    const expectedSecret = process.env.FLUXBASE_INTERNAL_SECRET || process.env.SCRAPER_SECRET;
+    
+    if (expectedSecret) {
+        const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+        if (!token || token !== expectedSecret) {
+            return res.status(401).json({ success: false, error: 'Unauthorized: Invalid internal scraper secret' });
+        }
+    }
+
     const { job } = req.body;
     if (!job || !job.scraper_id) {
         return res.status(400).json({ success: false, error: 'Valid job object required.' });
@@ -195,7 +206,7 @@ app.post('/api/run', async (req: any, res: any) => {
 
     // Fire and forget to free up Webhook caller
     runScraper(job).catch(err => {
-        console.error(`Webhook async scraper execution failed for ${job.scraper_id}`);
+        console.error(`[Scraper Worker] Webhook async scraper execution failed for ${job.scraper_id}:`, err?.message || err);
     });
 
     return res.json({ success: true, message: 'Job accepted by Cloud Worker Engine.' });
@@ -216,7 +227,7 @@ async function getActiveScrapers() {
 }
 
 function startScraperDaemon() {
-    console.log("🕒 Starting Fluxbase Background Scraper Daemon...");
+    console.log("[Fluxbase Scraper Daemon] Starting background worker scheduler...");
     cron.schedule("* * * * *", async () => {
         try {
             const jobs = await getActiveScrapers();

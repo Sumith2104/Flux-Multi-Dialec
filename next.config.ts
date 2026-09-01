@@ -5,9 +5,6 @@ const withNextIntl = createNextIntlPlugin();
 
 const nextConfig: NextConfig = {
   output: 'standalone',
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   serverExternalPackages: [
     '@genkit-ai/ai', '@genkit-ai/core', '@genkit-ai/googleai',
     // OpenTelemetry — prevent Turbopack from bundling for Edge analysis
