@@ -5,7 +5,6 @@ node_modules
 *.md
 .cluster
 docker-compose*.yml
-Dockerfile
 packages/cli/dist
 pgbouncer
 __pycache__

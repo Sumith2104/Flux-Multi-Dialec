@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useInfiniteQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useGlobalAlert } from '@/components/global-alert-provider';
@@ -9,7 +9,7 @@ import type { Table as DbTable, Column as DbColumn, Constraint as DbConstraint }
 import {
     Plus, Table, Search, Filter, ArrowDownUp, Edit, Trash2, MoreHorizontal,
     KeyRound, Link2, Upload, Columns, Download, FileJson, FileText, Sheet, X, ChevronDown,
-    Database, Loader2, Menu,
+    Database, Loader2, Menu, RefreshCw,
 } from 'lucide-react';
 import { Sheet as SheetRoot, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -878,8 +878,8 @@ export function EditorClient({
             <div className="flex flex-col md:flex-row w-full h-full min-h-0 flex-1 overflow-hidden">
                 {/* Sidebar - Desktop Only */}
                 <aside className="hidden md:flex md:w-64 flex-shrink-0 md:border-r bg-background flex-col h-full min-h-0 overflow-hidden">
-                    <div className="p-4 border-b">
-                        <h2 className="text-sm font-medium tracking-tight">Table Editor</h2>
+                    <div className="h-12 flex items-center px-4 border-b shrink-0">
+                        <h2 className="text-sm font-semibold tracking-tight text-foreground">Table Editor</h2>
                     </div>
                     <div className="flex-1 overflow-hidden">
                         {sidebarExplorerContent}
@@ -890,443 +890,648 @@ export function EditorClient({
                 <main className="flex-1 flex flex-col overflow-hidden w-full h-full min-h-0">
                             {currentTable && tableId && tableName ? (
                                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col min-h-0">
-                                    <header className="flex flex-col sm:flex-row min-h-12 py-1.5 h-auto items-start sm:items-center gap-3 border-b bg-background px-3 sm:px-4 flex-shrink-0">
-                                          <div className="flex items-center gap-2 text-sm text-muted-foreground shrink-0">
-                                               <SheetRoot open={isMobileExplorerOpen} onOpenChange={setIsMobileExplorerOpen}>
-                                                   <SheetTrigger asChild>
-                                                       <Button variant="outline" size="icon" className="md:hidden h-8 w-8 text-muted-foreground hover:text-foreground mr-1">
-                                                           <Menu className="h-4 w-4" />
-                                                       </Button>
-                                                   </SheetTrigger>
-                                                   <SheetContent side="left" className="p-0 w-72 flex flex-col h-full bg-background border-r">
-                                                       <div className="p-4 border-b">
-                                                            <h2 className="text-sm font-medium tracking-tight">Table Explorer</h2>
-                                                       </div>
-                                                       <div className="flex-1 overflow-hidden">
-                                                           {sidebarExplorerContent}
-                                                       </div>
-                                                   </SheetContent>
-                                               </SheetRoot>
-                                               <Table className="h-4 w-4 text-orange-500" />
-                                               <span className="font-semibold text-foreground">{currentTable.table_name}</span>
-                                               <span className="ml-2 text-xs text-muted-foreground font-medium">({rowCount.toLocaleString()} rows)</span>
-                                          </div>
-                                        <TabsList className="h-8 p-0.5 bg-muted/60">
-                                            <TabsTrigger value="data" className="text-xs px-3 py-1">Data</TabsTrigger>
-                                            <TabsTrigger value="structure" className="text-xs px-3 py-1">Structure</TabsTrigger>
-                                        </TabsList>
-                                        <Separator orientation="vertical" className="hidden sm:block h-5" />
-                                        <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                                    {tableId && tableName && projectId && initialColumns && (
-                                        <>
-                                            <AddRowDialog
-                                                projectId={projectId}
-                                                tableId={tableId}
-                                                tableName={tableName}
-                                                columns={localColumns}
-                                                onRowAdded={refreshData}
-                                                foreignKeyData={foreignKeyData}
-                                                allTables={allTables}
-                                                constraints={constraints}
-                                                isOpen={isAddRowOpen}
-                                                onOpenChange={setIsAddRowOpen}
-                                            />
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => setIsAddColumnOpen(true)}
-                                            >
-                                                <Plus className="mr-2 h-4 w-4" /> Add Column
-                                            </Button>
-                                            <AddColumnDialog
-                                                isOpen={isAddColumnOpen}
-                                                setIsOpen={setIsAddColumnOpen}
-                                                projectId={projectId}
-                                                tableId={tableId}
-                                                tableName={tableName}
-                                                onColumnAdded={() => {
-                                                    if (typeof window !== 'undefined') {
-                                                        window.dispatchEvent(new CustomEvent('flux:schema-change', { detail: { projectId } }));
-                                                    }
-                                                    refreshData();
-                                                }}
-                                            />
-                                            {/* â”€â”€ Hidden file inputs for each import format â”€â”€ */}
-                                            <input ref={csvInputRef}  type="file" accept=".csv,text/csv"                                     className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value=''; if(f) parseForPreview(f,'csv');  }} />
-                                            <input ref={jsonInputRef} type="file" accept=".json,application/json"                            className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value=''; if(f) parseForPreview(f,'json'); }} />
-                                            <input ref={xlsxInputRef} type="file" accept=".xlsx,.xls,application/vnd.ms-excel"              className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value=''; if(f) parseForPreview(f,'xlsx'); }} />
-                                            <input ref={sqlInputRef}  type="file" accept=".sql,text/plain"                                   className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value=''; if(f) parseForPreview(f,'sql');  }} />
+                                    <header className="h-12 flex items-center justify-between gap-3 border-b bg-background/95 backdrop-blur-md px-3 sm:px-4 flex-shrink-0">
+                                        {/* Left Side: Table Context & Tab Switcher & Main Actions */}
+                                        <div className="flex items-center gap-3 shrink-0 flex-wrap">
+                                            {/* Table Name & Row Count */}
+                                            <div className="flex items-center gap-2 text-sm shrink-0">
+                                                <SheetRoot open={isMobileExplorerOpen} onOpenChange={setIsMobileExplorerOpen}>
+                                                    <SheetTrigger asChild>
+                                                        <Button variant="outline" size="icon" className="md:hidden h-8 w-8 text-muted-foreground hover:text-foreground mr-1">
+                                                            <Menu className="h-4 w-4" />
+                                                        </Button>
+                                                    </SheetTrigger>
+                                                    <SheetContent side="left" className="p-0 w-72 flex flex-col h-full bg-background border-r">
+                                                        <div className="h-12 flex items-center px-4 border-b shrink-0">
+                                                            <h2 className="text-sm font-semibold tracking-tight">Table Explorer</h2>
+                                                        </div>
+                                                        <div className="flex-1 overflow-hidden">
+                                                            {sidebarExplorerContent}
+                                                        </div>
+                                                    </SheetContent>
+                                                </SheetRoot>
+                                                <Table className="h-4 w-4 text-primary shrink-0" />
+                                                <span className="font-semibold text-foreground text-sm tracking-tight">{currentTable.table_name}</span>
+                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10.5px] font-mono font-medium bg-muted/60 text-muted-foreground border border-border/40">
+                                                    {rowCount.toLocaleString()} rows
+                                                </span>
+                                            </div>
 
-                                            {/* â”€â”€ Import dropdown â”€â”€ */}
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button variant="outline" size="sm" disabled={isImportingCsv}>
-                                                        {isImportingCsv ? (
-                                                            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{importProgress || 'Importingâ€¦'}</>
-                                                        ) : (
-                                                            <><Upload className="mr-2 h-4 w-4" />Import<ChevronDown className="ml-1 h-3 w-3 opacity-60" /></>
-                                                        )}
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" className="w-52">
-                                                    <DropdownMenuItem onClick={() => csvInputRef.current?.click()}>
-                                                        <FileText className="mr-2 h-4 w-4 text-emerald-500" />
-                                                        <div>
-                                                            <p className="font-medium">CSV</p>
-                                                            <p className="text-[11px] text-muted-foreground">Comma-separated values</p>
-                                                        </div>
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => jsonInputRef.current?.click()}>
-                                                        <FileJson className="mr-2 h-4 w-4 text-yellow-500" />
-                                                        <div>
-                                                            <p className="font-medium">JSON</p>
-                                                            <p className="text-[11px] text-muted-foreground">Array of row objects</p>
-                                                        </div>
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => xlsxInputRef.current?.click()}>
-                                                        <Sheet className="mr-2 h-4 w-4 text-blue-500" />
-                                                        <div>
-                                                            <p className="font-medium">Excel</p>
-                                                            <p className="text-[11px] text-muted-foreground">.xlsx / .xls spreadsheet</p>
-                                                        </div>
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuSeparator />
-                                                    <DropdownMenuItem onClick={() => sqlInputRef.current?.click()}>
-                                                        <Database className="mr-2 h-4 w-4 text-violet-500" />
-                                                        <div>
-                                                            <p className="font-medium">SQL</p>
-                                                            <p className="text-[11px] text-muted-foreground">INSERT INTO statements</p>
-                                                        </div>
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        </>
-                                    )}
-                                    <Button variant="outline" size="sm" disabled={selectionModel.length !== 1} onClick={() => setIsEditRowOpen(true)}>
-                                        <Edit className="mr-2 h-4 w-4" /> Edit
-                                    </Button>
-                                    {selectedRowData && tableId && tableName && (
-                                        <EditRowDialog
-                                            isOpen={isEditRowOpen}
-                                            setIsOpen={setIsEditRowOpen}
-                                            projectId={projectId}
-                                            tableId={tableId}
-                                            tableName={tableName}
-                                            columns={localColumns}
-                                            rowData={selectedRowData}
-                                            onRowUpdated={refreshData}
-                                            foreignKeyData={foreignKeyData}
-                                            allTables={allTables}
-                                            constraints={constraints}
-                                        />
-                                    )}
+                                            <Separator orientation="vertical" className="hidden sm:block h-4 bg-border/60" />
 
-                                    <AlertDialog onOpenChange={(open) => { if (!open) setIsDeleting(false) }}>
-                                        <AlertDialogTrigger asChild>
-                                            <Button variant="destructive" size="sm" disabled={selectionModel.length === 0}>
-                                                <Trash2 className="mr-2 h-4 w-4" /> Delete ({selectionModel.length})
-                                            </Button>
-                                        </AlertDialogTrigger>
-                                        <AlertDialogContent>
-                                            <AlertDialogHeader>
-                                                <AlertDialogTitle>
-                                                    {isDeleting ? 'Deletion in Progress' : 'Are you absolutely sure?'}
-                                                </AlertDialogTitle>
-                                                <AlertDialogDescription>
-                                                    {isDeleting
-                                                        ? 'Please wait while the selected rows are being deleted. This may take a moment.'
-                                                        : `This action cannot be undone. This will permanently delete the selected ${selectionModel.length > 1 ? `${selectionModel.length} rows` : 'row'} from the table.`
-                                                    }
-                                                </AlertDialogDescription>
-                                            </AlertDialogHeader>
-                                            {isDeleting ? (
-                                                <div className="py-4">
-                                                    <DeleteProgress />
-                                                </div>
-                                            ) : (
-                                                <AlertDialogFooter>
-                                                    <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                                                    <AlertDialogAction onClick={handleDeleteSelectedRows} disabled={isDeleting}>
-                                                        Continue
-                                                    </AlertDialogAction>
-                                                </AlertDialogFooter>
-                                            )}
-                                        </AlertDialogContent>
-                                    </AlertDialog>
-                                </div>
-                                 {/* â”€â”€ Right toolbar: Filter, Columns, Export â”€â”€ */}
-                                 <div className="flex items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0 sm:ml-auto shrink-0 flex-wrap">
-                                     {/* Active filter chips */}
-                                     {filters.length > 0 && (
-                                         <div className="flex gap-1 flex-wrap max-w-xs">
-                                             {filters.map(f => (
-                                                 <Badge key={f.id} variant="secondary" className="gap-1 text-xs py-0.5">
-                                                     <span className="font-mono">{f.field}</span>
-                                                     <span className="opacity-60">{f.op}</span>
-                                                     {f.value && <span className="font-medium">{f.value.slice(0,12)}{f.value.length>12?'â€¦':''}</span>}
-                                                     <button onClick={() => setFilters(prev => prev.filter(x => x.id !== f.id))} className="ml-0.5 rounded-full hover:bg-muted p-0.5">
-                                                         <X className="h-2.5 w-2.5" />
-                                                     </button>
-                                                 </Badge>
-                                             ))}
-                                         </div>
-                                     )}
-                                     {/* Filter button */}
-                                     <div className="relative">
-                                         <Button variant="outline" size="sm" onClick={() => { setShowFilterPanel(p => !p); setShowColumnPanel(false); }} className={filters.length ? 'bg-primary/10 border-primary/20 text-primary' : ''}>
-                                             <Filter className="mr-2 h-4 w-4" /> Filter {filters.length > 0 && <Badge className="ml-1.5 h-4 text-[10px]">{filters.length}</Badge>}
-                                         </Button>
-                                         {showFilterPanel && (
-                                             <div className="absolute right-0 top-full mt-1 z-50 w-80 rounded-lg border border-border bg-card shadow-xl p-3 space-y-2">
-                                                 <div className="flex items-center justify-between mb-2">
-                                                     <span className="text-sm font-semibold">Filters</span>
-                                                     <button onClick={() => setFilters([])} className="text-xs text-muted-foreground hover:text-foreground">Clear all</button>
-                                                 </div>
-                                                 {filters.map(f => (
-                                                     <div key={f.id} className="flex gap-1.5 items-center">
-                                                         <select className="flex-1 text-xs rounded border border-border bg-background px-2 py-1.5" value={f.field}
-                                                             onChange={e => setFilters(prev => prev.map(x => x.id === f.id ? { ...x, field: e.target.value } : x))}>
-                                                             {columns.map(c => <option key={c.field} value={c.field}>{c.headerName}</option>)}
-                                                         </select>
-                                                         <select className="text-xs rounded border border-border bg-background px-2 py-1.5" value={f.op}
-                                                             onChange={e => setFilters(prev => prev.map(x => x.id === f.id ? { ...x, op: e.target.value } : x))}>
-                                                             <option value="contains">contains</option>
-                                                             <option value="equals">equals</option>
-                                                             <option value="not_equals">â‰ </option>
-                                                             <option value="starts_with">starts</option>
-                                                             <option value="ends_with">ends</option>
-                                                             <option value="gt">&gt;</option>
-                                                             <option value="gte">&gt;=</option>
-                                                             <option value="lt">&lt;</option>
-                                                             <option value="lte">&lt;=</option>
-                                                             <option value="is_null">is null</option>
-                                                             <option value="is_not_null">not null</option>
-                                                         </select>
-                                                         {f.op !== 'is_null' && f.op !== 'is_not_null' && (
-                                                             <Input className="flex-1 h-7 text-xs" value={f.value}
-                                                                 onChange={e => setFilters(prev => prev.map(x => x.id === f.id ? { ...x, value: e.target.value } : x))}
-                                                                 placeholder="value" />
-                                                         )}
-                                                         <button onClick={() => setFilters(prev => prev.filter(x => x.id !== f.id))} className="p-1 rounded hover:bg-muted text-muted-foreground">
-                                                             <X className="h-3.5 w-3.5" />
-                                                         </button>
-                                                     </div>
-                                                 ))}
-                                                 <Button size="sm" variant="outline" className="w-full mt-1 text-xs" onClick={() => setFilters(prev => [...prev, { id: crypto.randomUUID(), field: columns[0]?.field || '', op: 'contains', value: '' }])}>
-                                                     + Add filter
-                                                 </Button>
-                                             </div>
-                                         )}
-                                     </div>
-                                     {/* Column Visibility button */}
-                                     <div className="relative">
-                                         <Button variant="outline" size="sm" onClick={() => { setShowColumnPanel(p => !p); setShowFilterPanel(false); }} className={hiddenColumns.size ? 'bg-primary/10 border-primary/20 text-primary' : ''}>
-                                             <Columns className="mr-2 h-4 w-4" /> Columns {hiddenColumns.size > 0 && <Badge className="ml-1.5 h-4 text-[10px]">{hiddenColumns.size} hidden</Badge>}
-                                         </Button>
-                                          {showColumnPanel && (
-                                              <div className="absolute right-0 top-full mt-1 z-50 w-56 max-h-[350px] flex flex-col rounded-lg border border-border bg-card shadow-xl p-3">
-                                                  <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-border/50 shrink-0">
-                                                      <span className="text-sm font-semibold">Columns</span>
-                                                      <div className="flex gap-2 text-xs">
-                                                          <button onClick={() => setHiddenColumns(new Set())} className="text-muted-foreground hover:text-foreground">Show all</button>
-                                                          <button onClick={() => setHiddenColumns(new Set(columns.map(c => c.field)))} className="text-muted-foreground hover:text-foreground">Hide all</button>
-                                                      </div>
-                                                  </div>
-                                                  <div className="overflow-y-auto pr-1 space-y-1 flex-1 custom-scrollbar">
-                                                      {localColumns.map(col => (
-                                                          <label key={col.column_name} className="flex items-center gap-2 text-sm cursor-pointer rounded px-1 py-0.5 hover:bg-muted">
-                                                              <input type="checkbox" checked={!hiddenColumns.has(col.column_name)}
-                                                                  onChange={e => setHiddenColumns(prev => {
-                                                                      const next = new Set(prev);
-                                                                      if (e.target.checked) next.delete(col.column_name); else next.add(col.column_name);
-                                                                      return next;
-                                                                  })}
-                                                                  className="accent-primary"
-                                                              />
-                                                              <span className="font-mono truncate">{col.column_name}</span>
-                                                          </label>
-                                                      ))}
-                                                  </div>
-                                              </div>
-                                          )}
-                                     </div>
-                                     {/* Export dropdown */}
-                                     <DropdownMenu>
-                                         <DropdownMenuTrigger asChild>
-                                             <Button variant="outline" size="sm">
-                                                 <Download className="mr-2 h-4 w-4" /> Export <ChevronDown className="ml-1 h-3 w-3 opacity-50" />
-                                             </Button>
-                                         </DropdownMenuTrigger>
-                                         <DropdownMenuContent align="end">
-                                             <DropdownMenuItem onClick={() => handleExport('csv')}>
-                                                 <FileText className="mr-2 h-4 w-4" /> CSV
-                                             </DropdownMenuItem>
-                                             <DropdownMenuItem onClick={() => handleExport('json')}>
-                                                 <FileJson className="mr-2 h-4 w-4" /> JSON
-                                             </DropdownMenuItem>
-                                             <DropdownMenuItem onClick={() => handleExport('sql')}>
-                                                 <FileText className="mr-2 h-4 w-4" /> SQL INSERT
-                                             </DropdownMenuItem>
-                                             <DropdownMenuItem onClick={() => handleExport('excel')}>
-                                                 <Sheet className="mr-2 h-4 w-4" /> Excel (.xlsx)
-                                             </DropdownMenuItem>
-                                         </DropdownMenuContent>
-                                     </DropdownMenu>
-                                 </div>
-                            </header>
+                                            {/* View Mode Switcher */}
+                                            <TabsList className="h-7 p-0.5 bg-muted/50 rounded-md border border-border/40">
+                                                <TabsTrigger value="data" className="text-xs px-2.5 py-0.5 h-6 font-medium data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs">
+                                                    Data
+                                                </TabsTrigger>
+                                                <TabsTrigger value="structure" className="text-xs px-2.5 py-0.5 h-6 font-medium data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs">
+                                                    Structure
+                                                </TabsTrigger>
+                                            </TabsList>
 
-                            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-                                <TabsContent value="data" className="mt-0 pt-0 flex-1 flex flex-col h-full min-h-0 relative overflow-hidden">
-                                        <div className="relative flex-1 h-full min-h-0 flex flex-col" onClick={() => { setShowFilterPanel(false); setShowColumnPanel(false); }}>
-                                            <DataTable
-                                                columns={columns}
-                                                rows={filteredAndSortedRows}
-                                                loading={isTableLoading}
-                                                fetchNextPage={fetchNextPage}
-                                                isFetchingNextPage={isFetchingNextPage}
-                                                hasNextPage={hasNextPage}
-                                                selectionModel={selectionModel}
-                                                onRowSelectionModelChange={(newSelectionModel) => {
-                                                    setSelectionModel(newSelectionModel);
-                                                }}
-                                                sorts={sorts}
-                                                onSortsChange={setSorts}
-                                                onCellSave={handleCellSave}
-                                                storageKey={`${projectId}_${tableName}`}
-                                            />
-                                        </div>
-                                    </TabsContent>
-                                    <TabsContent value="structure" className="mt-4 space-y-6 md:overflow-y-auto md:flex-1 md:min-h-0 pb-24 pr-2">
-                                        <Card>
-                                         <CardHeader>
-                                             <CardTitle>Table Structure</CardTitle>
-                                              <CardDescription>
-                                                  {currentTable.description || `This is the schema for the '${currentTable.table_name}' table.`}
-                                              </CardDescription>
-                                         </CardHeader>
-                                            <CardContent>
-                                                <div className="border rounded-lg overflow-x-auto">
-                                                    <ShadcnTable>
-                                                        <TableHeader>
-                                                            <TableRow>
-                                                                <TableHead>Column Name</TableHead>
-                                                                <TableHead>Data Type</TableHead>
-                                                                <TableHead>Constraints</TableHead>
-                                                                <TableHead className="text-right">Actions</TableHead>
-                                                            </TableRow>
-                                                        </TableHeader>
-                                                        <TableBody>
-                                                            {localColumns.map(col => (
-                                                                <TableRow key={col.column_id}>
-                                                                    <TableCell className="font-mono">{col.column_name}</TableCell>
-                                                                    <TableCell className="font-mono">{col.data_type}</TableCell>
-                                                                    <TableCell>
-                                                                        {pkColumns.has(col.column_name) && <Badge variant="secondary" className="mr-2">PK</Badge>}
-                                                                    </TableCell>
-                                                                    <TableCell className="text-right">
-                                                                        <DropdownMenu>
-                                                                            <DropdownMenuTrigger asChild>
-                                                                                <Button variant="ghost" size="icon" className="h-8 w-8" disabled={col.column_name === 'id'}>
-                                                                                    <MoreHorizontal className="h-4 w-4" />
-                                                                                    <span className="sr-only">Column options</span>
-                                                                                </Button>
-                                                                            </DropdownMenuTrigger>
-                                                                            <DropdownMenuContent>
-                                                                                <DropdownMenuItem onClick={() => handleOpenEditColumnDialog(col)}>
-                                                                                    <Edit className="mr-2 h-4 w-4" /> Edit
-                                                                                </DropdownMenuItem>
-                                                                                <DropdownMenuSeparator />
-                                                                                <DropdownMenuItem onClick={() => handleOpenDeleteColumnDialog(col)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
-                                                                                    <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                                                                </DropdownMenuItem>
-                                                                            </DropdownMenuContent>
-                                                                        </DropdownMenu>
-                                                                    </TableCell>
-                                                                </TableRow>
-                                                            ))}
-                                                        </TableBody>
-                                                    </ShadcnTable>
-                                                </div>
-                                            </CardContent>
-                                            <CardFooter>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => setIsAddColumnOpen(true)}
-                                                >
-                                                    <Plus className="mr-2 h-4 w-4" /> Add Column
-                                                </Button>
-                                            </CardFooter>
-                                        </Card>
-                                        <Card>
-                                            <CardHeader>
-                                                <CardTitle>Keys & Relationships</CardTitle>
-                                                <CardDescription>
-                                                    Primary and Foreign key constraints for this table.
-                                                </CardDescription>
-                                            </CardHeader>
-                                            <CardContent>
-                                                {constraints.length > 0 ? (
-                                                    <div className="space-y-4">
-                                                        {constraints.map(c => (
-                                                            <div key={c.constraint_id} className="flex items-center justify-between p-3 border rounded-md bg-muted/50">
-                                                                <div className="flex items-center gap-4">
-                                                                    {c.type === 'PRIMARY KEY' ? <KeyRound className="h-5 w-5 text-yellow-500" /> : <Link2 className="h-5 w-5 text-blue-500" />}
-                                                                    <div className="flex flex-col">
-                                                                        <span className="font-semibold font-mono">{c.column_names}</span>
-                                                                        <span className="text-sm text-muted-foreground">
-                                                                            {c.type === 'PRIMARY KEY' ? 'Primary Key' :
-                                                                                `â†’ ${getReferencedTable(c)?.table_name}.${c.referenced_column_names}`
-                                                                            }
-                                                                        </span>
-                                                                    </div>
-                                                                </div>
-                                                                <AlertDialog open={constraintToDelete?.constraint_id === c.constraint_id} onOpenChange={(open) => !open && setConstraintToDelete(null)}>
-                                                                    <AlertDialogTrigger asChild>
-                                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => setConstraintToDelete(c)}>
-                                                                            <Trash2 className="h-4 w-4" />
+                                            <Separator orientation="vertical" className="hidden sm:block h-4 bg-border/60" />
+
+                                            {/* Action Buttons */}
+                                            {tableId && tableName && projectId && initialColumns && (
+                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                    {activeTab === 'data' ? (
+                                                        <>
+                                                            {selectionModel.length > 0 ? (
+                                                                /* Contextual Selection Action Bar */
+                                                                <div className="flex items-center gap-1.5 bg-primary/10 border border-primary/30 rounded-md px-2 py-0.5 animate-in fade-in duration-100">
+                                                                    <span className="text-xs font-mono font-medium text-primary px-1">
+                                                                        {selectionModel.length} selected
+                                                                    </span>
+                                                                    {selectionModel.length === 1 && (
+                                                                        <Button
+                                                                            variant="secondary"
+                                                                            size="sm"
+                                                                            className="h-6 px-2 text-xs font-medium bg-background hover:bg-muted text-foreground"
+                                                                            onClick={() => setIsEditRowOpen(true)}
+                                                                        >
+                                                                            <Edit className="mr-1 h-3 w-3" /> Edit
                                                                         </Button>
-                                                                    </AlertDialogTrigger>
-                                                                    <AlertDialogContent>
-                                                                        <AlertDialogHeader>
-                                                                            <AlertDialogTitle>Are you sure you want to delete this constraint?</AlertDialogTitle>
-                                                                            <AlertDialogDescription>
-                                                                                This action cannot be undone. This will permanently delete the constraint on <strong>{c.column_names}</strong>.
-                                                                            </AlertDialogDescription>
-                                                                        </AlertDialogHeader>
-                                                                        <AlertDialogFooter>
-                                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                                            <AlertDialogAction
-                                                                                onClick={handleDeleteConstraint}
-                                                                                className="bg-destructive hover:bg-destructive/90"
-                                                                            >
-                                                                                Delete Constraint
-                                                                            </AlertDialogAction>
-                                                                        </AlertDialogFooter>
-                                                                    </AlertDialogContent>
-                                                                </AlertDialog>
-                                                            </div>
+                                                                    )}
+                                                                    {selectedRowData && tableId && tableName && (
+                                                                        <EditRowDialog
+                                                                            isOpen={isEditRowOpen}
+                                                                            setIsOpen={setIsEditRowOpen}
+                                                                            projectId={projectId}
+                                                                            tableId={tableId}
+                                                                            tableName={tableName}
+                                                                            columns={localColumns}
+                                                                            rowData={selectedRowData}
+                                                                            onRowUpdated={refreshData}
+                                                                            foreignKeyData={foreignKeyData}
+                                                                            allTables={allTables}
+                                                                            constraints={constraints}
+                                                                        />
+                                                                    )}
+
+                                                                    <AlertDialog onOpenChange={(open) => { if (!open) setIsDeleting(false); }}>
+                                                                        <AlertDialogTrigger asChild>
+                                                                            <Button variant="destructive" size="sm" className="h-6 px-2 text-xs font-medium">
+                                                                                <Trash2 className="mr-1 h-3 w-3" /> Delete
+                                                                            </Button>
+                                                                        </AlertDialogTrigger>
+                                                                        <AlertDialogContent>
+                                                                            <AlertDialogHeader>
+                                                                                <AlertDialogTitle>
+                                                                                    {isDeleting ? 'Deletion in Progress' : 'Are you absolutely sure?'}
+                                                                                </AlertDialogTitle>
+                                                                                <AlertDialogDescription>
+                                                                                    {isDeleting
+                                                                                        ? 'Please wait while the selected rows are being deleted.'
+                                                                                        : `This action cannot be undone. This will permanently delete the selected ${selectionModel.length > 1 ? `${selectionModel.length} rows` : 'row'} from '${tableName}'.`
+                                                                                    }
+                                                                                </AlertDialogDescription>
+                                                                            </AlertDialogHeader>
+                                                                            {isDeleting ? (
+                                                                                <div className="py-4">
+                                                                                    <DeleteProgress />
+                                                                                </div>
+                                                                            ) : (
+                                                                                <AlertDialogFooter>
+                                                                                    <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                                                                                    <AlertDialogAction onClick={handleDeleteSelectedRows} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
+                                                                                        Continue
+                                                                                    </AlertDialogAction>
+                                                                                </AlertDialogFooter>
+                                                                            )}
+                                                                        </AlertDialogContent>
+                                                                    </AlertDialog>
+                                                                    <button
+                                                                        onClick={() => setSelectionModel([])}
+                                                                        className="text-muted-foreground hover:text-foreground p-0.5 rounded hover:bg-muted/80 ml-0.5"
+                                                                        title="Clear selection"
+                                                                    >
+                                                                        <X className="h-3 w-3" />
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                /* Default Row Actions */
+                                                                <>
+                                                                    <AddRowDialog
+                                                                        projectId={projectId}
+                                                                        tableId={tableId}
+                                                                        tableName={tableName}
+                                                                        columns={localColumns}
+                                                                        onRowAdded={refreshData}
+                                                                        foreignKeyData={foreignKeyData}
+                                                                        allTables={allTables}
+                                                                        constraints={constraints}
+                                                                        isOpen={isAddRowOpen}
+                                                                        onOpenChange={setIsAddRowOpen}
+                                                                    />
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        className="h-7 text-xs font-medium border-border/70 hover:bg-muted"
+                                                                        onClick={() => setIsAddColumnOpen(true)}
+                                                                    >
+                                                                        <Plus className="mr-1 h-3 w-3" /> Add Column
+                                                                    </Button>
+                                                                    <AddColumnDialog
+                                                                        isOpen={isAddColumnOpen}
+                                                                        setIsOpen={setIsAddColumnOpen}
+                                                                        projectId={projectId}
+                                                                        tableId={tableId}
+                                                                        tableName={tableName}
+                                                                        onColumnAdded={() => {
+                                                                            if (typeof window !== 'undefined') {
+                                                                                window.dispatchEvent(new CustomEvent('flux:schema-change', { detail: { projectId } }));
+                                                                            }
+                                                                            refreshData();
+                                                                        }}
+                                                                    />
+
+                                                                    {/* Hidden file inputs */}
+                                                                    <input ref={csvInputRef}  type="file" accept=".csv,text/csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value=''; if(f) parseForPreview(f,'csv'); }} />
+                                                                    <input ref={jsonInputRef} type="file" accept=".json,application/json" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value=''; if(f) parseForPreview(f,'json'); }} />
+                                                                    <input ref={xlsxInputRef} type="file" accept=".xlsx,.xls,application/vnd.ms-excel" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value=''; if(f) parseForPreview(f,'xlsx'); }} />
+                                                                    <input ref={sqlInputRef}  type="file" accept=".sql,text/plain" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value=''; if(f) parseForPreview(f,'sql'); }} />
+
+                                                                    {/* Import dropdown */}
+                                                                    <DropdownMenu>
+                                                                        <DropdownMenuTrigger asChild>
+                                                                            <Button variant="outline" size="sm" className="h-7 text-xs font-medium border-border/70 hover:bg-muted" disabled={isImportingCsv}>
+                                                                                {isImportingCsv ? (
+                                                                                    <><Loader2 className="mr-1 h-3 w-3 animate-spin" />{importProgress || 'Importing…'}</>
+                                                                                ) : (
+                                                                                    <><Upload className="mr-1 h-3 w-3 text-muted-foreground" />Import<ChevronDown className="ml-1 h-3 w-3 opacity-50" /></>
+                                                                                )}
+                                                                            </Button>
+                                                                        </DropdownMenuTrigger>
+                                                                        <DropdownMenuContent align="end" className="w-52">
+                                                                            <DropdownMenuItem onClick={() => csvInputRef.current?.click()}>
+                                                                                <FileText className="mr-2 h-4 w-4 text-emerald-500" />
+                                                                                <div>
+                                                                                    <p className="font-medium">CSV</p>
+                                                                                    <p className="text-[11px] text-muted-foreground">Comma-separated values</p>
+                                                                                </div>
+                                                                            </DropdownMenuItem>
+                                                                            <DropdownMenuItem onClick={() => jsonInputRef.current?.click()}>
+                                                                                <FileJson className="mr-2 h-4 w-4 text-yellow-500" />
+                                                                                <div>
+                                                                                    <p className="font-medium">JSON</p>
+                                                                                    <p className="text-[11px] text-muted-foreground">Array of row objects</p>
+                                                                                </div>
+                                                                            </DropdownMenuItem>
+                                                                            <DropdownMenuItem onClick={() => xlsxInputRef.current?.click()}>
+                                                                                <Sheet className="mr-2 h-4 w-4 text-blue-500" />
+                                                                                <div>
+                                                                                    <p className="font-medium">Excel</p>
+                                                                                    <p className="text-[11px] text-muted-foreground">.xlsx / .xls spreadsheet</p>
+                                                                                </div>
+                                                                            </DropdownMenuItem>
+                                                                            <DropdownMenuSeparator />
+                                                                            <DropdownMenuItem onClick={() => sqlInputRef.current?.click()}>
+                                                                                <Database className="mr-2 h-4 w-4 text-violet-500" />
+                                                                                <div>
+                                                                                    <p className="font-medium">SQL</p>
+                                                                                    <p className="text-[11px] text-muted-foreground">INSERT INTO statements</p>
+                                                                                </div>
+                                                                            </DropdownMenuItem>
+                                                                        </DropdownMenuContent>
+                                                                    </DropdownMenu>
+                                                                </>
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        /* Structure Tab Header Buttons */
+                                                        <>
+                                                            <Button
+                                                                variant="default"
+                                                                size="sm"
+                                                                className="h-7 text-xs font-medium"
+                                                                onClick={() => setIsAddColumnOpen(true)}
+                                                            >
+                                                                <Plus className="mr-1 h-3 w-3" /> Add Column
+                                                            </Button>
+                                                            <AddColumnDialog
+                                                                isOpen={isAddColumnOpen}
+                                                                setIsOpen={setIsAddColumnOpen}
+                                                                projectId={projectId}
+                                                                tableId={tableId}
+                                                                tableName={tableName}
+                                                                onColumnAdded={() => {
+                                                                    if (typeof window !== 'undefined') {
+                                                                        window.dispatchEvent(new CustomEvent('flux:schema-change', { detail: { projectId } }));
+                                                                    }
+                                                                    refreshData();
+                                                                }}
+                                                            />
+                                                            <AddConstraintDialog
+                                                                projectId={projectId}
+                                                                tableId={tableId}
+                                                                tableName={tableName}
+                                                                allTables={allTables}
+                                                                columns={initialColumns}
+                                                                onConstraintAdded={handleConstraintAdded}
+                                                                allProjectConstraints={allProjectConstraints}
+                                                            />
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                className="h-7 text-xs font-medium"
+                                                                onClick={refreshData}
+                                                            >
+                                                                <RefreshCw className="mr-1 h-3 w-3 text-muted-foreground" /> Refresh Schema
+                                                            </Button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Right Side: View Tools (Filter, Columns, Export, Refresh) */}
+                                        {activeTab === 'data' && (
+                                            <div className="flex items-center gap-1.5 w-full sm:w-auto mt-2 sm:mt-0 sm:ml-auto shrink-0 flex-wrap justify-end">
+                                                {/* Active filter chips */}
+                                                {filters.length > 0 && (
+                                                    <div className="flex gap-1 flex-wrap max-w-xs">
+                                                        {filters.map(f => (
+                                                            <Badge key={f.id} variant="secondary" className="gap-1 text-xs py-0.5">
+                                                                <span className="font-mono">{f.field}</span>
+                                                                <span className="opacity-60">{f.op}</span>
+                                                                {f.value && <span className="font-medium">{f.value.slice(0,12)}{f.value.length>12?'…':''}</span>}
+                                                                <button onClick={() => setFilters(prev => prev.filter(x => x.id !== f.id))} className="ml-0.5 rounded-full hover:bg-muted p-0.5">
+                                                                    <X className="h-2.5 w-2.5" />
+                                                                </button>
+                                                            </Badge>
                                                         ))}
                                                     </div>
-                                                ) : (
-                                                    <p className="text-sm text-muted-foreground">No constraints defined for this table.</p>
                                                 )}
-                                            </CardContent>
-                                            <CardFooter>
-                                                <AddConstraintDialog
-                                                    projectId={projectId}
-                                                    tableId={tableId}
-                                                    tableName={tableName}
-                                                    allTables={allTables}
-                                                    columns={initialColumns}
-                                                    onConstraintAdded={handleConstraintAdded}
-                                                    allProjectConstraints={allProjectConstraints}
+
+                                                {/* Filter button */}
+                                                <div className="relative">
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => { setShowFilterPanel(p => !p); setShowColumnPanel(false); }}
+                                                        className={`h-7 text-xs font-medium border-border/70 ${filters.length ? 'bg-primary/10 border-primary/30 text-primary' : ''}`}
+                                                    >
+                                                        <Filter className="mr-1 h-3 w-3" /> Filter {filters.length > 0 && <Badge className="ml-1 h-3.5 px-1 text-[9.5px]">{filters.length}</Badge>}
+                                                    </Button>
+                                                    {showFilterPanel && (
+                                                        <div className="absolute right-0 top-full mt-1 z-50 w-80 rounded-lg border border-border bg-card shadow-xl p-3 space-y-2">
+                                                            <div className="flex items-center justify-between mb-2">
+                                                                <span className="text-sm font-semibold">Filters</span>
+                                                                <button onClick={() => setFilters([])} className="text-xs text-muted-foreground hover:text-foreground">Clear all</button>
+                                                            </div>
+                                                            {filters.map(f => (
+                                                                <div key={f.id} className="flex gap-1.5 items-center">
+                                                                    <select className="flex-1 text-xs rounded border border-border bg-background px-2 py-1.5" value={f.field}
+                                                                        onChange={e => setFilters(prev => prev.map(x => x.id === f.id ? { ...x, field: e.target.value } : x))}>
+                                                                        {columns.map(c => <option key={c.field} value={c.field}>{c.headerName}</option>)}
+                                                                    </select>
+                                                                    <select className="text-xs rounded border border-border bg-background px-2 py-1.5" value={f.op}
+                                                                        onChange={e => setFilters(prev => prev.map(x => x.id === f.id ? { ...x, op: e.target.value } : x))}>
+                                                                        <option value="contains">contains</option>
+                                                                        <option value="equals">equals</option>
+                                                                        <option value="not_equals">≠</option>
+                                                                        <option value="starts_with">starts</option>
+                                                                        <option value="ends_with">ends</option>
+                                                                        <option value="gt">&gt;</option>
+                                                                        <option value="gte">&gt;=</option>
+                                                                        <option value="lt">&lt;</option>
+                                                                        <option value="lte">&lt;=</option>
+                                                                        <option value="is_null">is null</option>
+                                                                        <option value="is_not_null">not null</option>
+                                                                    </select>
+                                                                    {f.op !== 'is_null' && f.op !== 'is_not_null' && (
+                                                                        <Input className="flex-1 h-7 text-xs" value={f.value}
+                                                                            onChange={e => setFilters(prev => prev.map(x => x.id === f.id ? { ...x, value: e.target.value } : x))}
+                                                                            placeholder="value" />
+                                                                    )}
+                                                                    <button onClick={() => setFilters(prev => prev.filter(x => x.id !== f.id))} className="p-1 rounded hover:bg-muted text-muted-foreground">
+                                                                        <X className="h-3.5 w-3.5" />
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                            <Button size="sm" variant="outline" className="w-full mt-1 text-xs" onClick={() => setFilters(prev => [...prev, { id: crypto.randomUUID(), field: columns[0]?.field || '', op: 'contains', value: '' }])}>
+                                                                + Add filter
+                                                            </Button>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Column Visibility button */}
+                                                <div className="relative">
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => { setShowColumnPanel(p => !p); setShowFilterPanel(false); }}
+                                                        className={`h-7 text-xs font-medium border-border/70 ${hiddenColumns.size ? 'bg-primary/10 border-primary/30 text-primary' : ''}`}
+                                                    >
+                                                        <Columns className="mr-1 h-3 w-3" /> Columns {hiddenColumns.size > 0 && <Badge className="ml-1 h-3.5 px-1 text-[9.5px]">{hiddenColumns.size} hidden</Badge>}
+                                                    </Button>
+                                                    {showColumnPanel && (
+                                                        <div className="absolute right-0 top-full mt-1 z-50 w-56 max-h-[350px] flex flex-col rounded-lg border border-border bg-card shadow-xl p-3">
+                                                            <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-border/50 shrink-0">
+                                                                <span className="text-sm font-semibold">Columns</span>
+                                                                <div className="flex gap-2 text-xs">
+                                                                    <button onClick={() => setHiddenColumns(new Set())} className="text-muted-foreground hover:text-foreground">Show all</button>
+                                                                    <button onClick={() => setHiddenColumns(new Set(columns.map(c => c.field)))} className="text-muted-foreground hover:text-foreground">Hide all</button>
+                                                                </div>
+                                                            </div>
+                                                            <div className="overflow-y-auto pr-1 space-y-1 flex-1 custom-scrollbar">
+                                                                {localColumns.map(col => (
+                                                                    <label key={col.column_name} className="flex items-center gap-2 text-sm cursor-pointer rounded px-1 py-0.5 hover:bg-muted">
+                                                                        <input type="checkbox" checked={!hiddenColumns.has(col.column_name)}
+                                                                            onChange={e => setHiddenColumns(prev => {
+                                                                                const next = new Set(prev);
+                                                                                if (e.target.checked) next.delete(col.column_name); else next.add(col.column_name);
+                                                                                return next;
+                                                                            })}
+                                                                            className="accent-primary"
+                                                                        />
+                                                                        <span className="font-mono truncate">{col.column_name}</span>
+                                                                    </label>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Export dropdown */}
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="outline" size="sm" className="h-7 text-xs font-medium border-border/70">
+                                                            <Download className="mr-1 h-3 w-3 text-muted-foreground" /> Export <ChevronDown className="ml-0.5 h-3 w-3 opacity-50" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuItem onClick={() => handleExport('csv')}>
+                                                            <FileText className="mr-2 h-4 w-4" /> CSV
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => handleExport('json')}>
+                                                            <FileJson className="mr-2 h-4 w-4" /> JSON
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => handleExport('sql')}>
+                                                            <FileText className="mr-2 h-4 w-4" /> SQL INSERT
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => handleExport('excel')}>
+                                                            <Sheet className="mr-2 h-4 w-4" /> Excel (.xlsx)
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+
+                                                {/* Quick Reload Button */}
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                                    onClick={refreshData}
+                                                    title="Reload table"
+                                                >
+                                                    <RefreshCw className="h-3 w-3" />
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </header>
+
+                                    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                                        <TabsContent value="data" className="mt-0 pt-0 flex-1 flex flex-col h-full min-h-0 relative overflow-hidden data-[state=inactive]:hidden">
+                                            <div className="relative flex-1 h-full min-h-0 flex flex-col" onClick={() => { setShowFilterPanel(false); setShowColumnPanel(false); }}>
+                                                <DataTable
+                                                    columns={columns}
+                                                    rows={filteredAndSortedRows}
+                                                    loading={isTableLoading}
+                                                    fetchNextPage={fetchNextPage}
+                                                    isFetchingNextPage={isFetchingNextPage}
+                                                    hasNextPage={hasNextPage}
+                                                    selectionModel={selectionModel}
+                                                    onRowSelectionModelChange={(newSelectionModel) => {
+                                                        setSelectionModel(newSelectionModel);
+                                                    }}
+                                                    sorts={sorts}
+                                                    onSortsChange={setSorts}
+                                                    onCellSave={handleCellSave}
+                                                    storageKey={`${projectId}_${tableName}`}
                                                 />
-                                            </CardFooter>
-                                        </Card>
-                                    </TabsContent>
-                                </div>
-                            </Tabs>
+                                            </div>
+                                        </TabsContent>
+                                        <TabsContent value="structure" className="mt-0 flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar pb-24 data-[state=inactive]:hidden">
+                                            {/* Table Overview Header Card */}
+                                            <div className="rounded-xl border border-border/70 bg-card/80 backdrop-blur-xl p-5 shadow-sm">
+                                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                                    <div className="space-y-1">
+                                                        <div className="flex items-center gap-2.5">
+                                                            <span className="text-lg font-bold font-mono tracking-tight text-foreground">{currentTable.table_name}</span>
+                                                            <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-wider bg-primary/10 text-primary border-primary/20">
+                                                                Postgres Table
+                                                            </Badge>
+                                                        </div>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {currentTable.description || `Database schema and constraints definition for table '${currentTable.table_name}'.`}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-4 text-xs font-mono text-muted-foreground shrink-0">
+                                                        <div className="flex flex-col">
+                                                            <span className="text-[10px] uppercase font-bold text-muted-foreground/60 tracking-wider">Columns</span>
+                                                            <span className="text-foreground font-semibold">{localColumns.length}</span>
+                                                        </div>
+                                                        <div className="h-6 w-px bg-border/60" />
+                                                        <div className="flex flex-col">
+                                                            <span className="text-[10px] uppercase font-bold text-muted-foreground/60 tracking-wider">Primary Key</span>
+                                                            <span className="text-amber-400 font-semibold">{pkColumns.size > 0 ? Array.from(pkColumns).join(', ') : 'None'}</span>
+                                                        </div>
+                                                        <div className="h-6 w-px bg-border/60" />
+                                                        <div className="flex flex-col">
+                                                            <span className="text-[10px] uppercase font-bold text-muted-foreground/60 tracking-wider">Est. Rows</span>
+                                                            <span className="text-foreground font-semibold">{rowCount.toLocaleString()}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Columns Schema Definition Card */}
+                                            <Card className="border-border/70 bg-card/80 backdrop-blur-xl shadow-sm">
+                                                <CardHeader className="flex flex-row items-center justify-between py-4 px-5 border-b border-border/40">
+                                                    <div>
+                                                        <CardTitle className="text-sm font-semibold tracking-wide">Columns & Types</CardTitle>
+                                                        <CardDescription className="text-xs">
+                                                            Physical columns, data types, and constraint definitions.
+                                                        </CardDescription>
+                                                    </div>
+                                                    <Button
+                                                        variant="default"
+                                                        size="sm"
+                                                        className="h-8 text-xs font-medium"
+                                                        onClick={() => setIsAddColumnOpen(true)}
+                                                    >
+                                                        <Plus className="mr-1.5 h-3.5 w-3.5" /> Add Column
+                                                    </Button>
+                                                </CardHeader>
+                                                <CardContent className="p-0">
+                                                    <div className="overflow-x-auto">
+                                                        <ShadcnTable>
+                                                            <TableHeader className="bg-muted/40">
+                                                                <TableRow className="border-border/40 hover:bg-transparent">
+                                                                    <TableHead className="w-12 text-center text-[11px] font-mono font-bold uppercase tracking-wider">#</TableHead>
+                                                                    <TableHead className="text-[11px] font-mono font-bold uppercase tracking-wider">Column Name</TableHead>
+                                                                    <TableHead className="text-[11px] font-mono font-bold uppercase tracking-wider">Data Type</TableHead>
+                                                                    <TableHead className="text-[11px] font-mono font-bold uppercase tracking-wider">Constraints</TableHead>
+                                                                    <TableHead className="text-right text-[11px] font-mono font-bold uppercase tracking-wider pr-5">Actions</TableHead>
+                                                                </TableRow>
+                                                            </TableHeader>
+                                                            <TableBody>
+                                                                {localColumns.map((col, idx) => {
+                                                                    const isPk = pkColumns.has(col.column_name);
+                                                                    const fkMatch = constraints.find(c => c.type !== 'PRIMARY KEY' && c.column_names === col.column_name);
+                                                                    return (
+                                                                        <TableRow key={col.column_id} className="border-border/30 hover:bg-muted/30 transition-colors">
+                                                                            <TableCell className="text-center font-mono text-xs text-muted-foreground/60">{idx + 1}</TableCell>
+                                                                            <TableCell>
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <span className="font-mono text-xs font-semibold text-foreground">{col.column_name}</span>
+                                                                                    {isPk && (
+                                                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                                                                                            PK
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {fkMatch && (
+                                                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-blue-500/10 text-blue-400 border border-blue-500/30">
+                                                                                            FK
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </TableCell>
+                                                                            <TableCell>
+                                                                                <span className="inline-flex items-center px-2 py-0.5 rounded font-mono text-xs bg-muted/60 text-foreground border border-border/40">
+                                                                                    {col.data_type}
+                                                                                </span>
+                                                                            </TableCell>
+                                                                            <TableCell>
+                                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                                    {isPk && <Badge variant="outline" className="text-[10px] font-mono bg-amber-500/10 text-amber-400 border-amber-500/20">Primary Key</Badge>}
+                                                                                    {fkMatch && (
+                                                                                        <Badge variant="outline" className="text-[10px] font-mono bg-blue-500/10 text-blue-400 border-blue-500/20">
+                                                                                            &rarr; {getReferencedTable(fkMatch)?.table_name || 'table'}.{fkMatch.referenced_column_names}
+                                                                                        </Badge>
+                                                                                    )}
+                                                                                    {!isPk && !fkMatch && <span className="text-xs text-muted-foreground/50 font-mono">None</span>}
+                                                                                </div>
+                                                                            </TableCell>
+                                                                            <TableCell className="text-right pr-5">
+                                                                                <DropdownMenu>
+                                                                                    <DropdownMenuTrigger asChild>
+                                                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" disabled={col.column_name === 'id'}>
+                                                                                            <MoreHorizontal className="h-3.5 w-3.5" />
+                                                                                            <span className="sr-only">Options</span>
+                                                                                        </Button>
+                                                                                    </DropdownMenuTrigger>
+                                                                                    <DropdownMenuContent align="end">
+                                                                                        <DropdownMenuItem onClick={() => handleOpenEditColumnDialog(col)}>
+                                                                                            <Edit className="mr-2 h-4 w-4" /> Edit Column
+                                                                                        </DropdownMenuItem>
+                                                                                        <DropdownMenuSeparator />
+                                                                                        <DropdownMenuItem onClick={() => handleOpenDeleteColumnDialog(col)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+                                                                                            <Trash2 className="mr-2 h-4 w-4" /> Delete Column
+                                                                                        </DropdownMenuItem>
+                                                                                    </DropdownMenuContent>
+                                                                                </DropdownMenu>
+                                                                            </TableCell>
+                                                                        </TableRow>
+                                                                    );
+                                                                })}
+                                                            </TableBody>
+                                                        </ShadcnTable>
+                                                    </div>
+                                                </CardContent>
+                                                <CardFooter className="py-3 px-5 border-t border-border/40 bg-muted/10 flex justify-between items-center">
+                                                    <span className="text-xs text-muted-foreground font-mono">{localColumns.length} total columns</span>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-7 text-xs font-mono text-muted-foreground hover:text-foreground"
+                                                        onClick={() => setIsAddColumnOpen(true)}
+                                                    >
+                                                        <Plus className="mr-1.5 h-3 w-3" /> Add Column
+                                                    </Button>
+                                                </CardFooter>
+                                            </Card>
+
+                                            {/* Keys & Relationships Card */}
+                                            <Card className="border-border/70 bg-card/80 backdrop-blur-xl shadow-sm">
+                                                <CardHeader className="flex flex-row items-center justify-between py-4 px-5 border-b border-border/40">
+                                                    <div>
+                                                        <CardTitle className="text-sm font-semibold tracking-wide">Keys & Relationships</CardTitle>
+                                                        <CardDescription className="text-xs">
+                                                            Primary keys, foreign key relations, and relational integrity constraints.
+                                                        </CardDescription>
+                                                    </div>
+                                                    <AddConstraintDialog
+                                                        projectId={projectId}
+                                                        tableId={tableId}
+                                                        tableName={tableName}
+                                                        allTables={allTables}
+                                                        columns={initialColumns}
+                                                        onConstraintAdded={handleConstraintAdded}
+                                                        allProjectConstraints={allProjectConstraints}
+                                                    />
+                                                </CardHeader>
+                                                <CardContent className="p-5">
+                                                    {constraints.length > 0 ? (
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                            {constraints.map(c => (
+                                                                <div key={c.constraint_id} className="flex items-center justify-between p-3.5 border border-border/60 rounded-lg bg-muted/20 hover:bg-muted/30 transition-colors">
+                                                                    <div className="flex items-center gap-3">
+                                                                        {c.type === 'PRIMARY KEY' ? (
+                                                                            <div className="h-8 w-8 rounded bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0">
+                                                                                <KeyRound className="h-4 w-4 text-amber-400" />
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div className="h-8 w-8 rounded bg-blue-500/15 border border-blue-500/30 flex items-center justify-center shrink-0">
+                                                                                <Link2 className="h-4 w-4 text-blue-400" />
+                                                                            </div>
+                                                                        )}
+                                                                        <div className="flex flex-col min-w-0">
+                                                                            <span className="font-mono font-semibold text-xs text-foreground truncate">{c.column_names}</span>
+                                                                            <span className="text-[11px] text-muted-foreground truncate">
+                                                                                {c.type === 'PRIMARY KEY' ? 'Primary Key' : `→ ${getReferencedTable(c)?.table_name || 'table'}.${c.referenced_column_names}`}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <AlertDialog open={constraintToDelete?.constraint_id === c.constraint_id} onOpenChange={(open) => !open && setConstraintToDelete(null)}>
+                                                                        <AlertDialogTrigger asChild>
+                                                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => setConstraintToDelete(c)}>
+                                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                                            </Button>
+                                                                        </AlertDialogTrigger>
+                                                                        <AlertDialogContent>
+                                                                            <AlertDialogHeader>
+                                                                                <AlertDialogTitle>Are you sure you want to delete this constraint?</AlertDialogTitle>
+                                                                                <AlertDialogDescription>
+                                                                                    This action cannot be undone. This will permanently delete the constraint on <strong>{c.column_names}</strong>.
+                                                                                </AlertDialogDescription>
+                                                                            </AlertDialogHeader>
+                                                                            <AlertDialogFooter>
+                                                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                                <AlertDialogAction
+                                                                                    onClick={handleDeleteConstraint}
+                                                                                    className="bg-destructive hover:bg-destructive/90"
+                                                                                >
+                                                                                    Delete Constraint
+                                                                                </AlertDialogAction>
+                                                                            </AlertDialogFooter>
+                                                                        </AlertDialogContent>
+                                                                    </AlertDialog>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-center py-6 text-xs text-muted-foreground">
+                                                            No custom constraints or foreign keys defined for this table.
+                                                        </div>
+                                                    )}
+                                                </CardContent>
+                                            </Card>
+                                        </TabsContent>
+                                    </div>
+                                </Tabs>
                     ) : (
                         <>
                             <header className="flex flex-col sm:flex-row min-h-14 py-2 h-auto items-start sm:items-center gap-4 border-b bg-background px-4 sm:px-6 flex-shrink-0 md:hidden">
@@ -1338,8 +1543,8 @@ export function EditorClient({
                                             </Button>
                                         </SheetTrigger>
                                         <SheetContent side="left" className="p-0 w-72 flex flex-col h-full bg-background border-r">
-                                            <div className="p-4 border-b">
-                                                <h2 className="text-lg font-semibold">Table Explorer</h2>
+                                            <div className="h-12 flex items-center px-4 border-b shrink-0">
+                                                <h2 className="text-sm font-semibold tracking-tight">Table Explorer</h2>
                                             </div>
                                             <div className="flex-1 overflow-hidden">
                                                 {sidebarExplorerContent}

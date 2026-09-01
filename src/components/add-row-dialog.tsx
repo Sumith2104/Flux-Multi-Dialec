@@ -126,8 +126,8 @@ export function AddRowDialog({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button size="sm">
-          <Plus className="mr-2 h-4 w-4" />
+        <Button size="sm" className="h-7 text-xs font-medium">
+          <Plus className="mr-1 h-3 w-3" />
           Insert Row
         </Button>
       </DialogTrigger>
