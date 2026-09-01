@@ -1,4 +1,4 @@
-﻿
+
 import { Suspense } from 'react';
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -17,17 +17,31 @@ async function Editor({ projectId, tableId, tableName }: { projectId: string; ta
         redirect('/dashboard');
     }
     const dialect = project?.dialect || 'postgresql';
-    const allTables = await getTablesForProject(projectId);
-    const currentTable = tableId ? allTables.find(t => t.table_id === tableId) : null;
+    let allTables: any[] = [];
+    try {
+        allTables = await getTablesForProject(projectId);
+    } catch (e) {
+        console.error('Failed to get tables for project:', e);
+    }
+
+    const currentTable = tableId 
+        ? allTables.find(t => t.table_id === tableId || t.table_name === (tableName || tableId)) 
+        : (tableName ? allTables.find(t => t.table_name === tableName) : null);
 
     let columns: any[] = [];
     let constraints: any[] = [];
     let allProjectConstraints: any[] = [];
 
-    if (currentTable && tableId) {
-        columns = await getColumnsForTable(projectId, tableId);
-        constraints = await getConstraintsForTable(projectId, tableId);
-        allProjectConstraints = await getConstraintsForProject(projectId);
+    const effectiveTableId = currentTable?.table_id || tableId;
+
+    if (effectiveTableId) {
+        try {
+            columns = await getColumnsForTable(projectId, effectiveTableId);
+            constraints = await getConstraintsForTable(projectId, effectiveTableId);
+            allProjectConstraints = await getConstraintsForProject(projectId);
+        } catch (e) {
+            console.error('Failed to get columns/constraints for table:', e);
+        }
     }
 
     const { getProjectDbAndSchema } = await import('@/lib/tenant-pools');
