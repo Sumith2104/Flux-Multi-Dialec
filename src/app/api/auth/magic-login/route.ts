@@ -76,13 +76,12 @@ export async function GET(req: NextRequest) {
 
         const refreshToken = await createRefreshToken(user.id);
         const isProd = process.env.NODE_ENV === 'production';
-        const response = NextResponse.redirect(`${baseUrl}/dashboard/projects`);
+        const response = NextResponse.redirect(`${baseUrl}/dashboard/projects?auth=magic`);
         response.cookies.set('refresh_token', refreshToken, {
             httpOnly: true,
             secure: isProd,
             path: '/',
             sameSite: 'lax',
-            maxAge: 7 * 24 * 60 * 60,
         });
         return response;
     } catch (error: any) {

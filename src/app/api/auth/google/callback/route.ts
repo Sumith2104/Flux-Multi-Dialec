@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
         const isProd = process.env.NODE_ENV === 'production';
 
         // 6. Redirect seamlessly
-        const redirectPath = isNewUser ? '/pricing?onboarding=true' : '/dashboard/projects';
+        const redirectPath = isNewUser ? '/pricing?onboarding=true' : '/dashboard/projects?auth=oauth';
         const finalOrigin = getBaseOrigin(request);
         const response = NextResponse.redirect(new URL(redirectPath, finalOrigin));
         response.cookies.set('refresh_token', refreshToken, {
@@ -114,7 +114,6 @@ export async function GET(request: NextRequest) {
             secure: isProd,
             path: '/',
             sameSite: 'lax',
-            maxAge: 7 * 24 * 60 * 60,
         });
         return response;
 
