@@ -73,7 +73,6 @@ export function SignupDialog({ open, onOpenChange, onSwitchToLogin }: SignupDial
             const result = await verifyOtpAction(formData);
 
             if (result.success) {
-                if (typeof window !== 'undefined') sessionStorage.setItem('fluxbase_active_session', 'true');
                 onOpenChange(false);
                 router.push('/pricing?onboarding=true'); // Always new user during OTP verify
                 router.refresh();

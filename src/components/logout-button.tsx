@@ -30,9 +30,6 @@ export function LogoutButton({ className, variant = 'outline', size = 'sm', chil
     const router = useRouter();
 
     const handleLogout = async () => {
-        if (typeof window !== 'undefined') {
-            sessionStorage.removeItem('fluxbase_active_session');
-        }
         await logoutAction();
         router.push('/');
         router.refresh();

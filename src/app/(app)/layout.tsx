@@ -101,24 +101,9 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                     return;
                 }
 
+                setUserId(data.userId || null);
+
                 if (data.userId) {
-                    // Session enforcement: check if active window session exists
-                    const hasActiveSession = typeof window !== 'undefined' && sessionStorage.getItem('fluxbase_active_session');
-                    const hasOAuthParam = typeof window !== 'undefined' && (new URLSearchParams(window.location.search).has('auth') || window.location.search.includes('onboarding=true'));
-
-                    if (!hasActiveSession && !hasOAuthParam) {
-                        // User reopened the app in a brand new window/session -> Require fresh login!
-                        const { logoutAction } = await import('@/app/(app)/actions');
-                        await logoutAction();
-                        router.push('/');
-                        return;
-                    }
-
-                    if (typeof window !== 'undefined') {
-                        sessionStorage.setItem('fluxbase_active_session', 'true');
-                    }
-
-                    setUserId(data.userId || null);
                     setUser(data.user || null);
 
                     if (data.plan) {

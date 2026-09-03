@@ -83,7 +83,6 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
                     setRequires2FA(true);
                     setTempUserId(result.userId);
                 } else {
-                    if (typeof window !== 'undefined') sessionStorage.setItem('fluxbase_active_session', 'true');
                     onOpenChange(false);
                     router.push('/dashboard/projects');
                     router.refresh();
@@ -145,7 +144,6 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
                     setRequires2FA(true);
                     setTempUserId(result.userId);
                 } else {
-                    if (typeof window !== 'undefined') sessionStorage.setItem('fluxbase_active_session', 'true');
                     toast({
                         title: 'Welcome Back!',
                         description: 'Signed in successfully with one-time code.',
@@ -204,7 +202,6 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
             const result = await verify2FALoginAction(tempUserId, twoFactorCode);
 
             if (result.success) {
-                if (typeof window !== 'undefined') sessionStorage.setItem('fluxbase_active_session', 'true');
                 onOpenChange(false);
                 router.push('/dashboard/projects');
                 router.refresh();

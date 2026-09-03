@@ -15,10 +15,10 @@ function getJwtSecret(): Uint8Array {
     return new TextEncoder().encode(secret);
 }
 
-// Access token TTL: 8 hours (active window duration)
-const ACCESS_TOKEN_TTL = 8 * 60 * 60; // seconds
-// Refresh token TTL: 7 days
-const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60; // seconds
+// Access token TTL: 7 days (persistent session)
+const ACCESS_TOKEN_TTL = 7 * 24 * 60 * 60; // seconds
+// Refresh token TTL: 30 days
+const REFRESH_TOKEN_TTL = 30 * 24 * 60 * 60; // seconds
 
 // Cache user suspension status for 30s — avoids a DB query on every API request.
 // If a user is suspended it takes at most 30s to take effect, which is acceptable.
@@ -75,6 +75,8 @@ export async function createSessionCookie(uid: string, isMfaVerified: boolean = 
         const isProduction = process.env.NODE_ENV === 'production';
 
         (await cookies()).set('session', sessionCookie, {
+            expires: new Date(Date.now() + ACCESS_TOKEN_TTL * 1000),
+            maxAge: ACCESS_TOKEN_TTL,
             httpOnly: true,
             secure: isProduction,
             path: '/',
