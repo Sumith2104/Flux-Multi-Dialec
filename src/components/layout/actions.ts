@@ -18,7 +18,9 @@ export async function createProjectAction(formData: FormData) {
   const connectionConfigRaw = formData.get('connectionConfig') as string;
   const connectionConfig = connectionConfigRaw ? JSON.parse(connectionConfigRaw) : {};
   const importMode = (formData.get('importMode') as string) || 'direct';
-  const userRole = (formData.get('userRole') as string) || (formData.get('role') as string) || 'employee';
+  const userRole = (formData.get('userRole') as string) || (formData.get('role') as string) || 'student';
+  const companyName = (formData.get('companyName') as string) || '';
+  const workDescription = (formData.get('workDescription') as string) || '';
 
   if (!projectName) {
     return { error: 'Project name is required.' };
@@ -46,6 +48,27 @@ export async function createProjectAction(formData: FormData) {
       actualConnectionType === 'internal' ? {} : connectionConfig,
       userRole
     );
+
+    // If role is employee or org_owner, record verification request and send email notification
+    if (userRole === 'employee' || userRole === 'org_owner') {
+      try {
+        const { submitRoleRequest } = await import('@/lib/role-requests');
+        const pool = getPgPool();
+        const userRes = await pool.query('SELECT email FROM fluxbase_global.users WHERE id = $1', [userId]);
+        const userEmail = userRes.rows[0]?.email;
+        await submitRoleRequest({
+          userId,
+          userEmail,
+          role: userRole as 'employee' | 'org_owner',
+          companyName,
+          workDescription,
+          projectName,
+          dialect: dialect || 'postgresql'
+        });
+      } catch (reqErr) {
+        logger.warn('[Role Request] Non-critical submission warning:', reqErr);
+      }
+    }
 
     // If copying database to internal cloud, run the schema & data replication helper
     if (connectionType !== 'internal' && importMode === 'import') {

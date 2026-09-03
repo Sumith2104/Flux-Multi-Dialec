@@ -8,9 +8,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, ChevronRight, AlertTriangle, Database, Sparkles, Layers, ArrowRight, Loader2, Bot, Key, Copy, Check, ShieldCheck, GraduationCap, Briefcase, Building2 } from 'lucide-react';
+import { Plus, ChevronRight, AlertTriangle, Database, Sparkles, Layers, ArrowRight, Loader2, Bot, Key, Copy, Check, ShieldCheck, GraduationCap, Briefcase, Building2, Send } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ProjectContext } from '@/contexts/project-context';
@@ -41,7 +42,9 @@ export default function SelectProjectPage() {
   // Project Creation Form State
   const [projectName, setProjectName] = useState('');
   const [selectedTimezone, setSelectedTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
-  const [selectedRole, setSelectedRole] = useState<UserRoleOption>('employee');
+  const [selectedRole, setSelectedRole] = useState<UserRoleOption | null>(null);
+  const [companyName, setCompanyName] = useState('');
+  const [workDescription, setWorkDescription] = useState('');
 
   // MCP Key State
   const [mcpApiKey, setMcpApiKey] = useState<string>('');
@@ -81,12 +84,33 @@ export default function SelectProjectPage() {
   const openCreateModal = (dialect: 'postgresql' | 'mysql') => {
     setModalDialect(dialect);
     setProjectName('');
-    setSelectedRole('employee');
+    setSelectedRole(null);
+    setCompanyName('');
+    setWorkDescription('');
   };
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!projectName.trim() || !modalDialect) return;
+    if (!projectName.trim() || !modalDialect || !selectedRole) return;
+
+    if (selectedRole !== 'student') {
+      if (!companyName.trim()) {
+        toast({
+          variant: 'destructive',
+          title: 'Organization Name Required',
+          description: 'Please provide your company or organization name.',
+        });
+        return;
+      }
+      if (!workDescription.trim()) {
+        toast({
+          variant: 'destructive',
+          title: 'Work Description Required',
+          description: 'Please tell us what you do / your intended use case.',
+        });
+        return;
+      }
+    }
 
     setIsSubmitting(true);
     try {
@@ -95,15 +119,24 @@ export default function SelectProjectPage() {
       formData.append('dialect', modalDialect);
       formData.append('timezone', selectedTimezone);
       formData.append('userRole', selectedRole);
+      formData.append('companyName', companyName.trim());
+      formData.append('workDescription', workDescription.trim());
       formData.append('connectionType', 'internal');
 
       const result = await createProjectAction(formData);
 
       if (result.success && result.project) {
-        toast({
-          title: 'Project Created Successfully',
-          description: `Created ${result.project.display_name} (${modalDialect === 'postgresql' ? 'PostgreSQL' : 'MySQL'}) with role "${selectedRole}".`,
-        });
+        if (selectedRole !== 'student') {
+          toast({
+            title: 'Project Created & Verification Request Sent',
+            description: `Created ${result.project.display_name}. Your ${selectedRole === 'org_owner' ? 'Organization Owner' : 'Employee'} verification details have been sent to the administrator.`,
+          });
+        } else {
+          toast({
+            title: 'Project Created Successfully',
+            description: `Created ${result.project.display_name} (${modalDialect === 'postgresql' ? 'PostgreSQL' : 'MySQL'}).`,
+          });
+        }
         setModalDialect(null);
         setProject(result.project);
         router.push('/dashboard');
@@ -174,6 +207,12 @@ export default function SelectProjectPage() {
     p.display_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.dialect?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (p.creator_role || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const isFormValid = Boolean(
+    projectName.trim() &&
+    selectedRole &&
+    (selectedRole === 'student' || (companyName.trim() && workDescription.trim()))
   );
 
   if (loading) {
@@ -427,7 +466,7 @@ export default function SelectProjectPage() {
 
       {/* ── Dialog 1 & 2: Create PostgreSQL or MySQL Project Modal ── */}
       <Dialog open={modalDialect !== null} onOpenChange={(open) => { if (!open) setModalDialect(null); }}>
-        <DialogContent className="sm:max-w-lg bg-card/95 backdrop-blur-2xl border-border/80">
+        <DialogContent className="sm:max-w-lg bg-card/95 backdrop-blur-2xl border-border/80 max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <div className="flex items-center gap-2 mb-1">
               <Badge variant="secondary" className={cn(
@@ -441,7 +480,7 @@ export default function SelectProjectPage() {
               Create {modalDialect === 'postgresql' ? 'PostgreSQL' : 'MySQL'} Project
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Configure your project name, timezone, and your persona role to be stored in the Fluxbase database.
+              Select your role, enter your project details, and configure your database workspace.
             </DialogDescription>
           </DialogHeader>
 
@@ -479,7 +518,12 @@ export default function SelectProjectPage() {
 
             {/* Role Selection (Student, Employee, Org Owner) */}
             <div className="space-y-2 pt-1">
-              <Label className="text-xs font-semibold">Your Role in Organization / Project</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold">Select Your Role</Label>
+                <span className="text-[11px] text-muted-foreground">
+                  {selectedRole ? `Selected: ${selectedRole.replace('_', ' ')}` : 'Please choose an option'}
+                </span>
+              </div>
               <div className="grid grid-cols-3 gap-2">
                 
                 {/* Student */}
@@ -489,13 +533,13 @@ export default function SelectProjectPage() {
                   className={cn(
                     "flex flex-col items-center justify-center p-3 rounded-lg border text-center transition-all",
                     selectedRole === 'student'
-                      ? "border-primary bg-primary/10 text-primary"
+                      ? "border-primary bg-primary/10 text-primary ring-1 ring-primary"
                       : "border-border/80 bg-secondary/30 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                   )}
                 >
                   <GraduationCap className="h-5 w-5 mb-1.5" />
                   <span className="text-xs font-bold">Student</span>
-                  <span className="text-[10px] opacity-75 mt-0.5">Learning / Labs</span>
+                  <span className="text-[10px] opacity-75 mt-0.5">Instant Access</span>
                 </button>
 
                 {/* Employee */}
@@ -505,13 +549,13 @@ export default function SelectProjectPage() {
                   className={cn(
                     "flex flex-col items-center justify-center p-3 rounded-lg border text-center transition-all",
                     selectedRole === 'employee'
-                      ? "border-primary bg-primary/10 text-primary"
+                      ? "border-primary bg-primary/10 text-primary ring-1 ring-primary"
                       : "border-border/80 bg-secondary/30 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                   )}
                 >
                   <Briefcase className="h-5 w-5 mb-1.5" />
                   <span className="text-xs font-bold">Employee</span>
-                  <span className="text-[10px] opacity-75 mt-0.5">Workplace / Team</span>
+                  <span className="text-[10px] opacity-75 mt-0.5">Verification Req.</span>
                 </button>
 
                 {/* Org Owner */}
@@ -521,20 +565,56 @@ export default function SelectProjectPage() {
                   className={cn(
                     "flex flex-col items-center justify-center p-3 rounded-lg border text-center transition-all",
                     selectedRole === 'org_owner'
-                      ? "border-primary bg-primary/10 text-primary"
+                      ? "border-primary bg-primary/10 text-primary ring-1 ring-primary"
                       : "border-border/80 bg-secondary/30 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                   )}
                 >
                   <Building2 className="h-5 w-5 mb-1.5" />
                   <span className="text-xs font-bold">Org Owner</span>
-                  <span className="text-[10px] opacity-75 mt-0.5">Founder / Admin</span>
+                  <span className="text-[10px] opacity-75 mt-0.5">Verification Req.</span>
                 </button>
 
               </div>
-              <p className="text-[11px] text-muted-foreground mt-1">
-                Your role selection will be securely saved into your profile and database records.
-              </p>
             </div>
+
+            {/* Additional Organization Verification Details for Employee & Org Owner */}
+            {(selectedRole === 'employee' || selectedRole === 'org_owner') && (
+              <div className="space-y-3 pt-2 p-3.5 rounded-lg bg-secondary/30 border border-border/80 animate-in fade-in duration-300">
+                <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                  <Send className="h-3.5 w-3.5 text-primary" />
+                  <span>Organization Verification Request</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  As an {selectedRole === 'org_owner' ? 'Organization Owner' : 'Employee'}, an access request will be recorded in the database and sent directly to the administrator for verification.
+                </p>
+
+                {/* Company / Organization Name */}
+                <div className="space-y-1">
+                  <Label htmlFor="companyName" className="text-xs font-medium">Company or Organization Name</Label>
+                  <Input
+                    id="companyName"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    placeholder=""
+                    className="h-8 text-xs"
+                    required
+                  />
+                </div>
+
+                {/* What they do / Intended Use */}
+                <div className="space-y-1">
+                  <Label htmlFor="workDescription" className="text-xs font-medium">What do you do / Intended Use Case</Label>
+                  <Textarea
+                    id="workDescription"
+                    value={workDescription}
+                    onChange={(e) => setWorkDescription(e.target.value)}
+                    placeholder=""
+                    className="min-h-[70px] text-xs resize-none"
+                    required
+                  />
+                </div>
+              </div>
+            )}
 
             <DialogFooter className="pt-4">
               <Button type="button" variant="ghost" onClick={() => setModalDialect(null)}>
@@ -542,7 +622,7 @@ export default function SelectProjectPage() {
               </Button>
               <Button 
                 type="submit" 
-                disabled={isSubmitting || !projectName.trim()}
+                disabled={isSubmitting || !isFormValid}
                 className={cn(
                   "font-medium",
                   modalDialect === 'postgresql' ? "bg-blue-600 hover:bg-blue-700 text-white" : "bg-orange-600 hover:bg-orange-700 text-white"
@@ -553,6 +633,10 @@ export default function SelectProjectPage() {
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Provisioning Tenant...
                   </>
+                ) : !selectedRole ? (
+                  'Select a Role to Continue'
+                ) : selectedRole !== 'student' ? (
+                  `Submit Request & Create ${modalDialect === 'postgresql' ? 'PostgreSQL' : 'MySQL'} Project`
                 ) : (
                   `Create ${modalDialect === 'postgresql' ? 'PostgreSQL' : 'MySQL'} Project`
                 )}
@@ -646,7 +730,7 @@ export default function SelectProjectPage() {
               <Input
                 readOnly
                 value={mcpApiKey || 'Click "Generate Org Key" to generate a live secret token'}
-                placeholder="fl_live_..."
+                placeholder=""
                 className="h-9 font-mono text-xs bg-secondary/50"
               />
             </div>
