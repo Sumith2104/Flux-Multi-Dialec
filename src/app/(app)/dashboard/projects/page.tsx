@@ -47,6 +47,7 @@ export default function SelectProjectPage() {
   const [mcpApiKey, setMcpApiKey] = useState<string>('');
   const [isGeneratingMcpKey, setIsGeneratingMcpKey] = useState(false);
   const [hasCopiedMcp, setHasCopiedMcp] = useState(false);
+  const [mcpEnv, setMcpEnv] = useState<'vercel' | 'local'>('vercel');
 
   const fetchProjects = async () => {
     setLoading(true);
@@ -144,7 +145,9 @@ export default function SelectProjectPage() {
     }
   };
 
-  const mcpServerUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/mcp` : 'https://fluxbase.vercel.app/api/mcp';
+  const vercelMcpUrl = 'https://fluxbase.vercel.app/api/mcp';
+  const localMcpUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/mcp` : 'http://localhost:3000/api/mcp';
+  const mcpServerUrl = mcpEnv === 'vercel' ? vercelMcpUrl : localMcpUrl;
 
   const mcpSnippet = JSON.stringify({
     mcpServers: {
@@ -579,9 +582,34 @@ export default function SelectProjectPage() {
 
           <div className="space-y-4 pt-2">
             
-            {/* 1. MCP Server URL */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">MCP Server Endpoint URL</Label>
+            {/* 1. MCP Environment Selector & Server URL */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold">MCP Server Endpoint URL</Label>
+                <div className="inline-flex items-center gap-1 p-0.5 bg-secondary/60 rounded-md border border-border/60">
+                  <button
+                    type="button"
+                    onClick={() => setMcpEnv('vercel')}
+                    className={cn(
+                      "text-[10px] px-2 py-0.5 rounded font-mono transition-all",
+                      mcpEnv === 'vercel' ? "bg-purple-600 text-white font-bold shadow" : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Vercel Production
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMcpEnv('local')}
+                    className={cn(
+                      "text-[10px] px-2 py-0.5 rounded font-mono transition-all",
+                      mcpEnv === 'local' ? "bg-purple-600 text-white font-bold shadow" : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Localhost
+                  </button>
+                </div>
+              </div>
+
               <div className="flex items-center gap-2">
                 <Input
                   readOnly
@@ -593,7 +621,7 @@ export default function SelectProjectPage() {
                   variant="outline"
                   onClick={() => {
                     navigator.clipboard.writeText(mcpServerUrl);
-                    toast({ title: 'URL Copied', description: 'MCP server URL copied to clipboard.' });
+                    toast({ title: 'URL Copied', description: `Copied ${mcpServerUrl} to clipboard.` });
                   }}
                 >
                   <Copy className="h-3.5 w-3.5" />
