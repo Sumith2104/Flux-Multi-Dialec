@@ -10,13 +10,14 @@ export interface RoleRequestData {
   workDescription: string;
   projectName: string;
   dialect: string;
+  billingPreference?: 'monthly' | 'pay_as_you_go' | 'hybrid';
 }
 
 export async function submitRoleRequest(data: RoleRequestData) {
   const pool = getPgPool();
 
   try {
-    // 1. Ensure table exists
+    // 1. Ensure table exists with billing columns
     await pool.query(`
       CREATE TABLE IF NOT EXISTS fluxbase_global.role_requests (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -27,16 +28,22 @@ export async function submitRoleRequest(data: RoleRequestData) {
         work_description TEXT,
         project_name VARCHAR(255),
         dialect VARCHAR(50),
+        billing_preference VARCHAR(50) DEFAULT 'monthly',
         status VARCHAR(50) DEFAULT 'pending',
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
+    // Ensure billing_preference column exists if table was already created
+    try {
+      await pool.query('ALTER TABLE fluxbase_global.role_requests ADD COLUMN IF NOT EXISTS billing_preference VARCHAR(50) DEFAULT \'monthly\'');
+    } catch {}
+
     // 2. Insert record
     const insertRes = await pool.query(`
       INSERT INTO fluxbase_global.role_requests (
-        user_id, user_email, role_requested, company_name, work_description, project_name, dialect
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        user_id, user_email, role_requested, company_name, work_description, project_name, dialect, billing_preference
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING id, created_at
     `, [
       data.userId,
@@ -45,24 +52,26 @@ export async function submitRoleRequest(data: RoleRequestData) {
       data.companyName || null,
       data.workDescription || null,
       data.projectName,
-      data.dialect
+      data.dialect,
+      data.billingPreference || 'monthly'
     ]);
 
     const requestId = insertRes.rows[0]?.id;
 
     // 3. Send email to admin
     const adminEmail = process.env.ADMIN_EMAIL || process.env.SMTP_USER || 'sumithu.dev@gmail.com';
-    const roleDisplay = data.role === 'org_owner' ? 'Organization Owner' : 'Employee';
+    const roleDisplay = data.role === 'org_owner' ? 'Organization Owner (Top-Grade Enterprise)' : 'Employee (High-Performance)';
+    const priceDisplay = data.role === 'org_owner' ? '₹5,000 / month (Top-Grade 8 vCPU, 32GB RAM, 100GB NVMe)' : '₹500 / month (High-Performance 2 vCPU, 4GB RAM, 10GB SSD)';
 
     const html = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #090d16; color: #f8fafc; padding: 28px; border-radius: 12px; border: 1px solid #1e293b; max-width: 600px; margin: 0 auto;">
         <div style="border-bottom: 1px solid #1e293b; padding-bottom: 16px; margin-bottom: 20px;">
-          <span style="font-size: 11px; font-weight: bold; letter-spacing: 0.1em; text-transform: uppercase; color: #38bdf8;">Fluxbase Access Verification</span>
-          <h2 style="color: #ffffff; margin: 6px 0 0 0; font-size: 20px;">New ${roleDisplay} Role Request</h2>
+          <span style="font-size: 11px; font-weight: bold; letter-spacing: 0.1em; text-transform: uppercase; color: #38bdf8;">Fluxbase Dedicated Server Request</span>
+          <h2 style="color: #ffffff; margin: 6px 0 0 0; font-size: 20px;">New ${roleDisplay}</h2>
         </div>
 
         <p style="font-size: 14px; line-height: 1.6; color: #cbd5e1; margin-bottom: 20px;">
-          A user has requested access as a <strong>${roleDisplay}</strong> and submitted their organization verification details.
+          A user has requested provisioning for a dedicated high-performance server tier.
         </p>
 
         <div style="background: #0f172a; border-radius: 8px; border: 1px solid #334155; padding: 16px; margin-bottom: 24px;">
@@ -76,8 +85,16 @@ export async function submitRoleRequest(data: RoleRequestData) {
               <td style="padding: 10px 0; color: #f8fafc;">${data.userEmail || 'N/A'}</td>
             </tr>
             <tr style="border-bottom: 1px solid #1e293b;">
-              <td style="padding: 10px 0; color: #94a3b8; font-weight: 600;">Role Requested</td>
+              <td style="padding: 10px 0; color: #94a3b8; font-weight: 600;">Role & Tier</td>
               <td style="padding: 10px 0; color: #38bdf8; font-weight: bold;">${roleDisplay}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #1e293b;">
+              <td style="padding: 10px 0; color: #94a3b8; font-weight: 600;">Tier Pricing</td>
+              <td style="padding: 10px 0; color: #4ade80; font-weight: 600;">${priceDisplay}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #1e293b;">
+              <td style="padding: 10px 0; color: #94a3b8; font-weight: 600;">Billing Model</td>
+              <td style="padding: 10px 0; color: #f8fafc; text-transform: capitalize;">${(data.billingPreference || 'monthly').replace(/_/g, ' ')}</td>
             </tr>
             <tr style="border-bottom: 1px solid #1e293b;">
               <td style="padding: 10px 0; color: #94a3b8; font-weight: 600;">Company / Org</td>
@@ -103,7 +120,7 @@ export async function submitRoleRequest(data: RoleRequestData) {
     try {
       await sendEmail(
         adminEmail,
-        `[Fluxbase] New ${roleDisplay} Role Request from ${data.userEmail || data.userId}`,
+        `[Fluxbase Tier Request] ${roleDisplay} from ${data.userEmail || data.userId}`,
         html
       );
       logger.info(`[Role Request] Sent notification email to ${adminEmail} for user ${data.userId}`);

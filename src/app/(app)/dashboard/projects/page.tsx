@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, ChevronRight, AlertTriangle, Database, Sparkles, Layers, ArrowRight, Loader2, Bot, Key, Copy, Check, ShieldCheck, GraduationCap, Briefcase, Building2, Send } from 'lucide-react';
+import { Plus, ChevronRight, AlertTriangle, Database, Sparkles, Layers, ArrowRight, Loader2, Bot, Key, Copy, Check, ShieldCheck, GraduationCap, Briefcase, Building2, Send, Cpu, HardDrive, Zap, CreditCard, Activity } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ProjectContext } from '@/contexts/project-context';
@@ -24,6 +24,7 @@ import { createApiKeyAction } from '@/app/(app)/settings/api-key-actions';
 const timezones = Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : ['UTC', 'America/New_York', 'Europe/London', 'Asia/Kolkata', 'Asia/Tokyo'];
 
 type UserRoleOption = 'student' | 'employee' | 'org_owner';
+type BillingOption = 'monthly' | 'pay_as_you_go' | 'hybrid';
 
 export default function SelectProjectPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -43,6 +44,7 @@ export default function SelectProjectPage() {
   const [projectName, setProjectName] = useState('');
   const [selectedTimezone, setSelectedTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
   const [selectedRole, setSelectedRole] = useState<UserRoleOption | null>(null);
+  const [billingPreference, setBillingPreference] = useState<BillingOption>('monthly');
   const [companyName, setCompanyName] = useState('');
   const [workDescription, setWorkDescription] = useState('');
 
@@ -85,6 +87,7 @@ export default function SelectProjectPage() {
     setModalDialect(dialect);
     setProjectName('');
     setSelectedRole(null);
+    setBillingPreference('monthly');
     setCompanyName('');
     setWorkDescription('');
   };
@@ -106,7 +109,7 @@ export default function SelectProjectPage() {
         toast({
           variant: 'destructive',
           title: 'Work Description Required',
-          description: 'Please tell us what you do / your intended use case.',
+          description: 'Please describe your workload and team requirements.',
         });
         return;
       }
@@ -119,6 +122,7 @@ export default function SelectProjectPage() {
       formData.append('dialect', modalDialect);
       formData.append('timezone', selectedTimezone);
       formData.append('userRole', selectedRole);
+      formData.append('billingPreference', billingPreference);
       formData.append('companyName', companyName.trim());
       formData.append('workDescription', workDescription.trim());
       formData.append('connectionType', 'internal');
@@ -128,8 +132,8 @@ export default function SelectProjectPage() {
       if (result.success && result.project) {
         if (selectedRole !== 'student') {
           toast({
-            title: 'Project Created & Verification Request Sent',
-            description: `Created ${result.project.display_name}. Your ${selectedRole === 'org_owner' ? 'Organization Owner' : 'Employee'} verification details have been sent to the administrator.`,
+            title: 'Dedicated Server Request Submitted',
+            description: `Created ${result.project.display_name}. High-performance server provisioning request (${selectedRole === 'org_owner' ? 'Org Owner - ₹5,000/mo' : 'Employee - ₹500/mo'}) sent to admin.`,
           });
         } else {
           toast({
@@ -286,7 +290,7 @@ export default function SelectProjectPage() {
                   Create PostgreSQL Project
                 </h3>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Provision serverless PostgreSQL with full relational schemas, JSONB documents, vector indexes, and custom roles.
+                  Provision serverless PostgreSQL with full relational schemas, JSONB documents, vector indexes, and custom server tiers.
                 </p>
               </div>
               <div className="p-6 pt-0">
@@ -315,7 +319,7 @@ export default function SelectProjectPage() {
                   Create MySQL Project
                 </h3>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Provision serverless MySQL 8 with high-throughput transactions, primary indexing, foreign keys, and custom roles.
+                  Provision serverless MySQL 8 with high-throughput transactions, primary indexing, foreign keys, and custom server tiers.
                 </p>
               </div>
               <div className="p-6 pt-0">
@@ -466,7 +470,7 @@ export default function SelectProjectPage() {
 
       {/* ── Dialog 1 & 2: Create PostgreSQL or MySQL Project Modal ── */}
       <Dialog open={modalDialect !== null} onOpenChange={(open) => { if (!open) setModalDialect(null); }}>
-        <DialogContent className="sm:max-w-lg bg-card/95 backdrop-blur-2xl border-border/80 max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-xl bg-card/95 backdrop-blur-2xl border-border/80 max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <div className="flex items-center gap-2 mb-1">
               <Badge variant="secondary" className={cn(
@@ -480,7 +484,7 @@ export default function SelectProjectPage() {
               Create {modalDialect === 'postgresql' ? 'PostgreSQL' : 'MySQL'} Project
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Select your role, enter your project details, and configure your database workspace.
+              Select your role, infrastructure tier, and configure your dedicated database workspace.
             </DialogDescription>
           </DialogHeader>
 
@@ -516,10 +520,10 @@ export default function SelectProjectPage() {
               </Select>
             </div>
 
-            {/* Role Selection (Student, Employee, Org Owner) */}
+            {/* Role & Server Tier Selection */}
             <div className="space-y-2 pt-1">
               <div className="flex items-center justify-between">
-                <Label className="text-xs font-semibold">Select Your Role</Label>
+                <Label className="text-xs font-semibold">Select Your Role & Server Tier</Label>
                 <span className="text-[11px] text-muted-foreground">
                   {selectedRole ? `Selected: ${selectedRole.replace('_', ' ')}` : 'Please choose an option'}
                 </span>
@@ -531,15 +535,18 @@ export default function SelectProjectPage() {
                   type="button"
                   onClick={() => setSelectedRole('student')}
                   className={cn(
-                    "flex flex-col items-center justify-center p-3 rounded-lg border text-center transition-all",
+                    "flex flex-col items-start p-3 rounded-lg border text-left transition-all relative overflow-hidden",
                     selectedRole === 'student'
-                      ? "border-primary bg-primary/10 text-primary ring-1 ring-primary"
+                      ? "border-primary bg-primary/10 text-foreground ring-1 ring-primary"
                       : "border-border/80 bg-secondary/30 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                   )}
                 >
-                  <GraduationCap className="h-5 w-5 mb-1.5" />
-                  <span className="text-xs font-bold">Student</span>
-                  <span className="text-[10px] opacity-75 mt-0.5">Instant Access</span>
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <GraduationCap className="h-4 w-4 text-primary" />
+                    <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary">₹0 Free</span>
+                  </div>
+                  <span className="text-xs font-bold text-foreground">Student</span>
+                  <span className="text-[10px] text-muted-foreground mt-0.5 leading-tight">Shared Micro Sandbox</span>
                 </button>
 
                 {/* Employee */}
@@ -547,15 +554,18 @@ export default function SelectProjectPage() {
                   type="button"
                   onClick={() => setSelectedRole('employee')}
                   className={cn(
-                    "flex flex-col items-center justify-center p-3 rounded-lg border text-center transition-all",
+                    "flex flex-col items-start p-3 rounded-lg border text-left transition-all relative overflow-hidden",
                     selectedRole === 'employee'
-                      ? "border-primary bg-primary/10 text-primary ring-1 ring-primary"
+                      ? "border-blue-500 bg-blue-500/10 text-foreground ring-1 ring-blue-500"
                       : "border-border/80 bg-secondary/30 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                   )}
                 >
-                  <Briefcase className="h-5 w-5 mb-1.5" />
-                  <span className="text-xs font-bold">Employee</span>
-                  <span className="text-[10px] opacity-75 mt-0.5">Verification Req.</span>
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <Briefcase className="h-4 w-4 text-blue-400" />
+                    <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">₹500/mo</span>
+                  </div>
+                  <span className="text-xs font-bold text-foreground">Employee</span>
+                  <span className="text-[10px] text-muted-foreground mt-0.5 leading-tight">High-Performance (2 vCPU)</span>
                 </button>
 
                 {/* Org Owner */}
@@ -563,30 +573,120 @@ export default function SelectProjectPage() {
                   type="button"
                   onClick={() => setSelectedRole('org_owner')}
                   className={cn(
-                    "flex flex-col items-center justify-center p-3 rounded-lg border text-center transition-all",
+                    "flex flex-col items-start p-3 rounded-lg border text-left transition-all relative overflow-hidden",
                     selectedRole === 'org_owner'
-                      ? "border-primary bg-primary/10 text-primary ring-1 ring-primary"
+                      ? "border-purple-500 bg-purple-500/10 text-foreground ring-1 ring-purple-500"
                       : "border-border/80 bg-secondary/30 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                   )}
                 >
-                  <Building2 className="h-5 w-5 mb-1.5" />
-                  <span className="text-xs font-bold">Org Owner</span>
-                  <span className="text-[10px] opacity-75 mt-0.5">Verification Req.</span>
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <Building2 className="h-4 w-4 text-purple-400" />
+                    <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">₹5,000/mo</span>
+                  </div>
+                  <span className="text-xs font-bold text-foreground">Org Owner</span>
+                  <span className="text-[10px] text-muted-foreground mt-0.5 leading-tight">Top-Grade (8 vCPU NVMe)</span>
                 </button>
 
               </div>
             </div>
+
+            {/* Server Specifications & Pay-As-You-Go Preview */}
+            {selectedRole && (
+              <div className="rounded-lg p-3 bg-secondary/40 border border-border/80 space-y-2 animate-in fade-in duration-300">
+                <div className="flex items-center justify-between text-xs font-semibold text-foreground border-b border-border/60 pb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Cpu className="h-3.5 w-3.5 text-primary" />
+                    <span>
+                      {selectedRole === 'student' && 'Student Sandbox Compute'}
+                      {selectedRole === 'employee' && 'High-Performance Dedicated Server (₹500 / mo)'}
+                      {selectedRole === 'org_owner' && 'Top-Grade Enterprise Infrastructure (₹5,000 / mo)'}
+                    </span>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] font-mono">
+                    {selectedRole === 'student' ? 'Community Tier' : 'Pay-As-You-Go Available'}
+                  </Badge>
+                </div>
+
+                {/* Specs List */}
+                <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground pt-1">
+                  <div>
+                    <span className="text-foreground font-medium">Compute: </span>
+                    {selectedRole === 'student' && '0.5 vCPU Shared (512MB RAM)'}
+                    {selectedRole === 'employee' && '2 vCPU Dedicated (4GB RAM)'}
+                    {selectedRole === 'org_owner' && '8 vCPU Xeon/EPYC (32GB RAM)'}
+                  </div>
+                  <div>
+                    <span className="text-foreground font-medium">Storage: </span>
+                    {selectedRole === 'student' && '500 MB Shared Storage'}
+                    {selectedRole === 'employee' && '10 GB High-Speed SSD Storage'}
+                    {selectedRole === 'org_owner' && '100 GB Gen4 NVMe (10k IOPS)'}
+                  </div>
+                  <div>
+                    <span className="text-foreground font-medium">Connections: </span>
+                    {selectedRole === 'student' && '10 Concurrent Connections'}
+                    {selectedRole === 'employee' && '100 Concurrent Connections'}
+                    {selectedRole === 'org_owner' && '1,000+ Concurrent + Pooler'}
+                  </div>
+                  <div>
+                    <span className="text-foreground font-medium">Pay-As-You-Go: </span>
+                    {selectedRole === 'student' && 'None (Free Sandbox Limit)'}
+                    {selectedRole === 'employee' && '₹0.50 / 10k queries | ₹5/GB extra'}
+                    {selectedRole === 'org_owner' && '₹2.00 / 10k queries | ₹15/GB extra'}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Additional Organization Verification Details for Employee & Org Owner */}
             {(selectedRole === 'employee' || selectedRole === 'org_owner') && (
               <div className="space-y-3 pt-2 p-3.5 rounded-lg bg-secondary/30 border border-border/80 animate-in fade-in duration-300">
                 <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
                   <Send className="h-3.5 w-3.5 text-primary" />
-                  <span>Organization Verification Request</span>
+                  <span>High-Performance Server Verification Request</span>
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  As an {selectedRole === 'org_owner' ? 'Organization Owner' : 'Employee'}, an access request will be recorded in the database and sent directly to the administrator for verification.
+                  As an {selectedRole === 'org_owner' ? 'Organization Owner' : 'Employee'}, an access request will be recorded in the database and sent directly to the administrator for verification and dedicated resource allocation.
                 </p>
+
+                {/* Billing Model Selector */}
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium">Billing Model Preference</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setBillingPreference('monthly')}
+                      className={cn(
+                        "p-2 rounded border text-left text-xs transition-all",
+                        billingPreference === 'monthly' ? "border-primary bg-primary/10 font-semibold" : "border-border/60 bg-background/50 text-muted-foreground"
+                      )}
+                    >
+                      <div>Fixed Monthly</div>
+                      <div className="text-[10px] opacity-75">{selectedRole === 'org_owner' ? '₹5,000/mo' : '₹500/mo'}</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBillingPreference('pay_as_you_go')}
+                      className={cn(
+                        "p-2 rounded border text-left text-xs transition-all",
+                        billingPreference === 'pay_as_you_go' ? "border-primary bg-primary/10 font-semibold" : "border-border/60 bg-background/50 text-muted-foreground"
+                      )}
+                    >
+                      <div>Pay-As-You-Go</div>
+                      <div className="text-[10px] opacity-75">Metered usage</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBillingPreference('hybrid')}
+                      className={cn(
+                        "p-2 rounded border text-left text-xs transition-all",
+                        billingPreference === 'hybrid' ? "border-primary bg-primary/10 font-semibold" : "border-border/60 bg-background/50 text-muted-foreground"
+                      )}
+                    >
+                      <div>Hybrid Plan</div>
+                      <div className="text-[10px] opacity-75">Base + Overages</div>
+                    </button>
+                  </div>
+                </div>
 
                 {/* Company / Organization Name */}
                 <div className="space-y-1">
@@ -603,13 +703,13 @@ export default function SelectProjectPage() {
 
                 {/* What they do / Intended Use */}
                 <div className="space-y-1">
-                  <Label htmlFor="workDescription" className="text-xs font-medium">What do you do / Intended Use Case</Label>
+                  <Label htmlFor="workDescription" className="text-xs font-medium">What do you do / Intended Workload</Label>
                   <Textarea
                     id="workDescription"
                     value={workDescription}
                     onChange={(e) => setWorkDescription(e.target.value)}
                     placeholder=""
-                    className="min-h-[70px] text-xs resize-none"
+                    className="min-h-[65px] text-xs resize-none"
                     required
                   />
                 </div>
@@ -636,7 +736,7 @@ export default function SelectProjectPage() {
                 ) : !selectedRole ? (
                   'Select a Role to Continue'
                 ) : selectedRole !== 'student' ? (
-                  `Submit Request & Create ${modalDialect === 'postgresql' ? 'PostgreSQL' : 'MySQL'} Project`
+                  `Submit Server Request (${selectedRole === 'org_owner' ? '₹5,000/mo' : '₹500/mo'})`
                 ) : (
                   `Create ${modalDialect === 'postgresql' ? 'PostgreSQL' : 'MySQL'} Project`
                 )}

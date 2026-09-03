@@ -22,6 +22,8 @@ export async function createProjectAction(formData: FormData) {
   const companyName = (formData.get('companyName') as string) || '';
   const workDescription = (formData.get('workDescription') as string) || '';
 
+  const billingPreference = (formData.get('billingPreference') as string) || 'monthly';
+
   if (!projectName) {
     return { error: 'Project name is required.' };
   }
@@ -63,7 +65,8 @@ export async function createProjectAction(formData: FormData) {
           companyName,
           workDescription,
           projectName,
-          dialect: dialect || 'postgresql'
+          dialect: dialect || 'postgresql',
+          billingPreference: billingPreference as any
         });
       } catch (reqErr) {
         logger.warn('[Role Request] Non-critical submission warning:', reqErr);
