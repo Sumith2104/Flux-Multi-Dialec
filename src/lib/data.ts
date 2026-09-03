@@ -501,10 +501,11 @@ export async function ensureUserProfile(userId: string, email: string, displayNa
 export async function createProject(
     name: string, 
     description: string, 
-    dialect: string = 'mysql', 
+    dialect: string = 'postgresql', 
     timezone?: string,
     connectionType: 'internal' | 'external_db' | 'external_server' = 'internal',
-    connectionConfig: any = {}
+    connectionConfig: any = {},
+    userRole?: 'student' | 'employee' | 'org_owner' | string
 ): Promise<Project> {
     const userId = await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
@@ -534,6 +535,18 @@ export async function createProject(
         'INSERT INTO fluxbase_global.projects (project_id, user_id, display_name, dialect, timezone, connection_type, connection_config) VALUES ($1, $2::text, $3, $4, $5, $6, $7)',
         [projectId, userId, name, dialect, finalTimezone, connectionType, typeof connectionConfig === 'string' ? connectionConfig : JSON.stringify(connectionConfig)]
     );
+
+    // Persist user role in Fluxbase database (Student / Employee / Org Owner)
+    if (userRole) {
+        try {
+            await pool.query('ALTER TABLE fluxbase_global.users ADD COLUMN IF NOT EXISTS user_role VARCHAR(50)');
+            await pool.query('UPDATE fluxbase_global.users SET user_role = $1 WHERE id = $2', [userRole, userId]);
+            await pool.query('ALTER TABLE fluxbase_global.projects ADD COLUMN IF NOT EXISTS creator_role VARCHAR(50)');
+            await pool.query('UPDATE fluxbase_global.projects SET creator_role = $1 WHERE project_id = $2', [userRole, projectId]);
+        } catch (roleErr) {
+            console.warn('[Role Save] Non-critical role update error:', roleErr);
+        }
+    }
 
     const project: Project = {
         project_id: projectId,

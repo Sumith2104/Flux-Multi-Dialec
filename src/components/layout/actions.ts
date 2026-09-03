@@ -18,6 +18,7 @@ export async function createProjectAction(formData: FormData) {
   const connectionConfigRaw = formData.get('connectionConfig') as string;
   const connectionConfig = connectionConfigRaw ? JSON.parse(connectionConfigRaw) : {};
   const importMode = (formData.get('importMode') as string) || 'direct';
+  const userRole = (formData.get('userRole') as string) || (formData.get('role') as string) || 'employee';
 
   if (!projectName) {
     return { error: 'Project name is required.' };
@@ -42,7 +43,8 @@ export async function createProjectAction(formData: FormData) {
       dialect || 'postgresql', 
       timezone,
       actualConnectionType as any,
-      actualConnectionType === 'internal' ? {} : connectionConfig
+      actualConnectionType === 'internal' ? {} : connectionConfig,
+      userRole
     );
 
     // If copying database to internal cloud, run the schema & data replication helper

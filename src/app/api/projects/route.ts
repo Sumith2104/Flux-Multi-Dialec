@@ -35,6 +35,7 @@ export async function POST(req: Request) {
         const description = body.description || 'Created via Fluxbase API / MCP';
         const connectionType = body.connectionType || 'internal';
         const connectionConfig = body.connectionConfig || {};
+        const userRole = body.userRole || body.role || 'employee';
 
         if (!projectName || typeof projectName !== 'string' || projectName.trim() === '') {
             return NextResponse.json({ 
@@ -54,7 +55,8 @@ export async function POST(req: Request) {
             dialect,
             timezone,
             connectionType,
-            connectionConfig
+            connectionConfig,
+            userRole
         );
 
         // 2. Provision instant serverless tenant schema

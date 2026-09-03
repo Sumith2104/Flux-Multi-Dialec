@@ -29,7 +29,7 @@ export function getMysqlPool(): mysql.Pool {
             enableKeepAlive: true, // Prevent AWS RDS from dropping idle connections
             keepAliveInitialDelay: 10000,
             ssl: {
-                rejectUnauthorized: process.env.MYSQL_SSL_REJECT_UNAUTHORIZED !== 'false',
+                rejectUnauthorized: process.env.MYSQL_SSL_REJECT_UNAUTHORIZED === 'true',
                 ca,
             }
         });
