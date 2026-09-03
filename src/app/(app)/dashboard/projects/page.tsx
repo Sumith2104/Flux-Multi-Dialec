@@ -80,7 +80,7 @@ export default function SelectProjectPage() {
 
   const openCreateModal = (dialect: 'postgresql' | 'mysql') => {
     setModalDialect(dialect);
-    setProjectName(dialect === 'postgresql' ? 'My PostgreSQL Project' : 'My MySQL Project');
+    setProjectName('');
     setSelectedRole('employee');
   };
 
@@ -454,7 +454,7 @@ export default function SelectProjectPage() {
                 id="projectName"
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
-                placeholder="e.g., Production Core DB"
+                placeholder=""
                 className="h-9 text-sm"
                 required
               />

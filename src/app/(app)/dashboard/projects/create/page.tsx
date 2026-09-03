@@ -519,7 +519,7 @@ export default function CreateProjectPage() {
                                 <Input
                                     id="projectName"
                                     name="projectName"
-                                    placeholder="e.g., E-Commerce Analytics Database"
+                                    placeholder=""
                                     className="h-12 text-md transition-all focus:ring-primary"
                                     required
                                 />
