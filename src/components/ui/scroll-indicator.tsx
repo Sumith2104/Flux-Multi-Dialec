@@ -9,8 +9,6 @@ import { AnimatePresence, motion } from 'framer-motion';
 export function ScrollIndicator() {
   const pathname = usePathname();
   const [hasContentBelow, setHasContentBelow] = useState(false);
-  const [scrollProgress, setScrollProgress] = useState(0);
-  const [isScrollable, setIsScrollable] = useState(false);
   const activeContainerRef = useRef<HTMLElement | null>(null);
 
   // Helper to find any active scroll container in the DOM (e.g. inside (app)/layout)
@@ -65,13 +63,6 @@ export function ScrollIndicator() {
     if (windowCanScroll) {
       activeContainerRef.current = null;
       const windowRemaining = windowScrollHeight - (windowScrollTop + windowClientHeight);
-      const progress = Math.min(
-        100,
-        Math.max(0, (windowScrollTop / (windowScrollHeight - windowClientHeight)) * 100)
-      );
-
-      setIsScrollable(true);
-      setScrollProgress(progress);
       setHasContentBelow(windowRemaining > 35);
       return;
     }
@@ -81,21 +72,12 @@ export function ScrollIndicator() {
     if (container) {
       activeContainerRef.current = container;
       const containerRemaining = container.scrollHeight - (container.scrollTop + container.clientHeight);
-      const progress = Math.min(
-        100,
-        Math.max(0, (container.scrollTop / (container.scrollHeight - container.clientHeight)) * 100)
-      );
-
-      setIsScrollable(true);
-      setScrollProgress(progress);
       setHasContentBelow(containerRemaining > 35);
       return;
     }
 
     // Neither window nor container has scrollable content
     activeContainerRef.current = null;
-    setIsScrollable(false);
-    setScrollProgress(0);
     setHasContentBelow(false);
   }, [findScrollContainer]);
 
@@ -154,7 +136,7 @@ export function ScrollIndicator() {
     }
   };
 
-  // On pages with the floating dock, elevate the pill so it doesn't overlap
+  // On pages with the floating dock, elevate the button so it doesn't overlap
   const isAppPage = pathname.startsWith('/dashboard') ||
                     pathname.startsWith('/settings') ||
                     pathname.startsWith('/analytics') ||
@@ -165,59 +147,28 @@ export function ScrollIndicator() {
                     pathname.startsWith('/scraper');
 
   return (
-    <>
-      {/* 1. Subtle Reading Progress Bar at the top of the viewport */}
-      <div
-        className={cn(
-          "fixed top-0 left-0 right-0 z-[60] h-[2.5px] pointer-events-none transition-opacity duration-300",
-          isScrollable ? "opacity-100" : "opacity-0"
-        )}
-        aria-hidden="true"
-      >
-        <div
-          className="h-full bg-gradient-to-r from-primary via-orange-500 to-amber-400 transition-[width] duration-150 ease-out shadow-[0_0_8px_rgba(255,122,26,0.6)]"
-          style={{ width: `${scrollProgress}%` }}
-        />
-      </div>
-
-      {/* 2. Floating Pill Indicator (only visible when page has content below) */}
-      <AnimatePresence>
-        {hasContentBelow && (
-          <motion.div
-            initial={{ opacity: 0, y: 16, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 16, scale: 0.95 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-            className={cn(
-              "fixed left-1/2 -translate-x-1/2 z-[45] pointer-events-auto",
-              isAppPage ? "bottom-20 sm:bottom-24" : "bottom-6 sm:bottom-8"
-            )}
+    <AnimatePresence>
+      {hasContentBelow && (
+        <motion.div
+          initial={{ opacity: 0, y: 12, scale: 0.9 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 12, scale: 0.9 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className={cn(
+            "fixed left-1/2 -translate-x-1/2 z-[45] pointer-events-auto",
+            isAppPage ? "bottom-20 sm:bottom-24" : "bottom-6 sm:bottom-8"
+          )}
+        >
+          <button
+            onClick={handleScrollDown}
+            className="group relative flex h-9 w-9 items-center justify-center rounded-full border border-border/80 bg-background/90 text-muted-foreground shadow-[0_6px_20px_rgba(0,0,0,0.35)] backdrop-blur-md transition-all duration-300 hover:border-primary/60 hover:bg-background hover:text-primary hover:shadow-[0_6px_24px_rgba(255,122,26,0.3)] active:scale-90"
+            title="Scroll down"
+            aria-label="Scroll down"
           >
-            <button
-              onClick={handleScrollDown}
-              className="group relative flex items-center gap-2 rounded-full border border-border/80 bg-background/90 px-3.5 py-1.5 text-xs font-medium text-muted-foreground shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-md transition-all duration-300 hover:border-primary/50 hover:bg-background hover:text-foreground hover:shadow-[0_8px_30px_rgba(255,122,26,0.25)] active:scale-95"
-              title="Scroll down to view more content"
-              aria-label="Scroll down to view more content"
-            >
-              {/* Glowing Pulse Dot */}
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-              </span>
-
-              {/* Label */}
-              <span className="text-[11px] font-semibold tracking-wider uppercase text-muted-foreground/90 transition-colors group-hover:text-foreground">
-                Scroll for more
-              </span>
-
-              {/* Bouncing Chevron Icon */}
-              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-primary transition-all duration-300 group-hover:bg-primary group-hover:text-primary-foreground">
-                <ChevronDown className="h-3.5 w-3.5 animate-bounce" />
-              </div>
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
+            <ChevronDown className="h-4 w-4 transition-transform duration-200 group-hover:translate-y-0.5 animate-bounce text-muted-foreground group-hover:text-primary" />
+          </button>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
