@@ -360,76 +360,7 @@ export function useRealtimeSubscription(projectId: string | undefined) {
                 return true;
             };
 
-            // Phase 1: 0ms Optimistic in-memory cache update when event has row payload
-            if (event.data && typeof event.data === 'object' && !event.truncated) {
-                const rowData = event.data;
-                const rowId = rowData.id ?? rowData.uuid ?? rowData._id;
-
-                if (action === 'INSERT') {
-                    queryClient.setQueriesData<any>(
-                        { predicate: tablePredicate },
-                        (oldData: any) => {
-                            if (!oldData || !Array.isArray(oldData.pages) || oldData.pages.length === 0) return oldData;
-
-                            const alreadyExists = oldData.pages.some((page: any) =>
-                                Array.isArray(page?.rows) && page.rows.some((r: any) =>
-                                    rowId !== undefined && (r.id === rowId || r.uuid === rowId || r._id === rowId)
-                                )
-                            );
-                            if (alreadyExists) return oldData;
-
-                            const firstPage = oldData.pages[0];
-                            const updatedFirstPage = {
-                                ...firstPage,
-                                rows: [rowData, ...(Array.isArray(firstPage.rows) ? firstPage.rows : [])],
-                                totalRows: typeof firstPage.totalRows === 'number' ? firstPage.totalRows + 1 : firstPage.totalRows,
-                            };
-
-                            return {
-                                ...oldData,
-                                pages: [updatedFirstPage, ...oldData.pages.slice(1)],
-                            };
-                        }
-                    );
-                } else if (action === 'UPDATE') {
-                    queryClient.setQueriesData<any>(
-                        { predicate: tablePredicate },
-                        (oldData: any) => {
-                            if (!oldData || !Array.isArray(oldData.pages)) return oldData;
-                            return {
-                                ...oldData,
-                                pages: oldData.pages.map((page: any) => ({
-                                    ...page,
-                                    rows: (Array.isArray(page?.rows) ? page.rows : []).map((r: any) => {
-                                        const isMatch = rowId !== undefined && (r.id === rowId || r.uuid === rowId || r._id === rowId);
-                                        return isMatch ? { ...r, ...rowData } : r;
-                                    })
-                                }))
-                            };
-                        }
-                    );
-                } else if (action === 'DELETE') {
-                    queryClient.setQueriesData<any>(
-                        { predicate: tablePredicate },
-                        (oldData: any) => {
-                            if (!oldData || !Array.isArray(oldData.pages)) return oldData;
-                            const deleteTarget = rowId ?? event.old_record?.id ?? event.old_record?.uuid;
-                            return {
-                                ...oldData,
-                                pages: oldData.pages.map((page: any) => ({
-                                    ...page,
-                                    rows: (Array.isArray(page?.rows) ? page.rows : []).filter((r: any) =>
-                                        deleteTarget === undefined || (r.id !== deleteTarget && r.uuid !== deleteTarget && r._id !== deleteTarget)
-                                    ),
-                                    totalRows: typeof page.totalRows === 'number' ? Math.max(0, page.totalRows - 1) : page.totalRows,
-                                }))
-                            };
-                        }
-                    );
-                }
-            }
-
-            // Phase 2: Debounced background refetch (350ms) to ensure pagination and server consistency
+            // Background surgical refetch (300ms debounce) — ensures exact server ordering, filtering, and valid rows
             const doRefetch = () => {
                 queryClient.refetchQueries({
                     predicate: tablePredicate,
@@ -447,7 +378,7 @@ export function useRealtimeSubscription(projectId: string | undefined) {
 
             const now = Date.now();
             const timeSinceLastRefetch = now - lastRefetchTimeRef.current;
-            const THROTTLE_WINDOW = 350;
+            const THROTTLE_WINDOW = 300;
 
             if (timeSinceLastRefetch >= THROTTLE_WINDOW) {
                 if (throttleTimerRef.current) {
