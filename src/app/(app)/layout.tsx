@@ -418,7 +418,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                     "p-3 sm:p-4 md:p-6 pb-36 md:pb-24": !isEditorOrDbPage,
                 })}>
                     {userId && <InvitationAlerts initialInvites={invitations} />}
-                    <div className={cn("flex-1 min-h-0 h-full flex flex-col", isEditorOrDbPage ? "overflow-hidden" : "overflow-auto")}>{children}</div>
+                    <div data-scroll-container="true" className={cn("flex-1 min-h-0 h-full flex flex-col", isEditorOrDbPage ? "overflow-hidden" : "overflow-auto")}>{children}</div>
                     {shouldShowDock && (
                         <div className="pointer-events-none fixed bottom-3 left-0 right-0 z-50 flex justify-center px-2 sm:bottom-4">
                             <Dock items={dockItems} className="pointer-events-auto" />

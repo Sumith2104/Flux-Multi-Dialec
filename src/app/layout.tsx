@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
+import { ScrollIndicator } from "@/components/ui/scroll-indicator";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { GlobalAlertProvider } from "@/components/global-alert-provider";
 import { QueryProvider } from "@/components/query-provider";
@@ -89,6 +90,7 @@ export default function RootLayout({
               <GlobalAlertProvider>
                 <TooltipProvider delayDuration={200}>
                   {children}
+                  <ScrollIndicator />
                   <Toaster />
                 </TooltipProvider>
               </GlobalAlertProvider>
