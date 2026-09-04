@@ -20,6 +20,8 @@ const needsSsl = !!(
     process.env.NODE_ENV === 'production'
 );
 
+const isNewPool = !global._pool;
+
 export const pool: Pool = global._pool || new Pool({
     connectionString,
     ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
@@ -33,10 +35,11 @@ if (process.env.NODE_ENV !== 'production') {
     global._pool = pool;
 }
 
-// Trap idle connection errors to prevent unhandled node crashes
-pool.on('error', (err: any) => {
-    console.warn('[PostgreSQL Pool] Idle client warning (handled safely):', err?.message || err);
-});
+// Trap idle connection errors and handle shutdown only on initial instantiation to prevent MaxListenersExceededWarning
+if (isNewPool) {
+    pool.on('error', (err: any) => {
+        console.warn('[PostgreSQL Pool] Idle client warning (handled safely):', err?.message || err);
+    });
 
     if (typeof process !== 'undefined') {
         const handleShutdown = async () => {
@@ -47,6 +50,7 @@ pool.on('error', (err: any) => {
         process.once('SIGTERM', handleShutdown);
         process.once('SIGINT', handleShutdown);
     }
+}
 
 // Keep backward compatibility for existing routes
 export function getPgPool(): Pool {

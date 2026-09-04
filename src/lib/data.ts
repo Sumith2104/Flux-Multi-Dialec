@@ -136,14 +136,27 @@ export async function getProjectsForCurrentUser(overrideUserId?: string): Promis
 
     try {
         const pool = getPgPool();
-        const result = await pool.query(`
+        const sqlQuery = `
             SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.ai_allow_destructive, p.ai_schema_inference, p.status, p.creator_role, p.billing_preference,
                    COALESCE(pm.role, CASE WHEN p.user_id = $1::text THEN 'admin' ELSE 'developer' END) as role
             FROM fluxbase_global.projects p
             LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $1::text
             WHERE p.user_id = $1::text OR pm.user_id = $1::text
             ORDER BY p.created_at DESC
-        `, [userId]);
+        `;
+
+        let result;
+        try {
+            result = await pool.query(sqlQuery, [userId]);
+        } catch (initialErr: any) {
+            // If connection was dropped/timed out by AWS RDS idle timer, retry once cleanly
+            if (initialErr?.message?.includes('Connection') || initialErr?.code === '57P01' || initialErr?.code === 'ECONNRESET') {
+                await new Promise(res => setTimeout(res, 300));
+                result = await pool.query(sqlQuery, [userId]);
+            } else {
+                throw initialErr;
+            }
+        }
 
         return result.rows.map(row => ({
             project_id: row.project_id,
