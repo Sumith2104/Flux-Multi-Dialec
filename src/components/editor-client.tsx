@@ -155,12 +155,30 @@ export function EditorClient({
     const sqlInputRef = useRef<HTMLInputElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
     // â”€â”€ Tier 1: Column visibility â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
+    const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => {
+        if (typeof window === 'undefined' || !projectId || !tableName) return new Set();
+        try {
+            const h = localStorage.getItem(`hidden_${projectId}_${tableName}`);
+            return h ? new Set(JSON.parse(h)) : new Set();
+        } catch { return new Set(); }
+    });
     const [showColumnPanel, setShowColumnPanel] = useState(false);
     // â”€â”€ Tier 1: Server-side sorts (multi-column) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    const [sorts, setSorts] = useState<SortState[]>([]);
+    const [sorts, setSorts] = useState<SortState[]>(() => {
+        if (typeof window === 'undefined' || !projectId || !tableName) return [];
+        try {
+            const s = localStorage.getItem(`sorts_${projectId}_${tableName}`);
+            return s ? JSON.parse(s) : [];
+        } catch { return []; }
+    });
     // â”€â”€ Tier 1: Server-side multi-filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    const [filters, setFilters] = useState<{id:string;field:string;op:string;value:string}[]>([]);
+    const [filters, setFilters] = useState<{id:string;field:string;op:string;value:string}[]>(() => {
+        if (typeof window === 'undefined' || !projectId || !tableName) return [];
+        try {
+            const f = localStorage.getItem(`filters_${projectId}_${tableName}`);
+            return f ? JSON.parse(f) : [];
+        } catch { return []; }
+    });
     const [showFilterPanel, setShowFilterPanel] = useState(false);
 
     const [foreignKeyData, setForeignKeyData] = useState<Record<string, any[]>>({});
@@ -218,9 +236,9 @@ export function EditorClient({
             const s = localStorage.getItem(`sorts_${projectId}_${tableName}`);
             const f = localStorage.getItem(`filters_${projectId}_${tableName}`);
             const h = localStorage.getItem(`hidden_${projectId}_${tableName}`);
-            if (s) setSorts(JSON.parse(s));
-            if (f) setFilters(JSON.parse(f));
-            if (h) setHiddenColumns(new Set(JSON.parse(h)));
+            setSorts(s ? JSON.parse(s) : []);
+            setFilters(f ? JSON.parse(f) : []);
+            setHiddenColumns(h ? new Set(JSON.parse(h)) : new Set());
         } catch { /* ignore */ }
     }, [projectId, tableName]);
     useEffect(() => { if (projectId && tableName) localStorage.setItem(`sorts_${projectId}_${tableName}`, JSON.stringify(sorts)); }, [sorts, projectId, tableName]);
@@ -281,9 +299,11 @@ export function EditorClient({
 
     // Removed legacy fetchTableData and AbortControllers, useInfiniteQuery handles it
 
+    // Lazy-load foreign key lookup data only when "Add Row" dialog opens
+    // Prevents exhausting tenant database connection pool during initial table load
     useEffect(() => {
         async function fetchFkData() {
-            if (!initialColumns.length) return;
+            if (!isAddRowOpen || !initialColumns.length) return;
 
             const fkConstraints = constraints.filter(c => c.type === 'FOREIGN KEY');
             if (!fkConstraints.length) {
@@ -298,7 +318,7 @@ export function EditorClient({
                     const refTable = allTables.find(t => t.table_id === constraint.referenced_table_id);
                     if (refTable) {
                         try {
-                            const res = await fetch(`/api/table-data?projectId=${projectId}&tableName=${refTable.table_name}&pageSize=200`);
+                            const res = await fetch(`/api/table-data?projectId=${projectId}&tableName=${refTable.table_name}&pageSize=50`);
                             if (res.ok) {
                                 const data = await res.json();
                                 fkData[col.column_name] = data.rows;
@@ -312,7 +332,7 @@ export function EditorClient({
             setForeignKeyData(fkData);
         }
         fetchFkData();
-    }, [initialColumns, constraints, allTables, projectId]);
+    }, [isAddRowOpen, initialColumns, constraints, allTables, projectId]);
 
     const refreshData = useCallback(() => {
         // refetchQueries forces an immediate network request, bypassing the staleTime.

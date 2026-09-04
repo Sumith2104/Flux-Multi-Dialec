@@ -50,6 +50,11 @@ export async function invalidateTableCache(projectId: string, tableId: string): 
     // views. Beyond that, stale pages expire via their 60s TTL.
     // (Full pattern-delete would require Redis SCAN which Upstash REST doesn't support inline.)
     try {
+        const { invalidateDataMemoryCache } = await import('@/lib/data');
+        await invalidateDataMemoryCache(projectId, tableId);
+    } catch {}
+
+    try {
         const keys = Array.from({ length: 20 }, (_, p) => `fluxTable_${projectId}_${tableId}_p${p}`);
         await redis.del(...keys);
     } catch (e) {

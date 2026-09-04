@@ -72,7 +72,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Invalid pagination parameters.' }, { status: 400 });
     }
 
-    const data = await getTableData(projectId, tableName, page, pageSize, userId, sorts, filters);
+    const data = await getTableData(projectId, tableName, page, pageSize, userId, sorts, filters, project);
 
 
     // Track analytics in the background — do NOT await, we don't want
