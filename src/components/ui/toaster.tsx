@@ -1,4 +1,5 @@
 "use client"
+
 import * as React from "react"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -10,17 +11,8 @@ import {
   ToastViewport,
 } from "@/components/ui/toast"
 
-export function Toaster() {
+function ToasterInner() {
   const { toasts } = useToast()
-  const [mounted, setMounted] = React.useState(false)
-
-  React.useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  if (!mounted) {
-    return null
-  }
 
   return (
     <ToastProvider>
@@ -41,4 +33,18 @@ export function Toaster() {
       <ToastViewport />
     </ToastProvider>
   )
+}
+
+export function Toaster() {
+  const [mounted, setMounted] = React.useState(false)
+
+  React.useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) {
+    return null
+  }
+
+  return <ToasterInner />
 }

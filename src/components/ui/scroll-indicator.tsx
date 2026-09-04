@@ -6,6 +6,8 @@ import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
 
+const BOTTOM_THRESHOLD_PX = 75;
+
 export function ScrollIndicator() {
   const pathname = usePathname();
   const [hasContentBelow, setHasContentBelow] = useState(false);
@@ -13,52 +15,66 @@ export function ScrollIndicator() {
   const activeContainerRef = useRef<HTMLElement | null>(null);
   const lastCheckTimeRef = useRef(0);
 
-  // Fast, targeted scroll container finder without querying all DOM elements
+  // Fast targeted scroll container finder (e.g., in AppLayout)
   const findScrollContainer = useCallback((): HTMLElement | null => {
     if (typeof document === 'undefined') return null;
 
     // 1. Explicitly tagged container in AppLayout
     const tagged = document.querySelector<HTMLElement>('[data-scroll-container="true"]');
-    if (tagged && tagged.scrollHeight > tagged.clientHeight + 25) {
+    if (tagged && tagged.scrollHeight > tagged.clientHeight + 30) {
       return tagged;
     }
 
     // 2. Main overflow container in dashboard
     const mainOverflow = document.querySelector<HTMLElement>('main div.overflow-auto, main.overflow-y-auto');
-    if (mainOverflow && mainOverflow.scrollHeight > mainOverflow.clientHeight + 25) {
+    if (mainOverflow && mainOverflow.scrollHeight > mainOverflow.clientHeight + 30) {
       return mainOverflow;
     }
 
     return null;
   }, []);
 
-  const checkScroll = useCallback(() => {
+  const checkScroll = useCallback((targetElement?: HTMLElement | null) => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
-    const docEl = document.documentElement;
-    const body = document.body;
-
-    const windowScrollHeight = Math.max(docEl.scrollHeight, body.scrollHeight);
-    const windowClientHeight = window.innerHeight;
-    const windowScrollTop = window.scrollY || docEl.scrollTop || 0;
-
-    const windowCanScroll = windowScrollHeight > windowClientHeight + 35;
-
-    if (windowCanScroll) {
-      activeContainerRef.current = null;
-      const windowRemaining = windowScrollHeight - (windowScrollTop + windowClientHeight);
-      setHasContentBelow(windowRemaining > 35);
+    // 1. If a specific scrollable element triggered the scroll or is active:
+    const target = targetElement || activeContainerRef.current;
+    if (target && target.scrollHeight > target.clientHeight + 30) {
+      const remaining = target.scrollHeight - (target.scrollTop + target.clientHeight);
+      setHasContentBelow(remaining > BOTTOM_THRESHOLD_PX);
       return;
     }
 
+    // 2. Check if an app container exists and is scrollable (prioritized over window for app routes)
     const container = findScrollContainer();
     if (container) {
       activeContainerRef.current = container;
-      const containerRemaining = container.scrollHeight - (container.scrollTop + container.clientHeight);
-      setHasContentBelow(containerRemaining > 35);
+      const isScrollable = container.scrollHeight > container.clientHeight + 40;
+      if (!isScrollable) {
+        setHasContentBelow(false);
+        return;
+      }
+      const remaining = container.scrollHeight - (container.scrollTop + container.clientHeight);
+      setHasContentBelow(remaining > BOTTOM_THRESHOLD_PX);
       return;
     }
 
+    // 3. Fallback to window scroll (public pages like /, /pricing, /docs)
+    const docEl = document.documentElement;
+    const body = document.body;
+    const windowScrollHeight = Math.max(docEl.scrollHeight, body.scrollHeight);
+    const windowClientHeight = window.innerHeight || docEl.clientHeight;
+    const windowScrollTop = window.scrollY || docEl.scrollTop || body.scrollTop || 0;
+
+    const windowCanScroll = windowScrollHeight > windowClientHeight + 40;
+    if (windowCanScroll) {
+      activeContainerRef.current = null;
+      const remaining = windowScrollHeight - (windowScrollTop + windowClientHeight);
+      setHasContentBelow(remaining > BOTTOM_THRESHOLD_PX);
+      return;
+    }
+
+    // Not scrollable
     activeContainerRef.current = null;
     setHasContentBelow(false);
   }, [findScrollContainer]);
@@ -68,34 +84,42 @@ export function ScrollIndicator() {
     checkScroll();
 
     let scrollRafId: number | null = null;
-    const handleScrollThrottled = () => {
-      const now = performance.now();
-      // Throttle to at most once per 120ms during active scrolling to prevent layout thrashing
-      if (now - lastCheckTimeRef.current < 120) {
+
+    const handleScroll = (e: Event) => {
+      const target = e.target;
+      // If a specific DOM element inside the page was scrolled
+      if (target && target instanceof HTMLElement && target.scrollHeight > target.clientHeight + 30) {
+        activeContainerRef.current = target;
+        const remaining = target.scrollHeight - (target.scrollTop + target.clientHeight);
+        setHasContentBelow(remaining > BOTTOM_THRESHOLD_PX);
         return;
       }
+
+      // Throttled check for window scroll
+      const now = performance.now();
+      if (now - lastCheckTimeRef.current < 100) return;
       lastCheckTimeRef.current = now;
 
       if (scrollRafId) cancelAnimationFrame(scrollRafId);
-      scrollRafId = requestAnimationFrame(checkScroll);
+      scrollRafId = requestAnimationFrame(() => checkScroll(null));
     };
 
     let resizeTimer: NodeJS.Timeout | null = null;
     const handleResize = () => {
       if (resizeTimer) clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(checkScroll, 150);
+      resizeTimer = setTimeout(() => checkScroll(null), 120);
     };
 
-    window.addEventListener('scroll', handleScrollThrottled, { passive: true, capture: true });
+    window.addEventListener('scroll', handleScroll, { passive: true, capture: true });
     window.addEventListener('resize', handleResize, { passive: true });
 
-    // Lightweight staggered timers after navigation to catch late data loading
-    const timer1 = setTimeout(checkScroll, 120);
-    const timer2 = setTimeout(checkScroll, 400);
-    const timer3 = setTimeout(checkScroll, 1000);
+    // Lightweight staggered timers after navigation to catch dynamic data
+    const timer1 = setTimeout(() => checkScroll(null), 100);
+    const timer2 = setTimeout(() => checkScroll(null), 350);
+    const timer3 = setTimeout(() => checkScroll(null), 900);
 
     return () => {
-      window.removeEventListener('scroll', handleScrollThrottled, { capture: true });
+      window.removeEventListener('scroll', handleScroll, { capture: true });
       window.removeEventListener('resize', handleResize);
       if (scrollRafId) cancelAnimationFrame(scrollRafId);
       if (resizeTimer) clearTimeout(resizeTimer);
