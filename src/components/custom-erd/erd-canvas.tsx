@@ -609,12 +609,17 @@ export function ErdCanvas({ tables, columns, constraints, projectId }: ErdCanvas
         style={{
             backgroundImage: `radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0)`,
             backgroundSize: `${24 * transform.scale}px ${24 * transform.scale}px`,
-            backgroundPosition: `${transform.x}px ${transform.y}px`
+            backgroundPosition: `${transform.x}px ${transform.y}px`,
+            contain: 'paint layout',
         }}
     >
       <div 
         className="absolute top-0 left-0 w-full h-full transform-gpu origin-top-left"
-        style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` }}
+        style={{
+          transform: `translate3d(${transform.x}px, ${transform.y}px, 0) scale(${transform.scale})`,
+          willChange: 'transform',
+          backfaceVisibility: 'hidden',
+        }}
       >
         {/* Draw edges first so they are underneath nodes */}
         <RelationshipEdges 

@@ -41,7 +41,8 @@ export function ScrollIndicator() {
     const target = targetElement || activeContainerRef.current;
     if (target && target.scrollHeight > target.clientHeight + 30) {
       const remaining = target.scrollHeight - (target.scrollTop + target.clientHeight);
-      setHasContentBelow(remaining > BOTTOM_THRESHOLD_PX);
+      const nextVal = remaining > BOTTOM_THRESHOLD_PX;
+      setHasContentBelow(prev => prev !== nextVal ? nextVal : prev);
       return;
     }
 
@@ -51,11 +52,12 @@ export function ScrollIndicator() {
       activeContainerRef.current = container;
       const isScrollable = container.scrollHeight > container.clientHeight + 40;
       if (!isScrollable) {
-        setHasContentBelow(false);
+        setHasContentBelow(prev => prev !== false ? false : prev);
         return;
       }
       const remaining = container.scrollHeight - (container.scrollTop + container.clientHeight);
-      setHasContentBelow(remaining > BOTTOM_THRESHOLD_PX);
+      const nextVal = remaining > BOTTOM_THRESHOLD_PX;
+      setHasContentBelow(prev => prev !== nextVal ? nextVal : prev);
       return;
     }
 
@@ -70,13 +72,14 @@ export function ScrollIndicator() {
     if (windowCanScroll) {
       activeContainerRef.current = null;
       const remaining = windowScrollHeight - (windowScrollTop + windowClientHeight);
-      setHasContentBelow(remaining > BOTTOM_THRESHOLD_PX);
+      const nextVal = remaining > BOTTOM_THRESHOLD_PX;
+      setHasContentBelow(prev => prev !== nextVal ? nextVal : prev);
       return;
     }
 
     // Not scrollable
     activeContainerRef.current = null;
-    setHasContentBelow(false);
+    setHasContentBelow(prev => prev !== false ? false : prev);
   }, [findScrollContainer]);
 
   useEffect(() => {
@@ -86,22 +89,25 @@ export function ScrollIndicator() {
     let scrollRafId: number | null = null;
 
     const handleScroll = (e: Event) => {
-      const target = e.target;
-      // If a specific DOM element inside the page was scrolled
-      if (target && target instanceof HTMLElement && target.scrollHeight > target.clientHeight + 30) {
-        activeContainerRef.current = target;
-        const remaining = target.scrollHeight - (target.scrollTop + target.clientHeight);
-        setHasContentBelow(remaining > BOTTOM_THRESHOLD_PX);
-        return;
-      }
-
-      // Throttled check for window scroll
       const now = performance.now();
-      if (now - lastCheckTimeRef.current < 100) return;
+      if (now - lastCheckTimeRef.current < 80) return;
       lastCheckTimeRef.current = now;
 
       if (scrollRafId) cancelAnimationFrame(scrollRafId);
-      scrollRafId = requestAnimationFrame(() => checkScroll(null));
+      const target = e.target instanceof HTMLElement && e.target.scrollHeight > e.target.clientHeight + 30
+        ? e.target
+        : null;
+
+      scrollRafId = requestAnimationFrame(() => {
+        if (target) {
+          activeContainerRef.current = target;
+          const remaining = target.scrollHeight - (target.scrollTop + target.clientHeight);
+          const nextVal = remaining > BOTTOM_THRESHOLD_PX;
+          setHasContentBelow(prev => prev !== nextVal ? nextVal : prev);
+          return;
+        }
+        checkScroll(null);
+      });
     };
 
     let resizeTimer: NodeJS.Timeout | null = null;

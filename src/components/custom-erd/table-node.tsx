@@ -1,4 +1,4 @@
-﻿import React, { useRef } from 'react';
+import React, { useRef } from 'react';
 import { type Table, type Column } from '@/lib/data';
 import { Database, KeyRound, Link2 } from 'lucide-react';
 
@@ -13,7 +13,7 @@ interface TableNodeProps {
   onDrag: (dx: number, dy: number) => void;
 }
 
-export function TableNode({ table, columns, pks, fks, x, y, width, onDrag }: TableNodeProps) {
+export const TableNode = React.memo(function TableNode({ table, columns, pks, fks, x, y, width, onDrag }: TableNodeProps) {
   const nodeRef = useRef<HTMLDivElement>(null);
 
   const getLabel = (val: any): string => {
@@ -27,16 +27,21 @@ export function TableNode({ table, columns, pks, fks, x, y, width, onDrag }: Tab
     e.stopPropagation(); // Prevent canvas drag
     let currentX = e.clientX;
     let currentY = e.clientY;
+    let rafId: number | null = null;
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
       const dx = moveEvent.clientX - currentX;
       const dy = moveEvent.clientY - currentY;
-      onDrag(dx, dy);
       currentX = moveEvent.clientX;
       currentY = moveEvent.clientY;
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        onDrag(dx, dy);
+      });
     };
 
     const handlePointerUp = () => {
+      if (rafId) cancelAnimationFrame(rafId);
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
     };
@@ -48,11 +53,12 @@ export function TableNode({ table, columns, pks, fks, x, y, width, onDrag }: Tab
   return (
     <div
       ref={nodeRef}
-      className="erd-node absolute rounded-lg border border-border bg-secondary/85 shadow-2xl font-sans backdrop-blur-xl overflow-hidden ring-1 ring-border/50 hover:ring-orange-500/50 transition-colors transition-shadow duration-300 select-none z-10"
+      className="erd-node absolute rounded-lg border border-border bg-secondary/85 shadow-2xl font-sans backdrop-blur-xl overflow-hidden ring-1 ring-border/50 hover:ring-orange-500/50 select-none z-10"
       style={{
-        transform: `translate(${x}px, ${y}px)`,
+        transform: `translate3d(${x}px, ${y}px, 0)`,
         width: `${width}px`,
-        cursor: 'grab'
+        cursor: 'grab',
+        willChange: 'transform',
       }}
       onPointerDown={handlePointerDown}
     >
@@ -103,4 +109,4 @@ export function TableNode({ table, columns, pks, fks, x, y, width, onDrag }: Tab
       </div>
     </div>
   );
-}
+});

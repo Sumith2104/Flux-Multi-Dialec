@@ -12,7 +12,7 @@ interface RelationshipEdgesProps {
 const ROW_HEIGHT = 24; // 16px text + 8px vertical padding (py-0.5 is 4px top and bottom total in container)
 const HEADER_HEIGHT = 44; // p-3 (12px * 2) + line height (20px)
 
-export function RelationshipEdges({ tables, columns, constraints, nodePositions, scale }: RelationshipEdgesProps) {
+export const RelationshipEdges = React.memo(function RelationshipEdges({ tables, columns, constraints, nodePositions, scale }: RelationshipEdgesProps) {
   const [hoveredEdge, setHoveredEdge] = useState<{
     id: string;
     sourceTable: string;
@@ -196,4 +196,4 @@ export function RelationshipEdges({ tables, columns, constraints, nodePositions,
       )}
     </>
   );
-}
+});

@@ -51,39 +51,8 @@ interface DataTableProps {
 /*  Constants / helpers                                                */
 /* ------------------------------------------------------------------ */
 
-const STATUS_PILLS: Record<string, { bg: string; fg: string }> = {
-  active: { bg: 'bg-emerald-500/15', fg: 'text-emerald-400' },
-  completed: { bg: 'bg-emerald-500/15', fg: 'text-emerald-400' },
-  success: { bg: 'bg-emerald-500/15', fg: 'text-emerald-400' },
-  true: { bg: 'bg-emerald-500/15', fg: 'text-emerald-400' },
-  yes: { bg: 'bg-emerald-500/15', fg: 'text-emerald-400' },
-  1: { bg: 'bg-emerald-500/15', fg: 'text-emerald-400' },
-  hold: { bg: 'bg-amber-500/15', fg: 'text-amber-400' },
-  pending: { bg: 'bg-amber-500/15', fg: 'text-amber-400' },
-  warning: { bg: 'bg-amber-500/15', fg: 'text-amber-400' },
-  paused: { bg: 'bg-amber-500/15', fg: 'text-amber-400' },
-  halt: { bg: 'bg-red-500/15', fg: 'text-red-400' },
-  error: { bg: 'bg-red-500/15', fg: 'text-red-400' },
-  failed: { bg: 'bg-red-500/15', fg: 'text-red-400' },
-  inactive: { bg: 'bg-red-500/15', fg: 'text-red-400' },
-  false: { bg: 'bg-zinc-500/15', fg: 'text-zinc-400' },
-  no: { bg: 'bg-zinc-500/15', fg: 'text-zinc-400' },
-  0: { bg: 'bg-zinc-500/15', fg: 'text-zinc-400' },
-  buy: { bg: 'bg-emerald-500/15', fg: 'text-emerald-400' },
-  long: { bg: 'bg-emerald-500/15', fg: 'text-emerald-400' },
-  sell: { bg: 'bg-red-500/15', fg: 'text-red-400' },
-  short: { bg: 'bg-red-500/15', fg: 'text-red-400' },
-};
-
 const NUMERIC_FIELDS = /price|balance|prob|amount|value|conf|fee|cost|pnl|profit|loss|volume|size|weight|percent/i;
 const NUMERIC_TYPES = /int|float|numeric|decimal|double|real|money/;
-
-function pillFor(field: string, value: string | null | undefined) {
-  if (value == null) return null;
-  const v = String(value).toLowerCase().trim();
-  if (/status|state/i.test(field) || /signal/i.test(field)) return STATUS_PILLS[v] ?? null;
-  return null;
-}
 
 function fmt(value: any, field: string, dtype?: string): string {
   if (value == null) return '';
@@ -448,7 +417,6 @@ interface CellProps {
   isSaving: boolean;
   isSaved: boolean;
   density: RowDensity;
-  statusStyle: { bg: string; fg: string } | null;
   isJsonCell: boolean;
   jsonExpanded: boolean;
   onToggleJson: () => void;
@@ -460,7 +428,7 @@ interface CellProps {
 
 function Cell({
   rowId, col, value, displayValue, isFocused, isDragSelected, isSaving, isSaved,
-  density, statusStyle, isJsonCell, jsonExpanded, onToggleJson, onCellSave, onFocus, onCommitStart, onCommitEnd,
+  density, isJsonCell, jsonExpanded, onToggleJson, onCellSave, onFocus, onCommitStart, onCommitEnd,
 }: CellProps) {
   const [editing, setEditing] = React.useState(false);
   const [editVal, setEditVal] = React.useState('');
@@ -503,12 +471,6 @@ function Cell({
     );
   }
 
-  const pill = statusStyle ? (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full font-semibold uppercase text-[10px] tracking-wide ${statusStyle.bg} ${statusStyle.fg}`}>
-      {String(value)}
-    </span>
-  ) : null;
-
   const jsonBlock = isJsonCell ? (
     <span className={`${DENSITY_CELL[density]} w-full flex items-center gap-1`}>
       <span className="truncate flex-1 min-w-0 font-mono">{displayValue.slice(0, 60)}{displayValue.length > 60 ? '...' : ''}</span>
@@ -533,13 +495,13 @@ function Cell({
     </span>
   ) : null;
 
-  const normalContent = !pill && !jsonBlock && !savingIndicator ? (
+  const normalContent = !jsonBlock && !savingIndicator ? (
     <span className={`${DENSITY_CELL[density]} w-full truncate`}>{displayValue || <span className="text-muted-foreground/30 italic">null</span>}</span>
   ) : null;
 
   return (
     <div
-      className={`relative flex h-full min-w-0 items-center overflow-hidden transition-colors duration-75
+      className={`relative flex h-full min-w-0 items-center overflow-hidden
         ${isDragSelected ? 'bg-primary/8' : ''}
         ${isSaving ? 'border-l-2 border-l-amber-500/70' : ''}
         ${isSaved ? 'border-l-2 border-l-green-500 bg-green-500/5' : ''}
@@ -551,7 +513,7 @@ function Cell({
       onFocus={handleFocus}
       tabIndex={0}
     >
-      {pill || jsonBlock || savingIndicator || normalContent}
+      {jsonBlock || savingIndicator || normalContent}
     </div>
   );
 }
@@ -635,19 +597,6 @@ export function DataTable({
   const deleteView = React.useCallback((id: string) => {
     const next = views.filter(v => v.id !== id); setViews(next); saveViews(lsKey, next);
   }, [views, lsKey]);
-
-  /* ── scroll info for status bar ── */
-  const [scrollInfo, setScrollInfo] = React.useState({ top: 0, vis: 0, total: 0 });
-  React.useEffect(() => {
-    const el = parentRef.current; if (!el) return;
-    const update = () => {
-      const top = Math.floor(el.scrollTop / DENSITY_H[density]);
-      const vis = Math.ceil(el.clientHeight / DENSITY_H[density]);
-      setScrollInfo({ top, vis, total: rows.length });
-    };
-    el.addEventListener('scroll', update, { passive: true }); update();
-    return () => el.removeEventListener('scroll', update);
-  }, [rows.length, density]);
 
   /* ── column resize ── */
   const resizing = React.useRef<{ field: string; x0: number; w0: number } | null>(null);
@@ -838,7 +787,7 @@ export function DataTable({
     <div className="relative flex flex-col h-full min-h-[200px] w-full max-w-full flex-1 overflow-hidden rounded-lg border border-border/50 bg-white/[0.03] backdrop-blur-2xl text-foreground shadow-2xl shadow-black/40">
 
       {/* ── Scrollable area ── */}
-      <div ref={parentRef} className="flex-1 overflow-auto relative custom-scrollbar" tabIndex={0} onKeyDown={handleKeyDown}>
+      <div ref={parentRef} className="flex-1 overflow-auto relative custom-scrollbar" data-scroll-container="true" style={{ willChange: 'scroll-position' }} tabIndex={0} onKeyDown={handleKeyDown}>
 
         {/* ── Sticky header ── */}
         <div className="sticky top-0 z-20 grid border-b border-border bg-secondary/80 backdrop-blur-md text-xs font-bold uppercase tracking-widest text-muted-foreground shadow-sm" style={{ gridTemplateColumns: gridCols, minWidth: '100%' }}>
@@ -890,10 +839,11 @@ export function DataTable({
               <div
                 key={vRow.index}
                 data-row-idx={vRow.index}
-                className={`absolute top-0 left-0 flex flex-col w-max min-w-full border-b border-border/30 transition-colors duration-100 ${isSel ? 'bg-primary/10' : 'hover:bg-secondary/40'} ${focused?.r === vRow.index ? 'ring-1 ring-inset ring-primary/30' : ''}`}
+                className={`absolute top-0 left-0 flex flex-col w-max min-w-full border-b border-border/30 ${isSel ? 'bg-primary/10' : 'hover:bg-secondary/40'} ${focused?.r === vRow.index ? 'ring-1 ring-inset ring-primary/30' : ''}`}
                 style={{
                   height: vRow.size + 'px',
-                  transform: `translateY(${vRow.start}px)`,
+                  transform: `translate3d(0, ${vRow.start}px, 0)`,
+                  willChange: 'transform',
                 }}
                 onClick={e => row && toggleSel(rowId, e)}
               >
@@ -910,7 +860,7 @@ export function DataTable({
                       setDragSel({ r1: focused.r, c1: focused.c, r2: vRow.index, c2: 0 });
                     }
                   }}
-                  onMouseMove={() => {
+                  onMouseEnter={() => {
                     if (dragging.current && dragSel) setDragSel(p => p ? { ...p, r2: vRow.index } : null);
                   }}
                 >
@@ -938,13 +888,12 @@ export function DataTable({
                       {visibleColumns.map((col, ci) => {
                         const cellVal = row[col.field];
                         const dispVal = fmt(cellVal, col.field, col.dataType);
-                        const pill = pillFor(col.field, cellVal);
                         const isFocused = focused?.r === vRow.index && focused?.c === ci;
                         const isDrag = inDrag(vRow.index, ci);
                         const isJsonCell = typeof cellVal === 'string' && isJson(cellVal);
                         return (
                           <React.Fragment key={col.field}>
-                            <div className={`relative flex h-full min-w-0 items-center overflow-hidden transition-colors duration-75
+                            <div className={`relative flex h-full min-w-0 items-center overflow-hidden
                               ${ci < visibleColumns.length - 1 ? 'border-r border-border/30' : ''}
                               ${isSel ? 'font-medium text-foreground' : 'text-foreground/85'}
                               ${savingCell === rowId + ':' + col.field ? 'border-l-2 border-l-amber-500/70' : ''}
@@ -987,10 +936,6 @@ export function DataTable({
                                   <Loader2 className="h-3 w-3 animate-spin shrink-0 text-amber-400" />
                                   <span className="truncate text-foreground/90 font-medium">{dispVal}</span>
                                 </span>
-                              ) : pill ? (
-                                <span className={`${DENSITY_CELL[density]} w-full`}>
-                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full font-semibold uppercase text-[10px] tracking-wide ${pill.bg} ${pill.fg}`}>{String(cellVal)}</span>
-                                </span>
                               ) : isJsonCell ? (
                                 <span className={`${DENSITY_CELL[density]} w-full flex items-center gap-1`}>
                                   <span className="truncate flex-1 min-w-0 font-mono">{dispVal.slice(0, 60)}{dispVal.length > 60 ? '...' : ''}</span>
@@ -1007,7 +952,7 @@ export function DataTable({
                                   )}
                                 </span>
                               ) : (
-                                <span className={`${DENSITY_CELL[density]} w-full truncate`}>{dispVal || <span className="text-muted-foreground/30 italic">null</span>}</span>
+                                <span className={`${DENSITY_CELL[density]} w-full truncate font-mono`}>{dispVal || <span className="text-muted-foreground/30 italic">null</span>}</span>
                               )}
                             </div>
                           </React.Fragment>
@@ -1061,7 +1006,11 @@ export function DataTable({
             : <><strong className="text-foreground/80">{rows.length.toLocaleString()}</strong> rows</>
           }</span>
           {selectionModel.length > 0 && <span className="ml-1 px-1.5 py-0.5 rounded bg-primary/15 text-primary font-medium">{selectionModel.length} selected</span>}
-          {rows.length > 0 && <span className="text-muted-foreground/50">Row {scrollInfo.top + 1}–{Math.min(scrollInfo.top + scrollInfo.vis, scrollInfo.total).toLocaleString()}</span>}
+          {rows.length > 0 && vItems.length > 0 && (
+            <span className="text-muted-foreground/50">
+              Row {(vItems[0]?.index + 1).toLocaleString()}–{(vItems[vItems.length - 1]?.index + 1).toLocaleString()}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           <button className={`p-1 rounded transition-colors ${undoRef.current.canUndo() ? 'text-foreground/70 hover:bg-muted' : 'text-muted-foreground/20 pointer-events-none'}`} onClick={handleUndo} title="Undo (Ctrl+Z)"><Undo2 className="h-3.5 w-3.5" /></button>

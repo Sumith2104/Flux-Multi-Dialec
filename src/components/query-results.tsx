@@ -211,7 +211,13 @@ export function QueryResults({ results, error, isGenerating, isLiveUpdating, has
                     )}
                 </div>
 
-                <div ref={scrollContainerRef} className="flex-grow relative overflow-auto" onScroll={handleScroll}>
+                <div
+                    ref={scrollContainerRef}
+                    className="flex-grow relative overflow-auto custom-scrollbar"
+                    data-scroll-container="true"
+                    style={{ willChange: 'scroll-position', contain: 'paint' }}
+                    onScroll={handleScroll}
+                >
                     {view === 'table' && (
                         <Table className="relative w-max min-w-full border-collapse border-spacing-0">
                             <TableHeader className="sticky top-0 z-20 shadow-sm">
@@ -246,7 +252,7 @@ export function QueryResults({ results, error, isGenerating, isLiveUpdating, has
                                         const rowKey = rowHasPk ? String(row[actualPkKey]) : `row_${rowIndex}`;
 
                                         return (
-                                            <TableRow key={rowKey} className="border-b border-border/50 hover:bg-muted/30 transition-colors group h-9">
+                                            <TableRow key={rowKey} className="border-b border-border/50 hover:bg-muted/30 group h-9">
                                                 {results.columns.map((col, colIndex) => {
                                                     const isEditing = editingCell?.rowIndex === rowIndex && editingCell?.columnName === col;
                                                     const isUpdating = updatingCell?.rowIndex === rowIndex && updatingCell?.columnName === col;
