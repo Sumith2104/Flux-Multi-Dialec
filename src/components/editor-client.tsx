@@ -262,8 +262,8 @@ export function EditorClient({
     } = useInfiniteQuery({
         queryKey: ['table-data', projectId, tableId, sorts, filters],
         initialPageParam: null as string | null,
-        queryFn: async ({ pageParam }) => {
-            if (!tableId || !tableName) return { rows: [], nextCursorId: null, hasMore: false };
+        queryFn: async ({ pageParam }): Promise<{ rows: any[]; nextCursorId: string | null; hasMore: boolean; totalRows?: number }> => {
+            if (!tableId || !tableName) return { rows: [], nextCursorId: null, hasMore: false, totalRows: 0 };
             let url = `/api/table-data?projectId=${projectId}&tableName=${tableName}&pageSize=50`;
             if (pageParam) url += `&page=${pageParam}`;
             if (sorts.length) url += `&sorts=${encodeURIComponent(JSON.stringify(sorts))}`;

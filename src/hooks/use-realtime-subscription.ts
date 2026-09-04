@@ -410,18 +410,19 @@ export function useRealtimeSubscription(projectId: string | undefined) {
             const now = Date.now();
             const lastRefetchTime = lastTableRefetchRef.current.get(tableKey) || 0;
             const elapsed = now - lastRefetchTime;
-            const THROTTLE_MS = 150; // 150ms per-table debounce
+            const BURST_WINDOW = 1200; // 1.2s batch window for streaming bot bursts
+            const IDLE_THRESHOLD = 3000; // If idle for > 3s, show first row instantly
 
-            if (elapsed >= THROTTLE_MS) {
-                // Execute immediately on the leading edge (0ms lag!)
+            if (elapsed >= IDLE_THRESHOLD) {
+                // First event after an idle period: execute immediately for 0ms instant response!
                 executeRefetch();
             } else {
-                // If a mutation arrives within 150ms of a previous one, schedule a trailing refetch
+                // If mutations arrive in a rapid burst, debounce the trailing edge
                 if (!tableTimersRef.current.has(tableKey)) {
                     const timer = setTimeout(() => {
                         tableTimersRef.current.delete(tableKey);
                         executeRefetch();
-                    }, THROTTLE_MS - elapsed);
+                    }, BURST_WINDOW);
                     tableTimersRef.current.set(tableKey, timer);
                 }
             }
