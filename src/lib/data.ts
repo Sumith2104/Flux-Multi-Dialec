@@ -101,15 +101,15 @@ import { FluxbaseError, ERROR_CODES } from '@/lib/error-codes';
 const _projectCache = new LRUCache<string, Project>({ max: 200, ttl: 60_000 });
 
 // Caches primary key column names per table (eliminates information_schema join on every row fetch)
-export const _tablePkCache = new LRUCache<string, string>({ max: 500, ttl: 3600_000 });
+const _tablePkCache = new LRUCache<string, string>({ max: 500, ttl: 3600_000 });
 
 // Caches row counts per table (60s TTL prevents full table scans on every page load/refresh)
-export const _tableCountCache = new LRUCache<string, number>({ max: 500, ttl: 60_000 });
+const _tableCountCache = new LRUCache<string, number>({ max: 500, ttl: 60_000 });
 
 // Caches resolved schema per table
-export const _schemaCache = new LRUCache<string, string>({ max: 500, ttl: 3600_000 });
+const _schemaCache = new LRUCache<string, string>({ max: 500, ttl: 3600_000 });
 
-export function invalidateTableCountCache(tableName?: string) {
+export async function invalidateTableCountCache(tableName?: string) {
     if (tableName) {
         for (const key of Array.from(_tableCountCache.keys())) {
             if (key.includes(`:${tableName}:`)) {

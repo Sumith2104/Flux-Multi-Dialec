@@ -64,7 +64,15 @@ function scheduleReconnect(projectId: string) {
     if (!state) return;
     state.status = 'closed';
     state.retryCount += 1;
-    const delay = Math.min(1000 * Math.pow(2, state.retryCount - 1), 15000);
+
+    // If WebSocket fails repeatedly, seamlessly fallback to SSE
+    if (state.retryCount >= 2 && state.listeners.size > 0) {
+        logger.warn(`[Realtime:${projectId}] WebSocket reconnect failed repeatedly. Falling back to SSE...`);
+        connectSSE(projectId, state);
+        return;
+    }
+
+    const delay = Math.min(1000 * Math.pow(2, state.retryCount - 1), 5000);
     logger.info(`[Realtime:${projectId}] Reconnecting in ${delay}ms…`);
     state.retryTimer = setTimeout(() => {
         if (connections.has(projectId) && connections.get(projectId)!.listeners.size > 0) {
@@ -134,13 +142,17 @@ async function startConnection(projectId: string) {
                     const payload = data.payload || data;
                     const tableRef = payload.table || payload.table_name || data.table || data.table_name || '';
                     const cleanTable = typeof tableRef === 'string' ? tableRef.split('.').pop() || tableRef : tableRef;
+                    const rawAction = payload.action || data.action || payload.operation || data.operation || '';
+                    const rawData = payload.record || payload.data || data.record || data.data;
+
                     const normalized: RealtimeEvent = {
                         ...data,
                         ...payload,
-                        type: payload.action ? 'update' : (payload.type || data.type || 'update'),
+                        type: rawAction ? 'update' : (payload.type || data.type || 'update'),
                         table: cleanTable,
-                        action: payload.action || data.action,
-                        data: payload.record || payload.data || data.record || data.data,
+                        action: String(rawAction).toUpperCase(),
+                        operation: String(rawAction).toUpperCase(),
+                        data: rawData,
                     };
                     notifyListeners(projectId, normalized);
                 } catch (e) {
@@ -222,14 +234,20 @@ async function connectSSE(projectId: string, state: ConnectionState) {
                     if (data.type === 'connected') continue;
 
                     // Normalize payload from DB trigger format
-                    const tableRef = data.table || '';
+                    const payload = data.payload || data;
+                    const tableRef = payload.table || payload.table_name || data.table || data.table_name || '';
                     const cleanTable = typeof tableRef === 'string' ? tableRef.split('.').pop() || tableRef : tableRef;
+                    const rawAction = payload.action || data.action || payload.operation || data.operation || '';
+                    const rawData = payload.record || payload.data || data.record || data.data;
+
                     const normalized: RealtimeEvent = {
                         ...data,
-                        type: data.action ? 'update' : (data.type || 'update'),
+                        ...payload,
+                        type: rawAction ? 'update' : (data.type || 'update'),
                         table: cleanTable,
-                        action: data.action,
-                        data: data.record,
+                        action: String(rawAction).toUpperCase(),
+                        operation: String(rawAction).toUpperCase(),
+                        data: rawData,
                     };
                     notifyListeners(projectId, normalized);
                 } catch (e) {
@@ -302,35 +320,119 @@ export function useRealtimeSubscription(projectId: string | undefined) {
             // Pass 1: IMMEDIATE (0ms)
             queryClient.invalidateQueries({ queryKey: ['schema', pid] });
 
-            // Pass 2: Propagation Safety (4000ms)
+            // Pass 2: Propagation Safety (3000ms)
             setTimeout(() => {
                 queryClient.invalidateQueries({ queryKey: ['schema', pid] });
-            }, 4000);
+            }, 3000);
 
-            // Pass 3: Consistency Check (10000ms)
+            // Pass 3: Consistency Check (8000ms)
             setTimeout(() => {
                 queryClient.invalidateQueries({ queryKey: ['schema', pid] });
-            }, 10000);
+            }, 8000);
+            return;
         }
 
         // 2. Handle Data Changes (Rows deleted/inserted/updated)
-        const isDataMutation = (event.type === 'update' || event.action || event.operation) &&
-                               event.type !== 'connected' &&
-                               event.type !== 'subscribed';
+        const action = String(event.action || event.operation || '').toUpperCase();
+        const isDataMutation = (
+            event.type === 'update' ||
+            event.type === 'db_event' ||
+            event.type === 'raw_sql_mutation' ||
+            ['INSERT', 'UPDATE', 'DELETE'].includes(action)
+        ) && event.type !== 'connected' && event.type !== 'subscribed';
 
         if (isDataMutation) {
             const table = event.table;
 
-            const doRefetch = () => {
-                // Surgical Refetch: targeted table refresh
-                queryClient.refetchQueries({
-                    predicate: (query) => {
-                        if (query.queryKey[0] !== 'table-data' || query.queryKey[1] !== projectId) return false;
-                        if (table && query.queryKey[2]) {
-                            return query.queryKey[2] === table;
+            const normalizeTable = (name: any) =>
+                String(name || '')
+                    .toLowerCase()
+                    .replace(/['"`]/g, '')
+                    .split('.')
+                    .pop()
+                    ?.trim() || '';
+
+            const tablePredicate = (query: any) => {
+                if (query.queryKey[0] !== 'table-data' || query.queryKey[1] !== projectId) return false;
+                if (table && query.queryKey[2]) {
+                    return normalizeTable(query.queryKey[2]) === normalizeTable(table);
+                }
+                return true;
+            };
+
+            // Phase 1: 0ms Optimistic in-memory cache update when event has row payload
+            if (event.data && typeof event.data === 'object' && !event.truncated) {
+                const rowData = event.data;
+                const rowId = rowData.id ?? rowData.uuid ?? rowData._id;
+
+                if (action === 'INSERT') {
+                    queryClient.setQueriesData<any>(
+                        { predicate: tablePredicate },
+                        (oldData: any) => {
+                            if (!oldData || !Array.isArray(oldData.pages) || oldData.pages.length === 0) return oldData;
+
+                            const alreadyExists = oldData.pages.some((page: any) =>
+                                Array.isArray(page?.rows) && page.rows.some((r: any) =>
+                                    rowId !== undefined && (r.id === rowId || r.uuid === rowId || r._id === rowId)
+                                )
+                            );
+                            if (alreadyExists) return oldData;
+
+                            const firstPage = oldData.pages[0];
+                            const updatedFirstPage = {
+                                ...firstPage,
+                                rows: [rowData, ...(Array.isArray(firstPage.rows) ? firstPage.rows : [])],
+                                totalRows: typeof firstPage.totalRows === 'number' ? firstPage.totalRows + 1 : firstPage.totalRows,
+                            };
+
+                            return {
+                                ...oldData,
+                                pages: [updatedFirstPage, ...oldData.pages.slice(1)],
+                            };
                         }
-                        return true;
-                    },
+                    );
+                } else if (action === 'UPDATE') {
+                    queryClient.setQueriesData<any>(
+                        { predicate: tablePredicate },
+                        (oldData: any) => {
+                            if (!oldData || !Array.isArray(oldData.pages)) return oldData;
+                            return {
+                                ...oldData,
+                                pages: oldData.pages.map((page: any) => ({
+                                    ...page,
+                                    rows: (Array.isArray(page?.rows) ? page.rows : []).map((r: any) => {
+                                        const isMatch = rowId !== undefined && (r.id === rowId || r.uuid === rowId || r._id === rowId);
+                                        return isMatch ? { ...r, ...rowData } : r;
+                                    })
+                                }))
+                            };
+                        }
+                    );
+                } else if (action === 'DELETE') {
+                    queryClient.setQueriesData<any>(
+                        { predicate: tablePredicate },
+                        (oldData: any) => {
+                            if (!oldData || !Array.isArray(oldData.pages)) return oldData;
+                            const deleteTarget = rowId ?? event.old_record?.id ?? event.old_record?.uuid;
+                            return {
+                                ...oldData,
+                                pages: oldData.pages.map((page: any) => ({
+                                    ...page,
+                                    rows: (Array.isArray(page?.rows) ? page.rows : []).filter((r: any) =>
+                                        deleteTarget === undefined || (r.id !== deleteTarget && r.uuid !== deleteTarget && r._id !== deleteTarget)
+                                    ),
+                                    totalRows: typeof page.totalRows === 'number' ? Math.max(0, page.totalRows - 1) : page.totalRows,
+                                }))
+                            };
+                        }
+                    );
+                }
+            }
+
+            // Phase 2: Debounced background refetch (350ms) to ensure pagination and server consistency
+            const doRefetch = () => {
+                queryClient.refetchQueries({
+                    predicate: tablePredicate,
                     type: 'active'
                 });
 
@@ -345,7 +447,7 @@ export function useRealtimeSubscription(projectId: string | undefined) {
 
             const now = Date.now();
             const timeSinceLastRefetch = now - lastRefetchTimeRef.current;
-            const THROTTLE_WINDOW = 2000;
+            const THROTTLE_WINDOW = 350;
 
             if (timeSinceLastRefetch >= THROTTLE_WINDOW) {
                 if (throttleTimerRef.current) {
