@@ -298,16 +298,16 @@ function subscribe(projectId: string, listener: Listener): () => void {
 
 // --- React Hook (thin wrapper around singleton) ---
 
+// Global per-project, per-table debounce timers across all hook instances (prevents duplicate refetches from multiple components)
+const globalLastTableRefetch = new Map<string, number>();
+const globalTableTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
 export function useRealtimeSubscription(projectId: string | undefined) {
     const [lastEvent, setLastEvent] = useState<RealtimeEvent | null>(null);
     const [status, setStatus] = useState<'idle' | 'connecting' | 'open' | 'closed'>('connecting');
     const queryClient = useQueryClient();
     const projectIdRef = useRef(projectId);
     projectIdRef.current = projectId;
-
-    // Per-table independent debouncing and timestamp tracking (prevents audit_logs from canceling user table refetches)
-    const lastTableRefetchRef = useRef<Map<string, number>>(new Map());
-    const tableTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
     // --- INSTANT CACHE SYNC LAYER ---
     const syncDatabase = useCallback((event: RealtimeEvent) => {
@@ -364,6 +364,7 @@ export function useRealtimeSubscription(projectId: string | undefined) {
             }
 
             const tableKey = targetTable || '*';
+            const timerKey = `${projectId}:${tableKey}`;
 
             // Check if there are active table-data queries for this project
             const activeQueries = queryClient.getQueryCache().getAll().filter(q => {
@@ -382,11 +383,11 @@ export function useRealtimeSubscription(projectId: string | undefined) {
             }
 
             const executeRefetch = () => {
-                lastTableRefetchRef.current.set(tableKey, Date.now());
-                const existingTimer = tableTimersRef.current.get(tableKey);
+                globalLastTableRefetch.set(timerKey, Date.now());
+                const existingTimer = globalTableTimers.get(timerKey);
                 if (existingTimer) {
                     clearTimeout(existingTimer);
-                    tableTimersRef.current.delete(tableKey);
+                    globalTableTimers.delete(timerKey);
                 }
 
                 // Surgical table refetch
@@ -408,7 +409,7 @@ export function useRealtimeSubscription(projectId: string | undefined) {
             };
 
             const now = Date.now();
-            const lastRefetchTime = lastTableRefetchRef.current.get(tableKey) || 0;
+            const lastRefetchTime = globalLastTableRefetch.get(timerKey) || 0;
             const elapsed = now - lastRefetchTime;
             const BURST_WINDOW = 1200; // 1.2s batch window for streaming bot bursts
             const IDLE_THRESHOLD = 3000; // If idle for > 3s, show first row instantly
@@ -418,12 +419,12 @@ export function useRealtimeSubscription(projectId: string | undefined) {
                 executeRefetch();
             } else {
                 // If mutations arrive in a rapid burst, debounce the trailing edge
-                if (!tableTimersRef.current.has(tableKey)) {
+                if (!globalTableTimers.has(timerKey)) {
                     const timer = setTimeout(() => {
-                        tableTimersRef.current.delete(tableKey);
+                        globalTableTimers.delete(timerKey);
                         executeRefetch();
                     }, BURST_WINDOW);
-                    tableTimersRef.current.set(tableKey, timer);
+                    globalTableTimers.set(timerKey, timer);
                 }
             }
         }
@@ -467,8 +468,6 @@ export function useRealtimeSubscription(projectId: string | undefined) {
             unsubscribe();
             window.removeEventListener('flux:schema-change', handleLocalSchemaChange);
             clearInterval(statusInterval);
-            tableTimersRef.current.forEach(timer => clearTimeout(timer));
-            tableTimersRef.current.clear();
         };
     }, [projectId, syncDatabase]);
 

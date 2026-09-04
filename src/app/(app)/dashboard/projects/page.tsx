@@ -56,6 +56,16 @@ export default function SelectProjectPage() {
   const [hasCopiedMcp, setHasCopiedMcp] = useState(false);
   const [mcpEnv, setMcpEnv] = useState<'vercel' | 'local'>('vercel');
 
+  // Subscription Quota Detection
+  const isUpgradedAccount = currentPlan === 'employee' || currentPlan === 'org_owner' || currentPlan === 'org' || currentPlan === 'max' || currentPlan === 'pro' || currentPlan === 'pay_as_you_go';
+
+  const maxAllowedProjects = 
+    (currentPlan === 'max' || currentPlan === 'org_owner' || currentPlan === 'org') ? 999999 :
+    (currentPlan === 'employee' || currentPlan === 'pay_as_you_go') ? 10 :
+    (currentPlan === 'pro') ? 3 : 1;
+
+  const hasAvailableQuota = isUpgradedAccount && projects.length < maxAllowedProjects;
+
   const fetchProjects = async () => {
     setLoading(true);
     setError(null);
@@ -137,7 +147,11 @@ export default function SelectProjectPage() {
   const openCreateModal = (dialect: 'postgresql' | 'mysql') => {
     setModalDialect(dialect);
     setProjectName('');
-    setSelectedRole(null);
+    const defaultRole: UserRoleOption = 
+      (currentPlan === 'org_owner' || currentPlan === 'org' || currentPlan === 'max') ? 'org_owner' :
+      (currentPlan === 'employee' || currentPlan === 'pro') ? 'employee' :
+      'student';
+    setSelectedRole(hasAvailableQuota ? defaultRole : null);
     setBillingPreference('monthly');
     setCompanyName('');
     setWorkDescription('');
@@ -147,7 +161,7 @@ export default function SelectProjectPage() {
     e.preventDefault();
     if (!projectName.trim() || !modalDialect || !selectedRole) return;
 
-    if (selectedRole !== 'student') {
+    if (!hasAvailableQuota && selectedRole !== 'student') {
       if (!companyName.trim()) {
         toast({
           variant: 'destructive',
@@ -169,10 +183,11 @@ export default function SelectProjectPage() {
     setIsSubmitting(true);
     try {
       const isAlreadyCovered = 
+        hasAvailableQuota ||
         (selectedRole === 'student') ||
-        (selectedRole === 'employee' && (currentPlan === 'employee' || currentPlan === 'org_owner')) ||
-        (selectedRole === 'org_owner' && currentPlan === 'org_owner') ||
-        (billingPreference === 'pay_as_you_go' && (currentPlan === 'pay_as_you_go' || currentPlan === 'employee' || currentPlan === 'org_owner'));
+        (selectedRole === 'employee' && (currentPlan === 'employee' || currentPlan === 'org_owner' || currentPlan === 'org' || currentPlan === 'max' || currentPlan === 'pro')) ||
+        (selectedRole === 'org_owner' && (currentPlan === 'org_owner' || currentPlan === 'org' || currentPlan === 'max')) ||
+        (billingPreference === 'pay_as_you_go' && (currentPlan === 'pay_as_you_go' || currentPlan === 'employee' || currentPlan === 'org_owner' || currentPlan === 'max'));
 
       if (!isAlreadyCovered) {
         // For Paid Tiers not yet purchased:
@@ -209,8 +224,8 @@ export default function SelectProjectPage() {
       formData.append('timezone', selectedTimezone);
       formData.append('userRole', selectedRole);
       formData.append('billingPreference', billingPreference);
-      formData.append('companyName', companyName.trim());
-      formData.append('workDescription', workDescription.trim());
+      formData.append('companyName', companyName.trim() || 'Organization Workspace');
+      formData.append('workDescription', workDescription.trim() || 'Dedicated workspace database');
       formData.append('connectionType', 'internal');
 
       const result = await createProjectAction(formData);
@@ -391,7 +406,7 @@ export default function SelectProjectPage() {
   const isFormValid = Boolean(
     projectName.trim() &&
     selectedRole &&
-    (selectedRole === 'student' || (companyName.trim() && workDescription.trim()))
+    (hasAvailableQuota || selectedRole === 'student' || (companyName.trim() && workDescription.trim()))
   );
 
   if (loading) {
@@ -661,74 +676,117 @@ export default function SelectProjectPage() {
             </div>
 
             {/* Role & Server Tier Selection */}
-            <div className="space-y-2 pt-1">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-semibold">Select Your Role & Server Tier</Label>
-                <span className="text-[11px] text-muted-foreground">
-                  {selectedRole ? `Selected: ${selectedRole.replace('_', ' ')}` : 'Please choose an option'}
-                </span>
+            {hasAvailableQuota ? (
+              <div className="rounded-xl p-4 bg-primary/5 border border-primary/20 space-y-2.5 animate-in fade-in duration-300">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-lg bg-primary/10 text-primary border border-primary/20">
+                      <ShieldCheck className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-foreground">
+                          {currentPlan === 'org_owner' || currentPlan === 'org' || currentPlan === 'max'
+                            ? 'Organization Owner Tier'
+                            : 'Employee Tier'}
+                        </span>
+                        <Badge variant="secondary" className="text-[10px] font-mono uppercase bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                          Active Plan
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {maxAllowedProjects >= 999999
+                          ? `Unlimited projects included in your plan (${projects.length} provisioned)`
+                          : `Project ${projects.length + 1} of ${maxAllowedProjects} included under your active subscription`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border/50 text-[11px] text-muted-foreground">
+                  <div>
+                    <span className="text-foreground font-medium">Compute: </span>
+                    {currentPlan === 'org_owner' || currentPlan === 'org' || currentPlan === 'max' ? '8 vCPU Xeon (32GB)' : '2 vCPU Dedicated (4GB)'}
+                  </div>
+                  <div>
+                    <span className="text-foreground font-medium">Storage: </span>
+                    {currentPlan === 'org_owner' || currentPlan === 'org' || currentPlan === 'max' ? '100GB NVMe' : '10GB SSD'}
+                  </div>
+                  <div>
+                    <span className="text-foreground font-medium">Cost: </span>
+                    <span className="text-emerald-500 font-semibold">₹0 (Included)</span>
+                  </div>
+                </div>
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                
-                {/* Student */}
-                <button
-                  type="button"
-                  onClick={() => setSelectedRole('student')}
-                  className={cn(
-                    "flex flex-col items-start p-3 rounded-lg border text-left transition-all relative overflow-hidden",
-                    selectedRole === 'student'
-                      ? "border-foreground bg-secondary/80 text-foreground"
-                      : "border-border/80 bg-secondary/30 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
-                  )}
-                >
-                  <div className="flex items-center justify-end w-full mb-1">
-                    <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary">₹0 Free</span>
-                  </div>
-                  <span className="text-xs font-bold text-foreground">Student</span>
-                  <span className="text-[10px] text-muted-foreground mt-0.5 leading-tight">Shared Micro Sandbox</span>
-                </button>
+            ) : (
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold">Select Your Role & Server Tier</Label>
+                  <span className="text-[11px] text-muted-foreground">
+                    {selectedRole ? `Selected: ${selectedRole.replace('_', ' ')}` : 'Please choose an option'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  
+                  {/* Student */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRole('student')}
+                    className={cn(
+                      "flex flex-col items-start p-3 rounded-lg border text-left transition-all relative overflow-hidden",
+                      selectedRole === 'student'
+                        ? "border-foreground bg-secondary/80 text-foreground"
+                        : "border-border/80 bg-secondary/30 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+                    )}
+                  >
+                    <div className="flex items-center justify-end w-full mb-1">
+                      <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary">₹0 Free</span>
+                    </div>
+                    <span className="text-xs font-bold text-foreground">Student</span>
+                    <span className="text-[10px] text-muted-foreground mt-0.5 leading-tight">Shared Micro Sandbox</span>
+                  </button>
 
-                {/* Employee */}
-                <button
-                  type="button"
-                  onClick={() => setSelectedRole('employee')}
-                  className={cn(
-                    "flex flex-col items-start p-3 rounded-lg border text-left transition-all relative overflow-hidden",
-                    selectedRole === 'employee'
-                      ? "border-foreground bg-secondary/80 text-foreground"
-                      : "border-border/80 bg-secondary/30 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
-                  )}
-                >
-                  <div className="flex items-center justify-end w-full mb-1">
-                    <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">₹500/mo</span>
-                  </div>
-                  <span className="text-xs font-bold text-foreground">Employee</span>
-                  <span className="text-[10px] text-muted-foreground mt-0.5 leading-tight">High-Performance (2 vCPU)</span>
-                </button>
+                  {/* Employee */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRole('employee')}
+                    className={cn(
+                      "flex flex-col items-start p-3 rounded-lg border text-left transition-all relative overflow-hidden",
+                      selectedRole === 'employee'
+                        ? "border-foreground bg-secondary/80 text-foreground"
+                        : "border-border/80 bg-secondary/30 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+                    )}
+                  >
+                    <div className="flex items-center justify-end w-full mb-1">
+                      <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">₹500/mo</span>
+                    </div>
+                    <span className="text-xs font-bold text-foreground">Employee</span>
+                    <span className="text-[10px] text-muted-foreground mt-0.5 leading-tight">High-Performance (2 vCPU)</span>
+                  </button>
 
-                {/* Org Owner */}
-                <button
-                  type="button"
-                  onClick={() => setSelectedRole('org_owner')}
-                  className={cn(
-                    "flex flex-col items-start p-3 rounded-lg border text-left transition-all relative overflow-hidden",
-                    selectedRole === 'org_owner'
-                      ? "border-foreground bg-secondary/80 text-foreground"
-                      : "border-border/80 bg-secondary/30 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
-                  )}
-                >
-                  <div className="flex items-center justify-end w-full mb-1">
-                    <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">₹5,000/mo</span>
-                  </div>
-                  <span className="text-xs font-bold text-foreground">Org Owner</span>
-                  <span className="text-[10px] text-muted-foreground mt-0.5 leading-tight">Top-Grade (8 vCPU NVMe)</span>
-                </button>
+                  {/* Org Owner */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRole('org_owner')}
+                    className={cn(
+                      "flex flex-col items-start p-3 rounded-lg border text-left transition-all relative overflow-hidden",
+                      selectedRole === 'org_owner'
+                        ? "border-foreground bg-secondary/80 text-foreground"
+                        : "border-border/80 bg-secondary/30 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+                    )}
+                  >
+                    <div className="flex items-center justify-end w-full mb-1">
+                      <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">₹5,000/mo</span>
+                    </div>
+                    <span className="text-xs font-bold text-foreground">Org Owner</span>
+                    <span className="text-[10px] text-muted-foreground mt-0.5 leading-tight">Top-Grade (8 vCPU NVMe)</span>
+                  </button>
 
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Server Specifications & Pay-As-You-Go Preview */}
-            {selectedRole && (
+            {/* Server Specifications & Pay-As-You-Go Preview (Only if choosing a plan) */}
+            {(!hasAvailableQuota && selectedRole) && (
               <div className="rounded-lg p-3 bg-secondary/40 border border-border/80 space-y-2 animate-in fade-in duration-300">
                 <div className="flex items-center justify-between text-xs font-semibold text-foreground border-b border-border/60 pb-1.5">
                   <span>
@@ -771,8 +829,8 @@ export default function SelectProjectPage() {
               </div>
             )}
 
-            {/* Additional Organization Details for Employee & Org Owner */}
-            {(selectedRole === 'employee' || selectedRole === 'org_owner') && (
+            {/* Additional Organization Details for Employee & Org Owner (Only during first-time subscription) */}
+            {(!hasAvailableQuota && (selectedRole === 'employee' || selectedRole === 'org_owner')) && (
               <div className="space-y-3 pt-2 p-3.5 rounded-lg bg-secondary/30 border border-border/80 animate-in fade-in duration-300">
                 <div className="text-xs font-semibold text-foreground">
                   <span>Dedicated Server Tier & Organization Setup</span>
@@ -864,8 +922,10 @@ export default function SelectProjectPage() {
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Connecting to Payment Gateway...
+                    Provisioning Workspace...
                   </>
+                ) : hasAvailableQuota ? (
+                  `Create ${modalDialect === 'postgresql' ? 'PostgreSQL' : 'MySQL'} Project (Included)`
                 ) : !selectedRole ? (
                   'Select a Role to Continue'
                 ) : billingPreference === 'pay_as_you_go' ? (

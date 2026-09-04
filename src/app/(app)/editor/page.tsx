@@ -101,7 +101,8 @@ export default async function EditorPage({
     const selectedProjectCookie = cookieStore.get('selectedProject');
     let selectedProject: any = null;
     try {
-        selectedProject = selectedProjectCookie ? JSON.parse(selectedProjectCookie.value) : null;
+        const rawVal = selectedProjectCookie?.value?.trim();
+        selectedProject = (rawVal && rawVal.startsWith('{')) ? JSON.parse(rawVal) : null;
     } catch (e) {
         console.warn("Failed to parse selectedProject cookie:", e);
     }
