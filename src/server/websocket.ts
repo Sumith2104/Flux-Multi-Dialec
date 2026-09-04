@@ -45,6 +45,18 @@ const pool = new Pool({
 // Broadcast helper
 function broadcastToSubscribers(payload: any) {
     // payload structure from Postgres: { table, project_id, operation, data }
+    if (payload.table === 'projects' || payload.project_id === 'global') {
+        const message = JSON.stringify({ type: 'update', ...payload });
+        for (const [_, subs] of clients) {
+            for (const ws of subs) {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(message);
+                }
+            }
+        }
+        return;
+    }
+
     const channelId = `${payload.project_id}:${payload.table}`;
     const subs = clients.get(channelId);
 

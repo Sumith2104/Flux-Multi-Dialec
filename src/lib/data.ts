@@ -668,6 +668,30 @@ export async function createProject(
         }
     }
 
+    // Realtime notification broadcast for instant UI updates across all clients
+    try {
+        const notifyPayload = JSON.stringify({
+            table: 'projects',
+            action: 'INSERT',
+            project_id: 'global',
+            record: {
+                project_id: projectId,
+                user_id: userId,
+                display_name: name,
+                dialect,
+                timezone: finalTimezone,
+                connection_type: connectionType,
+                created_at: project.created_at,
+                role: 'admin',
+                creator_role: userRole || 'student'
+            }
+        });
+        await pool.query(`NOTIFY flux_realtime, '${notifyPayload.replace(/'/g, "''")}'`);
+        await pool.query(`NOTIFY fluxbase_changes, '${notifyPayload.replace(/'/g, "''")}'`);
+    } catch (notifyErr) {
+        console.warn('[Realtime Projects NOTIFY Warning]:', notifyErr);
+    }
+
     return project;
 }
 
@@ -749,6 +773,19 @@ export async function deleteProject(projectId: string) {
         const { redis } = await import('@/lib/redis');
         await redis.del(`schema_inference_${projectId}`);
     } catch { }
+
+    try {
+        const notifyPayload = JSON.stringify({
+            table: 'projects',
+            action: 'DELETE',
+            project_id: 'global',
+            record: { project_id: projectId, user_id: userId }
+        });
+        await pool.query(`NOTIFY flux_realtime, '${notifyPayload.replace(/'/g, "''")}'`);
+        await pool.query(`NOTIFY fluxbase_changes, '${notifyPayload.replace(/'/g, "''")}'`);
+    } catch (notifyErr) {
+        console.warn('[Realtime Projects DELETE NOTIFY Warning]:', notifyErr);
+    }
 }
 
 // --- Tables ---

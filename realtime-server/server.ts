@@ -33,8 +33,10 @@ async function setupDatabaseListener() {
         const routingId = data.project_id || data.record?.chat_id || data.record?.project_id || data.record?.room_id || 'global';
         const outboundMessage = JSON.stringify({ type: 'db_event', payload: data });
 
-        if (routingId === 'global') {
-          console.log(`[Global Broadcast] Schema evolved. Notifying ALL active rooms...`);
+        const isGlobal = data.table === 'projects' || data.project_id === 'global' || routingId === 'global';
+
+        if (isGlobal) {
+          console.log(`[Global Broadcast] Schema evolved or Project change (Table: ${data.table}). Notifying ALL active rooms...`);
           rooms.forEach((clients, roomId) => {
             clients.forEach(client => {
               if (client.readyState === WebSocket.OPEN) {

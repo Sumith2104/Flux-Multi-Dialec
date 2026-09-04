@@ -76,6 +76,9 @@ class RealtimeManager extends EventEmitter {
                         }
                         this.emit(`project:${projectId}`, msg.payload);
                     }
+                    if (projectId === 'global' || payload.table === 'projects') {
+                        this.emit(`project:global`, msg.payload);
+                    }
                 } catch (e) {
                     console.error('[RealtimeManager] Notification parse error:', e);
                 }

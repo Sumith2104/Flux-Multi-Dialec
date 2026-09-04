@@ -16,6 +16,7 @@ import { getAppLayoutBootstrapData } from "./actions";
 import { LogoutButton } from "@/components/logout-button";
 import { ProjectProvider, ProjectContext } from "@/contexts/project-context";
 import { TimezoneSelector } from "@/components/timezone-selector";
+import { useRealtimeSubscription } from "@/hooks/use-realtime-subscription";
 import Dock from "@/components/dock";
 // Phase 5+6: Lazy-load heavy components â€” they are NOT needed on initial page render.
 // FluxAiAssistant: 555 lines, speech synthesis, complex state.
@@ -78,6 +79,50 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     const [loadingProgress, setLoadingProgress] = useState(0);
     const { project: selectedProject, setProject, loading: projectContextLoading, isSuspended, setIsSuspended } = useContext(ProjectContext);
     const [isAiOpen, setIsAiOpen] = useState(false);
+
+    // Maintain persistent global/project realtime WebSocket subscription across the app
+    useRealtimeSubscription(selectedProject?.project_id || 'global');
+
+    // Real-time synchronization for projects list across top navbar & application
+    useEffect(() => {
+        const handleProjectChange = async (e?: Event) => {
+            const customEvent = e as CustomEvent;
+            const detail = customEvent?.detail;
+
+            // 1. Optimistic instant UI update (0ms latency)
+            if (detail?.action === 'INSERT' && (detail?.record || detail?.project || detail?.data)) {
+                const newProj: Project = detail.record || detail.project || detail.data;
+                if (newProj && newProj.project_id) {
+                    setProjects(prev => {
+                        if (prev.some(p => p.project_id === newProj.project_id)) return prev;
+                        return [newProj, ...prev];
+                    });
+                }
+            } else if (detail?.action === 'DELETE') {
+                const delId = detail?.record?.project_id || detail?.projectId || detail?.data?.project_id;
+                if (delId) {
+                    setProjects(prev => prev.filter(p => p.project_id !== delId));
+                    if (selectedProject?.project_id === delId) {
+                        setProject(null);
+                    }
+                }
+            }
+
+            // 2. Fetch fresh projects from server to ensure complete sync
+            try {
+                const res = await fetch('/api/projects');
+                const data = await res.json();
+                if (data.success && Array.isArray(data.projects)) {
+                    setProjects(data.projects);
+                }
+            } catch (err) {
+                console.error("[Layout] Failed to refresh projects in background:", err);
+            }
+        };
+
+        window.addEventListener('flux:project-change', handleProjectChange);
+        return () => window.removeEventListener('flux:project-change', handleProjectChange);
+    }, [selectedProject?.project_id, setProject]);
 
     useEffect(() => {
         async function fetchData() {

@@ -126,8 +126,12 @@ async function startConnection(projectId: string) {
 
                 // Send subscription handshake to Render room system
                 try {
-                    ws.send(JSON.stringify({ type: 'subscribe', roomId: `project_${projectId}` }));
-                    ws.send(JSON.stringify({ type: 'subscribe', roomId: projectId }));
+                    if (projectId && projectId !== 'global') {
+                        ws.send(JSON.stringify({ type: 'subscribe', roomId: `project_${projectId}` }));
+                        ws.send(JSON.stringify({ type: 'subscribe', roomId: projectId }));
+                    }
+                    // Always subscribe to global room to receive project insertions/deletions
+                    ws.send(JSON.stringify({ type: 'subscribe', roomId: 'global' }));
                 } catch (err) {
                     logger.warn('[Realtime] Failed to send subscribe handshake:', err);
                 }
@@ -154,6 +158,13 @@ async function startConnection(projectId: string) {
                         operation: String(rawAction).toUpperCase(),
                         data: rawData,
                     };
+
+                    if (cleanTable === 'projects') {
+                        if (typeof window !== 'undefined') {
+                            window.dispatchEvent(new CustomEvent('flux:project-change', { detail: normalized }));
+                        }
+                    }
+
                     notifyListeners(projectId, normalized);
                 } catch (e) {
                     logger.warn('[Realtime] WS message parse error:', e);
@@ -249,6 +260,13 @@ async function connectSSE(projectId: string, state: ConnectionState) {
                         operation: String(rawAction).toUpperCase(),
                         data: rawData,
                     };
+
+                    if (cleanTable === 'projects') {
+                        if (typeof window !== 'undefined') {
+                            window.dispatchEvent(new CustomEvent('flux:project-change', { detail: normalized }));
+                        }
+                    }
+
                     notifyListeners(projectId, normalized);
                 } catch (e) {
                     logger.warn('[Realtime] SSE parse error:', e);
@@ -355,6 +373,16 @@ export function useRealtimeSubscription(projectId: string | undefined) {
 
             const targetTable = normalizeTable(table);
 
+            // Projects table mutation -> Trigger project sync across the UI
+            if (targetTable === 'projects') {
+                logger.info(`[Realtime Sync] Projects list updated (${action}). Dispatching flux:project-change...`);
+                queryClient.invalidateQueries({ queryKey: ['projects'] });
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('flux:project-change', { detail: event }));
+                }
+                return;
+            }
+
             // Telemetry / internal tables should NEVER disrupt business table refetches
             if (targetTable === 'audit_logs' || targetTable === 'api_keys' || targetTable === 'analytics_rollups') {
                 queryClient.invalidateQueries({ queryKey: ['analytics_stats', projectId] });
@@ -454,6 +482,11 @@ export function useRealtimeSubscription(projectId: string | undefined) {
 
         window.addEventListener('flux:schema-change', handleLocalSchemaChange);
 
+        const handleLocalProjectChange = (e: Event) => {
+            queryClient.invalidateQueries({ queryKey: ['projects'] });
+        };
+        window.addEventListener('flux:project-change', handleLocalProjectChange);
+
         // Sync status from singleton
         const state = connections.get(projectId);
         if (state) setStatus(state.status);
@@ -467,6 +500,7 @@ export function useRealtimeSubscription(projectId: string | undefined) {
         return () => {
             unsubscribe();
             window.removeEventListener('flux:schema-change', handleLocalSchemaChange);
+            window.removeEventListener('flux:project-change', handleLocalProjectChange);
             clearInterval(statusInterval);
         };
     }, [projectId, syncDatabase]);

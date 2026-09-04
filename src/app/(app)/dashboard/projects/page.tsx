@@ -137,6 +137,37 @@ export default function SelectProjectPage() {
     } catch (e) {
       console.error('Error auto-provisioning paid project:', e);
     }
+
+    const handleProjectChange = async (e?: Event) => {
+      const customEvent = e as CustomEvent;
+      const detail = customEvent?.detail;
+      if (detail?.action === 'INSERT' && (detail?.record || detail?.project || detail?.data)) {
+        const newProj: Project = detail.record || detail.project || detail.data;
+        if (newProj && newProj.project_id) {
+          setProjects(prev => {
+            if (prev.some(p => p.project_id === newProj.project_id)) return prev;
+            return [newProj, ...prev];
+          });
+        }
+      } else if (detail?.action === 'DELETE') {
+        const delId = detail?.record?.project_id || detail?.projectId || detail?.data?.project_id;
+        if (delId) {
+          setProjects(prev => prev.filter(p => p.project_id !== delId));
+        }
+      }
+      try {
+        const res = await fetch('/api/projects');
+        const data = await res.json();
+        if (data.success && Array.isArray(data.projects)) {
+          setProjects(data.projects);
+        }
+      } catch (err) {}
+    };
+
+    window.addEventListener('flux:project-change', handleProjectChange);
+    return () => {
+      window.removeEventListener('flux:project-change', handleProjectChange);
+    };
   }, []);
 
   const handleProjectSelect = (project: Project) => {
@@ -231,6 +262,11 @@ export default function SelectProjectPage() {
       const result = await createProjectAction(formData);
 
       if (result.success && result.project) {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('flux:project-change', {
+            detail: { action: 'INSERT', table: 'projects', record: result.project, project: result.project }
+          }));
+        }
         setModalDialect(null);
         setProject(result.project);
         toast({

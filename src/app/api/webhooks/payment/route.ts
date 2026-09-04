@@ -175,6 +175,8 @@ export async function POST(req: Request) {
             let matchedOrderId: string | null = null;
             let matchedUserId: string | null = null;
             let matchedSessionId: number | null = null;
+            let matchedProjectData: any = null;
+            let matchedPlanType: string | null = null;
 
             if (orderRes.rows.length > 0) {
                 matchedOrderId = orderRes.rows[0].order_id;
@@ -210,7 +212,9 @@ export async function POST(req: Request) {
                     const session = sessionRes.rows[0];
                     matchedSessionId = session.id;
                     matchedUserId = session.user_id;
+                    matchedProjectData = session.project_data;
                     const planType = session.plan_type;
+                    matchedPlanType = planType;
 
                     await client.query(
                         `UPDATE fluxbase_global.payment_sessions SET status = 'completed' WHERE id = $1`,
@@ -259,6 +263,53 @@ export async function POST(req: Request) {
             }
 
             await client.query('COMMIT');
+
+            // 2.5 Auto-provision project outside transaction if project_data exists
+            if (matchedProjectData && matchedUserId) {
+                try {
+                    const pData = typeof matchedProjectData === 'string' ? JSON.parse(matchedProjectData) : matchedProjectData;
+                    const projName = pData.projectName || 'My Project';
+
+                    const existingCheck = await pool.query(
+                        `SELECT project_id FROM fluxbase_global.projects 
+                         WHERE user_id = $1 AND display_name = $2 AND created_at > NOW() - INTERVAL '2 minutes'`,
+                        [matchedUserId, projName]
+                    );
+
+                    if (existingCheck.rows.length === 0) {
+                        const { createProject } = await import('@/lib/data');
+                        const { TenantProvisioner } = await import('@/lib/tenant-engine');
+                        const newProject = await createProject(
+                            projName,
+                            pData.workDescription || 'Provisioned upon payment confirmation',
+                            pData.dialect || 'postgresql',
+                            pData.timezone || 'UTC',
+                            'internal',
+                            {},
+                            pData.userRole || matchedPlanType,
+                            matchedUserId
+                        );
+
+                        await TenantProvisioner.createTenantSchema(newProject.project_id, pData.dialect || 'postgresql');
+                        const isPayg = (pData.billingPreference === 'pay_as_you_go' || matchedPlanType === 'pay_as_you_go');
+                        await pool.query(
+                            'UPDATE fluxbase_global.projects SET creator_role = $1, billing_preference = $2 WHERE project_id = $3',
+                            [pData.userRole || matchedPlanType, isPayg ? 'pay_as_you_go' : (pData.billingPreference || 'monthly'), newProject.project_id]
+                        );
+                        if (isPayg) {
+                            try {
+                                const { getOrCreateCurrentCycle } = await import('@/lib/payg-engine');
+                                await getOrCreateCurrentCycle(newProject.project_id, matchedUserId);
+                            } catch (cycleErr) {
+                                logger.warn('[Payment Webhook] PAYG cycle init warning:', cycleErr);
+                            }
+                        }
+                        logger.info(`[Payment Webhook] Auto-provisioned project ${newProject.project_id} (${newProject.display_name}) for user ${matchedUserId}`);
+                    }
+                } catch (provErr) {
+                    logger.error('[Payment Webhook] Project auto-provision error:', provErr);
+                }
+            }
 
             // 3. Trigger Realtime WebSocket event to unlock user UI instantly
             if (matchedOrderId) {

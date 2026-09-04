@@ -22,31 +22,35 @@ export async function GET(req: NextRequest) {
         return new Response(JSON.stringify({ success: false, error: { message: 'Unauthorized', code: ERROR_CODES.AUTH_REQUIRED } }), { status: 401 });
     }
 
-    // Permission Check
-    if (auth.allowedProjectId && auth.allowedProjectId !== projectId) {
-        return new Response(JSON.stringify({
-            success: false,
-            error: { message: 'API Key is restricted to a different project', code: ERROR_CODES.UNAUTHORIZED }
-        }), { status: 403 });
-    }
+    let project: any = null;
 
-    // Use centralized project fetching to include status check
-    const project = await getProjectById(projectId, auth.userId);
-    if (!project) {
-        return new Response(JSON.stringify({
-            success: false,
-            error: { message: 'Project not found', code: 'PROJECT_NOT_FOUND' }
-        }), { status: 404 });
-    }
+    if (projectId !== 'global') {
+        // Permission Check
+        if (auth.allowedProjectId && auth.allowedProjectId !== projectId) {
+            return new Response(JSON.stringify({
+                success: false,
+                error: { message: 'API Key is restricted to a different project', code: ERROR_CODES.UNAUTHORIZED }
+            }), { status: 403 });
+        }
 
-    // Granular Suspension Check
-    try {
-        await ensureNotSuspended(project);
-    } catch (e: any) {
-        return new Response(JSON.stringify({
-            success: false,
-            error: { message: e.message, code: e.code }
-        }), { status: 403 });
+        // Use centralized project fetching to include status check
+        project = await getProjectById(projectId, auth.userId);
+        if (!project) {
+            return new Response(JSON.stringify({
+                success: false,
+                error: { message: 'Project not found', code: 'PROJECT_NOT_FOUND' }
+            }), { status: 404 });
+        }
+
+        // Granular Suspension Check
+        try {
+            await ensureNotSuspended(project);
+        } catch (e: any) {
+            return new Response(JSON.stringify({
+                success: false,
+                error: { message: e.message, code: e.code }
+            }), { status: 403 });
+        }
     }
 
     const ip = req.headers.get('x-forwarded-for') || '127.0.0.1';
@@ -124,7 +128,7 @@ export async function GET(req: NextRequest) {
                         try {
                             const [projectResult, orgResult] = await Promise.allSettled([
                                 redis.get<string>(`project_status:${projectId}`),
-                                redis.get<string>(`org_status:${project.user_id}`)
+                                redis.get<string>(`org_status:${project?.user_id || auth.userId}`)
                             ]);
 
                             if (projectResult.status === 'fulfilled') projectStatus = projectResult.value;
