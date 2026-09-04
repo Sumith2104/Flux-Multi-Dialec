@@ -9,6 +9,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 export function ScrollIndicator() {
   const pathname = usePathname();
   const [hasContentBelow, setHasContentBelow] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const activeContainerRef = useRef<HTMLElement | null>(null);
   const lastCheckTimeRef = useRef(0);
 
@@ -63,6 +64,7 @@ export function ScrollIndicator() {
   }, [findScrollContainer]);
 
   useEffect(() => {
+    setMounted(true);
     checkScroll();
 
     let scrollRafId: number | null = null;
@@ -122,6 +124,8 @@ export function ScrollIndicator() {
                     pathname.startsWith('/database') ||
                     pathname.startsWith('/query') ||
                     pathname.startsWith('/scraper');
+
+  if (!mounted) return null;
 
   return (
     <AnimatePresence>
