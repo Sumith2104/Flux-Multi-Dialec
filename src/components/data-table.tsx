@@ -778,7 +778,7 @@ export function DataTable({
   /* ════════════════════════ RENDER ════════════════════════ */
 
   /* total column width for row constraining */
-  const fixedColsW = 10 + 10 + 7 + 20; // # + checkbox + expand + borders
+  const fixedColsW = 40 + 40 + 28; // # (40px) + checkbox (40px) + expand (28px) = 108px
   const dataColsW = visibleColumns.reduce((s, c) => s + getW(c.field), 0);
   const totalW = fixedColsW + dataColsW;
   const gridCols = ['40px','40px','28px',...visibleColumns.map(c=>getW(c.field)+'px')].join(' ');
@@ -790,7 +790,7 @@ export function DataTable({
       <div ref={parentRef} className="flex-1 overflow-auto relative custom-scrollbar" data-scroll-container="true" style={{ willChange: 'scroll-position' }} tabIndex={0} onKeyDown={handleKeyDown}>
 
         {/* ── Sticky header ── */}
-        <div className="sticky top-0 z-20 grid border-b border-border bg-secondary/80 backdrop-blur-md text-xs font-bold uppercase tracking-widest text-muted-foreground shadow-sm" style={{ gridTemplateColumns: gridCols, minWidth: '100%' }}>
+        <div className="sticky top-0 z-20 grid border-b border-border bg-secondary/80 backdrop-blur-md text-xs font-bold uppercase tracking-widest text-muted-foreground shadow-sm" style={{ gridTemplateColumns: gridCols, width: `${totalW}px`, minWidth: '100%' }}>
           <div className={`flex w-10 shrink-0 items-center justify-center border-r border-border/60 bg-muted/50 ${DENSITY_HDR[density]}`}><span className="text-[10px]">#</span></div>
           <div className={`flex w-10 shrink-0 items-center justify-center border-r border-border/60 bg-secondary ${DENSITY_HDR[density]}`}><Checkbox checked={selectionModel.length === rows.length && rows.length > 0} onCheckedChange={toggleAll} /></div>
           <div className={`flex w-7 shrink-0 items-center justify-center border-r border-border/40 bg-secondary ${DENSITY_HDR[density]}`} />
@@ -827,7 +827,7 @@ export function DataTable({
         </div>
 
         {/* ── Virtual rows ── */}
-        <div style={{ height: rowV.getTotalSize() + 'px', minWidth: '100%', position: 'relative', overflow: 'hidden' }}>
+        <div style={{ height: rowV.getTotalSize() + 'px', width: `${totalW}px`, minWidth: '100%', position: 'relative' }}>
           {vItems.map(vRow => {
             const isLoader = vRow.index > rows.length - 1;
             const row = rows[vRow.index];
@@ -839,9 +839,11 @@ export function DataTable({
               <div
                 key={vRow.index}
                 data-row-idx={vRow.index}
-                className={`absolute top-0 left-0 flex flex-col w-max min-w-full border-b border-border/30 ${isSel ? 'bg-primary/10' : 'hover:bg-secondary/40'} ${focused?.r === vRow.index ? 'ring-1 ring-inset ring-primary/30' : ''}`}
+                className={`absolute top-0 left-0 flex flex-col border-b border-border/30 ${isSel ? 'bg-primary/10' : 'hover:bg-secondary/40'} ${focused?.r === vRow.index ? 'ring-1 ring-inset ring-primary/30' : ''}`}
                 style={{
                   height: vRow.size + 'px',
+                  width: `${totalW}px`,
+                  minWidth: '100%',
                   transform: `translate3d(0, ${vRow.start}px, 0)`,
                   willChange: 'transform',
                 }}
@@ -849,10 +851,12 @@ export function DataTable({
               >
                 {/* Main row grid */}
                 <div
-                  className="grid items-center w-full cursor-pointer"
+                  className="grid items-center cursor-pointer"
                   style={{
                     height: `${DENSITY_H[density]}px`,
                     gridTemplateColumns: gridCols,
+                    width: `${totalW}px`,
+                    minWidth: '100%',
                   }}
                   onMouseDown={e => {
                     if (e.shiftKey && focused) {
