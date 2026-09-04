@@ -16,8 +16,8 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
                 refetchOnWindowFocus: false,
                 // Cap retries to 1 to avoid zombie requests adding to memory pressure
                 retry: 1,
-                // Don't retry on mount by default — let queries opt-in if needed
-                refetchOnMount: true,
+                // Don't refetch on mount if data is already in cache — instant page switching
+                refetchOnMount: false,
             },
         },
     }));

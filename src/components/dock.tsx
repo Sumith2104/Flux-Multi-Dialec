@@ -45,6 +45,7 @@ interface DockItemProps {
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
+  onMouseEnter?: () => void;
   mouseX: MotionValue<number>;
   baseItemSize: number;
   magnification: number;
@@ -57,6 +58,7 @@ function DockItem({
   icon,
   label,
   onClick,
+  onMouseEnter,
   mouseX,
   baseItemSize,
   magnification,
@@ -85,6 +87,7 @@ function DockItem({
           onHoverEnd={() => isHovered.set(0)}
           onFocus={() => isHovered.set(1)}
           onBlur={() => isHovered.set(0)}
+          onMouseEnter={onMouseEnter}
           onClick={onClick}
           className="relative flex shrink-0 snap-center cursor-pointer items-center justify-center rounded-full bg-secondary/80 text-foreground ring-1 ring-border/40 transition-colors hover:bg-muted"
           tabIndex={0}
@@ -99,7 +102,7 @@ function DockItem({
           )}
         </motion.div>
       </TooltipTrigger>
-      <TooltipContent side="top" sideOffset={12}>
+      <TooltipContent side="top" sideOffset={10}>
         <p className="text-xs font-medium">{label}</p>
       </TooltipContent>
     </Tooltip>
@@ -110,6 +113,7 @@ interface DockItem {
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
+  onMouseEnter?: () => void;
   badgeCount?: number;
 }
 
@@ -160,6 +164,7 @@ export default function Dock({
             icon={item.icon}
             label={item.label}
             onClick={item.onClick}
+            onMouseEnter={item.onMouseEnter}
             mouseX={mouseX}
             baseItemSize={effectiveBaseItemSize}
             magnification={effectiveMagnification}

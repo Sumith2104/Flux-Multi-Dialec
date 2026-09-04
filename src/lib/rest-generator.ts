@@ -42,18 +42,19 @@ export async function listRows(
     const whereSQL = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
     const orderSQL = order_by ? `ORDER BY "${order_by}" ${order_dir.toUpperCase()}` : '';
 
-    // Count total
-    const countResult = await pool.query(
-        `SELECT COUNT(*) as total FROM "${schema}"."${table}" ${whereSQL}`,
-        params
-    );
-    const total = parseInt(countResult.rows[0]?.total || '0', 10);
+    // Run count and paginated data queries concurrently
+    const [countResult, dataResult] = await Promise.all([
+        pool.query(
+            `SELECT COUNT(*) as total FROM "${schema}"."${table}" ${whereSQL}`,
+            params
+        ),
+        pool.query(
+            `SELECT * FROM "${schema}"."${table}" ${whereSQL} ${orderSQL} LIMIT $${paramIdx++} OFFSET $${paramIdx++}`,
+            [...params, limit, offset]
+        ),
+    ]);
 
-    // Fetch page
-    const dataResult = await pool.query(
-        `SELECT * FROM "${schema}"."${table}" ${whereSQL} ${orderSQL} LIMIT $${paramIdx++} OFFSET $${paramIdx++}`,
-        [...params, limit, offset]
-    );
+    const total = parseInt(countResult.rows[0]?.total || '0', 10);
 
     return {
         data: dataResult.rows,

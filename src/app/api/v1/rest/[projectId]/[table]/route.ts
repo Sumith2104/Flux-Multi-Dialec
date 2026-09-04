@@ -30,7 +30,7 @@ export async function GET(
             return NextResponse.json({ success: false, error: { message: 'Unauthorized', code: 'UNAUTHORIZED' } }, { status: 401 });
         }
 
-        const project = await getProjectById(projectId);
+        const project = await getProjectById(projectId, authContext.userId);
         if (!project) {
             return NextResponse.json({ success: false, error: { message: 'Project not found', code: 'NOT_FOUND' } }, { status: 404 });
         }
@@ -82,7 +82,7 @@ export async function POST(
 
         requireWriteScope(authContext);
 
-        const project = await getProjectById(projectId);
+        const project = await getProjectById(projectId, authContext.userId);
         if (!project) {
             return NextResponse.json({ success: false, error: { message: 'Project not found', code: 'NOT_FOUND' } }, { status: 404 });
         }
@@ -125,7 +125,7 @@ export async function PUT(
 
         requireWriteScope(authContext);
 
-        const project = await getProjectById(projectId);
+        const project = await getProjectById(projectId, authContext.userId);
         if (!project) {
             return NextResponse.json({ success: false, error: { message: 'Project not found', code: 'NOT_FOUND' } }, { status: 404 });
         }
@@ -172,7 +172,7 @@ export async function DELETE(
 
         requireWriteScope(authContext);
 
-        const project = await getProjectById(projectId);
+        const project = await getProjectById(projectId, authContext.userId);
         if (!project) {
             return NextResponse.json({ success: false, error: { message: 'Project not found', code: 'NOT_FOUND' } }, { status: 404 });
         }

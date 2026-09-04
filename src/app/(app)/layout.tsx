@@ -178,6 +178,18 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
     }, [userLoading, projectContextLoading, userId, selectedProject, pathname, router, isOffline]);
 
+    // Prefetch high-frequency routes in the background as soon as a project is active
+    useEffect(() => {
+        if (selectedProject?.project_id) {
+            const pid = selectedProject.project_id;
+            router.prefetch(`/editor?projectId=${pid}`);
+            router.prefetch(`/database?projectId=${pid}`);
+            router.prefetch(`/query?projectId=${pid}`);
+            router.prefetch(`/settings?projectId=${pid}`);
+            router.prefetch(`/analytics?projectId=${pid}`);
+        }
+    }, [selectedProject?.project_id, router]);
+
     const isEditorOrDbPage = pathname.startsWith('/editor') || pathname.startsWith('/database') || pathname.startsWith('/query');
     const isLoading = userLoading || projectContextLoading;
 
@@ -193,6 +205,11 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
         return {
             ...item,
+            onMouseEnter: () => {
+                if (!isDisabled) {
+                    router.prefetch(finalHref);
+                }
+            },
             onClick: () => {
                 if (!isDisabled) {
                     router.push(finalHref);
