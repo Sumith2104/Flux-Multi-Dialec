@@ -137,7 +137,7 @@ export async function getProjectsForCurrentUser(overrideUserId?: string): Promis
     try {
         const pool = getPgPool();
         const result = await pool.query(`
-            SELECT p.project_id, p.display_name, p.description, p.created_at, p.dialect, p.timezone, p.ai_allow_destructive, p.ai_schema_inference, p.status, p.creator_role, p.billing_preference,
+            SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.ai_allow_destructive, p.ai_schema_inference, p.status, p.creator_role, p.billing_preference,
                    COALESCE(pm.role, CASE WHEN p.user_id = $1::text THEN 'admin' ELSE 'developer' END) as role
             FROM fluxbase_global.projects p
             LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $1::text
@@ -149,7 +149,7 @@ export async function getProjectsForCurrentUser(overrideUserId?: string): Promis
             project_id: row.project_id,
             user_id: userId,
             display_name: row.display_name,
-            description: row.description || '',
+            description: '',
             created_at: row.created_at.toISOString(),
             dialect: row.dialect,
             timezone: row.timezone,
@@ -206,7 +206,8 @@ async function ensureMigration(pool: any) {
         await pool.query(`
             ALTER TABLE fluxbase_global.projects 
             ADD COLUMN IF NOT EXISTS connection_type VARCHAR(50) DEFAULT 'internal',
-            ADD COLUMN IF NOT EXISTS connection_config JSONB DEFAULT '{}'::jsonb;
+            ADD COLUMN IF NOT EXISTS connection_config JSONB DEFAULT '{}'::jsonb,
+            ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '';
 
             CREATE TABLE IF NOT EXISTS fluxbase_global.plans (
                 id SERIAL PRIMARY KEY,
@@ -343,7 +344,7 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
                 const pool = getPgPool();
                 await ensureMigration(pool);
                 const result = await pool.query(`
-                    SELECT p.project_id, p.display_name, p.description, p.created_at, p.dialect, p.timezone, p.user_id as owner_id, p.ai_allow_destructive, p.ai_schema_inference, p.status, p.creator_role, p.billing_preference,
+                    SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.user_id as owner_id, p.ai_allow_destructive, p.ai_schema_inference, p.status, p.creator_role, p.billing_preference,
                            p.connection_type, p.connection_config,
                            COALESCE(pm.role, CASE WHEN p.user_id = $2::text THEN 'admin' ELSE NULL END) as role
                     FROM fluxbase_global.projects p
@@ -359,7 +360,7 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
                     project_id: row.project_id,
                     user_id: row.owner_id,
                     display_name: row.display_name,
-                    description: row.description || '',
+                    description: '',
                     created_at: row.created_at.toISOString(),
                     dialect: row.dialect,
                     timezone: row.timezone,
