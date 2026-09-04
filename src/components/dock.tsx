@@ -24,7 +24,7 @@ function useDockItemSize(
   spring: { mass: number; stiffness: number; damping: number }
 ) {
   const mouseDistance = useTransform(mouseX, (val) => {
-    if (typeof val !== "number" || isNaN(val)) return 0;
+    if (typeof val !== "number" || isNaN(val) || !isFinite(val)) return Infinity;
     const rect = ref.current?.getBoundingClientRect() ?? {
       x: 0,
       width: baseItemSize,

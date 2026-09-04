@@ -236,12 +236,23 @@ body {
   animation: subtle-pulse 3s ease-in-out infinite;
 }
 
-/* Universal Sharp Edge Buttons across entire app */
-button,
-.btn,
-[role="button"],
+/* Universal Sharp Edge Buttons across entire app, allowing rounded-full / circular buttons */
+button:not(.rounded-full):not([class*="rounded-full"]),
+.btn:not(.rounded-full):not([class*="rounded-full"]),
+[role="button"]:not(.rounded-full):not([class*="rounded-full"]),
 input[type="button"],
 input[type="submit"],
 input[type="reset"] {
   border-radius: 0px !important;
+}
+
+/* Performance & Smooth Scrolling Optimizations */
+[data-scroll-container="true"] {
+  -webkit-overflow-scrolling: touch;
+  will-change: scroll-position;
+}
+
+/* Hardware accelerated fixed floating controls to prevent layout thrashing */
+.fixed {
+  backface-visibility: hidden;
 }

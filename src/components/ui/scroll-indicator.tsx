@@ -10,33 +10,22 @@ export function ScrollIndicator() {
   const pathname = usePathname();
   const [hasContentBelow, setHasContentBelow] = useState(false);
   const activeContainerRef = useRef<HTMLElement | null>(null);
+  const lastCheckTimeRef = useRef(0);
 
-  // Helper to find any active scroll container in the DOM (e.g. inside (app)/layout)
+  // Fast, targeted scroll container finder without querying all DOM elements
   const findScrollContainer = useCallback((): HTMLElement | null => {
     if (typeof document === 'undefined') return null;
 
-    // 1. Explicitly tagged scroll container (e.g. in AppLayout)
+    // 1. Explicitly tagged container in AppLayout
     const tagged = document.querySelector<HTMLElement>('[data-scroll-container="true"]');
     if (tagged && tagged.scrollHeight > tagged.clientHeight + 25) {
       return tagged;
     }
 
-    // 2. Main overflow container in dashboard/app layouts
-    const mainOverflow = document.querySelector<HTMLElement>(
-      'main div.overflow-auto, main div.overflow-y-auto, main.overflow-y-auto'
-    );
+    // 2. Main overflow container in dashboard
+    const mainOverflow = document.querySelector<HTMLElement>('main div.overflow-auto, main.overflow-y-auto');
     if (mainOverflow && mainOverflow.scrollHeight > mainOverflow.clientHeight + 25) {
       return mainOverflow;
-    }
-
-    // 3. Fallback: check any large scrollable element in <main>
-    const candidates = document.querySelectorAll<HTMLElement>(
-      'main [class*="overflow-y-auto"], main [class*="overflow-auto"], [role="main"]'
-    );
-    for (const el of Array.from(candidates)) {
-      if (el.clientHeight > 200 && el.scrollHeight > el.clientHeight + 25) {
-        return el;
-      }
     }
 
     return null;
@@ -48,18 +37,12 @@ export function ScrollIndicator() {
     const docEl = document.documentElement;
     const body = document.body;
 
-    const windowScrollHeight = Math.max(
-      docEl.scrollHeight,
-      body.scrollHeight,
-      docEl.offsetHeight,
-      body.offsetHeight
-    );
-    const windowClientHeight = window.innerHeight || docEl.clientHeight;
-    const windowScrollTop = window.scrollY || docEl.scrollTop || body.scrollTop || 0;
+    const windowScrollHeight = Math.max(docEl.scrollHeight, body.scrollHeight);
+    const windowClientHeight = window.innerHeight;
+    const windowScrollTop = window.scrollY || docEl.scrollTop || 0;
 
     const windowCanScroll = windowScrollHeight > windowClientHeight + 35;
 
-    // Check if the window itself is the scroll context (e.g., landing page, docs, pricing)
     if (windowCanScroll) {
       activeContainerRef.current = null;
       const windowRemaining = windowScrollHeight - (windowScrollTop + windowClientHeight);
@@ -67,7 +50,6 @@ export function ScrollIndicator() {
       return;
     }
 
-    // Check if an internal container is the scroll context (e.g., dashboard, settings, tables)
     const container = findScrollContainer();
     if (container) {
       activeContainerRef.current = container;
@@ -76,52 +58,48 @@ export function ScrollIndicator() {
       return;
     }
 
-    // Neither window nor container has scrollable content
     activeContainerRef.current = null;
     setHasContentBelow(false);
   }, [findScrollContainer]);
 
   useEffect(() => {
-    // Initial check
     checkScroll();
 
-    let rafId: number | null = null;
-    const handleScroll = () => {
-      if (rafId) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(checkScroll);
+    let scrollRafId: number | null = null;
+    const handleScrollThrottled = () => {
+      const now = performance.now();
+      // Throttle to at most once per 120ms during active scrolling to prevent layout thrashing
+      if (now - lastCheckTimeRef.current < 120) {
+        return;
+      }
+      lastCheckTimeRef.current = now;
+
+      if (scrollRafId) cancelAnimationFrame(scrollRafId);
+      scrollRafId = requestAnimationFrame(checkScroll);
     };
 
-    // Use event capture to detect scroll events on window AND any child containers
-    window.addEventListener('scroll', handleScroll, { passive: true, capture: true });
-    window.addEventListener('resize', handleScroll, { passive: true });
+    let resizeTimer: NodeJS.Timeout | null = null;
+    const handleResize = () => {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(checkScroll, 150);
+    };
 
-    // MutationObserver to react when dynamic data (projects, tables, queries) loads into the DOM
-    const observer = new MutationObserver(() => {
-      handleScroll();
-    });
+    window.addEventListener('scroll', handleScrollThrottled, { passive: true, capture: true });
+    window.addEventListener('resize', handleResize, { passive: true });
 
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['style', 'class'],
-    });
-
-    // Multiple staggered timers after navigation/mount to catch late hydration or async data
-    const timer1 = setTimeout(checkScroll, 100);
-    const timer2 = setTimeout(checkScroll, 350);
-    const timer3 = setTimeout(checkScroll, 800);
-    const timer4 = setTimeout(checkScroll, 1600);
+    // Lightweight staggered timers after navigation to catch late data loading
+    const timer1 = setTimeout(checkScroll, 120);
+    const timer2 = setTimeout(checkScroll, 400);
+    const timer3 = setTimeout(checkScroll, 1000);
 
     return () => {
-      window.removeEventListener('scroll', handleScroll, { capture: true });
-      window.removeEventListener('resize', handleScroll);
-      observer.disconnect();
-      if (rafId) cancelAnimationFrame(rafId);
+      window.removeEventListener('scroll', handleScrollThrottled, { capture: true });
+      window.removeEventListener('resize', handleResize);
+      if (scrollRafId) cancelAnimationFrame(scrollRafId);
+      if (resizeTimer) clearTimeout(resizeTimer);
       clearTimeout(timer1);
       clearTimeout(timer2);
       clearTimeout(timer3);
-      clearTimeout(timer4);
     };
   }, [checkScroll, pathname]);
 
@@ -136,7 +114,6 @@ export function ScrollIndicator() {
     }
   };
 
-  // On pages with the floating dock, elevate the button so it doesn't overlap
   const isAppPage = pathname.startsWith('/dashboard') ||
                     pathname.startsWith('/settings') ||
                     pathname.startsWith('/analytics') ||
@@ -161,7 +138,8 @@ export function ScrollIndicator() {
         >
           <button
             onClick={handleScrollDown}
-            className="group relative flex h-9 w-9 items-center justify-center rounded-full border border-border/80 bg-background/90 text-muted-foreground shadow-[0_6px_20px_rgba(0,0,0,0.35)] backdrop-blur-md transition-all duration-300 hover:border-primary/60 hover:bg-background hover:text-primary hover:shadow-[0_6px_24px_rgba(255,122,26,0.3)] active:scale-90"
+            style={{ borderRadius: '9999px' }}
+            className="group relative flex h-9 w-9 items-center justify-center !rounded-full border border-border/80 bg-background/90 text-muted-foreground shadow-[0_6px_20px_rgba(0,0,0,0.35)] backdrop-blur-md transition-all duration-300 hover:border-primary/60 hover:bg-background hover:text-primary hover:shadow-[0_6px_24px_rgba(255,122,26,0.3)] active:scale-90"
             title="Scroll down"
             aria-label="Scroll down"
           >
