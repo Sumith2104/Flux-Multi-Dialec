@@ -305,8 +305,9 @@ export function useRealtimeSubscription(projectId: string | undefined) {
     const projectIdRef = useRef(projectId);
     projectIdRef.current = projectId;
 
-    const lastRefetchTimeRef = useRef<number>(0);
-    const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Per-table independent debouncing and timestamp tracking (prevents audit_logs from canceling user table refetches)
+    const lastTableRefetchRef = useRef<Map<string, number>>(new Map());
+    const tableTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
     // --- INSTANT CACHE SYNC LAYER ---
     const syncDatabase = useCallback((event: RealtimeEvent) => {
@@ -352,18 +353,51 @@ export function useRealtimeSubscription(projectId: string | undefined) {
                     .pop()
                     ?.trim() || '';
 
-            const tablePredicate = (query: any) => {
-                if (query.queryKey[0] !== 'table-data' || query.queryKey[1] !== projectId) return false;
-                if (table && query.queryKey[2]) {
-                    return normalizeTable(query.queryKey[2]) === normalizeTable(table);
-                }
-                return true;
-            };
+            const targetTable = normalizeTable(table);
 
-            // Background surgical refetch (300ms debounce) — ensures exact server ordering, filtering, and valid rows
-            const doRefetch = () => {
+            // Telemetry / internal tables should NEVER disrupt business table refetches
+            if (targetTable === 'audit_logs' || targetTable === 'api_keys' || targetTable === 'analytics_rollups') {
+                queryClient.invalidateQueries({ queryKey: ['analytics_stats', projectId] });
+                queryClient.invalidateQueries({ queryKey: ['analytics_history', projectId] });
+                queryClient.invalidateQueries({ queryKey: ['dashboard-analytics', projectId] });
+                return;
+            }
+
+            const tableKey = targetTable || '*';
+
+            // Check if there are active table-data queries for this project
+            const activeQueries = queryClient.getQueryCache().getAll().filter(q => {
+                return q.isActive() && q.queryKey[0] === 'table-data' && q.queryKey[1] === projectId;
+            });
+
+            // If user is currently viewing a specific table, only process if target matches
+            if (activeQueries.length > 0 && targetTable) {
+                const matchesAnyActive = activeQueries.some(q => {
+                    const qTable = normalizeTable(q.queryKey[2]);
+                    return !qTable || qTable === targetTable;
+                });
+                if (!matchesAnyActive) {
+                    return;
+                }
+            }
+
+            const executeRefetch = () => {
+                lastTableRefetchRef.current.set(tableKey, Date.now());
+                const existingTimer = tableTimersRef.current.get(tableKey);
+                if (existingTimer) {
+                    clearTimeout(existingTimer);
+                    tableTimersRef.current.delete(tableKey);
+                }
+
+                // Surgical table refetch
                 queryClient.refetchQueries({
-                    predicate: tablePredicate,
+                    predicate: (query) => {
+                        if (query.queryKey[0] !== 'table-data' || query.queryKey[1] !== projectId) return false;
+                        if (targetTable && query.queryKey[2]) {
+                            return normalizeTable(query.queryKey[2]) === targetTable;
+                        }
+                        return true;
+                    },
                     type: 'active'
                 });
 
@@ -371,25 +405,24 @@ export function useRealtimeSubscription(projectId: string | undefined) {
                 queryClient.invalidateQueries({ queryKey: ['analytics_stats', projectId] });
                 queryClient.invalidateQueries({ queryKey: ['analytics_history', projectId] });
                 queryClient.invalidateQueries({ queryKey: ['dashboard-analytics', projectId] });
-
-                lastRefetchTimeRef.current = Date.now();
-                throttleTimerRef.current = null;
             };
 
             const now = Date.now();
-            const timeSinceLastRefetch = now - lastRefetchTimeRef.current;
-            const THROTTLE_WINDOW = 300;
+            const lastRefetchTime = lastTableRefetchRef.current.get(tableKey) || 0;
+            const elapsed = now - lastRefetchTime;
+            const THROTTLE_MS = 150; // 150ms per-table debounce
 
-            if (timeSinceLastRefetch >= THROTTLE_WINDOW) {
-                if (throttleTimerRef.current) {
-                    clearTimeout(throttleTimerRef.current);
-                    throttleTimerRef.current = null;
-                }
-                doRefetch();
+            if (elapsed >= THROTTLE_MS) {
+                // Execute immediately on the leading edge (0ms lag!)
+                executeRefetch();
             } else {
-                if (!throttleTimerRef.current) {
-                    const remaining = THROTTLE_WINDOW - timeSinceLastRefetch;
-                    throttleTimerRef.current = setTimeout(doRefetch, remaining);
+                // If a mutation arrives within 150ms of a previous one, schedule a trailing refetch
+                if (!tableTimersRef.current.has(tableKey)) {
+                    const timer = setTimeout(() => {
+                        tableTimersRef.current.delete(tableKey);
+                        executeRefetch();
+                    }, THROTTLE_MS - elapsed);
+                    tableTimersRef.current.set(tableKey, timer);
                 }
             }
         }
@@ -433,9 +466,8 @@ export function useRealtimeSubscription(projectId: string | undefined) {
             unsubscribe();
             window.removeEventListener('flux:schema-change', handleLocalSchemaChange);
             clearInterval(statusInterval);
-            if (throttleTimerRef.current) {
-                clearTimeout(throttleTimerRef.current);
-            }
+            tableTimersRef.current.forEach(timer => clearTimeout(timer));
+            tableTimersRef.current.clear();
         };
     }, [projectId, syncDatabase]);
 
