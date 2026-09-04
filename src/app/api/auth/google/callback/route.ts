@@ -105,8 +105,8 @@ export async function GET(request: NextRequest) {
         const refreshToken = await createRefreshToken(userId);
         const isProd = process.env.NODE_ENV === 'production';
 
-        // 6. Redirect seamlessly
-        const redirectPath = isNewUser ? '/pricing?onboarding=true' : '/dashboard/projects';
+        // 6. Redirect seamlessly to projects dashboard
+        const redirectPath = '/dashboard/projects';
         const finalOrigin = getBaseOrigin(request);
         const response = NextResponse.redirect(new URL(redirectPath, finalOrigin));
         response.cookies.set('refresh_token', refreshToken, {

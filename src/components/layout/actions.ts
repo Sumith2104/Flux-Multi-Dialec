@@ -36,6 +36,17 @@ export async function createProjectAction(formData: FormData) {
     const userId = await getCurrentUserId();
     if (!userId) return { error: 'Unauthorized login required to create a project.' };
 
+    // Idempotency guard: Prevent duplicate project creation if already provisioned within last 30s (e.g. by server webhook)
+    const pool = getPgPool();
+    const existingRecent = await pool.query(
+        `SELECT project_id, display_name FROM fluxbase_global.projects 
+         WHERE user_id = $1 AND display_name = $2 AND created_at > NOW() - INTERVAL '30 seconds'`,
+        [userId, projectName]
+    );
+    if (existingRecent.rows.length > 0) {
+        return { success: true, project: existingRecent.rows[0] };
+    }
+
     if (instanceSize && actualConnectionType === 'internal') {
         await checkInstanceSizeLimit(userId, instanceSize);
     }
@@ -55,7 +66,6 @@ export async function createProjectAction(formData: FormData) {
     if (userRole === 'employee' || userRole === 'org_owner') {
       try {
         const { submitRoleRequest } = await import('@/lib/role-requests');
-        const pool = getPgPool();
         const userRes = await pool.query('SELECT email FROM fluxbase_global.users WHERE id = $1', [userId]);
         const userEmail = userRes.rows[0]?.email;
         await submitRoleRequest({
@@ -80,8 +90,6 @@ export async function createProjectAction(formData: FormData) {
         await replicateExternalDatabase(project.project_id, dialect, connectionConfig);
       } catch (replicationError: any) {
         // Cleanup projects table entry on replication failure
-        const { getPgPool } = await import('@/lib/pg');
-        const pool = getPgPool();
         await pool.query('DELETE FROM fluxbase_global.projects WHERE project_id = $1', [project.project_id]);
         throw replicationError;
       }
@@ -95,7 +103,6 @@ export async function createProjectAction(formData: FormData) {
           dialect === 'mysql' ? 'mysql' : 'postgresql'
         );
 
-        const pool = getPgPool();
         await pool.query(
           'UPDATE fluxbase_global.projects SET is_serverless = true, schema_name = $1 WHERE project_id = $2',
           [tenantResult.schemaName, project.project_id]
@@ -103,6 +110,31 @@ export async function createProjectAction(formData: FormData) {
         logger.info(`[Supabase Engine] Instant Serverless Tenant Created: ${tenantResult.schemaName} in ${tenantResult.executionTimeMs}ms`);
       } catch (tenantErr) {
         logger.error(`[Serverless Provisioning Error] Project ${project.project_id}:`, tenantErr);
+      }
+    }
+
+    if (billingPreference) {
+      await pool.query(
+        'UPDATE fluxbase_global.projects SET billing_preference = $1 WHERE project_id = $2',
+        [billingPreference, project.project_id]
+      ).catch(() => {});
+      project.billing_preference = billingPreference;
+    }
+    if (userRole) {
+      project.creator_role = userRole;
+    }
+
+    if (billingPreference === 'pay_as_you_go') {
+      try {
+        await pool.query(
+          "UPDATE fluxbase_global.users SET plan_type = 'pay_as_you_go', status = 'active' WHERE id = $1 AND plan_type NOT IN ('org_owner', 'max')",
+          [userId]
+        );
+        const { getOrCreateCurrentCycle } = await import('@/lib/payg-engine');
+        await getOrCreateCurrentCycle(project.project_id, userId);
+        logger.info(`[PAYG Initialized] 28-day billing cycle active for project ${project.project_id}`);
+      } catch (paygErr) {
+        logger.warn('[PAYG Initialization Error]:', paygErr);
       }
     }
 

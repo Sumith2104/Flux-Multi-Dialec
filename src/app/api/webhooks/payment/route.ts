@@ -35,26 +35,31 @@ export async function POST(req: Request) {
 
         const rawText = (String(utr || '') + ' ' + String(body.message || body.sms_body || body.text || rawBodyString || '')).trim();
 
-        // Server-side Smart Regex Parser: Extract 12-digit UTR automatically if raw SMS/Email text is sent
+        // Server-side Smart Regex Parser: Extract 12-digit UTR if present (optional)
         if (!utr || String(utr).length > 12 || isNaN(Number(utr))) {
             const utrMatch = rawText.match(/(?:UPI\s*Ref\s*No\.?|Ref\s*No\.?|UPI|IMPS|Ref|UTR|Txn)[:\s;\.#]*(\d{12})/i) || rawText.match(/\b(\d{12})\b/);
             if (utrMatch) {
                 utr = utrMatch[1];
+            } else {
+                utr = null;
             }
         }
 
-        // Server-side Smart Regex Parser: Extract Amount automatically if raw SMS/Email text is sent
+        // Server-side Smart Regex Parser: Extract Exact Decimal Amount
         if (!amount || isNaN(parseFloat(amount))) {
             const amtMatch = 
-                rawText.match(/(?:amount of|credited with|credited)\s*(?:INR|Rs\.?|₹)?\s*([0-9]+\.[0-9]{2}|[0-9]+)/i) ||
-                rawText.match(/(?:INR|Rs\.?|₹)\s*([0-9]+\.[0-9]{2}|[0-9]+)/i);
+                rawText.match(/(?:sent|amount of|credited with|credited|received|payment\s+of|deposited)\s*(?:INR|Rs\.?|₹)?\s*([\d,]+(?:\.\d{1,2})?)/i) ||
+                rawText.match(/(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d{1,2})?)/i) ||
+                rawText.match(/([\d,]+(?:\.\d{1,2})?)\s*(?:INR|Rs\.?|₹)/i) ||
+                rawText.match(/([\d,]+(?:\.\d{1,2})?)\s*[^0-9]*?(?:credited|received|deposited|sent)/i) ||
+                rawText.match(/([\d]+\.\d{2})/);
             if (amtMatch) {
-                amount = amtMatch[1];
+                amount = amtMatch[1].replace(/,/g, '');
             }
         }
 
-        if (!utr || !amount) {
-            return NextResponse.json({ error: 'Could not extract UTR or amount from SMS body' }, { status: 400 });
+        if (!amount) {
+            return NextResponse.json({ error: 'Could not extract amount from SMS body' }, { status: 400 });
         }
 
         const parsedAmount = parseFloat(amount);
@@ -69,6 +74,15 @@ export async function POST(req: Request) {
         
         // Ensure tables exist before handling payment transaction
         await pool.query(`
+            CREATE TABLE IF NOT EXISTS fluxbase_global.scraped_sms (
+                id SERIAL PRIMARY KEY,
+                sms_body TEXT,
+                sender VARCHAR(100),
+                utr VARCHAR(64),
+                amount NUMERIC(10, 2),
+                is_used BOOLEAN DEFAULT false,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
             CREATE TABLE IF NOT EXISTS fluxbase_global.bank_payments (
                 utr VARCHAR(64) PRIMARY KEY,
                 amount NUMERIC(10, 2) NOT NULL,
@@ -79,7 +93,6 @@ export async function POST(req: Request) {
                 order_id VARCHAR(64),
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             );
-
             CREATE TABLE IF NOT EXISTS fluxbase_global.pending_orders (
                 order_id VARCHAR(64) PRIMARY KEY,
                 user_id VARCHAR(64) NOT NULL,
@@ -89,7 +102,6 @@ export async function POST(req: Request) {
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                 fulfilled_at TIMESTAMP WITH TIME ZONE
             );
-
             CREATE TABLE IF NOT EXISTS fluxbase_global.payment_scraper_logs (
                 id SERIAL PRIMARY KEY,
                 utr VARCHAR(64) NOT NULL,
@@ -101,6 +113,17 @@ export async function POST(req: Request) {
             );
         `).catch(err => logger.error('[Schema Init Warning]:', err.message));
 
+        // Always log every mobile/SMS notification hit into scraped_sms
+        const scrapedInsert = await pool.query(`
+            INSERT INTO fluxbase_global.scraped_sms (sms_body, sender, utr, amount)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id;
+        `, [rawText, finalSource, utr || null, parsedAmount]).catch(err => {
+            logger.error('[Scraped SMS Insert Error]:', err.message);
+            return { rows: [] };
+        });
+        const scrapedId = scrapedInsert.rows[0]?.id;
+
         const client = await pool.connect();
 
         try {
@@ -111,50 +134,31 @@ export async function POST(req: Request) {
             const paymentDate = now.toISOString().split('T')[0];
             const paymentTime = now.toTimeString().split(' ')[0];
 
-            // Terminal Log: Initial Scraper Hit
-            logger.info(`[SCRAPER RECEIVE] Channel: ${finalSource.toUpperCase()} | UTR: ${utr} | Amount: ₹${parsedAmount} | Time: ${paymentTime}`);
+            logger.info(`[SCRAPER RECEIVE] Channel: ${finalSource.toUpperCase()} | Amount: ₹${parsedAmount} | UTR: ${utr || 'N/A'} | Time: ${paymentTime}`);
 
-            // 1. FCFS Idempotent Insert into bank_payments table (PRIMARY KEY on utr)
-            const insertRes = await client.query(`
-                INSERT INTO fluxbase_global.bank_payments (utr, amount, day_name, payment_date, payment_time, source)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                ON CONFLICT (utr) DO NOTHING
-                RETURNING utr;
-            `, [utr, parsedAmount, dayName, paymentDate, paymentTime, finalSource]);
+            // 1. If UTR exists, record into bank_payments table (idempotent FCFS)
+            if (utr) {
+                const insertRes = await client.query(`
+                    INSERT INTO fluxbase_global.bank_payments (utr, amount, day_name, payment_date, payment_time, source)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                    ON CONFLICT (utr) DO NOTHING
+                    RETURNING utr;
+                `, [utr, parsedAmount, dayName, paymentDate, paymentTime, finalSource]);
 
-            // If zero rows returned, UTR was ALREADY claimed by an earlier channel
-            if (insertRes.rows.length === 0) {
-                // Find which channel arrived first
-                const existingRes = await client.query('SELECT source FROM fluxbase_global.bank_payments WHERE utr = $1', [utr]);
-                const winningSource = existingRes.rows[0]?.source || 'another channel';
-
-                // Audit Log in DB
-                await client.query(`
-                    INSERT INTO fluxbase_global.payment_scraper_logs (utr, amount, source, is_winner, winning_source)
-                    VALUES ($1, $2, $3, false, $4);
-                `, [utr, parsedAmount, finalSource, winningSource]);
-
-                await client.query('COMMIT');
-
-                // Terminal Log: FCFS Rejection
-                logger.info(`[FCFS DUPLICATE REJECTED] Channel '${finalSource}' attempted UTR ${utr}, but channel '${winningSource}' ALREADY WON and claimed it!`);
-
-                return NextResponse.json({
-                    success: true,
-                    duplicate: true,
-                    winner: winningSource,
-                    message: `UTR ${utr} already claimed and stored by ${winningSource}.`
-                });
+                if (insertRes.rows.length === 0) {
+                    const existingRes = await client.query('SELECT source FROM fluxbase_global.bank_payments WHERE utr = $1', [utr]);
+                    const winningSource = existingRes.rows[0]?.source || 'another channel';
+                    await client.query(`
+                        INSERT INTO fluxbase_global.payment_scraper_logs (utr, amount, source, is_winner, winning_source)
+                        VALUES ($1, $2, $3, false, $4);
+                    `, [utr, parsedAmount, finalSource, winningSource]);
+                } else {
+                    await client.query(`
+                        INSERT INTO fluxbase_global.payment_scraper_logs (utr, amount, source, is_winner, winning_source)
+                        VALUES ($1, $2, $3, true, $3);
+                    `, [utr, parsedAmount, finalSource]);
+                }
             }
-
-            // FCFS Winner Audit Log in DB
-            await client.query(`
-                INSERT INTO fluxbase_global.payment_scraper_logs (utr, amount, source, is_winner, winning_source)
-                VALUES ($1, $2, $3, true, $3);
-            `, [utr, parsedAmount, finalSource]);
-
-            // Terminal Log: FCFS Winner
-            logger.info(`[FCFS WINNER] Channel '${finalSource.toUpperCase()}' PROCESSED UTR ${utr} FIRST! Stored in DB.`);
 
             // 2. Fractional Amount Matching (e.g. ₹100.02) against Active Pending Orders
             const orderRes = await client.query(`
@@ -192,11 +196,13 @@ export async function POST(req: Request) {
 
                 logger.info(`[ORDER MATCHED] Order ID '${matchedOrderId}' for User '${matchedUserId}' verified and marked PAID!`);
             } else {
-                // Check pending web checkout sessions
+                // Check pending web checkout sessions matching the exact decimal amount
                 const sessionRes = await client.query(`
-                    SELECT id, user_id, plan_type 
+                    SELECT id, user_id, plan_type, project_data 
                     FROM fluxbase_global.payment_sessions 
-                    WHERE amount = $1 AND status = 'pending' AND expires_at > NOW()
+                    WHERE amount = $1 
+                      AND status = 'pending' 
+                      AND expires_at > NOW()
                     ORDER BY created_at DESC LIMIT 1;
                 `, [parsedAmount]);
 
@@ -211,10 +217,18 @@ export async function POST(req: Request) {
                         [session.id]
                     );
 
+                    if (scrapedId) {
+                        await client.query(
+                            `UPDATE fluxbase_global.scraped_sms SET is_used = true WHERE id = $1`,
+                            [scrapedId]
+                        );
+                    }
+
                     await client.query(
                         `INSERT INTO fluxbase_global.payments (user_id, amount, currency, status, razorpay_payment_id)
-                         VALUES ($1, $2, 'INR', 'completed', $3)`,
-                        [matchedUserId, parsedAmount, `upi_session_${session.id}`]
+                         VALUES ($1, $2, 'INR', 'completed', $3)
+                         ON CONFLICT DO NOTHING`,
+                        [matchedUserId, parsedAmount, utr ? `utr_${utr}` : `upi_session_${session.id}`]
                     );
 
                     await client.query(
@@ -224,7 +238,23 @@ export async function POST(req: Request) {
                         [planType, matchedUserId]
                     );
 
-                    logger.info(`[SESSION MATCHED] Checkout Session '${session.id}' for User '${matchedUserId}' verified and completed!`);
+                    // Auto-provisioning project will be handled outside the transaction if session.project_data exists
+
+                    // Realtime notify via Postgres
+                    try {
+                        const notifyPayload = JSON.stringify({
+                            type: 'db_event',
+                            payload: {
+                                table: 'payment_sessions',
+                                record: { id: session.id, status: 'completed', amount: parsedAmount }
+                            }
+                        });
+                        await client.query(`NOTIFY fluxbase_live, '${notifyPayload.replace(/'/g, "''")}'`);
+                    } catch (wsErr) {
+                        logger.warn('[Payment Webhook] NOTIFY warning:', wsErr);
+                    }
+
+                    logger.info(`[SESSION MATCHED] Checkout Session '${session.id}' for User '${matchedUserId}' verified and completed via decimal amount ₹${parsedAmount}!`);
                 }
             }
 

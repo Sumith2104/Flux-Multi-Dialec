@@ -120,7 +120,7 @@ export function ProjectSwitcher({
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link href="/dashboard/projects/create">
+          <Link href="/dashboard/projects">
             <Plus className="mr-2 h-4 w-4" />
             Create Project
           </Link>

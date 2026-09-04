@@ -30,6 +30,33 @@ const PLAN_LIMITS = {
         webhooks: 999999,
         scrapers: 999999,
         allowedInstanceSizes: ['db.t3.micro', 'db.t3.medium', 'db.t3.large']
+    },
+    employee: {
+        projects: 10,
+        tablesPerProject: 50,
+        rowsPerTable: 500000,
+        apiKeys: 25,
+        webhooks: 10,
+        scrapers: 10,
+        allowedInstanceSizes: ['db.t3.micro', 'db.t3.medium', 'db.t3.large']
+    },
+    org_owner: {
+        projects: 999999,
+        tablesPerProject: 999999,
+        rowsPerTable: 999999999,
+        apiKeys: 999999,
+        webhooks: 999999,
+        scrapers: 999999,
+        allowedInstanceSizes: ['db.t3.micro', 'db.t3.medium', 'db.t3.large', 'db.m5.large']
+    },
+    pay_as_you_go: {
+        projects: 10,
+        tablesPerProject: 50,
+        rowsPerTable: 500000,
+        apiKeys: 25,
+        webhooks: 10,
+        scrapers: 10,
+        allowedInstanceSizes: ['db.t3.micro', 'db.t3.medium', 'db.t3.large']
     }
 } as const;
 

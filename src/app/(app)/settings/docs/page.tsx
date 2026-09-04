@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import * as React from 'react';
 import { useState, useEffect } from 'react';
@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     Download, ExternalLink, Copy, Check, Info, AlertCircle,
     Database, Code2, Globe, HardDrive, Webhook, Shield, Users, KeyRound, Zap,
-    Book, ArrowLeft
+    Book, ArrowLeft, Cpu
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
@@ -49,11 +49,11 @@ function Callout({ type = 'info', children }: { type?: 'info' | 'warning'; child
         info: 'bg-blue-500/5 border-blue-500/20 text-blue-300',
         warning: 'bg-amber-500/5 border-amber-500/20 text-amber-300',
     }[type];
-    const Icon = type === 'warning' ? AlertCircle : Info;
+    const Icon = type === 'info' ? Info : AlertCircle;
     return (
-        <div className={cn('flex max-w-full gap-3 rounded-lg border p-4 text-sm leading-relaxed', styles)}>
+        <div className={cn('flex gap-3 rounded-lg border p-4 text-sm leading-relaxed my-4', styles)}>
             <Icon className="h-4 w-4 shrink-0 mt-0.5 opacity-80" />
-            <div className="text-muted-foreground">{children}</div>
+            <div>{children}</div>
         </div>
     );
 }
@@ -63,7 +63,7 @@ function Endpoint({ method, path }: { method: 'GET' | 'POST' | 'DELETE' | 'PATCH
         GET: 'text-emerald-400 bg-emerald-500/10',
         POST: 'text-orange-400 bg-orange-500/10',
         DELETE: 'text-red-400 bg-red-500/10',
-        PATCH: 'text-blue-400 bg-blue-500/10',
+        PATCH: 'text-blue-400 bg-blue-500/10'
     }[method];
     return (
         <div className="my-3 flex max-w-full flex-wrap items-center gap-2 rounded-lg border border-border bg-secondary p-3 font-mono text-sm sm:gap-3">
@@ -75,14 +75,14 @@ function Endpoint({ method, path }: { method: 'GET' | 'POST' | 'DELETE' | 'PATCH
 
 function Section({ id, title, icon: Icon, children }: { id: string; title: string; icon: any; children: React.ReactNode }) {
     return (
-        <section id={id} className="max-w-full scroll-mt-24 space-y-5 sm:scroll-mt-28 sm:space-y-6">
-            <div className="flex items-center gap-3 pb-4 border-b border-border">
+        <section id={id} className="max-w-full scroll-mt-24 space-y-4 sm:scroll-mt-28">
+            <div className="flex items-center gap-3 pb-3 border-b border-border">
                 <div className="p-2 rounded-lg bg-orange-500/10 text-orange-400 shrink-0">
-                    <Icon className="h-5 w-5" />
+                    <Icon className="h-4 w-4" />
                 </div>
-                <h2 className="text-xl font-bold tracking-tight text-white sm:text-2xl">{title}</h2>
+                <h2 className="text-xl font-bold tracking-tight text-white">{title}</h2>
             </div>
-            <div className="space-y-4 text-muted-foreground leading-relaxed">
+            <div className="space-y-4 text-muted-foreground/80 leading-relaxed text-sm">
                 {children}
             </div>
         </section>
@@ -94,6 +94,7 @@ function Section({ id, title, icon: Icon, children }: { id: string; title: strin
 const NAV_SECTIONS = [
     { id: 'getting-started', label: 'Getting Started', icon: Zap },
     { id: 'authentication', label: 'Authentication', icon: KeyRound },
+    { id: 'mcp-gateway', label: 'MCP AI Gateway', icon: Cpu },
     { id: 'core-api', label: 'Core SQL API', icon: Database },
     { id: 'sdks', label: 'Language SDKs', icon: Code2 },
     { id: 'realtime', label: 'Real-time (WebSocket)', icon: Globe },
@@ -264,7 +265,100 @@ Content-Type: application/json`} />
                             </div>
                         </Section>
 
-                        {/* ── 3. Core SQL API ── */}
+                        {/* ── 3. Model Context Protocol (MCP) AI Gateway ── */}
+                        <Section id="mcp-gateway" title="Model Context Protocol (MCP) AI Gateway" icon={Cpu}>
+                            <p>
+                                Fluxbase provides a native <strong className="text-white">Model Context Protocol (MCP) Gateway</strong> over JSON-RPC 2.0. This allows AI coding assistants like <strong className="text-white">Google Antigravity</strong>, <strong className="text-white">Cursor</strong>, <strong className="text-white">Windsurf</strong>, and <strong className="text-white">Claude Desktop</strong> to inspect database schemas, run migrations, execute SQL queries, and manage projects autonomously.
+                            </p>
+
+                            <Endpoint method="POST" path="/api/mcp" />
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                                {[
+                                    { name: 'create_project', desc: 'Provisions new serverless PostgreSQL or MySQL database projects.', tag: 'PROJECT' },
+                                    { name: 'list_projects', desc: 'Lists all database projects owned by or shared with your account.', tag: 'DISCOVERY' },
+                                    { name: 'get_schema', desc: 'Inspects live table structures, columns, types, and primary keys.', tag: 'SCHEMA' },
+                                    { name: 'run_sql', desc: 'Executes raw SQL DDL and DML statements against the tenant database.', tag: 'EXECUTE' },
+                                ].map((tool) => (
+                                    <div key={tool.name} className="p-3.5 rounded-lg border border-border bg-secondary/60 space-y-1">
+                                        <div className="flex items-center justify-between">
+                                            <code className="text-xs font-mono font-bold text-orange-400">{tool.name}</code>
+                                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{tool.tag}</span>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground/80 leading-relaxed">{tool.desc}</p>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <h3 className="text-base font-bold text-white mt-6">Connecting with Google Antigravity</h3>
+                            <p>
+                                Antigravity supports MCP natively via <code className="text-xs font-mono text-foreground/80 bg-muted px-1.5 py-0.5 rounded">mcp_config.json</code>:
+                            </p>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <h4 className="text-xs uppercase tracking-wider font-bold text-orange-400 mb-1">Method 1: Project-Level Setup (.agents/mcp_config.json)</h4>
+                                    <p className="text-xs text-muted-foreground/75 mb-2">Create <code className="text-xs font-mono text-foreground/80 bg-muted px-1 py-0.5 rounded">.agents/mcp_config.json</code> in your repository root:</p>
+                                    <CodeBlock title=".agents/mcp_config.json" code={`{
+  "mcpServers": {
+    "fluxbase": {
+      "serverUrl": "http://localhost:3000/api/mcp",
+      "headers": {
+        "Authorization": "Bearer <YOUR_FLUXBASE_API_TOKEN>"
+      }
+    }
+  }
+}`} />
+                                </div>
+
+                                <div>
+                                    <h4 className="text-xs uppercase tracking-wider font-bold text-orange-400 mb-1">Method 2: Global Configuration (Across All Workspaces)</h4>
+                                    <ul className="text-xs text-muted-foreground/80 list-disc list-inside space-y-1">
+                                        <li><strong>Windows:</strong> <code className="text-[11px] font-mono">%USERPROFILE%\.gemini\config\mcp_config.json</code></li>
+                                        <li><strong>macOS / Linux:</strong> <code className="text-[11px] font-mono">~/.gemini/config/mcp_config.json</code></li>
+                                    </ul>
+                                </div>
+
+                                <div>
+                                    <h4 className="text-xs uppercase tracking-wider font-bold text-orange-400 mb-1">Method 3: Antigravity IDE GUI</h4>
+                                    <p className="text-xs text-muted-foreground/75">
+                                        Click <strong>Additional Options (...) → MCP Servers</strong>, choose <strong>Add MCP Server</strong> (Remote HTTP), and enter the URL with your Bearer Authorization header.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <h3 className="text-base font-bold text-white mt-6">Connecting with Cursor & Windsurf</h3>
+                            <p>Open <strong>Settings → Features → MCP</strong>, click <strong>+ Add New MCP Server</strong>, and enter:</p>
+                            <CodeBlock title="Cursor / Windsurf MCP Configuration" code={`{
+  "mcpServers": {
+    "fluxbase": {
+      "url": "http://localhost:3000/api/mcp",
+      "headers": {
+        "Authorization": "Bearer <YOUR_FLUXBASE_API_TOKEN>"
+      }
+    }
+  }
+}`} />
+
+                            <h3 className="text-base font-bold text-white mt-6">Connecting with Claude Desktop</h3>
+                            <p>Add the following server entry to <code className="text-xs font-mono text-foreground/80 bg-muted px-1.5 py-0.5 rounded">%APPDATA%\Claude\claude_desktop_config.json</code>:</p>
+                            <CodeBlock title="claude_desktop_config.json" code={`{
+  "mcpServers": {
+    "fluxbase": {
+      "url": "http://localhost:3000/api/mcp",
+      "headers": {
+        "Authorization": "Bearer <YOUR_FLUXBASE_API_TOKEN>"
+      }
+    }
+  }
+}`} />
+
+                            <Callout type="info">
+                                <strong>Instant AI Tool Discovery:</strong> AI models automatically detect tool schemas upon connection via standard JSON-RPC <code className="text-xs font-mono">tools/list</code> without requiring custom prompt instructions.
+                            </Callout>
+                        </Section>
+
+                        {/* ── 4. Core SQL API ── */}
                         <Section id="core-api" title="Core SQL API" icon={Database}>
                             <p>Execute any SQL statement against your project database via a single endpoint.</p>
                             <Endpoint method="POST" path="/api/execute-sql" />

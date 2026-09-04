@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import * as React from 'react';
 import Link from 'next/link';
@@ -98,6 +98,7 @@ function Endpoint({ method, path }: { method: 'GET' | 'POST' | 'DELETE' | 'PATCH
 const NAV_SECTIONS = [
     { id: 'getting-started', label: 'Getting Started', icon: Zap },
     { id: 'authentication', label: 'Authentication', icon: KeyRound },
+    { id: 'mcp-gateway', label: 'MCP AI Gateway', icon: Cpu },
     { id: 'core-api', label: 'Core SQL API', icon: Database },
     { id: 'sdks', label: 'Language SDKs', icon: Code2 },
     { id: 'realtime', label: 'Real-time (WebSocket)', icon: Globe },
@@ -265,7 +266,118 @@ Content-Type: application/json`} />
                             </Callout>
                         </Section>
 
-                        {/* ── 3. Core SQL API ── */}
+                        {/* ── 3. Model Context Protocol (MCP) AI Gateway ── */}
+                        <Section id="mcp-gateway" title="Model Context Protocol (MCP) AI Gateway" icon={Cpu}>
+                            <p>
+                                Fluxbase provides a built-in, native <strong className="text-foreground/90">Model Context Protocol (MCP) Gateway</strong> operating over JSON-RPC 2.0. This allows AI coding assistants like <strong className="text-foreground/90">Google Antigravity</strong>, <strong className="text-foreground/90">Cursor</strong>, <strong className="text-foreground/90">Windsurf</strong>, and <strong className="text-foreground/90">Claude Desktop</strong> to inspect database schemas, run migrations, execute SQL queries, and manage projects autonomously.
+                            </p>
+
+                            <Endpoint method="POST" path="/api/mcp" />
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                                {[
+                                    { name: 'create_project', desc: 'Provisions new serverless PostgreSQL or MySQL database projects.', tag: 'PROJECT' },
+                                    { name: 'list_projects', desc: 'Lists all database projects owned by or shared with your account.', tag: 'DISCOVERY' },
+                                    { name: 'get_schema', desc: 'Inspects live table structures, columns, types, and primary keys.', tag: 'SCHEMA' },
+                                    { name: 'run_sql', desc: 'Executes raw SQL DDL and DML statements against the tenant database.', tag: 'EXECUTE' },
+                                ].map((tool) => (
+                                    <div key={tool.name} className="p-4 rounded-lg border border-border bg-secondary/60 space-y-1.5">
+                                        <div className="flex items-center justify-between">
+                                            <code className="text-xs font-mono font-bold text-orange-400">{tool.name}</code>
+                                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{tool.tag}</span>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground leading-relaxed">{tool.desc}</p>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <h3 className="text-base font-bold text-white mt-8">Connecting with Google Antigravity</h3>
+                            <p className="text-sm">
+                                Antigravity supports MCP natively via <code className="text-xs font-mono text-foreground/80 bg-muted px-1.5 py-0.5 rounded">mcp_config.json</code>. You can configure it either at the project level or globally across all workspaces.
+                            </p>
+
+                            <div className="space-y-4 mt-2">
+                                <div className="space-y-2">
+                                    <h4 className="text-xs uppercase tracking-wider font-bold text-orange-400">Method 1: Workspace / Repository Setup (Recommended)</h4>
+                                    <p className="text-xs text-muted-foreground">
+                                        Create or update <code className="text-xs font-mono text-foreground/80 bg-muted px-1 py-0.5 rounded">.agents/mcp_config.json</code> in your project repository root:
+                                    </p>
+                                    <CodeBlock title=".agents/mcp_config.json" language="json" code={`{
+  "mcpServers": {
+    "fluxbase": {
+      "serverUrl": "http://localhost:3000/api/mcp",
+      "headers": {
+        "Authorization": "Bearer <YOUR_FLUXBASE_API_TOKEN>"
+      }
+    }
+  }
+}`} />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <h4 className="text-xs uppercase tracking-wider font-bold text-orange-400">Method 2: Global Configuration (Machine-wide)</h4>
+                                    <p className="text-xs text-muted-foreground">
+                                        Add the entry to your user Antigravity configuration file:
+                                    </p>
+                                    <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1 pl-1">
+                                        <li><strong>Windows:</strong> <code className="text-[11px] font-mono">%USERPROFILE%\.gemini\config\mcp_config.json</code></li>
+                                        <li><strong>macOS / Linux:</strong> <code className="text-[11px] font-mono">~/.gemini/config/mcp_config.json</code></li>
+                                    </ul>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <h4 className="text-xs uppercase tracking-wider font-bold text-orange-400">Method 3: Antigravity IDE UI</h4>
+                                    <ol className="text-xs text-muted-foreground list-decimal list-inside space-y-1 pl-1">
+                                        <li>Open Antigravity IDE and click <strong>Additional Options (...) → MCP Servers</strong>.</li>
+                                        <li>Click <strong>Add MCP Server</strong> and choose <strong>Remote HTTP / SSE</strong>.</li>
+                                        <li>Enter Server URL: <code className="text-[11px] font-mono text-foreground/90">http://localhost:3000/api/mcp</code></li>
+                                        <li>Add Header: <code className="text-[11px] font-mono text-foreground/90">Authorization: Bearer &lt;YOUR_API_TOKEN&gt;</code> and save.</li>
+                                    </ol>
+                                </div>
+                            </div>
+
+                            <h3 className="text-base font-bold text-white mt-8">Connecting with Cursor & Windsurf</h3>
+                            <p className="text-sm">
+                                In Cursor or Windsurf, navigate to <strong>Settings → Features → MCP</strong>, click <strong>+ Add New MCP Server</strong>, and configure:
+                            </p>
+                            <CodeBlock title="Cursor / Windsurf MCP Configuration" language="json" code={`{
+  "mcpServers": {
+    "fluxbase": {
+      "url": "http://localhost:3000/api/mcp",
+      "headers": {
+        "Authorization": "Bearer <YOUR_FLUXBASE_API_TOKEN>"
+      }
+    }
+  }
+}`} />
+
+                            <h3 className="text-base font-bold text-white mt-8">Connecting with Claude Desktop</h3>
+                            <p className="text-sm">
+                                Open <code className="text-xs font-mono text-foreground/80 bg-muted px-1.5 py-0.5 rounded">%APPDATA%\Claude\claude_desktop_config.json</code> (or <code className="text-xs font-mono text-foreground/80 bg-muted px-1.5 py-0.5 rounded">~/Library/Application Support/Claude/claude_desktop_config.json</code> on Mac) and add:
+                            </p>
+                            <CodeBlock title="claude_desktop_config.json" language="json" code={`{
+  "mcpServers": {
+    "fluxbase": {
+      "url": "http://localhost:3000/api/mcp",
+      "headers": {
+        "Authorization": "Bearer <YOUR_FLUXBASE_API_TOKEN>"
+      }
+    }
+  }
+}`} />
+
+                            <h3 className="text-base font-bold text-white mt-8">Testing the Gateway from Terminal</h3>
+                            <p className="text-sm">
+                                You can test the JSON-RPC interface directly in your terminal using Node.js or curl:
+                            </p>
+                            <CodeBlock title="Test MCP Tool Discovery (tools/list)" language="bash" code={`node -e "fetch('http://localhost:3000/api/mcp',{method:'POST',headers:{'Authorization':'Bearer <YOUR_API_TOKEN>','Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list'})}).then(r=>r.json()).then(d=>console.log(JSON.stringify(d,null,2)))"`} />
+
+                            <Callout type="info">
+                                <strong>Zero Extra Context Needed:</strong> AI agents discover the tools, argument schemas, and type definitions automatically via standard JSON-RPC <code className="text-xs font-mono">tools/list</code> upon connecting.
+                            </Callout>
+                        </Section>
+
+                        {/* ── 4. Core SQL API ── */}
                         <Section id="core-api" title="Core SQL API" icon={Database}>
                             <p>Execute any SQL statement against your project database via a single unified endpoint.</p>
 

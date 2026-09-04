@@ -44,6 +44,8 @@ import { getTablesForProject, Table as DbTable } from '@/lib/data';
 import { getUserPlanAction } from './billing-actions';
 import { Skeleton } from '@/components/ui/skeleton';
 import { WebhooksManager } from '@/components/settings/webhooks-manager';
+import { PaymentsBillsManager } from '@/components/settings/payments-bills-manager';
+import { PaygMeterCard } from '@/components/billing/payg-meter-card';
 
 const timezones = Intl.supportedValuesOf('timeZone');
 
@@ -501,88 +503,17 @@ export default function GeneralSettingsPage() {
                     </CardContent>
                 </Card>
 
+                {/* 28-Day Pay-As-You-Go Resource Meter */}
+                {selectedProject && (
+                    <div className="lg:col-span-2">
+                        <PaygMeterCard projectId={selectedProject.project_id} />
+                    </div>
+                )}
+
                 {/* Billing & Subscription Section */}
-                <Card className="lg:col-span-1">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <CreditCard className="h-5 w-5 text-muted-foreground" />
-                            Billing & Subscription
-                        </CardTitle>
-                        <CardDescription>Manage your plan and organization resource limits.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        {isBillingLoading ? (
-                            <Skeleton className="h-24 w-full" />
-                        ) : (
-                            <div className="space-y-6">
-                                <div className="flex items-center justify-between p-4 bg-primary/5 border border-primary/10 rounded-2xl">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-primary/20 rounded-lg">
-                                            <Zap className="h-5 w-5 text-muted-foreground" />
-                                        </div>
-                                        <div>
-                                            <p className="text-xs text-muted-foreground uppercase font-bold tracking-widest">Active Plan</p>
-                                            <p className="text-xl font-black italic uppercase tracking-tighter text-foreground drop-shadow-sm">
-                                                {userPlan.plan} Tier
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 font-bold px-3">
-                                        Active
-                                    </Badge>
-                                </div>
-
-                                {userPlan.plan.toLowerCase() === 'free' && (
-                                    <div className="grid grid-cols-1 gap-3">
-                                        <Button
-                                            variant="secondary"
-                                            className="h-14 rounded-2xl flex items-center justify-between px-6 bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 group"
-                                            onClick={() => handleUpgradePlan('pro')}
-                                            disabled={!!upgradingPlan}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <div className="p-2 bg-blue-500/20 rounded-lg group-hover:scale-110 transition-transform">
-                                                    <Sparkles className="h-4 w-4" />
-                                                </div>
-                                                <div className="text-left">
-                                                    <p className="font-bold text-sm leading-none">Upgrade to Pro</p>
-                                                    <p className="text-[10px] opacity-70 leading-none mt-1">$19 / Month</p>
-                                                </div>
-                                            </div>
-                                            {upgradingPlan === 'pro' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
-                                        </Button>
-
-                                        <Button
-                                            className="h-14 rounded-2xl flex items-center justify-between px-6 bg-gradient-to-r from-primary to-rose-600 hover:opacity-90 group border-none shadow-lg shadow-primary/20"
-                                            onClick={() => handleUpgradePlan('max')}
-                                            disabled={!!upgradingPlan}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <div className="p-2 bg-white/20 rounded-lg group-hover:scale-110 transition-transform">
-                                                    <Building2 className="h-4 w-4 text-white" />
-                                                </div>
-                                                <div className="text-left">
-                                                    <p className="font-bold text-sm leading-none text-white">Upgrade to Max</p>
-                                                    <p className="text-[10px] opacity-70 leading-none mt-1 text-white/90">$49 / Month</p>
-                                                </div>
-                                            </div>
-                                            {upgradingPlan === 'max' ? <Loader2 className="h-4 w-4 animate-spin text-white" /> : <ChevronRight className="h-4 w-4 text-white" />}
-                                        </Button>
-                                    </div>
-                                )}
-
-                                {userPlan.billing_cycle_end && (
-                                    <div className="flex items-center justify-center gap-2 p-2 bg-muted/30 rounded-lg">
-                                        <HelpCircle className="h-3 w-3 text-muted-foreground" />
-                                        <p className="text-[10px] text-muted-foreground font-medium">
-                                            Next renewal: <span className="text-foreground">{new Date(userPlan.billing_cycle_end).toLocaleDateString()}</span>
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                <div className="lg:col-span-2">
+                    <PaymentsBillsManager />
+                </div>
             </div>
 
             <Card>

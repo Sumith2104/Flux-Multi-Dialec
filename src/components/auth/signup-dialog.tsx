@@ -74,11 +74,11 @@ export function SignupDialog({ open, onOpenChange, onSwitchToLogin }: SignupDial
 
             if (result.success) {
                 onOpenChange(false);
-                router.push('/pricing?onboarding=true'); // Always new user during OTP verify
+                router.push('/dashboard/projects');
                 router.refresh();
                 toast({
                     title: 'Welcome to Fluxbase!',
-                    description: 'Your account is verified! Choose a plan or continue for free.',
+                    description: 'Your account is verified! Welcome to your project workspace.',
                 });
             } else {
                 throw new Error(result.error || 'Invalid verification code');

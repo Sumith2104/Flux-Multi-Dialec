@@ -33,10 +33,9 @@ export async function GET(req: NextRequest) {
         const session = result.rows[0];
         let status = session.status;
 
-        // If the session is still pending but has passed its expiration time, dynamically treat it as expired
+        // If the session is still pending but has passed its expiration time (3 min), mark it expired
         if (status === 'pending' && new Date() > new Date(session.expires_at)) {
             status = 'expired';
-            // Optionally update the status in the DB
             await pool.query(
                 `UPDATE fluxbase_global.payment_sessions 
                  SET status = 'expired' 
@@ -46,7 +45,7 @@ export async function GET(req: NextRequest) {
         }
 
         const pricingRes = await pool.query(`SELECT upi_id FROM fluxbase_global.pricing_configs ORDER BY id DESC LIMIT 1`);
-        const upiMerchantVpa = pricingRes.rows[0]?.upi_id || 'sumith0909@axl';
+        const upiMerchantVpa = pricingRes.rows[0]?.upi_id || process.env.NEXT_PUBLIC_UPI_ID || '918310870493@waaxis';
 
         return NextResponse.json({
             success: true,

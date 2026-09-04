@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { createProjectAction } from '@/components/layout/actions';
 import { createApiKeyAction } from '@/app/(app)/settings/api-key-actions';
+import { getUserPlanAction } from '@/app/(app)/settings/billing-actions';
 
 const timezones = Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : ['UTC', 'America/New_York', 'Europe/London', 'Asia/Kolkata', 'Asia/Tokyo'];
 
@@ -31,6 +32,7 @@ export default function SelectProjectPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPlan, setCurrentPlan] = useState<string>('free');
   const router = useRouter();
   const { setProject } = useContext(ProjectContext);
   const { toast } = useToast();
@@ -76,6 +78,55 @@ export default function SelectProjectPage() {
 
   useEffect(() => {
     fetchProjects();
+
+    getUserPlanAction().then(res => {
+      if (res?.plan) setCurrentPlan(res.plan.toLowerCase());
+    }).catch(() => {});
+
+    // Auto-provision pending paid project if user completed payment
+    try {
+      const pendingProjectJson = localStorage.getItem('pending_paid_project');
+      if (pendingProjectJson) {
+        const projData = JSON.parse(pendingProjectJson);
+        getUserPlanAction().then(async (planData) => {
+          const userPlan = planData.plan;
+          if (userPlan && userPlan !== 'free') {
+            const formData = new FormData();
+            formData.append('projectName', projData.projectName);
+            formData.append('dialect', projData.dialect);
+            formData.append('timezone', projData.timezone || 'UTC');
+            formData.append('userRole', projData.userRole || planData.role || 'employee');
+            formData.append('billingPreference', projData.billingPreference || 'monthly');
+            formData.append('companyName', projData.companyName || '');
+            formData.append('workDescription', projData.workDescription || '');
+            formData.append('connectionType', 'internal');
+
+            toast({
+              title: 'Finalizing Project Provisioning...',
+              description: `Provisioning "${projData.projectName}" now that your ${userPlan.toUpperCase()} plan is confirmed.`
+            });
+
+            const result = await createProjectAction(formData);
+            localStorage.removeItem('pending_paid_project');
+            if (result && !result.error) {
+              toast({
+                title: 'Project Created!',
+                description: `Project "${projData.projectName}" is active and ready.`
+              });
+              await fetchProjects();
+            } else if (result?.error) {
+              toast({
+                variant: 'destructive',
+                title: 'Provisioning Alert',
+                description: result.error
+              });
+            }
+          }
+        }).catch(() => {});
+      }
+    } catch (e) {
+      console.error('Error auto-provisioning paid project:', e);
+    }
   }, []);
 
   const handleProjectSelect = (project: Project) => {
@@ -117,6 +168,41 @@ export default function SelectProjectPage() {
 
     setIsSubmitting(true);
     try {
+      const isAlreadyCovered = 
+        (selectedRole === 'student') ||
+        (selectedRole === 'employee' && (currentPlan === 'employee' || currentPlan === 'org_owner')) ||
+        (selectedRole === 'org_owner' && currentPlan === 'org_owner') ||
+        (billingPreference === 'pay_as_you_go' && (currentPlan === 'pay_as_you_go' || currentPlan === 'employee' || currentPlan === 'org_owner'));
+
+      if (!isAlreadyCovered) {
+        // For Paid Tiers not yet purchased:
+        // 1. Save pending project payload in localStorage so it only provisions AFTER payment
+        localStorage.setItem('pending_paid_project', JSON.stringify({
+          projectName: projectName.trim(),
+          dialect: modalDialect,
+          timezone: selectedTimezone,
+          userRole: selectedRole,
+          billingPreference,
+          companyName: companyName.trim(),
+          workDescription: workDescription.trim()
+        }));
+
+        // 2. Redirect to Order & Plan Review screen
+        const isPayg = billingPreference === 'pay_as_you_go';
+        const planKey = isPayg ? 'pay_as_you_go' : (selectedRole === 'org_owner' ? 'org_owner' : 'employee');
+
+        setModalDialect(null);
+        toast({
+          title: isPayg ? 'Refundable Verification Deposit' : 'Order Review',
+          description: isPayg 
+            ? 'Pay-As-You-Go requires a ₹50 refundable verification fee, credited on your 1st month bill.'
+            : `Review your ${selectedRole === 'org_owner' ? 'Org Owner (₹5,000)' : 'Employee (₹500)'} tier details before payment.`,
+        });
+        router.push(`/checkout?plan=${planKey}`);
+        return;
+      }
+
+      // User already has the paid tier (or Student)! Direct Instant Creation!
       const formData = new FormData();
       formData.append('projectName', projectName.trim());
       formData.append('dialect', modalDialect);
@@ -130,19 +216,12 @@ export default function SelectProjectPage() {
       const result = await createProjectAction(formData);
 
       if (result.success && result.project) {
-        if (selectedRole !== 'student') {
-          toast({
-            title: 'Dedicated Server Request Submitted',
-            description: `Created ${result.project.display_name}. High-performance server provisioning request (${selectedRole === 'org_owner' ? 'Org Owner - ₹5,000/mo' : 'Employee - ₹500/mo'}) sent to admin.`,
-          });
-        } else {
-          toast({
-            title: 'Project Created Successfully',
-            description: `Created ${result.project.display_name} (${modalDialect === 'postgresql' ? 'PostgreSQL' : 'MySQL'}).`,
-          });
-        }
         setModalDialect(null);
         setProject(result.project);
+        toast({
+          title: 'Project Created Successfully',
+          description: `Created ${result.project.display_name} (${modalDialect === 'postgresql' ? 'PostgreSQL' : 'MySQL'}).`,
+        });
         router.push('/dashboard');
       } else {
         throw new Error(result.error || 'Failed to create project.');
@@ -213,6 +292,102 @@ export default function SelectProjectPage() {
     (p.creator_role || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const pgProjects = filteredProjects.filter(p => p.dialect?.toLowerCase() !== 'mysql');
+  const mysqlProjects = filteredProjects.filter(p => p.dialect?.toLowerCase() === 'mysql');
+
+  const renderProjectCard = (project: Project) => {
+    const isPostgres = project.dialect !== 'mysql';
+    return (
+      <button
+        key={project.project_id}
+        onClick={() => handleProjectSelect(project)}
+        className="w-full text-left group relative outline-none"
+      >
+        <Card className="relative overflow-hidden flex flex-col h-44 border-border/80 bg-card/40 transition-all duration-200 hover:bg-card/70 hover:-translate-y-0.5">
+          {/* Faint Background Logo Outline */}
+          <div className="absolute -right-6 -bottom-6 w-36 h-36 pointer-events-none overflow-visible z-0 transition-transform duration-300 group-hover:scale-105">
+            {isPostgres ? (
+              <Image 
+                src="/postgres-bg.png" 
+                alt="PostgreSQL Background" 
+                width={144} 
+                height={144} 
+                className="w-full h-full object-contain grayscale opacity-20 transition-all duration-300 group-hover:opacity-85 group-hover:brightness-0 group-hover:invert" 
+              />
+            ) : (
+              <Image 
+                src="/mysql-bg.png" 
+                alt="MySQL Background" 
+                width={144} 
+                height={144} 
+                className="w-full h-full object-contain grayscale opacity-20 transition-all duration-300 group-hover:opacity-85 group-hover:brightness-0 group-hover:invert" 
+              />
+            )}
+          </div>
+
+          <div className="p-5 flex flex-col h-full z-10 relative">
+            {/* Top: Dialect & Role (Left) and Date & Arrow (Right) */}
+            <div className="flex justify-between items-center mb-3 gap-2">
+              <div className="flex flex-wrap gap-1.5 items-center">
+                <Badge variant="secondary" className={cn(
+                  "text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 font-mono",
+                  isPostgres 
+                    ? "bg-blue-500/10 text-blue-400 border-blue-500/20" 
+                    : "bg-orange-500/10 text-orange-400 border-orange-500/20"
+                )}>
+                  {isPostgres ? 'PostgreSQL' : 'MySQL'}
+                </Badge>
+
+                {project.creator_role && (
+                  <Badge variant="outline" className={cn(
+                    "text-[10px] font-mono capitalize border",
+                    project.creator_role === 'employee' && "bg-blue-500/10 text-blue-400 border-blue-500/20",
+                    project.creator_role === 'org_owner' && "bg-purple-500/10 text-purple-400 border-purple-500/20",
+                    project.creator_role === 'student' && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                  )}>
+                    {project.creator_role.replace('_', ' ')}
+                  </Badge>
+                )}
+
+                {project.role && (
+                  <Badge variant="secondary" className="text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 border font-mono">
+                    {project.role}
+                  </Badge>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0 text-[11px] font-mono text-muted-foreground/60">
+                <span>{new Date(project.created_at).toLocaleDateString(undefined, {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric'
+                })}</span>
+                <ChevronRight className="h-4 w-4 text-muted-foreground/50 transition-transform group-hover:translate-x-1 group-hover:text-foreground" />
+              </div>
+            </div>
+
+            {/* Middle: Project Name */}
+            <div className="mt-auto mb-2">
+              <h3 className="text-lg font-semibold tracking-tight text-foreground/90 group-hover:text-foreground transition-colors line-clamp-1">
+                {project.display_name}
+              </h3>
+              {project.description && (
+                <p className="text-xs text-muted-foreground/70 line-clamp-1 mt-0.5">
+                  {project.description}
+                </p>
+              )}
+            </div>
+
+            {/* Bottom: Project ID */}
+            <div className="flex items-center text-xs text-muted-foreground/60 font-mono mt-1 pt-2 border-t border-border/40">
+              <span className="truncate max-w-[200px]">{project.project_id}</span>
+            </div>
+          </div>
+        </Card>
+      </button>
+    );
+  };
+
   const isFormValid = Boolean(
     projectName.trim() &&
     selectedRole &&
@@ -265,7 +440,7 @@ export default function SelectProjectPage() {
           )}
         </div>
 
-        {/* ── 3 Primary Action Option Boxes (Equal Priority) ── */}
+        {/* ── 3 Primary Action Option Boxes (Equal Priority, Neutral, Badges have colors) ── */}
         <div>
           <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-3">
             Quick Actions & Provisioning
@@ -275,18 +450,18 @@ export default function SelectProjectPage() {
             {/* Box 1: Create PostgreSQL */}
             <Card 
               onClick={() => openCreateModal('postgresql')}
-              className="relative overflow-hidden cursor-pointer border-border/80 bg-card/40 hover:bg-card/70 hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-500/5 transition-all duration-300 flex flex-col justify-between group"
+              className="relative overflow-hidden cursor-pointer border-border/80 bg-card/40 hover:bg-card/70 transition-all duration-200 flex flex-col justify-between group"
             >
               <div className="p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 group-hover:scale-105 transition-transform">
+                  <div className="p-3 rounded-xl bg-secondary border border-border text-foreground">
                     <Database className="h-6 w-6" />
                   </div>
                   <Badge variant="secondary" className="text-[10px] font-mono uppercase bg-blue-500/10 text-blue-400 border-blue-500/20">
                     PostgreSQL
                   </Badge>
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-1.5 group-hover:text-blue-400 transition-colors">
+                <h3 className="text-lg font-semibold text-foreground mb-1.5">
                   Create PostgreSQL Project
                 </h3>
                 <p className="text-xs text-muted-foreground leading-relaxed">
@@ -294,28 +469,28 @@ export default function SelectProjectPage() {
                 </p>
               </div>
               <div className="p-6 pt-0">
-                <Button variant="outline" className="w-full border-blue-500/30 group-hover:bg-blue-500/10 group-hover:text-blue-400 transition-colors">
+                <Button variant="outline" className="w-full border-border hover:bg-secondary text-foreground transition-colors">
                   Configure & Create
                   <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </Button>
               </div>
             </Card>
 
-            {/* Box 2: Create MySQL (Equal 1st-Class Priority) */}
+            {/* Box 2: Create MySQL */}
             <Card 
               onClick={() => openCreateModal('mysql')}
-              className="relative overflow-hidden cursor-pointer border-border/80 bg-card/40 hover:bg-card/70 hover:border-orange-500/50 hover:shadow-lg hover:shadow-orange-500/5 transition-all duration-300 flex flex-col justify-between group"
+              className="relative overflow-hidden cursor-pointer border-border/80 bg-card/40 hover:bg-card/70 transition-all duration-200 flex flex-col justify-between group"
             >
               <div className="p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400 group-hover:scale-105 transition-transform">
+                  <div className="p-3 rounded-xl bg-secondary border border-border text-foreground">
                     <Database className="h-6 w-6" />
                   </div>
                   <Badge variant="secondary" className="text-[10px] font-mono uppercase bg-orange-500/10 text-orange-400 border-orange-500/20">
                     MySQL
                   </Badge>
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-1.5 group-hover:text-orange-400 transition-colors">
+                <h3 className="text-lg font-semibold text-foreground mb-1.5">
                   Create MySQL Project
                 </h3>
                 <p className="text-xs text-muted-foreground leading-relaxed">
@@ -323,7 +498,7 @@ export default function SelectProjectPage() {
                 </p>
               </div>
               <div className="p-6 pt-0">
-                <Button variant="outline" className="w-full border-orange-500/30 group-hover:bg-orange-500/10 group-hover:text-orange-400 transition-colors">
+                <Button variant="outline" className="w-full border-border hover:bg-secondary text-foreground transition-colors">
                   Configure & Create
                   <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </Button>
@@ -333,18 +508,18 @@ export default function SelectProjectPage() {
             {/* Box 3: Organization MCP Gateway */}
             <Card 
               onClick={() => setIsMcpModalOpen(true)}
-              className="relative overflow-hidden cursor-pointer border-border/80 bg-card/40 hover:bg-card/70 hover:border-purple-500/50 hover:shadow-lg hover:shadow-purple-500/5 transition-all duration-300 flex flex-col justify-between group sm:col-span-2 lg:col-span-1"
+              className="relative overflow-hidden cursor-pointer border-border/80 bg-card/40 hover:bg-card/70 transition-all duration-200 flex flex-col justify-between group sm:col-span-2 lg:col-span-1"
             >
               <div className="p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 group-hover:scale-105 transition-transform">
+                  <div className="p-3 rounded-xl bg-secondary border border-border text-foreground">
                     <Bot className="h-6 w-6" />
                   </div>
                   <Badge variant="secondary" className="text-[10px] font-mono uppercase bg-purple-500/10 text-purple-400 border-purple-500/20">
                     MCP Integration
                   </Badge>
                 </div>
-                <h3 className="text-lg font-semibold text-foreground mb-1.5 group-hover:text-purple-400 transition-colors">
+                <h3 className="text-lg font-semibold text-foreground mb-1.5">
                   Organization MCP Gateway
                 </h3>
                 <p className="text-xs text-muted-foreground leading-relaxed">
@@ -352,7 +527,7 @@ export default function SelectProjectPage() {
                 </p>
               </div>
               <div className="p-6 pt-0">
-                <Button variant="outline" className="w-full border-purple-500/30 group-hover:bg-purple-500/10 group-hover:text-purple-400 transition-colors">
+                <Button variant="outline" className="w-full border-border hover:bg-secondary text-foreground transition-colors">
                   View MCP Credentials
                   <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </Button>
@@ -362,109 +537,74 @@ export default function SelectProjectPage() {
           </div>
         </div>
 
-        {/* ── Existing Projects Section ── */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
-              Existing Projects ({projects.length})
-            </h2>
-            <Button asChild variant="ghost" size="sm" className="text-xs">
-              <Link href="/dashboard/projects/create">
-                Advanced Connection Form
-                <ArrowRight className="ml-1.5 h-3 w-3" />
-              </Link>
+        {/* ── Error Banner if any ── */}
+        {error && (
+          <div className="flex flex-col items-center justify-center text-center text-destructive-foreground bg-destructive/20 border border-destructive/50 rounded-lg p-8">
+            <AlertTriangle className="h-10 w-10 mb-4" />
+            <h3 className="text-lg font-semibold">Something went wrong</h3>
+            <p className="text-sm">{error}</p>
+            <Button onClick={fetchProjects} variant="destructive" className="mt-6">
+              Try Again
             </Button>
           </div>
+        )}
 
-          {error ? (
-            <div className="flex flex-col items-center justify-center text-center text-destructive-foreground bg-destructive/20 border border-destructive/50 rounded-lg p-8">
-              <AlertTriangle className="h-10 w-10 mb-4" />
-              <h3 className="text-lg font-semibold">Something went wrong</h3>
-              <p className="text-sm">{error}</p>
-              <Button onClick={fetchProjects} variant="destructive" className="mt-6">
-                Try Again
-              </Button>
+        {/* ── Dialect Projects Sections (Top: PostgreSQL, Down: MySQL) ── */}
+        {!error && (
+          <div className="space-y-12">
+
+            {/* ── TOP SECTION: PostgreSQL Projects ── */}
+            <div className="space-y-4">
+              <div className="border-b border-border/60 pb-3">
+                <h2 className="text-base font-bold text-foreground tracking-tight">
+                  PostgreSQL Workspaces
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Serverless relational databases with JSONB, vector extensions, and automated tenant schemas
+                </p>
+              </div>
+
+              {pgProjects.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border/70 p-8 text-center bg-card/20">
+                  <h3 className="text-sm font-semibold text-foreground">No PostgreSQL projects</h3>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
+                    {searchQuery ? `No PostgreSQL project matched "${searchQuery}".` : 'No PostgreSQL projects currently provisioned.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {pgProjects.map(renderProjectCard)}
+                </div>
+              )}
             </div>
-          ) : filteredProjects.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border/80 p-8 text-center bg-card/20">
-              <Database className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
-              <h3 className="text-base font-semibold text-foreground">No projects found</h3>
-              <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
-                {searchQuery ? `No project matched "${searchQuery}".` : 'Select one of the 3 options above to create your first PostgreSQL or MySQL project.'}
-              </p>
+
+            {/* ── DOWN SECTION: MySQL Projects ── */}
+            <div className="space-y-4 pt-2">
+              <div className="border-b border-border/60 pb-3">
+                <h2 className="text-base font-bold text-foreground tracking-tight">
+                  MySQL Workspaces
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  MySQL 8 relational engines with InnoDB ACID transactions and connection pooling
+                </p>
+              </div>
+
+              {mysqlProjects.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border/70 p-8 text-center bg-card/20">
+                  <h3 className="text-sm font-semibold text-foreground">No MySQL projects</h3>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
+                    {searchQuery ? `No MySQL project matched "${searchQuery}".` : 'No MySQL projects currently provisioned.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {mysqlProjects.map(renderProjectCard)}
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {filteredProjects.map((project) => {
-                const isPostgres = project.dialect !== 'mysql';
-                return (
-                  <button
-                    key={project.project_id}
-                    onClick={() => handleProjectSelect(project)}
-                    className="w-full text-left group relative outline-none"
-                  >
-                    <Card className="relative overflow-hidden flex flex-col h-40 border-border bg-card/30 hover:border-border hover:bg-card/50 transition-all duration-300 hover:-translate-y-0.5">
-                      {/* Faint Background Logo Outline */}
-                      <div className="absolute -right-6 -bottom-6 w-36 h-36 group-hover:scale-110 transition-all duration-500 pointer-events-none overflow-visible z-0">
-                        {isPostgres ? (
-                          <Image src="/postgres-bg.png" alt="PostgreSQL Background" width={144} height={144} className="w-full h-full object-contain grayscale opacity-[0.35] group-hover:opacity-[0.65] transition-opacity" />
-                        ) : (
-                          <Image src="/mysql-bg.png" alt="MySQL Background" width={144} height={144} className="w-full h-full object-contain grayscale opacity-[0.35] group-hover:opacity-[0.65] transition-opacity" />
-                        )}
-                      </div>
 
-                      <div className="p-6 flex flex-col h-full z-10 relative">
-                        {/* Top: Dialect & Role */}
-                        <div className="flex justify-between items-start mb-3">
-                          <div className="flex flex-wrap gap-1.5">
-                            <Badge variant="secondary" className={cn(
-                              "text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 font-mono",
-                              isPostgres 
-                                ? "bg-blue-500/10 text-blue-400 border-blue-500/20" 
-                                : "bg-orange-500/10 text-orange-400 border-orange-500/20"
-                            )}>
-                              {isPostgres ? 'PostgreSQL' : 'MySQL'}
-                            </Badge>
-
-                            {project.creator_role && (
-                              <Badge variant="outline" className="text-[10px] font-mono capitalize border-border/80 text-foreground/80 bg-secondary/50">
-                                {project.creator_role.replace('_', ' ')}
-                              </Badge>
-                            )}
-
-                            {project.role && (
-                              <Badge variant="secondary" className="text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 border font-mono">
-                                {project.role}
-                              </Badge>
-                            )}
-                          </div>
-                          <ChevronRight className="h-5 w-5 text-muted-foreground/50 transition-transform group-hover:translate-x-1 group-hover:text-primary" />
-                        </div>
-
-                        {/* Middle: Project Name */}
-                        <div className="mt-auto mb-2">
-                          <h3 className="text-lg font-semibold tracking-tight text-foreground/90 group-hover:text-foreground transition-colors line-clamp-1">
-                            {project.display_name}
-                          </h3>
-                        </div>
-
-                        {/* Bottom: Project ID & Date */}
-                        <div className="flex items-center justify-between text-xs text-muted-foreground/60 font-mono mt-1">
-                          <span className="truncate max-w-[140px]">{project.project_id}</span>
-                          <span>{new Date(project.created_at).toLocaleDateString(undefined, {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric'
-                          })}</span>
-                        </div>
-                      </div>
-                    </Card>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
+          </div>
+        )}
 
       </div>
 
@@ -537,12 +677,11 @@ export default function SelectProjectPage() {
                   className={cn(
                     "flex flex-col items-start p-3 rounded-lg border text-left transition-all relative overflow-hidden",
                     selectedRole === 'student'
-                      ? "border-primary bg-primary/10 text-foreground ring-1 ring-primary"
+                      ? "border-foreground bg-secondary/80 text-foreground"
                       : "border-border/80 bg-secondary/30 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                   )}
                 >
-                  <div className="flex items-center justify-between w-full mb-1">
-                    <GraduationCap className="h-4 w-4 text-primary" />
+                  <div className="flex items-center justify-end w-full mb-1">
                     <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary">₹0 Free</span>
                   </div>
                   <span className="text-xs font-bold text-foreground">Student</span>
@@ -556,12 +695,11 @@ export default function SelectProjectPage() {
                   className={cn(
                     "flex flex-col items-start p-3 rounded-lg border text-left transition-all relative overflow-hidden",
                     selectedRole === 'employee'
-                      ? "border-blue-500 bg-blue-500/10 text-foreground ring-1 ring-blue-500"
+                      ? "border-foreground bg-secondary/80 text-foreground"
                       : "border-border/80 bg-secondary/30 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                   )}
                 >
-                  <div className="flex items-center justify-between w-full mb-1">
-                    <Briefcase className="h-4 w-4 text-blue-400" />
+                  <div className="flex items-center justify-end w-full mb-1">
                     <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">₹500/mo</span>
                   </div>
                   <span className="text-xs font-bold text-foreground">Employee</span>
@@ -575,12 +713,11 @@ export default function SelectProjectPage() {
                   className={cn(
                     "flex flex-col items-start p-3 rounded-lg border text-left transition-all relative overflow-hidden",
                     selectedRole === 'org_owner'
-                      ? "border-purple-500 bg-purple-500/10 text-foreground ring-1 ring-purple-500"
+                      ? "border-foreground bg-secondary/80 text-foreground"
                       : "border-border/80 bg-secondary/30 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                   )}
                 >
-                  <div className="flex items-center justify-between w-full mb-1">
-                    <Building2 className="h-4 w-4 text-purple-400" />
+                  <div className="flex items-center justify-end w-full mb-1">
                     <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">₹5,000/mo</span>
                   </div>
                   <span className="text-xs font-bold text-foreground">Org Owner</span>
@@ -594,14 +731,11 @@ export default function SelectProjectPage() {
             {selectedRole && (
               <div className="rounded-lg p-3 bg-secondary/40 border border-border/80 space-y-2 animate-in fade-in duration-300">
                 <div className="flex items-center justify-between text-xs font-semibold text-foreground border-b border-border/60 pb-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <Cpu className="h-3.5 w-3.5 text-primary" />
-                    <span>
-                      {selectedRole === 'student' && 'Student Sandbox Compute'}
-                      {selectedRole === 'employee' && 'High-Performance Dedicated Server (₹500 / mo)'}
-                      {selectedRole === 'org_owner' && 'Top-Grade Enterprise Infrastructure (₹5,000 / mo)'}
-                    </span>
-                  </div>
+                  <span>
+                    {selectedRole === 'student' && 'Student Sandbox Compute'}
+                    {selectedRole === 'employee' && 'High-Performance Dedicated Server (₹500 / mo)'}
+                    {selectedRole === 'org_owner' && 'Top-Grade Enterprise Infrastructure (₹5,000 / mo)'}
+                  </span>
                   <Badge variant="outline" className="text-[10px] font-mono">
                     {selectedRole === 'student' ? 'Community Tier' : 'Pay-As-You-Go Available'}
                   </Badge>
@@ -637,15 +771,14 @@ export default function SelectProjectPage() {
               </div>
             )}
 
-            {/* Additional Organization Verification Details for Employee & Org Owner */}
+            {/* Additional Organization Details for Employee & Org Owner */}
             {(selectedRole === 'employee' || selectedRole === 'org_owner') && (
               <div className="space-y-3 pt-2 p-3.5 rounded-lg bg-secondary/30 border border-border/80 animate-in fade-in duration-300">
-                <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                  <Send className="h-3.5 w-3.5 text-primary" />
-                  <span>High-Performance Server Verification Request</span>
+                <div className="text-xs font-semibold text-foreground">
+                  <span>Dedicated Server Tier & Organization Setup</span>
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  As an {selectedRole === 'org_owner' ? 'Organization Owner' : 'Employee'}, an access request will be recorded in the database and sent directly to the administrator for verification and dedicated resource allocation.
+                  As an {selectedRole === 'org_owner' ? 'Organization Owner' : 'Employee'}, you will be linked directly to our payment gateway to complete payment and instantly activate your dedicated database tier.
                 </p>
 
                 {/* Billing Model Selector */}
@@ -657,7 +790,7 @@ export default function SelectProjectPage() {
                       onClick={() => setBillingPreference('monthly')}
                       className={cn(
                         "p-2 rounded border text-left text-xs transition-all",
-                        billingPreference === 'monthly' ? "border-primary bg-primary/10 font-semibold" : "border-border/60 bg-background/50 text-muted-foreground"
+                        billingPreference === 'monthly' ? "border-foreground bg-secondary font-semibold text-foreground" : "border-border/60 bg-background/50 text-muted-foreground"
                       )}
                     >
                       <div>Fixed Monthly</div>
@@ -668,18 +801,18 @@ export default function SelectProjectPage() {
                       onClick={() => setBillingPreference('pay_as_you_go')}
                       className={cn(
                         "p-2 rounded border text-left text-xs transition-all",
-                        billingPreference === 'pay_as_you_go' ? "border-primary bg-primary/10 font-semibold" : "border-border/60 bg-background/50 text-muted-foreground"
+                        billingPreference === 'pay_as_you_go' ? "border-foreground bg-secondary font-semibold text-foreground" : "border-border/60 bg-background/50 text-muted-foreground"
                       )}
                     >
                       <div>Pay-As-You-Go</div>
-                      <div className="text-[10px] opacity-75">Metered usage</div>
+                      <div className="text-[10px] opacity-75">₹50 refundable deposit • 28-day cycle</div>
                     </button>
                     <button
                       type="button"
                       onClick={() => setBillingPreference('hybrid')}
                       className={cn(
                         "p-2 rounded border text-left text-xs transition-all",
-                        billingPreference === 'hybrid' ? "border-primary bg-primary/10 font-semibold" : "border-border/60 bg-background/50 text-muted-foreground"
+                        billingPreference === 'hybrid' ? "border-foreground bg-secondary font-semibold text-foreground" : "border-border/60 bg-background/50 text-muted-foreground"
                       )}
                     >
                       <div>Hybrid Plan</div>
@@ -731,14 +864,16 @@ export default function SelectProjectPage() {
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Provisioning Tenant...
+                    Connecting to Payment Gateway...
                   </>
                 ) : !selectedRole ? (
                   'Select a Role to Continue'
+                ) : billingPreference === 'pay_as_you_go' ? (
+                  'Proceed to Verification (₹50 Refundable Deposit) & Activate'
                 ) : selectedRole !== 'student' ? (
-                  `Submit Server Request (${selectedRole === 'org_owner' ? '₹5,000/mo' : '₹500/mo'})`
+                  `Proceed to Payment (${selectedRole === 'org_owner' ? '₹5,000' : '₹500'}) & Activate`
                 ) : (
-                  `Create ${modalDialect === 'postgresql' ? 'PostgreSQL' : 'MySQL'} Project`
+                  `Create Free ${modalDialect === 'postgresql' ? 'PostgreSQL' : 'MySQL'} Project`
                 )}
               </Button>
             </DialogFooter>

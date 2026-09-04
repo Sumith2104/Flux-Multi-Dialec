@@ -107,15 +107,28 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                     setUser(data.user || null);
 
                     if (data.plan) {
-                        setPlanType(data.plan.type === 'max' ? 'Max' : (data.plan.type === 'pro' ? 'Pro' : 'Free'));
+                        const rawType = data.plan.type?.toLowerCase();
+                        if (rawType === 'max') setPlanType('Max');
+                        else if (rawType === 'pro') setPlanType('Pro');
+                        else if (rawType === 'employee') setPlanType('Employee');
+                        else if (rawType === 'org_owner') setPlanType('Org Owner');
+                        else if (rawType === 'pay_as_you_go') setPlanType('Pay-As-You-Go');
+                        else setPlanType('Free');
                         setIsSuspended(data.plan.status === 'suspended');
                     }
 
                     setProjects(data.projects || []);
                     setInvitations(data.invitations || []);
 
-                    if (selectedProject && !data.projects?.some(p => p.project_id === selectedProject.project_id)) {
-                        setProject(null);
+                    if (selectedProject) {
+                        const freshProj = data.projects?.find(p => p.project_id === selectedProject.project_id);
+                        if (freshProj) {
+                            if (freshProj.billing_preference !== selectedProject.billing_preference || freshProj.creator_role !== selectedProject.creator_role) {
+                                setProject(freshProj);
+                            }
+                        } else if (!data.projects?.some(p => p.project_id === selectedProject.project_id)) {
+                            setProject(null);
+                        }
                     }
                 }
 
@@ -288,32 +301,73 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                         projects={projects}
                         selectedProject={selectedProject}
                     />
-                    {selectedProject && (
-                        <div className="flex items-center gap-1.5">
-                            <Badge
-                                variant="secondary"
-                                className={cn(
-                                    "hidden sm:inline-flex transition-colors shadow-none text-[9px] uppercase font-bold tracking-wider rounded-md border font-mono",
-                                    selectedProject.role === 'admin' && "bg-amber-500/10 text-amber-400 border-amber-500/20",
-                                    selectedProject.role === 'developer' && "bg-blue-500/10 text-blue-400 border-blue-500/20",
-                                    selectedProject.role === 'viewer' && "bg-secondary text-muted-foreground border-border"
-                                )}
-                            >
-                                {selectedProject.role}
-                            </Badge>
-                            <Badge
-                                variant="outline"
-                                className={cn(
-                                    "hidden sm:inline-flex transition-colors shadow-none text-[9px] uppercase font-bold tracking-wider rounded-md font-mono",
-                                    planType === 'Max' ? "border-amber-500/50 bg-amber-500/10 text-amber-500" :
-                                        planType === 'Pro' ? "border-blue-500/50 bg-blue-500/10 text-blue-500" :
-                                            "border-muted-foreground/30 bg-muted/10 text-muted-foreground"
-                                )}
-                            >
-                                {planType}
-                            </Badge>
-                        </div>
-                    )}
+                    {selectedProject && (() => {
+                        const liveProject = projects.find(p => p.project_id === selectedProject.project_id) || selectedProject;
+                        const accountRole = (user as any)?.user_role || (user as any)?.plan_type || liveProject.creator_role || 'student';
+                        const effectiveRole = accountRole === 'employee' || accountRole === 'org_owner' ? accountRole : (liveProject.creator_role || 'student');
+                        const isStudent = effectiveRole === 'student';
+                        const rawBilling = liveProject.billing_preference || selectedProject.billing_preference || (user as any)?.billing_preference;
+                        const billingPlan = (rawBilling === 'pay_as_you_go' || planType === 'Pay-As-You-Go' || (user as any)?.plan_type === 'pay_as_you_go')
+                            ? 'pay_as_you_go'
+                            : (rawBilling === 'hybrid' ? 'hybrid' : 'fixed');
+
+                        const projectRole = liveProject.role || selectedProject.role || 'admin';
+                        const roleLabel = effectiveRole === 'org_owner' ? 'Owner' : (effectiveRole === 'employee' ? 'Emp' : 'Student');
+                        const planLabel = isStudent
+                            ? (planType === 'Max' ? 'Max' : (planType === 'Pro' ? 'Pro' : 'Free'))
+                            : (billingPlan === 'pay_as_you_go' ? 'PAY-AS-YOU-GO' : (billingPlan === 'hybrid' ? 'Hybrid' : 'Fixed'));
+
+                        return (
+                            <div className="flex items-center gap-1.5">
+                                {/* 1. Project Role / Ownership Badge (Admin, Developer, Viewer) */}
+                                <Badge
+                                    variant="secondary"
+                                    className={cn(
+                                        "hidden sm:inline-flex transition-colors shadow-none text-[9px] uppercase font-bold tracking-wider rounded-md border font-mono",
+                                        projectRole === 'admin' && "bg-amber-500/10 text-amber-400 border-amber-500/20",
+                                        projectRole === 'developer' && "bg-blue-500/10 text-blue-400 border-blue-500/20",
+                                        projectRole === 'viewer' && "bg-secondary text-muted-foreground border-border"
+                                    )}
+                                >
+                                    {projectRole}
+                                </Badge>
+
+                                {/* 2. Role Badge (Student, Emp, Owner) */}
+                                <Badge
+                                    variant="secondary"
+                                    className={cn(
+                                        "hidden sm:inline-flex transition-colors shadow-none text-[9px] uppercase font-bold tracking-wider rounded-md border font-mono",
+                                        effectiveRole === 'org_owner' && "bg-purple-500/10 text-purple-400 border-purple-500/20",
+                                        effectiveRole === 'employee' && "bg-blue-500/10 text-blue-400 border-blue-500/20",
+                                        effectiveRole === 'student' && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                    )}
+                                >
+                                    {roleLabel}
+                                </Badge>
+
+                                {/* 3. Plan Name Badge (Free, Pro, Max for Student | Fixed, Pay-As-You-Go, Hybrid for Emp/Owner) */}
+                                <Badge
+                                    variant="outline"
+                                    className={cn(
+                                        "hidden sm:inline-flex transition-colors shadow-none text-[9px] uppercase font-bold tracking-wider rounded-md font-mono",
+                                        isStudent
+                                            ? (planType === 'Max'
+                                                ? "border-amber-500/50 bg-amber-500/10 text-amber-500"
+                                                : planType === 'Pro'
+                                                    ? "border-blue-500/50 bg-blue-500/10 text-blue-500"
+                                                    : "border-muted-foreground/30 bg-muted/10 text-muted-foreground")
+                                            : (billingPlan === 'pay_as_you_go'
+                                                ? "border-purple-500/50 bg-purple-500/10 text-purple-400"
+                                                : billingPlan === 'hybrid'
+                                                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400"
+                                                    : "border-blue-500/50 bg-blue-500/10 text-blue-400")
+                                    )}
+                                >
+                                    {planLabel}
+                                </Badge>
+                            </div>
+                        );
+                    })()}
                     <div className="hidden md:block">
                         <TimezoneSelector />
                     </div>

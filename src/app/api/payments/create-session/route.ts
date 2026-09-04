@@ -10,108 +10,132 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-        const { plan, isDiscountApplied } = await req.json();
+        const { plan, isDiscountApplied, couponCode, projectData } = await req.json();
         
-        if (!plan || (plan.toLowerCase() !== 'pro' && plan.toLowerCase() !== 'max')) {
+        const validPlans = ['pro', 'max', 'student_pro', 'student_max', 'employee', 'org_owner', 'org', 'pay_as_you_go'];
+        if (!plan || !validPlans.includes(plan.toLowerCase())) {
             return NextResponse.json({ error: 'Invalid or missing plan type' }, { status: 400 });
         }
 
-        const cleanPlan = plan.toLowerCase();
+        const cleanPlan = plan.toLowerCase() === 'student_pro' ? 'pro' : 
+                          plan.toLowerCase() === 'student_max' ? 'max' : 
+                          plan.toLowerCase() === 'org' ? 'org_owner' : 
+                          plan.toLowerCase();
 
         const pool = getPgPool();
 
-        // Check current plan of user to avoid duplicate or lower tier purchases
-        const userRes = await pool.query(
-            'SELECT plan_type FROM fluxbase_global.users WHERE id = $1',
-            [userId]
-        );
-        const currentPlan = (userRes.rows[0]?.plan_type || 'free').toLowerCase();
-
-        if (currentPlan === 'max') {
-            return NextResponse.json({ error: 'You are already subscribed to the Max plan.' }, { status: 400 });
-        }
-        if (cleanPlan === 'pro' && currentPlan === 'pro') {
-            return NextResponse.json({ error: 'You are already subscribed to the Pro plan.' }, { status: 400 });
-        }
-
-        // 1. Query base price & dynamic UPI ID from database configs table
-        const pricingRes = await pool.query(
-            `SELECT pro_price, max_price, discount_pro_price, discount_max_price, upi_id 
-             FROM fluxbase_global.pricing_configs 
-             ORDER BY id DESC LIMIT 1`
+        // 1. Fetch exact plan from fluxbase_global.plans table
+        const planRes = await pool.query(
+            `SELECT plan_key, name, price 
+             FROM fluxbase_global.plans 
+             WHERE plan_key = $1 AND is_active = true 
+             LIMIT 1`,
+            [cleanPlan]
         );
 
-        if (pricingRes.rows.length === 0) {
-            return NextResponse.json({ error: 'Pricing configurations not seeded in database.' }, { status: 500 });
+        let basePrice = 500;
+        if (cleanPlan === 'pay_as_you_go') {
+            basePrice = 50; // Refundable verification fee
+        } else if (planRes.rows.length > 0) {
+            basePrice = parseFloat(planRes.rows[0].price);
+        } else {
+            // Fallback defaults
+            if (cleanPlan === 'employee') basePrice = 500;
+            if (cleanPlan === 'org_owner') basePrice = 5000;
+            if (cleanPlan === 'pro') basePrice = 499;
+            if (cleanPlan === 'max') basePrice = 1499;
         }
 
-        const pricing = pricingRes.rows[0];
-        const standardProPrice = parseFloat(pricing.pro_price);
-        const discountProPrice = parseFloat(pricing.discount_pro_price);
-        const standardMaxPrice = parseFloat(pricing.max_price);
-        const discountMaxPrice = parseFloat(pricing.discount_max_price);
+        // 2. Fetch discount rate from fluxbase_global.discounts table if coupon was applied
+        if (isDiscountApplied) {
+            let discountPercentage = 20; // default 20%
+            let flatDiscount = 0;
 
-        let basePrice = cleanPlan === 'pro' 
-            ? (isDiscountApplied ? discountProPrice : standardProPrice)
-            : (isDiscountApplied ? discountMaxPrice : standardMaxPrice);
+            if (couponCode) {
+                const discRes = await pool.query(
+                    `SELECT discount_type, discount_value, max_discount_amount 
+                     FROM fluxbase_global.discounts 
+                     WHERE code = $1 AND is_active = true AND (expires_at IS NULL OR expires_at > NOW())
+                     LIMIT 1`,
+                    [couponCode.trim().toUpperCase()]
+                );
+
+                if (discRes.rows.length > 0) {
+                    const d = discRes.rows[0];
+                    if (d.discount_type === 'percentage') {
+                        discountPercentage = parseFloat(d.discount_value);
+                    } else if (d.discount_type === 'fixed_amount') {
+                        flatDiscount = parseFloat(d.discount_value);
+                    }
+                }
+            }
+
+            if (flatDiscount > 0) {
+                basePrice = Math.max(1, basePrice - flatDiscount);
+            } else {
+                basePrice = Math.max(1, Math.round(basePrice * (1 - discountPercentage / 100)));
+            }
+        }
 
         // Convert basePrice to integer to clear out any decimal parts before adding our unique offset
         basePrice = Math.floor(basePrice);
 
-        // 2. Query all active pending sessions to find occupied offsets
+        // 3. Query all currently active pending sessions to find occupied decimal offsets (.01, .02, etc.)
         const activeSessionsQuery = await pool.query(
             `SELECT amount FROM fluxbase_global.payment_sessions 
-             WHERE status = 'pending' AND expires_at > NOW() AND plan_type = $1`,
-            [cleanPlan]
+             WHERE status = 'pending' AND expires_at > NOW()`
         );
 
-        const occupiedAmounts = new Set(
-            activeSessionsQuery.rows.map(row => parseFloat(row.amount))
+        const occupiedOffsets = new Set(
+            activeSessionsQuery.rows.map(row => {
+                const amt = parseFloat(row.amount);
+                return Math.round((amt - Math.floor(amt)) * 100); // 1 for .01, 2 for .02, etc.
+            })
         );
 
-        // 3. Find an available decimal offset from .01 to .99
-        let finalAmount = 0;
+        // 4. Find the lowest available decimal offset from .01 to .99
+        let chosenOffsetIndex = 1;
         let foundOffset = false;
 
         for (let i = 1; i <= 99; i++) {
-            const offset = i / 100;
-            const candidateAmount = parseFloat((basePrice + offset).toFixed(2));
-            if (!occupiedAmounts.has(candidateAmount)) {
-                finalAmount = candidateAmount;
+            if (!occupiedOffsets.has(i)) {
+                chosenOffsetIndex = i;
                 foundOffset = true;
                 break;
             }
         }
 
         if (!foundOffset) {
-            return NextResponse.json({ 
-                error: 'Too many concurrent checkout sessions. Please try again in 1 minute.' 
-            }, { status: 503 });
+            return NextResponse.json({
+                error: 'Payment gateway channels at full capacity. Please try again in 1 minute.'
+            }, { status: 429 });
         }
 
-        // 4. Create the session in the database with a 5-minute expiry
-        const sessionDurationMinutes = 5;
-        const insertQuery = await pool.query(
-            `INSERT INTO fluxbase_global.payment_sessions (user_id, plan_type, amount, status, expires_at)
-             VALUES ($1, $2, $3, 'pending', NOW() + $4 * INTERVAL '1 minute')
-             RETURNING id, amount, expires_at`,
-            [userId, cleanPlan, finalAmount, sessionDurationMinutes]
+        const finalAmount = parseFloat((basePrice + (chosenOffsetIndex / 100)).toFixed(2));
+
+        // 5. Create new payment session with 3-minute expiration and 'pending' status
+        const insertSessionQuery = await pool.query(
+            `INSERT INTO fluxbase_global.payment_sessions (user_id, plan_type, amount, status, expires_at, project_data)
+             VALUES ($1, $2, $3, 'pending', NOW() + INTERVAL '3 minutes', $4)
+             RETURNING id, amount, expires_at, plan_type`,
+            [userId, cleanPlan, finalAmount, projectData ? JSON.stringify(projectData) : null]
         );
 
-        const session = insertQuery.rows[0];
-
-        logger.info(`[UPI Session] Created session ${session.id} for User ${userId}. Expected Amount: ₹${session.amount}, Expires: ${session.expires_at}`);
+        const session = insertSessionQuery.rows[0];
 
         return NextResponse.json({
             success: true,
             sessionId: session.id,
             amount: parseFloat(session.amount),
             expiresAt: session.expires_at,
-            upiMerchantVpa: pricing.upi_id || 'sumith0909@axl'
+            planType: session.plan_type
         });
 
-    } catch (error: any) {
-        logger.error('[Create Session Error]:', error);
-        return NextResponse.json({ error: 'Internal server error occurred while initializing checkout.' }, { status: 500 });
+    } catch (err: any) {
+        logger.error('[Create Payment Session API Error]:', err);
+        return NextResponse.json({
+            error: 'Failed to initialize payment session.'
+        }, { status: 500 });
     }
 }
+export const dynamic = 'force-dynamic';

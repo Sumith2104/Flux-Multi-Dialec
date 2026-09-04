@@ -19,10 +19,13 @@ export interface Project {
     project_id: string;
     user_id: string;
     display_name: string;
+    description?: string;
     created_at: string;
     dialect?: 'mysql' | 'postgresql' | 'oracle';
     timezone?: string;
     role?: string;
+    creator_role?: 'student' | 'employee' | 'org_owner' | string;
+    billing_preference?: 'monthly' | 'pay_as_you_go' | 'hybrid' | string;
     ai_allow_destructive?: boolean;
     ai_schema_inference?: boolean;
     status?: 'active' | 'suspended';
@@ -127,14 +130,14 @@ export async function checkDatabaseHealthAction(): Promise<boolean> {
 
 // --- Projects ---
 
-export async function getProjectsForCurrentUser(): Promise<Project[]> {
-    const userId = await getCurrentUserId();
+export async function getProjectsForCurrentUser(overrideUserId?: string): Promise<Project[]> {
+    const userId = overrideUserId || (await getCurrentUserId());
     if (!userId) return [];
 
     try {
         const pool = getPgPool();
         const result = await pool.query(`
-            SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.ai_allow_destructive, p.ai_schema_inference, p.status,
+            SELECT p.project_id, p.display_name, p.description, p.created_at, p.dialect, p.timezone, p.ai_allow_destructive, p.ai_schema_inference, p.status, p.creator_role, p.billing_preference,
                    COALESCE(pm.role, CASE WHEN p.user_id = $1::text THEN 'admin' ELSE 'developer' END) as role
             FROM fluxbase_global.projects p
             LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $1::text
@@ -146,10 +149,13 @@ export async function getProjectsForCurrentUser(): Promise<Project[]> {
             project_id: row.project_id,
             user_id: userId,
             display_name: row.display_name,
+            description: row.description || '',
             created_at: row.created_at.toISOString(),
             dialect: row.dialect,
             timezone: row.timezone,
             role: row.role,
+            creator_role: row.creator_role || 'student',
+            billing_preference: row.billing_preference || 'monthly',
             ai_allow_destructive: row.ai_allow_destructive ?? false,
             ai_schema_inference: row.ai_schema_inference ?? true,
             status: row.status || 'active'
@@ -201,6 +207,40 @@ async function ensureMigration(pool: any) {
             ALTER TABLE fluxbase_global.projects 
             ADD COLUMN IF NOT EXISTS connection_type VARCHAR(50) DEFAULT 'internal',
             ADD COLUMN IF NOT EXISTS connection_config JSONB DEFAULT '{}'::jsonb;
+
+            CREATE TABLE IF NOT EXISTS fluxbase_global.plans (
+                id SERIAL PRIMARY KEY,
+                plan_key VARCHAR(64) UNIQUE NOT NULL,
+                name VARCHAR(128) NOT NULL,
+                description TEXT,
+                category VARCHAR(64) DEFAULT 'student',
+                price NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+                billing_interval VARCHAR(32) DEFAULT 'monthly',
+                max_projects INT DEFAULT 1,
+                storage_bytes BIGINT DEFAULT 524288000,
+                requests_limit INT DEFAULT 50000,
+                max_connections INT DEFAULT 20,
+                features JSONB DEFAULT '[]'::jsonb,
+                is_active BOOLEAN DEFAULT true,
+                sort_order INT DEFAULT 0,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS fluxbase_global.discounts (
+                id SERIAL PRIMARY KEY,
+                code VARCHAR(64) UNIQUE NOT NULL,
+                description TEXT,
+                discount_type VARCHAR(32) NOT NULL DEFAULT 'percentage',
+                discount_value NUMERIC(10, 2) NOT NULL DEFAULT 20.00,
+                applicable_plans JSONB DEFAULT '["all"]'::jsonb,
+                min_order_amount NUMERIC(10, 2) DEFAULT 0.00,
+                max_discount_amount NUMERIC(10, 2) DEFAULT 1000.00,
+                is_active BOOLEAN DEFAULT true,
+                expires_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            );
 
             CREATE TABLE IF NOT EXISTS fluxbase_global.pricing_configs (
                 id SERIAL PRIMARY KEY,
@@ -303,7 +343,7 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
                 const pool = getPgPool();
                 await ensureMigration(pool);
                 const result = await pool.query(`
-                    SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.user_id as owner_id, p.ai_allow_destructive, p.ai_schema_inference, p.status,
+                    SELECT p.project_id, p.display_name, p.description, p.created_at, p.dialect, p.timezone, p.user_id as owner_id, p.ai_allow_destructive, p.ai_schema_inference, p.status, p.creator_role, p.billing_preference,
                            p.connection_type, p.connection_config,
                            COALESCE(pm.role, CASE WHEN p.user_id = $2::text THEN 'admin' ELSE NULL END) as role
                     FROM fluxbase_global.projects p
@@ -319,10 +359,13 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
                     project_id: row.project_id,
                     user_id: row.owner_id,
                     display_name: row.display_name,
+                    description: row.description || '',
                     created_at: row.created_at.toISOString(),
                     dialect: row.dialect,
                     timezone: row.timezone,
                     role: row.role,
+                    creator_role: row.creator_role || 'student',
+                    billing_preference: row.billing_preference || 'monthly',
                     ai_allow_destructive: row.ai_allow_destructive ?? false,
                     ai_schema_inference: row.ai_schema_inference ?? true,
                     status: row.status || 'active',
@@ -505,9 +548,10 @@ export async function createProject(
     timezone?: string,
     connectionType: 'internal' | 'external_db' | 'external_server' = 'internal',
     connectionConfig: any = {},
-    userRole?: 'student' | 'employee' | 'org_owner' | string
+    userRole?: 'student' | 'employee' | 'org_owner' | string,
+    overrideUserId?: string
 ): Promise<Project> {
-    const userId = await getCurrentUserId();
+    const userId = overrideUserId || (await getCurrentUserId());
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
     const pool = getPgPool();
@@ -518,8 +562,20 @@ export async function createProject(
     const planType = userSnapshot.rows[0]?.plan_type || 'free';
 
     let maxProjects = 1;
-    if (planType === 'pro') maxProjects = 3;
-    if (planType === 'max') maxProjects = 999999;
+    try {
+        const planDbRes = await pool.query('SELECT max_projects FROM fluxbase_global.plans WHERE plan_key = $1', [planType]);
+        if (planDbRes.rows.length > 0 && planDbRes.rows[0].max_projects) {
+            maxProjects = parseInt(planDbRes.rows[0].max_projects, 10);
+        } else {
+            if (planType === 'pro') maxProjects = 3;
+            else if (planType === 'max' || planType === 'org_owner') maxProjects = 999999;
+            else if (planType === 'employee' || planType === 'pay_as_you_go') maxProjects = 10;
+        }
+    } catch {
+        if (planType === 'pro') maxProjects = 3;
+        else if (planType === 'max' || planType === 'org_owner') maxProjects = 999999;
+        else if (planType === 'employee' || planType === 'pay_as_you_go') maxProjects = 10;
+    }
 
     // Check limit
     const projectsSnapshot = await pool.query('SELECT COUNT(*) as count FROM fluxbase_global.projects WHERE user_id = $1::text', [userId]);
@@ -539,9 +595,7 @@ export async function createProject(
     // Persist user role in Fluxbase database (Student / Employee / Org Owner)
     if (userRole) {
         try {
-            await pool.query('ALTER TABLE fluxbase_global.users ADD COLUMN IF NOT EXISTS user_role VARCHAR(50)');
             await pool.query('UPDATE fluxbase_global.users SET user_role = $1 WHERE id = $2', [userRole, userId]);
-            await pool.query('ALTER TABLE fluxbase_global.projects ADD COLUMN IF NOT EXISTS creator_role VARCHAR(50)');
             await pool.query('UPDATE fluxbase_global.projects SET creator_role = $1 WHERE project_id = $2', [userRole, projectId]);
         } catch (roleErr) {
             console.warn('[Role Save] Non-critical role update error:', roleErr);

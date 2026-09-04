@@ -72,26 +72,35 @@ export class TenantProvisioner {
             }
         } else {
             // MySQL Database Isolation
-            const mysqlConfig = {
-                host: process.env.AWS_RDS_MYSQL_HOST || 'localhost',
-                user: process.env.AWS_RDS_MYSQL_USER || 'root',
-                password: process.env.AWS_RDS_MYSQL_PASSWORD || '',
-                port: parseInt(process.env.AWS_RDS_MYSQL_PORT || '3306', 10),
-            };
-
-            const conn = await mysql.createConnection(mysqlConfig);
             try {
-                await conn.query(`CREATE DATABASE IF NOT EXISTS \`${schemaName}\`;`);
-                await conn.query(`
-                    CREATE TABLE IF NOT EXISTS \`${schemaName}\`.\`_flux_tenant_info\` (
-                        id VARCHAR(64) PRIMARY KEY,
-                        schema_name VARCHAR(128) NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        status VARCHAR(32) DEFAULT 'active'
-                    );
-                `);
-            } finally {
-                await conn.end();
+                if (process.env.AWS_RDS_MYSQL_URL || process.env.MYSQL_URL) {
+                    const { getMysqlPool } = await import('@/lib/mysql');
+                    const pool = getMysqlPool();
+                    await pool.query(`CREATE DATABASE IF NOT EXISTS \`${schemaName}\`;`);
+                } else {
+                    const mysqlConfig = {
+                        host: process.env.AWS_RDS_MYSQL_HOST || 'localhost',
+                        user: process.env.AWS_RDS_MYSQL_USER || 'root',
+                        password: process.env.AWS_RDS_MYSQL_PASSWORD || '',
+                        port: parseInt(process.env.AWS_RDS_MYSQL_PORT || '3306', 10),
+                    };
+                    const conn = await mysql.createConnection(mysqlConfig);
+                    try {
+                        await conn.query(`CREATE DATABASE IF NOT EXISTS \`${schemaName}\`;`);
+                        await conn.query(`
+                            CREATE TABLE IF NOT EXISTS \`${schemaName}\`.\`_flux_tenant_info\` (
+                                id VARCHAR(64) PRIMARY KEY,
+                                schema_name VARCHAR(128) NOT NULL,
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                status VARCHAR(32) DEFAULT 'active'
+                            );
+                        `);
+                    } finally {
+                        await conn.end();
+                    }
+                }
+            } catch (mysqlErr: any) {
+                logger.warn(`[Tenant Engine Warning] MySQL schema creation warning for "${schemaName}":`, mysqlErr?.message || mysqlErr);
             }
         }
 

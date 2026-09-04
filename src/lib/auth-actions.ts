@@ -16,6 +16,8 @@ export async function findUserById(userId: string): Promise<User | null> {
             email: row.email,
             display_name: row.display_name,
             photo_url: row.photo_url,
+            user_role: row.user_role || 'student',
+            plan_type: row.plan_type || 'free',
             created_at: row.created_at.toISOString(),
         } as User;
     } catch (error) {

@@ -12,20 +12,8 @@ export async function POST(req: Request) {
     try {
         const { utr, plan, sessionId } = await req.json();
 
-        if (!utr || !plan) {
-            return NextResponse.json({ error: 'Missing UTR or Plan' }, { status: 400 });
-        }
-
-        // Clean UTR and validate it is 12 digits
-        const cleanUtr = utr.trim();
-        if (!/^\d{12}$/.test(cleanUtr)) {
-            return NextResponse.json({ error: 'Invalid UTR format. Must be a 12-digit number.' }, { status: 400 });
-        }
-
-        const cleanPlan = plan.toLowerCase();
-        if (cleanPlan !== 'pro' && cleanPlan !== 'max') {
-            return NextResponse.json({ error: 'Invalid plan type.' }, { status: 400 });
-        }
+        const cleanPlan = (plan || '').toLowerCase();
+        const cleanUtr = utr ? String(utr).trim() : null;
 
         const pool = getPgPool();
         const client = await pool.connect();
@@ -33,128 +21,189 @@ export async function POST(req: Request) {
         try {
             await client.query('BEGIN');
 
-            // A user-entered reference is not proof of payment. It must first
-            // have been received through an authenticated payment webhook.
-            const verifiedPayment = await client.query(
-                `SELECT amount FROM fluxbase_global.bank_payments WHERE utr = $1 FOR UPDATE`,
-                [cleanUtr]
-            );
-            if (verifiedPayment.rows.length === 0) {
-                await client.query('ROLLBACK');
-                return NextResponse.json({ error: 'Payment reference has not been verified by the payment provider.' }, { status: 409 });
-            }
-            const alreadyConsumed = await client.query(
-                `SELECT 1 FROM fluxbase_global.payments WHERE razorpay_payment_id = $1 LIMIT 1`,
-                [`manual_utr_${cleanUtr}`]
-            );
-            if (alreadyConsumed.rows.length > 0) {
-                await client.query('ROLLBACK');
-                return NextResponse.json({ error: 'Payment reference has already been used.' }, { status: 409 });
-            }
-
-            // 1. Check active session or existing scraped records
-            let sessionAmount = 0;
-            let activeSessionId = sessionId ? parseInt(sessionId, 10) : null;
-
-            if (activeSessionId) {
+            // 1. Fetch checkout session
+            let sessionRecord: any = null;
+            if (sessionId) {
                 const sessRes = await client.query(
-                    `SELECT amount FROM fluxbase_global.payment_sessions WHERE id = $1 AND user_id = $2`,
-                    [activeSessionId, userId]
+                    `SELECT id, amount, project_data, plan_type, status, created_at 
+                     FROM fluxbase_global.payment_sessions 
+                     WHERE id = $1 AND user_id = $2`,
+                    [parseInt(sessionId, 10), userId]
                 );
                 if (sessRes.rows.length > 0) {
-                    sessionAmount = parseFloat(sessRes.rows[0].amount);
+                    sessionRecord = sessRes.rows[0];
                 }
             }
 
-            if (!sessionAmount) {
+            if (!sessionRecord) {
                 const sessRes = await client.query(
-                    `SELECT id, amount FROM fluxbase_global.payment_sessions 
-                     WHERE user_id = $1 AND status = 'pending' AND expires_at > NOW() 
+                    `SELECT id, amount, project_data, plan_type, status, created_at 
+                     FROM fluxbase_global.payment_sessions 
+                     WHERE user_id = $1 AND (status = 'pending' OR (status = 'expired' AND created_at >= NOW() - INTERVAL '30 minutes'))
                      ORDER BY created_at DESC LIMIT 1`,
                     [userId]
                 );
                 if (sessRes.rows.length > 0) {
-                    activeSessionId = sessRes.rows[0].id;
-                    sessionAmount = parseFloat(sessRes.rows[0].amount);
+                    sessionRecord = sessRes.rows[0];
                 }
             }
 
-            if (!activeSessionId || sessionAmount <= 0) {
+            if (!sessionRecord) {
                 await client.query('ROLLBACK');
-                return NextResponse.json({ error: 'No active checkout session found.' }, { status: 409 });
+                return NextResponse.json({ error: 'No active checkout session found.' }, { status: 404 });
             }
 
-            const amountToLog = parseFloat(verifiedPayment.rows[0].amount);
-            if (amountToLog !== sessionAmount) {
-                await client.query('ROLLBACK');
-                return NextResponse.json({ error: 'Payment amount does not match the checkout session.' }, { status: 409 });
+            const activeSessionId = sessionRecord.id;
+            const sessionAmount = parseFloat(sessionRecord.amount);
+            const targetPlan = sessionRecord.plan_type || cleanPlan || 'employee';
+
+            // If session is already completed, return success immediately
+            if (sessionRecord.status === 'completed') {
+                await client.query('COMMIT');
+                return NextResponse.json({
+                    success: true,
+                    message: 'Payment has already been confirmed and completed.',
+                    sessionId: activeSessionId
+                });
             }
 
-            // 2. Mark the independently verified notification as consumed.
-
-            await client.query(`
-                CREATE TABLE IF NOT EXISTS fluxbase_global.scraped_sms (
-                    id SERIAL PRIMARY KEY,
-                    sms_body TEXT,
-                    sender VARCHAR(100),
-                    utr VARCHAR(64) UNIQUE,
-                    amount NUMERIC(10, 2),
-                    is_used BOOLEAN DEFAULT false,
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                );
-            `).catch(() => {});
-
-            await client.query(
-                `UPDATE fluxbase_global.scraped_sms SET is_used = true WHERE utr = $1`,
-                [cleanUtr]
+            // 2. Check if a payment matching this exact decimal amount has arrived!
+            // Priority 1: Check scraped_sms by exact decimal amount received AFTER session was created
+            const scrapedQuery = await client.query(
+                `SELECT id, amount, utr, sender, created_at 
+                 FROM fluxbase_global.scraped_sms 
+                 WHERE amount = $1 
+                   AND (is_used IS FALSE OR is_used IS NULL)
+                   AND created_at >= $2
+                 ORDER BY created_at DESC LIMIT 1`,
+                [sessionAmount, sessionRecord.created_at]
             );
 
-            // 3. Complete the payment session if present
-            if (activeSessionId) {
-                const completeSession = await client.query(
-                    `UPDATE fluxbase_global.payment_sessions
-                     SET status = 'completed'
-                     WHERE id = $1 AND user_id = $2 AND status = 'pending' AND expires_at > NOW()`,
-                    [activeSessionId, userId]
+            // Priority 2: If UTR was optionally provided, check bank_payments by UTR
+            let bankQueryRows: any[] = [];
+            if (cleanUtr) {
+                const bRes = await client.query(
+                    `SELECT utr, amount FROM fluxbase_global.bank_payments WHERE utr = $1`,
+                    [cleanUtr]
                 );
-                if (completeSession.rowCount !== 1) {
-                    await client.query('ROLLBACK');
-                    return NextResponse.json({ error: 'Checkout session is no longer pending.' }, { status: 409 });
-                }
+                bankQueryRows = bRes.rows;
             }
 
-            // 4. Log record in payments table
+            const isMatched = scrapedQuery.rows.length > 0 || bankQueryRows.length > 0;
+
+            if (!isMatched) {
+                await client.query('ROLLBACK');
+                return NextResponse.json({
+                    error: `No payment of exact amount ₹${sessionAmount} detected yet. Please ensure you sent ₹${sessionAmount} and allow 15-30 seconds for SMS sync.`,
+                    pending: true,
+                    sessionAmount
+                }, { status: 404 });
+            }
+
+            const matchedSms = scrapedQuery.rows[0];
+            const finalUtr = cleanUtr || matchedSms?.utr || null;
+
+            // 3. Complete payment session
+            await client.query(
+                `UPDATE fluxbase_global.payment_sessions 
+                 SET status = 'completed' 
+                 WHERE id = $1`,
+                [activeSessionId]
+            );
+
+            if (matchedSms?.id) {
+                await client.query(
+                    `UPDATE fluxbase_global.scraped_sms SET is_used = true WHERE id = $1`,
+                    [matchedSms.id]
+                );
+            }
+
+            // 4. Record payment in fluxbase_global.payments
             await client.query(
                 `INSERT INTO fluxbase_global.payments (user_id, amount, currency, status, razorpay_payment_id)
-                 VALUES ($1, $2, 'INR', 'completed', $3)`,
-                [userId, amountToLog, `manual_utr_${cleanUtr}`]
+                 VALUES ($1, $2, 'INR', 'completed', $3)
+                 ON CONFLICT DO NOTHING`,
+                [userId, sessionAmount, finalUtr ? `utr_${finalUtr}` : `upi_session_${activeSessionId}`]
             );
 
-            // 5. Upgrade user plan settings
+            // 5. Upgrade user plan
             await client.query(
                 `UPDATE fluxbase_global.users 
                  SET plan_type = $1, billing_cycle_end = NOW() + INTERVAL '1 month', status = 'active'
                  WHERE id = $2`,
-                [cleanPlan, userId]
+                [targetPlan, userId]
             );
 
+            // 6. Auto-provision project if project_data was provided
+            if (sessionRecord.project_data) {
+                try {
+                    const { createProject } = await import('@/lib/data');
+                    const { TenantProvisioner } = await import('@/lib/tenant-engine');
+                    const pData = typeof sessionRecord.project_data === 'string' ? JSON.parse(sessionRecord.project_data) : sessionRecord.project_data;
+                    
+                    const existingProjects = await client.query(
+                        "SELECT project_id FROM fluxbase_global.projects WHERE user_id = $1::text AND display_name = $2",
+                        [userId, pData.projectName || 'My Project']
+                    );
+
+                    if (existingProjects.rows.length === 0) {
+                        const newProject = await createProject(
+                            pData.projectName || 'My Project',
+                            pData.workDescription || 'Provisioned upon payment confirmation',
+                            pData.dialect || 'postgresql',
+                            pData.timezone || 'UTC',
+                            'internal',
+                            {},
+                            pData.userRole || targetPlan,
+                            userId
+                        );
+
+                        await TenantProvisioner.createTenantSchema(newProject.project_id, pData.dialect || 'postgresql');
+                        await client.query(
+                            'UPDATE fluxbase_global.projects SET creator_role = $1 WHERE project_id = $2',
+                            [pData.userRole || targetPlan, newProject.project_id]
+                        );
+                        logger.info(`[Verify Payment] Provisioned project ${newProject.project_id} for user ${userId}`);
+                    }
+                } catch (projErr) {
+                    logger.error('[Verify Payment] Project provisioning error:', projErr);
+                }
+            }
+
+            // 7. Live broadcast via Postgres NOTIFY
+            try {
+                const notifyPayload = JSON.stringify({
+                    type: 'db_event',
+                    payload: {
+                        table: 'payment_sessions',
+                        record: { id: activeSessionId, status: 'completed', amount: sessionAmount }
+                    }
+                });
+                await client.query(`NOTIFY fluxbase_live, '${notifyPayload.replace(/'/g, "''")}'`);
+            } catch (notifyErr) {
+                logger.warn('[Verify Payment] NOTIFY warning:', notifyErr);
+            }
+
             await client.query('COMMIT');
-            logger.info(`[Manual UTR Entry] Successfully stored UTR ${cleanUtr} in DB and upgraded User ${userId} to ${cleanPlan}`);
-            
-            return NextResponse.json({ 
-                success: true, 
-                message: `Manual UTR ${cleanUtr} saved to DB and verified! Your account is upgraded to ${cleanPlan.toUpperCase()}.` 
+            logger.info(`[Verify Payment] Successfully verified payment for session ${activeSessionId} (₹${sessionAmount})!`);
+
+            return NextResponse.json({
+                success: true,
+                message: 'Payment verified and confirmed successfully!',
+                sessionId: activeSessionId,
+                amount: sessionAmount,
+                plan: targetPlan
             });
 
-        } catch (txnError) {
+        } catch (txErr) {
             await client.query('ROLLBACK');
-            throw txnError;
+            throw txErr;
         } finally {
             client.release();
         }
 
-    } catch (err: any) {
-        logger.error('[Verify UTR Error]:', err);
-        return NextResponse.json({ error: err.message || 'Internal server error occurred while verifying payment.' }, { status: 500 });
+    } catch (error: any) {
+        logger.error('[Verify Payment Error]:', error);
+        return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
     }
 }

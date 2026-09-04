@@ -128,8 +128,8 @@ export async function GET(request: NextRequest) {
             event: isNewUser ? 'signup' : 'login',
         });
 
-        // 7. Redirect seamlessly
-        const redirectPath = isNewUser ? '/pricing?onboarding=true' : '/dashboard/projects';
+        // 7. Redirect seamlessly to projects dashboard
+        const redirectPath = '/dashboard/projects';
         const baseOrigin = getBaseOrigin(request);
         const response = NextResponse.redirect(new URL(redirectPath, baseOrigin));
         response.cookies.set('refresh_token', refreshToken, {

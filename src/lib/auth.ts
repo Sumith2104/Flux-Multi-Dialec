@@ -35,6 +35,8 @@ export interface User {
     email: string;
     display_name?: string;
     password?: string;
+    user_role?: 'student' | 'employee' | 'org_owner' | string;
+    plan_type?: string;
     created_at: string;
 }
 
