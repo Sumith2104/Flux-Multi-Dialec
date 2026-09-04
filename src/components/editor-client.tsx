@@ -163,7 +163,6 @@ export function EditorClient({
         } catch { return new Set(); }
     });
     const [showColumnPanel, setShowColumnPanel] = useState(false);
-    // â”€â”€ Tier 1: Server-side sorts (multi-column) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const [sorts, setSorts] = useState<SortState[]>(() => {
         if (typeof window === 'undefined' || !projectId || !tableName) return [];
         try {
@@ -171,7 +170,6 @@ export function EditorClient({
             return s ? JSON.parse(s) : [];
         } catch { return []; }
     });
-    // â”€â”€ Tier 1: Server-side multi-filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const [filters, setFilters] = useState<{id:string;field:string;op:string;value:string}[]>(() => {
         if (typeof window === 'undefined' || !projectId || !tableName) return [];
         try {
@@ -299,11 +297,9 @@ export function EditorClient({
 
     // Removed legacy fetchTableData and AbortControllers, useInfiniteQuery handles it
 
-    // Lazy-load foreign key lookup data only when "Add Row" dialog opens
-    // Prevents exhausting tenant database connection pool during initial table load
     useEffect(() => {
         async function fetchFkData() {
-            if (!isAddRowOpen || !initialColumns.length) return;
+            if (!initialColumns.length) return;
 
             const fkConstraints = constraints.filter(c => c.type === 'FOREIGN KEY');
             if (!fkConstraints.length) {
@@ -332,7 +328,7 @@ export function EditorClient({
             setForeignKeyData(fkData);
         }
         fetchFkData();
-    }, [isAddRowOpen, initialColumns, constraints, allTables, projectId]);
+    }, [initialColumns, constraints, allTables, projectId]);
 
     const refreshData = useCallback(() => {
         // refetchQueries forces an immediate network request, bypassing the staleTime.

@@ -45,15 +45,15 @@ export async function setCachedTableRows(projectId: string, tableId: string, pag
 }
 
 export async function invalidateTableCache(projectId: string, tableId: string): Promise<void> {
+    try {
+        const { invalidateTableCountCache } = await import('@/lib/data');
+        invalidateTableCountCache(tableId);
+    } catch { /* ignore */ }
+
     // Invalidate enough pages to cover what the UI would request after a large import.
     // Each page = 50 rows; 20 pages = first 1000 rows — enough for most initial infinite-scroll
     // views. Beyond that, stale pages expire via their 60s TTL.
     // (Full pattern-delete would require Redis SCAN which Upstash REST doesn't support inline.)
-    try {
-        const { invalidateDataMemoryCache } = await import('@/lib/data');
-        await invalidateDataMemoryCache(projectId, tableId);
-    } catch {}
-
     try {
         const keys = Array.from({ length: 20 }, (_, p) => `fluxTable_${projectId}_${tableId}_p${p}`);
         await redis.del(...keys);

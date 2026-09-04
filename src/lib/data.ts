@@ -99,23 +99,24 @@ import { FluxbaseError, ERROR_CODES } from '@/lib/error-codes';
 // on EVERY table-data, execute-sql, and schema API call. 60s TTL is safe because
 // project metadata (display_name, dialect, role) almost never changes mid-session.
 const _projectCache = new LRUCache<string, Project>({ max: 200, ttl: 60_000 });
-const _pgSchemaCache = new LRUCache<string, string>({ max: 500, ttl: 300_000 });
-const _myDbCache = new LRUCache<string, string>({ max: 500, ttl: 300_000 });
-const _tablePkCache = new LRUCache<string, string>({ max: 500, ttl: 300_000 });
-const _tableCountCache = new LRUCache<string, { count: number; expiresAt: number }>({ max: 500, ttl: 60_000 });
-const _tableRowsMemoryCache = new LRUCache<string, any>({ max: 200, ttl: 15_000 });
 
-export async function invalidateDataMemoryCache(projectId: string, tableName?: string) {
+// Caches primary key column names per table (eliminates information_schema join on every row fetch)
+export const _tablePkCache = new LRUCache<string, string>({ max: 500, ttl: 3600_000 });
+
+// Caches row counts per table (60s TTL prevents full table scans on every page load/refresh)
+export const _tableCountCache = new LRUCache<string, number>({ max: 500, ttl: 60_000 });
+
+// Caches resolved schema per table
+export const _schemaCache = new LRUCache<string, string>({ max: 500, ttl: 3600_000 });
+
+export function invalidateTableCountCache(tableName?: string) {
     if (tableName) {
-        _tableCountCache.delete(`${projectId}:${tableName}`);
-        const prefix = `${projectId}_${tableName}_`;
-        for (const key of _tableRowsMemoryCache.keys()) {
-            if (key.startsWith(prefix)) {
-                _tableRowsMemoryCache.delete(key);
+        for (const key of Array.from(_tableCountCache.keys())) {
+            if (key.includes(`:${tableName}:`)) {
+                _tableCountCache.delete(key);
             }
         }
     } else {
-        _tableRowsMemoryCache.clear();
         _tableCountCache.clear();
     }
 }
@@ -814,20 +815,18 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
             const { schemaName } = getProjectDbAndSchema(project);
 
             let result = await pool.query(`
-                SELECT DISTINCT table_name 
-                FROM information_schema.tables 
-                WHERE table_schema = $1 AND table_type = 'BASE TABLE'
-                AND table_name NOT LIKE '_flux_internal_%'
-                AND table_schema NOT IN ('fluxbase_global', 'pg_catalog', 'information_schema', 'cron', 'pgsodium', 'vault')
+                SELECT tablename as table_name 
+                FROM pg_tables 
+                WHERE schemaname = $1
+                AND tablename NOT LIKE '_flux_internal_%'
             `, [schemaName]);
 
             if (isExternal && result.rows.length === 0 && schemaName !== 'public') {
                 result = await pool.query(`
-                    SELECT DISTINCT table_name 
-                    FROM information_schema.tables 
-                    WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-                    AND table_name NOT LIKE '_flux_internal_%'
-                    AND table_schema NOT IN ('fluxbase_global', 'pg_catalog', 'information_schema', 'cron', 'pgsodium', 'vault')
+                    SELECT tablename as table_name 
+                    FROM pg_tables 
+                    WHERE schemaname = 'public'
+                    AND tablename NOT LIKE '_flux_internal_%'
                 `);
             }
 
@@ -1104,27 +1103,51 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
             const pool = await getTenantPgPool(project);
             const { schemaName } = getProjectDbAndSchema(project);
 
-            // Fetch columns and identify primary keys
-            let result = await pool.query(`
-                SELECT 
-                    c.column_name, 
-                    c.data_type, 
-                    c.is_nullable, 
-                    c.column_default,
-                    (
-                        SELECT count(*) > 0
-                        FROM information_schema.key_column_usage kcu
-                        JOIN information_schema.table_constraints tc 
-                            ON kcu.constraint_name = tc.constraint_name
-                        WHERE tc.constraint_type = 'PRIMARY KEY' 
-                            AND kcu.table_schema = c.table_schema 
-                            AND kcu.table_name = c.table_name 
-                            AND kcu.column_name = c.column_name
-                    ) as is_primary_key
-                FROM information_schema.columns c
-                WHERE c.table_schema = $1 AND c.table_name = $2
-                ORDER BY c.ordinal_position
-            `, [schemaName, safeTableName]);
+            // Fetch columns and identify primary keys using fast native catalog
+            let result;
+            try {
+                result = await pool.query(`
+                    SELECT
+                        a.attname AS column_name,
+                        format_type(a.atttypid, a.atttypmod) AS data_type,
+                        NOT a.attnotnull AS is_nullable,
+                        pg_get_expr(d.adbin, d.adrelid) AS column_default,
+                        COALESCE(i.indisprimary, false) AS is_primary_key
+                    FROM pg_attribute a
+                    JOIN pg_class c ON c.oid = a.attrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+                    LEFT JOIN pg_index i ON i.indrelid = a.attrelid AND a.attnum = ANY(i.indkey) AND i.indisprimary
+                    WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped
+                    ORDER BY a.attnum
+                `, [schemaName, safeTableName]);
+            } catch {
+                result = { rows: [] };
+            }
+
+            if (result.rows.length === 0) {
+                // Fallback to information_schema if table is not qualified by schemaName
+                result = await pool.query(`
+                    SELECT 
+                        c.column_name, 
+                        c.data_type, 
+                        c.is_nullable, 
+                        c.column_default,
+                        (
+                            SELECT count(*) > 0
+                            FROM information_schema.key_column_usage kcu
+                            JOIN information_schema.table_constraints tc 
+                                ON kcu.constraint_name = tc.constraint_name
+                            WHERE tc.constraint_type = 'PRIMARY KEY' 
+                                AND kcu.table_schema = c.table_schema 
+                                AND kcu.table_name = c.table_name 
+                                AND kcu.column_name = c.column_name
+                        ) as is_primary_key
+                    FROM information_schema.columns c
+                    WHERE c.table_schema = $1 AND c.table_name = $2
+                    ORDER BY c.ordinal_position
+                `, [schemaName, safeTableName]);
+            }
 
             if (isExternal && result.rows.length === 0 && schemaName !== 'public') {
                 result = await pool.query(`
@@ -1662,42 +1685,44 @@ function _myOrder(sorts: TableSort[]): string {
 
 async function resolvePgSchemaForTable(pool: any, defaultSchema: string, tableName: string): Promise<string> {
     const cacheKey = `${defaultSchema}:${tableName}`;
-    const cached = _pgSchemaCache.get(cacheKey);
-    if (cached) return cached;
+    const cached = _schemaCache.get(cacheKey);
+    if (cached !== undefined) return cached;
 
+    let result = defaultSchema || 'public';
     if (defaultSchema) {
         try {
             const check = await pool.query(
-                `SELECT schemaname FROM pg_catalog.pg_tables WHERE schemaname = $1 AND tablename = $2 LIMIT 1`,
+                `SELECT tablename FROM pg_tables WHERE schemaname = $1 AND tablename = $2 LIMIT 1`,
                 [defaultSchema, tableName]
             );
             if (check.rows.length > 0) {
-                _pgSchemaCache.set(cacheKey, defaultSchema);
-                return defaultSchema;
+                result = defaultSchema;
+                _schemaCache.set(cacheKey, result);
+                return result;
             }
         } catch {}
     }
     try {
         const check = await pool.query(
-            `SELECT schemaname FROM pg_catalog.pg_tables WHERE tablename = $1 AND schemaname NOT IN ('pg_catalog', 'information_schema') LIMIT 1`,
+            `SELECT schemaname FROM pg_tables WHERE tablename = $1 AND schemaname NOT IN ('pg_catalog', 'information_schema') LIMIT 1`,
             [tableName]
         );
         if (check.rows.length > 0 && check.rows[0].schemaname) {
-            const found = check.rows[0].schemaname;
-            _pgSchemaCache.set(cacheKey, found);
-            return found;
+            result = check.rows[0].schemaname;
+            _schemaCache.set(cacheKey, result);
+            return result;
         }
     } catch {}
-    const fallback = defaultSchema || 'public';
-    _pgSchemaCache.set(cacheKey, fallback);
-    return fallback;
+    _schemaCache.set(cacheKey, result);
+    return result;
 }
 
 async function resolveMysqlDbForTable(mysqlPool: any, defaultDb: string, tableName: string): Promise<string> {
     const cacheKey = `${defaultDb}:${tableName}`;
-    const cached = _myDbCache.get(cacheKey);
-    if (cached) return cached;
+    const cached = _schemaCache.get(cacheKey);
+    if (cached !== undefined) return cached;
 
+    let result = defaultDb || '';
     if (defaultDb) {
         try {
             const [check]: any = await mysqlPool.query(
@@ -1705,8 +1730,9 @@ async function resolveMysqlDbForTable(mysqlPool: any, defaultDb: string, tableNa
                 [defaultDb, tableName]
             );
             if (check && check.length > 0) {
-                _myDbCache.set(cacheKey, defaultDb);
-                return defaultDb;
+                result = defaultDb;
+                _schemaCache.set(cacheKey, result);
+                return result;
             }
         } catch {}
     }
@@ -1716,14 +1742,13 @@ async function resolveMysqlDbForTable(mysqlPool: any, defaultDb: string, tableNa
             [tableName]
         );
         if (check && check.length > 0 && check[0].table_schema) {
-            const found = check[0].table_schema;
-            _myDbCache.set(cacheKey, found);
-            return found;
+            result = check[0].table_schema;
+            _schemaCache.set(cacheKey, result);
+            return result;
         }
     } catch {}
-    const fallback = defaultDb || '';
-    _myDbCache.set(cacheKey, fallback);
-    return fallback;
+    _schemaCache.set(cacheKey, result);
+    return result;
 }
 
 export async function getTableData(
@@ -1734,40 +1759,32 @@ export async function getTableData(
     explicitUserId?: string,
     sorts: TableSort[] = [],
     filters: TableFilter[] = [],
-    explicitProject?: Project,
+    preloadedProject?: Project | null,
 ) {
     const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
-    const project = explicitProject || await getProjectById(projectId, userId);
+    const project = preloadedProject || await getProjectById(projectId, userId);
     if (!project) throw new FluxbaseError("Project not found", ERROR_CODES.PROJECT_NOT_FOUND, 404);
 
     const safeTableName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
     const limit = Math.min(Math.max(1, pageSize), 100);
     const offset = page * limit;
+    const fetchLimit = limit + 1; // Fetch 1 extra row to instantly evaluate hasMore without relying on COUNT(*)
     const hasActiveState = sorts.length > 0 || filters.length > 0;
-
-    // 1. Instant in-memory tier cache check (0ms response)
-    const memCacheKey = `${projectId}_${safeTableName}_p${page}_${JSON.stringify(sorts)}_${JSON.stringify(filters)}`;
-    if (!hasActiveState) {
-        const memCached = _tableRowsMemoryCache.get(memCacheKey);
-        if (memCached) return memCached;
-    }
 
     try {
         const { getCachedTableRows, setCachedTableRows } = await import('@/lib/cache');
 
-        // 2. Redis cache check for unfiltered/unsorted requests
+        // Skip cache when filters/sorts are active (dynamic queries need fresh results)
         if (!hasActiveState) {
             const cachedData = await getCachedTableRows(projectId, tableName, page);
-            if (cachedData) {
-                _tableRowsMemoryCache.set(memCacheKey, cachedData);
-                return cachedData;
-            }
+            if (cachedData) return cachedData;
         }
 
         let rows: any[] = [];
         let totalRows = 0;
+        let hasMore = false;
 
         if (project.dialect?.toLowerCase() === 'mysql') {
             const mysqlPool = await getTenantMysqlPool(project);
@@ -1780,54 +1797,47 @@ export async function getTableData(
             const { clause: wClause, params: wParams } = _myWhere(filters);
             const orderBy = _myOrder(sorts);
 
-            const pkCacheKey = `my_${project.project_id}_${targetDb}_${safeTableName}`;
-            const cachedPk = _tablePkCache.get(pkCacheKey);
+            const pkKey = `mysql:${targetDb || dbName || ''}:${safeTableName}`;
+            const cachedPk = _tablePkCache.get(pkKey);
+            const pkPromise = cachedPk !== undefined
+                ? Promise.resolve(cachedPk || null)
+                : mysqlPool.query(`SELECT COLUMN_NAME as column_name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_KEY = 'PRI' LIMIT 1`, [targetDb || dbName || '', safeTableName])
+                    .then(([res]: any) => {
+                        const pk = res?.[0]?.column_name || '';
+                        _tablePkCache.set(pkKey, pk);
+                        return pk || null;
+                    }).catch(() => null);
 
-            const countCacheKey = `my_${project.project_id}_${targetDb}_${safeTableName}`;
-            const cachedCountEntry = _tableCountCache.get(countCacheKey);
-            const hasCachedCount = cachedCountEntry && Date.now() < cachedCountEntry.expiresAt;
+            // Only run COUNT(*) on page 0 if not cached. When scrolling/paginating (page > 0), COUNT(*) is redundant.
+            const countKey = `count:${projectId}:${safeTableName}:${wClause}`;
+            const cachedCount = _tableCountCache.get(countKey);
+            const shouldQueryCount = page === 0 && cachedCount === undefined;
 
-            const dataPromise = mysqlPool.query(`SELECT * FROM ${fromTable} ${wClause} ${orderBy} LIMIT ${limit} OFFSET ${offset}`, wParams);
-
-            let countPromise: Promise<any>;
-            if (filters.length > 0) {
-                countPromise = mysqlPool.query(`SELECT COUNT(*) as count FROM ${fromTable} ${wClause}`, wParams);
-            } else if (page > 0 && hasCachedCount) {
-                countPromise = Promise.resolve([[{ count: cachedCountEntry.count }]]);
-            } else if (hasCachedCount) {
-                countPromise = Promise.resolve([[{ count: cachedCountEntry.count }]]);
-            } else {
-                countPromise = mysqlPool.query(`SELECT COUNT(*) as count FROM ${fromTable}`).then((r: any) => {
-                    const cnt = parseInt(r[0]?.[0]?.count || '0', 10);
-                    _tableCountCache.set(countCacheKey, { count: cnt, expiresAt: Date.now() + 60000 });
-                    return r;
-                });
-            }
-
-            let pkPromise: Promise<any>;
-            if (cachedPk !== undefined) {
-                pkPromise = Promise.resolve([cachedPk ? [{ column_name: cachedPk }] : []]);
-            } else {
-                pkPromise = mysqlPool.query(`SELECT COLUMN_NAME as column_name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_KEY = 'PRI' LIMIT 1`, [targetDb || dbName || '', safeTableName]).then((r: any) => {
-                    const pk = r[0]?.[0]?.column_name || null;
-                    _tablePkCache.set(pkCacheKey, pk || '');
-                    return r;
-                });
-            }
+            const countPromise = shouldQueryCount
+                ? mysqlPool.query(`SELECT COUNT(*) as count FROM ${fromTable} ${wClause}`, wParams)
+                    .then(([cnt]: any) => {
+                        const c = parseInt(cnt?.[0]?.count || '0', 10);
+                        _tableCountCache.set(countKey, c);
+                        return c;
+                    }).catch(() => 0)
+                : Promise.resolve(cachedCount ?? 0);
 
             const [
                 [dataResult],
-                [countResult],
-                [pkColResult]
-            ]: any = await Promise.all([dataPromise, countPromise, pkPromise]);
+                countVal,
+                pkName
+            ]: any = await Promise.all([
+                mysqlPool.query(`SELECT * FROM ${fromTable} ${wClause} ${orderBy} LIMIT ${fetchLimit} OFFSET ${offset}`, wParams),
+                countPromise,
+                pkPromise
+            ]);
 
-            totalRows = parseInt(countResult[0]?.count || '0', 10);
-            const pkName = pkColResult.length > 0 ? pkColResult[0].column_name : null;
-            if (cachedPk === undefined) {
-                _tablePkCache.set(pkCacheKey, pkName || '');
-            }
+            totalRows = countVal;
+            const rawRows = dataResult || [];
+            hasMore = rawRows.length > limit;
+            const slicedRows = hasMore ? rawRows.slice(0, limit) : rawRows;
 
-            rows = (dataResult || []).map((row: any, index: number) => {
+            rows = slicedRows.map((row: any, index: number) => {
                 const idField = (pkName && row[pkName]) ? row[pkName] : (row.id || row.uuid || `row_${offset + index}`);
                 return { ...row, id: idField, _id: idField };
             });
@@ -1841,103 +1851,54 @@ export async function getTableData(
             const { clause: wClause, params: wParams } = _pgWhere(filters, 3);
             const orderBy = _pgOrder(sorts);
 
-            const pkCacheKey = `pg_${project.project_id}_${targetSchema}_${safeTableName}`;
-            const cachedPk = _tablePkCache.get(pkCacheKey);
+            const pkKey = `pg:${targetSchema}:${safeTableName}`;
+            const cachedPk = _tablePkCache.get(pkKey);
+            const pkPromise = cachedPk !== undefined
+                ? Promise.resolve(cachedPk || null)
+                : pool.query(`
+                    SELECT a.attname AS column_name
+                    FROM pg_index i
+                    JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+                    WHERE i.indrelid = ('"' || $1 || '"."' || $2 || '"')::regclass AND i.indisprimary
+                    LIMIT 1
+                `, [targetSchema, safeTableName])
+                    .then(r => {
+                        const pk = r.rows[0]?.column_name || '';
+                        _tablePkCache.set(pkKey, pk);
+                        return pk || null;
+                    }).catch(() => null);
 
-            const countCacheKey = `pg_${project.project_id}_${targetSchema}_${safeTableName}`;
-            const cachedCountEntry = _tableCountCache.get(countCacheKey);
-            const hasCachedCount = cachedCountEntry && Date.now() < cachedCountEntry.expiresAt;
+            // Only run COUNT(*) on page 0 if not cached. When scrolling/paginating (page > 0), COUNT(*) is redundant.
+            const countKey = `count:${projectId}:${safeTableName}:${wClause}`;
+            const cachedCount = _tableCountCache.get(countKey);
+            const shouldQueryCount = page === 0 && cachedCount === undefined;
 
-            // 1. Data query with safe schema qualification fallback
-            const dataPromise = pool.query(
-                `SELECT * FROM "${targetSchema}"."${safeTableName}" ${wClause} ${orderBy} LIMIT $1 OFFSET $2`,
-                [limit, offset, ...wParams]
-            ).catch(async () => {
-                return pool.query(`SELECT * FROM "${safeTableName}" ${wClause} ${orderBy} LIMIT $1 OFFSET $2`, [limit, offset, ...wParams]);
-            });
+            const countPromise = shouldQueryCount
+                ? pool.query(`SELECT COUNT(*) FROM "${targetSchema}"."${safeTableName}" ${wClause}`, wParams)
+                    .then(r => {
+                        const c = parseInt(r.rows[0]?.count || '0', 10);
+                        _tableCountCache.set(countKey, c);
+                        return c;
+                    }).catch(() => 0)
+                : Promise.resolve(cachedCount ?? 0);
 
-            // 2. Count query: avoid full table scan on pagination or large tables
-            let countPromise: Promise<number>;
-            if (filters.length > 0) {
-                countPromise = pool.query(
-                    `SELECT COUNT(*) FROM "${targetSchema}"."${safeTableName}" ${wClause}`,
-                    wParams
-                ).then(r => parseInt(r.rows[0]?.count || '0', 10)).catch(() => 0);
-            } else if (page > 0 && hasCachedCount) {
-                countPromise = Promise.resolve(cachedCountEntry.count);
-            } else if (hasCachedCount) {
-                countPromise = Promise.resolve(cachedCountEntry.count);
-            } else {
-                countPromise = (async () => {
-                    try {
-                        const estRes = await pool.query(
-                            `SELECT c.reltuples::bigint AS estimate
-                             FROM pg_class c
-                             JOIN pg_namespace n ON n.oid = c.relnamespace
-                             WHERE n.nspname = $1 AND c.relname = $2 LIMIT 1`,
-                            [targetSchema, safeTableName]
-                        );
-                        const est = parseInt(estRes.rows[0]?.estimate ?? '-1', 10);
-                        if (est > 20000) {
-                            _tableCountCache.set(countCacheKey, { count: est, expiresAt: Date.now() + 60000 });
-                            return est;
-                        }
-                    } catch {}
-                    const exactRes = await pool.query(`SELECT COUNT(*) FROM "${targetSchema}"."${safeTableName}"`).catch(() => ({ rows: [{ count: '0' }] }));
-                    const cnt = parseInt(exactRes.rows[0]?.count || '0', 10);
-                    _tableCountCache.set(countCacheKey, { count: cnt, expiresAt: Date.now() + 60000 });
-                    return cnt;
-                })();
-            }
-
-            // 3. Primary key query: native catalog lookup (<1ms) instead of slow information_schema
-            let pkPromise: Promise<string | null>;
-            if (cachedPk !== undefined) {
-                pkPromise = Promise.resolve(cachedPk || null);
-            } else {
-                pkPromise = pool.query(
-                    `SELECT a.attname AS column_name
-                     FROM pg_index i
-                     JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-                     JOIN pg_class c ON c.oid = i.indrelid
-                     JOIN pg_namespace n ON n.oid = c.relnamespace
-                     WHERE n.nspname = $1 AND c.relname = $2 AND i.indisprimary
-                     LIMIT 1`,
-                    [targetSchema, safeTableName]
-                ).then(r => {
-                    const pk = r.rows[0]?.column_name || null;
-                    _tablePkCache.set(pkCacheKey, pk || '');
-                    return pk;
-                }).catch(async () => {
-                    const r = await pool.query(
-                        `SELECT a.attname AS column_name
-                         FROM pg_index i
-                         JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-                         JOIN pg_class c ON c.oid = i.indrelid
-                         WHERE c.relname = $1 AND i.indisprimary
-                         LIMIT 1`,
-                        [safeTableName]
-                    ).catch(() => ({ rows: [] }));
-                    const pk = r.rows[0]?.column_name || null;
-                    _tablePkCache.set(pkCacheKey, pk || '');
-                    return pk;
-                });
-            }
-
-            const [dataResult, countNum, pkName] = await Promise.all([
-                dataPromise,
+            const [dataResult, countVal, pkName] = await Promise.all([
+                pool.query(`SELECT * FROM "${targetSchema}"."${safeTableName}" ${wClause} ${orderBy} LIMIT $1 OFFSET $2`, [fetchLimit, offset, ...wParams]),
                 countPromise,
                 pkPromise
             ]);
 
-            totalRows = countNum;
-            rows = dataResult.rows.map((row: any, index: number) => {
+            totalRows = countVal;
+            const rawRows = dataResult.rows || [];
+            hasMore = rawRows.length > limit;
+            const slicedRows = hasMore ? rawRows.slice(0, limit) : rawRows;
+
+            rows = slicedRows.map((row, index) => {
                 const idField = (pkName && row[pkName]) ? row[pkName] : (row.id || row.uuid || `row_${offset + index}`);
                 return { ...row, id: idField, _id: idField };
             });
         }
 
-        const hasMore = (offset + limit) < totalRows || rows.length === limit;
         const payload = {
             rows,
             totalRows,
@@ -1945,10 +1906,9 @@ export async function getTableData(
             hasMore
         };
 
-        // Cache in fast in-memory tier and Redis
+        // Cache only unfiltered/unsorted pages
         if (!hasActiveState) {
-            _tableRowsMemoryCache.set(memCacheKey, payload);
-            await setCachedTableRows(projectId, tableName, page, payload).catch(() => {});
+            await setCachedTableRows(projectId, tableName, page, payload);
         }
 
         return payload;
