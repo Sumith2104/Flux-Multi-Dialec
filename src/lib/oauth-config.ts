@@ -112,7 +112,9 @@ export function getOAuthConfig(request: NextRequest, provider: 'github' | 'googl
 
     // Determine Environment Prefix based on the detected host
     let envPrefix = 'LOCAL';
-    if (host.includes('vercel.app') || host.includes('fluxbasedb.me')) {
+    if (host.includes('fluxbasedb.me')) {
+        envPrefix = 'MAINAPP';
+    } else if (host.includes('vercel.app')) {
         envPrefix = 'VERCEL';
     } else if (host.includes('render.com')) {
         envPrefix = 'RENDER';
@@ -122,23 +124,23 @@ export function getOAuthConfig(request: NextRequest, provider: 'github' | 'googl
 
     // Explicit redirect URI override if configured, otherwise dynamically match host origin
     const explicitRedirect = provider === 'github' 
-        ? (process.env[`GITHUB_REDIRECT_URI_${envPrefix}`] || process.env.GITHUB_REDIRECT_URI)
-        : (process.env[`GOOGLE_REDIRECT_URI_${envPrefix}`] || process.env.GOOGLE_REDIRECT_URI);
+        ? (process.env[`GITHUB_REDIRECT_URI_${envPrefix}`] || process.env.GITHUB_REDIRECT_URI_MAINAPP || process.env.GITHUB_REDIRECT_URI)
+        : (process.env[`GOOGLE_REDIRECT_URI_${envPrefix}`] || process.env.GOOGLE_REDIRECT_URI_MAINAPP || process.env.GOOGLE_REDIRECT_URI);
         
     const redirectUri = explicitRedirect || `${baseOrigin}/api/auth/${provider}/callback`.replace('//api', '/api');
 
     if (provider === 'github') {
         return {
-            clientId: process.env[`GITHUB_CLIENT_ID_${envPrefix}`] || process.env.GITHUB_CLIENT_ID_VERCEL || process.env.GITHUB_CLIENT_ID,
-            clientSecret: process.env[`GITHUB_CLIENT_SECRET_${envPrefix}`] || process.env.GITHUB_CLIENT_SECRET_VERCEL || process.env.GITHUB_CLIENT_SECRET,
+            clientId: process.env[`GITHUB_CLIENT_ID_${envPrefix}`] || process.env.GITHUB_CLIENT_ID_MAINAPP || process.env.GITHUB_CLIENT_ID_VERCEL || process.env.GITHUB_CLIENT_ID,
+            clientSecret: process.env[`GITHUB_CLIENT_SECRET_${envPrefix}`] || process.env.GITHUB_CLIENT_SECRET_MAINAPP || process.env.GITHUB_CLIENT_SECRET_VERCEL || process.env.GITHUB_CLIENT_SECRET,
             redirectUri
         };
     }
 
     if (provider === 'google') {
         return {
-            clientId: process.env[`GOOGLE_CLIENT_ID_${envPrefix}`] || process.env.GOOGLE_CLIENT_ID_VERCEL || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
-            clientSecret: process.env[`GOOGLE_CLIENT_SECRET_${envPrefix}`] || process.env.GOOGLE_CLIENT_SECRET_VERCEL || process.env.GOOGLE_CLIENT_SECRET,
+            clientId: process.env[`GOOGLE_CLIENT_ID_${envPrefix}`] || process.env.GOOGLE_CLIENT_ID_MAINAPP || process.env.GOOGLE_CLIENT_ID_VERCEL || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
+            clientSecret: process.env[`GOOGLE_CLIENT_SECRET_${envPrefix}`] || process.env.GOOGLE_CLIENT_SECRET_MAINAPP || process.env.GOOGLE_CLIENT_SECRET_VERCEL || process.env.GOOGLE_CLIENT_SECRET,
             redirectUri
         };
     }
