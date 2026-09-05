@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getOAuthConfig } from '@/lib/oauth-config';
+import { getOAuthConfig, getBaseOrigin, encodeOAuthState } from '@/lib/oauth-config';
 
 export async function GET(request: NextRequest) {
     const { clientId, redirectUri } = getOAuthConfig(request, 'github');
@@ -9,8 +9,12 @@ export async function GET(request: NextRequest) {
     }
 
     const scope = 'read:user user:email';
+    const origin = getBaseOrigin(request);
+    const returnTo = request.nextUrl.searchParams.get('returnTo') || '/dashboard/projects';
+    const state = encodeOAuthState(origin, returnTo);
     
-    const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}`;
+    const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${encodeURIComponent(state)}`;
 
     return NextResponse.redirect(githubAuthUrl);
 }
+

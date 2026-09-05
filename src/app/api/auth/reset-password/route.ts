@@ -41,7 +41,10 @@ export async function POST(req: Request) {
             expires_at = EXCLUDED.expires_at
         `, [email, token, expiresAt]);
 
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || 'localhost:3000';
+        const proto = req.headers.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https');
+        const detectedOrigin = `${proto}://${host}`;
+        const baseUrl = detectedOrigin || process.env.NEXT_PUBLIC_APP_URL || 'https://www.fluxbasedb.me';
         const resetLink = `${baseUrl}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
 
         // Send beautifully styled email layout using our standardized Email template engine

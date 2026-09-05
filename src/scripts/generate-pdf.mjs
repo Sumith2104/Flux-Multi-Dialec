@@ -231,7 +231,7 @@ addAlert('IMPORTANT — Read Before Integrating',
 addH2('API Endpoint');
 addCodeBlock([
     'Method:   POST',
-    'URL:      https://fluxbase.vercel.app/api/execute-sql',
+    'URL:      https://www.fluxbasedb.me/api/execute-sql',
     'Auth:     Bearer <YOUR_API_KEY>',
     'Content:  application/json',
 ], 'HTTP');
@@ -289,7 +289,7 @@ newPage();
 addTitle('Node.js — native fetch (REST)');
 addText('No external packages required. Uses built-in fetch (Node 18+).');
 addCodeBlock([
-    "const FLUXBASE_URL = 'https://fluxbase.vercel.app/api/execute-sql';",
+    "const FLUXBASE_URL = 'https://www.fluxbasedb.me/api/execute-sql';",
     "const API_KEY      = process.env.FLUXBASE_API_KEY;",
     "const PROJECT_ID   = process.env.FLUXBASE_PROJECT_ID;",
     "",
@@ -324,7 +324,7 @@ addText('Install: pip install requests');
 addCodeBlock([
     "import os, requests",
     "",
-    "FLUXBASE_URL = 'https://fluxbase.vercel.app/api/execute-sql'",
+    "FLUXBASE_URL = 'https://www.fluxbasedb.me/api/execute-sql'",
     "API_KEY      = os.getenv('FLUXBASE_API_KEY')",
     "PROJECT_ID   = os.getenv('FLUXBASE_PROJECT_ID')",
     "",
@@ -366,7 +366,7 @@ addCodeBlock([
     '        "projectId": os.Getenv("FLUXBASE_PROJECT_ID"),',
     '        "query":     sql,  // field is "query", not "sql"',
     '    })',
-    '    req, _ := http.NewRequest("POST", "https://fluxbase.vercel.app/api/execute-sql",',
+    '    req, _ := http.NewRequest("POST", "https://www.fluxbasedb.me/api/execute-sql",',
     '        bytes.NewBuffer(body))',
     '    req.Header.Set("Authorization", "Bearer "+os.Getenv("FLUXBASE_API_KEY"))',
     '    req.Header.Set("Content-Type", "application/json")',
@@ -405,7 +405,7 @@ addCodeBlock([
     '));',
     '',
     'HttpRequest req = HttpRequest.newBuilder()',
-    '    .uri(URI.create("https://fluxbase.vercel.app/api/execute-sql"))',
+    '    .uri(URI.create("https://www.fluxbasedb.me/api/execute-sql"))',
     '    .POST(HttpRequest.BodyPublishers.ofString(body))',
     '    .header("Content-Type", "application/json")',
     '    .header("Authorization", "Bearer " + System.getenv("FLUXBASE_API_KEY"))',
@@ -424,7 +424,7 @@ addText("Uses Ruby's standard library.");
 addCodeBlock([
     "require 'uri', 'net/http', 'json'",
     "",
-    "FLUXBASE_URL = URI('https://fluxbase.vercel.app/api/execute-sql')",
+    "FLUXBASE_URL = URI('https://www.fluxbasedb.me/api/execute-sql')",
     "",
     "def run_query(sql)",
     "  http = Net::HTTP.new(FLUXBASE_URL.host, FLUXBASE_URL.port)",
@@ -447,7 +447,7 @@ addH2('PHP — cURL (REST)');
 addText('Uses cURL, which ships with PHP by default.');
 addCodeBlock([
     "<?php",
-    "\$url    = 'https://fluxbase.vercel.app/api/execute-sql';",
+    "\$url    = 'https://www.fluxbasedb.me/api/execute-sql';",
     "\$apiKey = getenv('FLUXBASE_API_KEY');",
     "\$projId = getenv('FLUXBASE_PROJECT_ID');",
     "",
@@ -490,7 +490,7 @@ addCodeBlock([
     '    let body = json!({ "projectId": project_id, "query": "SELECT * FROM users" });',
     '',
     '    let resp: Value = client',
-    '        .post("https://fluxbase.vercel.app/api/execute-sql")',
+    '        .post("https://www.fluxbasedb.me/api/execute-sql")',
     '        .header(AUTHORIZATION, format!("Bearer {}", api_key))',
     '        .header(CONTENT_TYPE, "application/json")',
     '        .json(&body)',
@@ -511,7 +511,7 @@ addCodeBlock([
 addH2('cURL — Shell / Terminal');
 addText('Directly test your integration from any terminal.');
 addCodeBlock([
-    'curl -X POST "https://fluxbase.vercel.app/api/execute-sql" \\',
+    'curl -X POST "https://www.fluxbasedb.me/api/execute-sql" \\',
     '  -H "Authorization: Bearer $FLUXBASE_API_KEY" \\',
     '  -H "Content-Type: application/json" \\',
     '  -d \'{',
@@ -584,7 +584,7 @@ addBullet('Scope your API key to a single project for maximum security.');
 
 y += 10;
 addH2('Support');
-addBullet('Web:   https://fluxbase.vercel.app/docs');
+addBullet('Web:   https://www.fluxbasedb.me/docs');
 addBullet('Email: sumithsumith4567890@gmail.com');
 
 // ─── WEBHOOKS ─────────────────────────────────────────────────────────────────

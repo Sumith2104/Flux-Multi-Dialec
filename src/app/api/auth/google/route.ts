@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getOAuthConfig } from '@/lib/oauth-config';
+import { getOAuthConfig, getBaseOrigin, encodeOAuthState } from '@/lib/oauth-config';
 
 export async function GET(request: NextRequest) {
     const { clientId, redirectUri } = getOAuthConfig(request, 'google');
@@ -9,8 +9,12 @@ export async function GET(request: NextRequest) {
     }
 
     const scope = 'openid email profile';
+    const origin = getBaseOrigin(request);
+    const returnTo = request.nextUrl.searchParams.get('returnTo') || '/dashboard/projects';
+    const state = encodeOAuthState(origin, returnTo);
     
-    const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=select_account`;
+    const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=select_account&state=${encodeURIComponent(state)}`;
 
     return NextResponse.redirect(googleAuthUrl);
 }
+

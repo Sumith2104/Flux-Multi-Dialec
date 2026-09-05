@@ -4,7 +4,7 @@ import { getPgPool } from "@/lib/pg";
 import { createSessionCookie } from "@/lib/auth";
 import { sendOtpEmail, sendWelcomeEmail, sendMagicLoginEmail } from "@/lib/email";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import logger from '@/lib/logger';
@@ -189,7 +189,11 @@ export async function sendPasswordlessOtpAction(formData: FormData) {
     const userRes = await pool.query('SELECT display_name FROM fluxbase_global.users WHERE email = $1', [email]);
     const name = userRes.rows[0]?.display_name || email.split('@')[0];
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const headersList = await headers();
+    const host = headersList.get('x-forwarded-host') || headersList.get('host') || 'localhost:3000';
+    const proto = headersList.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https');
+    const detectedOrigin = `${proto}://${host}`;
+    const baseUrl = detectedOrigin || process.env.NEXT_PUBLIC_APP_URL || 'https://www.fluxbasedb.me';
     const magicLink = `${baseUrl}/api/auth/magic-login?token=${token}&email=${encodeURIComponent(email)}`;
 
     // 5. Send Branded Email

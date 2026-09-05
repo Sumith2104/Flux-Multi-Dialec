@@ -2,20 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { createSessionCookie, createRefreshToken } from '@/lib/auth';
 import { sendWelcomeEmail } from '@/lib/email';
-import { getOAuthConfig, getBaseOrigin } from '@/lib/oauth-config';
+import { getOAuthConfig, getBaseOrigin, decodeOAuthState, isAllowedOrigin } from '@/lib/oauth-config';
 import crypto from 'crypto';
 import logger from '@/lib/logger';
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get('code');
+    const stateParam = searchParams.get('state');
     
+    const { origin: targetOrigin, returnTo } = decodeOAuthState(stateParam);
+    const currentOrigin = getBaseOrigin(request);
+    const destinationOrigin = targetOrigin && isAllowedOrigin(targetOrigin) ? targetOrigin : currentOrigin;
+    const redirectPath = returnTo || '/dashboard/projects';
+
     // Use dynamic configuration
     const { clientId, clientSecret, redirectUri } = getOAuthConfig(request, 'google');
 
     if (!code || !clientId || !clientSecret) {
         logger.error("Missing Google Code or Environment Variables for this platform");
-        return NextResponse.redirect(new URL('/?error=GoogleServerAuthFailed', getBaseOrigin(request)));
+        return NextResponse.redirect(new URL('/?error=GoogleServerAuthFailed', destinationOrigin));
     }
 
     try {
@@ -39,7 +45,7 @@ export async function GET(request: NextRequest) {
         
         if (!accessToken) {
             logger.error("Google OAuth token exchange failed:", tokenData);
-            return NextResponse.redirect(new URL('/?error=GoogleTokenFailed', getBaseOrigin(request)));
+            return NextResponse.redirect(new URL('/?error=GoogleTokenFailed', destinationOrigin));
         }
 
         // 2. Fetch User Profile
@@ -53,7 +59,7 @@ export async function GET(request: NextRequest) {
         const email = userData.email;
         
         if (!email) {
-            return NextResponse.redirect(new URL('/?error=GoogleEmailMissing', getBaseOrigin(request)));
+            return NextResponse.redirect(new URL('/?error=GoogleEmailMissing', destinationOrigin));
         }
 
         const name = userData.name || "Google User";
@@ -91,24 +97,56 @@ export async function GET(request: NextRequest) {
         );
 
         if (userSettings[0]?.two_factor_enabled) {
-            // Redirect back to home with 2FA flags so the LoginDialog can catch it
-            const loginUrl = new URL('/', getBaseOrigin(request));
+            // Redirect back to destination home with 2FA flags so the LoginDialog can catch it
+            const loginUrl = new URL('/', destinationOrigin);
             loginUrl.searchParams.set('requires2FA', 'true');
             loginUrl.searchParams.set('userId', userId);
             return NextResponse.redirect(loginUrl);
         }
 
-        // 5. Create active session cookie identically to native login systems
-        await createSessionCookie(userId, true); // Marked as verified to prevent middleware loops
+        // 5. Cross-domain session bridge check
+        if (destinationOrigin !== currentOrigin) {
+            const magicToken = crypto.randomBytes(32).toString('hex');
+            const otpCode = crypto.randomInt(100000, 999999).toString();
+            const expiresAt = new Date(Date.now() + 2 * 60 * 1000); // 2 minutes
+
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS fluxbase_global.magic_logins (
+                    email VARCHAR(255) PRIMARY KEY,
+                    otp_code VARCHAR(10) NOT NULL,
+                    magic_token VARCHAR(255) NOT NULL,
+                    expires_at TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                )
+            `);
+
+            await pool.query(`
+                INSERT INTO fluxbase_global.magic_logins (email, otp_code, magic_token, expires_at)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (email) DO UPDATE SET
+                    otp_code = EXCLUDED.otp_code,
+                    magic_token = EXCLUDED.magic_token,
+                    expires_at = EXCLUDED.expires_at
+            `, [email, otpCode, magicToken, expiresAt]);
+
+            const bridgeUrl = new URL('/api/auth/magic-login', destinationOrigin);
+            bridgeUrl.searchParams.set('token', magicToken);
+            bridgeUrl.searchParams.set('email', email);
+            if (redirectPath && redirectPath !== '/dashboard/projects') {
+                bridgeUrl.searchParams.set('returnTo', redirectPath);
+            }
+            return NextResponse.redirect(bridgeUrl);
+        }
+
+        // 6. Same domain flow: create active session cookie identically to native login systems
+        await createSessionCookie(userId, true);
 
         // Set refresh token cookie
         const refreshToken = await createRefreshToken(userId);
         const isProd = process.env.NODE_ENV === 'production';
 
-        // 6. Redirect seamlessly to projects dashboard
-        const redirectPath = '/dashboard/projects';
-        const finalOrigin = getBaseOrigin(request);
-        const response = NextResponse.redirect(new URL(redirectPath, finalOrigin));
+        // Redirect seamlessly to projects dashboard
+        const response = NextResponse.redirect(new URL(redirectPath, currentOrigin));
         response.cookies.set('refresh_token', refreshToken, {
             httpOnly: true,
             secure: isProd,
@@ -120,6 +158,7 @@ export async function GET(request: NextRequest) {
 
     } catch (error) {
         logger.error("Google Auth Exception:", error);
-        return NextResponse.redirect(new URL('/?error=GoogleServerException', getBaseOrigin(request)));
+        return NextResponse.redirect(new URL('/?error=GoogleServerException', destinationOrigin));
     }
 }
+

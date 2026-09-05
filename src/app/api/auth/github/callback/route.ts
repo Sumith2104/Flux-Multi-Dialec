@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { createSessionCookie, createRefreshToken } from '@/lib/auth';
 import { sendWelcomeEmail } from '@/lib/email';
-import { getOAuthConfig, getBaseOrigin } from '@/lib/oauth-config';
+import { getOAuthConfig, getBaseOrigin, decodeOAuthState, isAllowedOrigin } from '@/lib/oauth-config';
 import crypto from 'crypto';
 import { logToFluxDB } from '@/lib/fluxdb-logger';
 import logger from '@/lib/logger';
@@ -10,13 +10,19 @@ import logger from '@/lib/logger';
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get('code');
-    
+    const stateParam = searchParams.get('state');
+
+    const { origin: targetOrigin, returnTo } = decodeOAuthState(stateParam);
+    const currentOrigin = getBaseOrigin(request);
+    const destinationOrigin = targetOrigin && isAllowedOrigin(targetOrigin) ? targetOrigin : currentOrigin;
+    const redirectPath = returnTo || '/dashboard/projects';
+
     // Use dynamic configuration
     const { clientId, clientSecret } = getOAuthConfig(request, 'github');
 
     if (!code || !clientId || !clientSecret) {
         logger.error("Missing GitHub Code or Environment Variables for this platform");
-        return NextResponse.redirect(new URL('/?error=GithubAuthFailed', getBaseOrigin(request)));
+        return NextResponse.redirect(new URL('/?error=GithubAuthFailed', destinationOrigin));
     }
 
     try {
@@ -39,7 +45,7 @@ export async function GET(request: NextRequest) {
         
         if (!accessToken) {
             logger.error("GitHub OAuth Error:", tokenData);
-            return NextResponse.redirect(new URL('/?error=GithubTokenFailed', getBaseOrigin(request)));
+            return NextResponse.redirect(new URL('/?error=GithubTokenFailed', destinationOrigin));
         }
 
         // 2. Fetch User Profile
@@ -65,7 +71,7 @@ export async function GET(request: NextRequest) {
         const email = userData.email || (primaryEmailObj ? primaryEmailObj.email : null);
         
         if (!email) {
-            return NextResponse.redirect(new URL('/?error=GithubEmailMissing', getBaseOrigin(request)));
+            return NextResponse.redirect(new URL('/?error=GithubEmailMissing', destinationOrigin));
         }
 
         const name = userData.name || userData.login || "GitHub User";
@@ -102,18 +108,11 @@ export async function GET(request: NextRequest) {
         );
 
         if (userSettings[0]?.two_factor_enabled) {
-            const loginUrl = new URL('/', getBaseOrigin(request));
+            const loginUrl = new URL('/', destinationOrigin);
             loginUrl.searchParams.set('requires2FA', 'true');
             loginUrl.searchParams.set('userId', userId);
             return NextResponse.redirect(loginUrl);
         }
-
-        // 6. Create active session cookie 
-        await createSessionCookie(userId, true);
-
-        // Set refresh token cookie
-        const refreshToken = await createRefreshToken(userId);
-        const isProd = process.env.NODE_ENV === 'production';
 
         // Log to FluxDB desktop (no-op if FLUXDB_WEBHOOK_URL is not set)
         logToFluxDB({
@@ -128,10 +127,48 @@ export async function GET(request: NextRequest) {
             event: isNewUser ? 'signup' : 'login',
         });
 
-        // 7. Redirect seamlessly to projects dashboard
-        const redirectPath = '/dashboard/projects';
-        const baseOrigin = getBaseOrigin(request);
-        const response = NextResponse.redirect(new URL(redirectPath, baseOrigin));
+        // 6. Cross-domain session bridge check
+        if (destinationOrigin !== currentOrigin) {
+            const magicToken = crypto.randomBytes(32).toString('hex');
+            const otpCode = crypto.randomInt(100000, 999999).toString();
+            const expiresAt = new Date(Date.now() + 2 * 60 * 1000); // 2 minutes
+
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS fluxbase_global.magic_logins (
+                    email VARCHAR(255) PRIMARY KEY,
+                    otp_code VARCHAR(10) NOT NULL,
+                    magic_token VARCHAR(255) NOT NULL,
+                    expires_at TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                )
+            `);
+
+            await pool.query(`
+                INSERT INTO fluxbase_global.magic_logins (email, otp_code, magic_token, expires_at)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (email) DO UPDATE SET
+                    otp_code = EXCLUDED.otp_code,
+                    magic_token = EXCLUDED.magic_token,
+                    expires_at = EXCLUDED.expires_at
+            `, [email, otpCode, magicToken, expiresAt]);
+
+            const bridgeUrl = new URL('/api/auth/magic-login', destinationOrigin);
+            bridgeUrl.searchParams.set('token', magicToken);
+            bridgeUrl.searchParams.set('email', email);
+            if (redirectPath && redirectPath !== '/dashboard/projects') {
+                bridgeUrl.searchParams.set('returnTo', redirectPath);
+            }
+            return NextResponse.redirect(bridgeUrl);
+        }
+
+        // 7. Same domain flow: create active session cookie directly
+        await createSessionCookie(userId, true);
+
+        // Set refresh token cookie
+        const refreshToken = await createRefreshToken(userId);
+        const isProd = process.env.NODE_ENV === 'production';
+
+        const response = NextResponse.redirect(new URL(redirectPath, currentOrigin));
         response.cookies.set('refresh_token', refreshToken, {
             httpOnly: true,
             secure: isProd,
@@ -143,6 +180,7 @@ export async function GET(request: NextRequest) {
 
     } catch (error) {
         logger.error("GitHub Auth Exception:", error);
-        return NextResponse.redirect(new URL('/?error=GithubServerException', getBaseOrigin(request)));
+        return NextResponse.redirect(new URL('/?error=GithubServerException', destinationOrigin));
     }
 }
+

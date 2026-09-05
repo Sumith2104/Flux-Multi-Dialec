@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
 import { createSessionCookie, createRefreshToken } from '@/lib/auth';
+import { getBaseOrigin } from '@/lib/oauth-config';
 import crypto from 'crypto';
 import logger from '@/lib/logger';
 
@@ -8,10 +9,11 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const token = searchParams.get('token');
     const email = searchParams.get('email');
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin || 'http://localhost:3000';
+    const returnTo = searchParams.get('returnTo') || '/dashboard/projects';
+    const baseUrl = getBaseOrigin(req) || req.nextUrl.origin || process.env.NEXT_PUBLIC_APP_URL || 'https://www.fluxbasedb.me';
 
     if (!token || !email) {
-        return NextResponse.redirect(`${baseUrl}/?error=missing_token`);
+        return NextResponse.redirect(new URL('/?error=missing_token', baseUrl));
     }
 
     try {
@@ -35,13 +37,13 @@ export async function GET(req: NextRequest) {
         );
 
         if (result.rows.length === 0) {
-            return NextResponse.redirect(`${baseUrl}/?error=invalid_or_consumed_token`);
+            return NextResponse.redirect(new URL('/?error=invalid_or_consumed_token', baseUrl));
         }
 
         const record = result.rows[0];
         if (new Date() > new Date(record.expires_at)) {
             await pool.query('DELETE FROM fluxbase_global.magic_logins WHERE email = $1', [email]);
-            return NextResponse.redirect(`${baseUrl}/?error=expired_token`);
+            return NextResponse.redirect(new URL('/?error=expired_token', baseUrl));
         }
 
         // 3. Clear consumed token (single-use)
@@ -68,7 +70,10 @@ export async function GET(req: NextRequest) {
 
         // 5. Check 2FA
         if (user.two_factor_enabled) {
-            return NextResponse.redirect(`${baseUrl}/?requires2FA=true&userId=${user.id}`);
+            const twoFaUrl = new URL('/', baseUrl);
+            twoFaUrl.searchParams.set('requires2FA', 'true');
+            twoFaUrl.searchParams.set('userId', user.id);
+            return NextResponse.redirect(twoFaUrl);
         }
 
         // 6. Create session cookie and redirect to dashboard
@@ -76,7 +81,8 @@ export async function GET(req: NextRequest) {
 
         const refreshToken = await createRefreshToken(user.id);
         const isProd = process.env.NODE_ENV === 'production';
-        const response = NextResponse.redirect(`${baseUrl}/dashboard/projects`);
+        const targetPath = returnTo.startsWith('/') ? returnTo : '/dashboard/projects';
+        const response = NextResponse.redirect(new URL(targetPath, baseUrl));
         response.cookies.set('refresh_token', refreshToken, {
             httpOnly: true,
             secure: isProd,
@@ -87,6 +93,7 @@ export async function GET(req: NextRequest) {
         return response;
     } catch (error: any) {
         logger.error("Magic Login Error:", error);
-        return NextResponse.redirect(`${baseUrl}/?error=authentication_failed`);
+        return NextResponse.redirect(new URL('/?error=authentication_failed', baseUrl));
     }
 }
+
