@@ -208,7 +208,7 @@ export default function DocsPage() {
                                 {[
                                     { label: 'API Key', desc: 'Bearer token from Settings → API Keys. Scoped per project.', color: 'text-orange-400 bg-orange-500/10' },
                                     { label: 'Project ID', desc: 'Unique project identifier visible in the URL and Settings.', color: 'text-blue-400 bg-blue-500/10' },
-                                    { label: 'Base URL', desc: 'https://fluxbase.vercel.app — all REST endpoints live here.', color: 'text-emerald-400 bg-emerald-500/10' },
+                                    { label: 'Base URL', desc: 'https://www.fluxbasedb.me — all REST endpoints live here.', color: 'text-emerald-400 bg-emerald-500/10' },
                                     { label: 'WebSocket URL', desc: 'wss://fluxbase-realtime.onrender.com — for real-time events.', color: 'text-purple-400 bg-purple-500/10' },
                                 ].map((item) => (
                                     <div key={item.label} className="p-4 rounded-lg border border-border bg-secondary/60 space-y-1.5">
@@ -462,7 +462,7 @@ Content-Type: application/json`} />
 
                                 <div className="mt-4">
                                     <TabsContent value="nodejs">
-                                        <CodeBlock language="typescript" title="fluxbase.js" code={`const BASE_URL = 'https://fluxbase.vercel.app';
+                                        <CodeBlock language="typescript" title="fluxbase.js" code={`const BASE_URL = 'https://www.fluxbasedb.me';
 const API_KEY  = process.env.FLUXBASE_API_KEY;
 const PROJECT  = process.env.FLUXBASE_PROJECT_ID;
 
@@ -489,7 +489,7 @@ console.log(users);`} />
                                     <TabsContent value="python">
                                         <CodeBlock language="python" title="fluxbase.py" code={`import os, requests
 
-BASE_URL = 'https://fluxbase.vercel.app'
+BASE_URL = 'https://www.fluxbasedb.me'
 API_KEY  = os.getenv('FLUXBASE_API_KEY')
 PROJECT  = os.getenv('FLUXBASE_PROJECT_ID')
 
@@ -526,7 +526,7 @@ import (
     "os"
 )
 
-const baseURL = "https://fluxbase.vercel.app"
+const baseURL = "https://www.fluxbasedb.me"
 
 type queryRequest struct {
     ProjectID string   \`json:"projectId"\`
@@ -585,7 +585,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let resp: Value = client
-        .post("https://fluxbase.vercel.app/api/execute-sql")
+        .post("https://www.fluxbasedb.me/api/execute-sql")
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .json(&body)
@@ -609,7 +609,7 @@ import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse.BodyHandlers;
 
 public class FluxbaseClient {
-    private static final String BASE_URL = "https://fluxbase.vercel.app";
+    private static final String BASE_URL = "https://www.fluxbasedb.me";
     private final String apiKey;
     private final String projectId;
     private final HttpClient http = HttpClient.newHttpClient();
@@ -640,7 +640,7 @@ public class FluxbaseClient {
                                         <CodeBlock language="php" title="Fluxbase.php" code={`<?php
 
 class Fluxbase {
-    private string $baseUrl = 'https://fluxbase.vercel.app';
+    private string $baseUrl = 'https://www.fluxbasedb.me';
     private string $apiKey;
     private string $projectId;
 
@@ -689,7 +689,7 @@ require 'net/http'
 require 'json'
 
 class Fluxbase
-  BASE_URL = URI('https://fluxbase.vercel.app/api/execute-sql')
+  BASE_URL = URI('https://www.fluxbasedb.me/api/execute-sql')
 
   def initialize(api_key, project_id)
     @api_key    = api_key
@@ -719,7 +719,7 @@ puts users.inspect`} />
 
                                     <TabsContent value="curl">
                                         <CodeBlock language="bash" title="Terminal" code={`# Basic SELECT query
-curl -X POST "https://fluxbase.vercel.app/api/execute-sql" \\
+curl -X POST "https://www.fluxbasedb.me/api/execute-sql" \\
   -H "Authorization: Bearer $FLUXBASE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -728,7 +728,7 @@ curl -X POST "https://fluxbase.vercel.app/api/execute-sql" \\
   }'
 
 # CREATE TABLE example
-curl -X POST "https://fluxbase.vercel.app/api/execute-sql" \\
+curl -X POST "https://www.fluxbasedb.me/api/execute-sql" \\
   -H "Authorization: Bearer $FLUXBASE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -969,7 +969,7 @@ wscat -c wss://fluxbase-realtime.onrender.com
 
                             <h3 className="text-base font-bold text-white mt-4">Upload a File</h3>
                             <p className="text-sm">Send <code className="text-orange-300 bg-muted px-1.5 py-0.5 rounded text-xs">multipart/form-data</code> — required fields: <code className="text-foreground/85 bg-muted px-1.5 py-0.5 rounded text-xs">file</code>, <code className="text-foreground/85 bg-muted px-1.5 py-0.5 rounded text-xs">bucketId</code>, <code className="text-foreground/85 bg-muted px-1.5 py-0.5 rounded text-xs">projectId</code>. <code className="text-foreground/85 bg-muted px-1.5 py-0.5 rounded text-xs">bucketId</code> accepts the bucket UUID or name.</p>
-                            <CodeBlock language="bash" title="cURL — Multipart Upload" code={`curl -X POST "https://fluxbase.vercel.app/api/storage/upload" \\
+                            <CodeBlock language="bash" title="cURL — Multipart Upload" code={`curl -X POST "https://www.fluxbasedb.me/api/storage/upload" \\
   -H "Authorization: Bearer $FLUXBASE_API_KEY" \\
   -F "file=@avatar.jpg" \\
   -F "bucketId=profile-photos" \\

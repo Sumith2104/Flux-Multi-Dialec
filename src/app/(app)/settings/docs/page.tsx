@@ -222,7 +222,7 @@ export default function SettingsDocsPage() {
                                 {[
                                     { label: 'API Key', desc: 'Bearer token from Settings → API Keys.', color: 'text-orange-400 bg-orange-500/10' },
                                     { label: 'Project ID', desc: 'Unique identifier visible in the URL and Settings.', color: 'text-blue-400 bg-blue-500/10' },
-                                    { label: 'Base URL', desc: 'https://fluxbase.vercel.app — all REST endpoints.', color: 'text-emerald-400 bg-emerald-500/10' },
+                                    { label: 'Base URL', desc: 'https://www.fluxbasedb.me — all REST endpoints.', color: 'text-emerald-400 bg-emerald-500/10' },
                                     { label: 'WebSocket URL', desc: 'wss://fluxbase-realtime-2bcf.onrender.com', color: 'text-purple-400 bg-purple-500/10' },
                                 ].map((item) => (
                                     <div key={item.label} className="p-4 rounded-lg border border-border bg-secondary/60 space-y-1.5">
@@ -390,7 +390,7 @@ Content-Type: application/json`} />
                                     ))}
                                 </TabsList>
                                 <div className="mt-4">
-                                    <TabsContent value="nodejs"><CodeBlock title="fluxbase.js" code={`const BASE = 'https://fluxbase.vercel.app';
+                                    <TabsContent value="nodejs"><CodeBlock title="fluxbase.js" code={`const BASE = 'https://www.fluxbasedb.me';
 const KEY  = process.env.FLUXBASE_API_KEY;
 const PROJ = process.env.FLUXBASE_PROJECT_ID;
 
@@ -409,7 +409,7 @@ const users = await query('SELECT * FROM users WHERE active = $1', [true]);`} />
 
                                     <TabsContent value="python"><CodeBlock title="fluxbase.py" code={`import os, requests
 
-BASE    = 'https://fluxbase.vercel.app'
+BASE    = 'https://www.fluxbasedb.me'
 HEADERS = { 'Authorization': f'Bearer {os.getenv("FLUXBASE_API_KEY")}', 'Content-Type': 'application/json' }
 
 def query(sql, params=None):
@@ -427,7 +427,7 @@ users = query('SELECT * FROM users WHERE active = $1', [True])`} /></TabsContent
         "projectId": os.Getenv("FLUXBASE_PROJECT_ID"),
         "query":     sql,
     })
-    req, _ := http.NewRequest("POST", "https://fluxbase.vercel.app/api/execute-sql", bytes.NewBuffer(body))
+    req, _ := http.NewRequest("POST", "https://www.fluxbasedb.me/api/execute-sql", bytes.NewBuffer(body))
     req.Header.Set("Authorization", "Bearer "+os.Getenv("FLUXBASE_API_KEY"))
     req.Header.Set("Content-Type", "application/json")
     resp, _ := http.DefaultClient.Do(req)
@@ -445,7 +445,7 @@ use serde_json::{json, Value};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let resp: Value = reqwest::Client::new()
-        .post("https://fluxbase.vercel.app/api/execute-sql")
+        .post("https://www.fluxbasedb.me/api/execute-sql")
         .header("Authorization", format!("Bearer {}", std::env::var("FLUXBASE_API_KEY")?))
         .json(&json!({ "projectId": std::env::var("FLUXBASE_PROJECT_ID")?, "query": "SELECT * FROM users LIMIT 5" }))
         .send().await?.json().await?;
@@ -458,7 +458,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         String body = String.format("{\"projectId\":\"%s\",\"query\":\"%s\"}",
             System.getenv("FLUXBASE_PROJECT_ID"), sql);
         HttpRequest req = HttpRequest.newBuilder()
-            .uri(URI.create("https://fluxbase.vercel.app/api/execute-sql"))
+            .uri(URI.create("https://www.fluxbasedb.me/api/execute-sql"))
             .header("Authorization", "Bearer " + System.getenv("FLUXBASE_API_KEY"))
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body)).build();
@@ -468,7 +468,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                                     <TabsContent value="php"><CodeBlock title="Fluxbase.php" code={`<?php
 function fluxQuery(string $sql): array {
-    $ch = curl_init('https://fluxbase.vercel.app/api/execute-sql');
+    $ch = curl_init('https://www.fluxbasedb.me/api/execute-sql');
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true,
         CURLOPT_POSTFIELDS => json_encode(['projectId' => $_ENV['FLUXBASE_PROJECT_ID'], 'query' => $sql]),
@@ -480,7 +480,7 @@ function fluxQuery(string $sql): array {
 }`} /></TabsContent>
 
                                     <TabsContent value="ruby"><CodeBlock title="fluxbase.rb" code={`def flux_query(sql)
-  uri  = URI('https://fluxbase.vercel.app/api/execute-sql')
+  uri  = URI('https://www.fluxbasedb.me/api/execute-sql')
   http = Net::HTTP.new(uri.host, uri.port).tap { |h| h.use_ssl = true }
   req  = Net::HTTP::Post.new(uri)
   req['Authorization'] = "Bearer #{ENV['FLUXBASE_API_KEY']}"
@@ -490,7 +490,7 @@ function fluxQuery(string $sql): array {
   data['result']['rows']
 end`} /></TabsContent>
 
-                                    <TabsContent value="curl"><CodeBlock title="Terminal" code={`curl -X POST "https://fluxbase.vercel.app/api/execute-sql" \\
+                                    <TabsContent value="curl"><CodeBlock title="Terminal" code={`curl -X POST "https://www.fluxbasedb.me/api/execute-sql" \\
   -H "Authorization: Bearer $FLUXBASE_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"projectId":"YOUR_PROJECT_ID","query":"SELECT * FROM users LIMIT 10"}'`} /></TabsContent>
@@ -636,7 +636,7 @@ wscat -c wss://fluxbase-realtime.onrender.com
                                 </table>
                             </div>
 
-                            <CodeBlock title="Upload — required form fields" code={`curl -X POST "https://fluxbase.vercel.app/api/storage/upload" \\
+                            <CodeBlock title="Upload — required form fields" code={`curl -X POST "https://www.fluxbasedb.me/api/storage/upload" \\
   -H "Authorization: Bearer $FLUXBASE_API_KEY" \\
   -F "file=@avatar.jpg" \\       # binary file
   -F "bucketId=profile-photos" \\ # bucket UUID or name

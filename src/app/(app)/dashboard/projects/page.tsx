@@ -312,7 +312,9 @@ export default function SelectProjectPage() {
     }
   };
 
-  const vercelMcpUrl = 'https://fluxbase.vercel.app/api/mcp';
+  const vercelMcpUrl = process.env.NEXT_PUBLIC_APP_URL
+    ? `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '')}/api/mcp`
+    : (typeof window !== 'undefined' ? `${window.location.origin}/api/mcp` : 'https://www.fluxbasedb.me/api/mcp');
   const localMcpUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/mcp` : 'http://localhost:3000/api/mcp';
   const mcpServerUrl = mcpEnv === 'vercel' ? vercelMcpUrl : localMcpUrl;
 

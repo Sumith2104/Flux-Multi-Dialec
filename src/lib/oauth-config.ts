@@ -42,7 +42,7 @@ export function getOAuthConfig(request: NextRequest, provider: 'github' | 'googl
 
     // Determine Environment Prefix based on the detected host
     let envPrefix = 'LOCAL';
-    if (host.includes('vercel.app')) {
+    if (host.includes('vercel.app') || host.includes('fluxbasedb.me')) {
         envPrefix = 'VERCEL';
     } else if (host.includes('render.com')) {
         envPrefix = 'RENDER';

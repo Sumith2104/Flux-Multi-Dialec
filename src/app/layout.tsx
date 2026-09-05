@@ -15,6 +15,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://www.fluxbasedb.me'),
   title: {
     default: 'Fluxbase — AI-Powered SQL Database Platform',
     template: '%s | Fluxbase',
@@ -25,7 +26,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'en_US',
-    url: process.env.NEXT_PUBLIC_APP_URL || 'https://fluxbase.com',
+    url: process.env.NEXT_PUBLIC_APP_URL || 'https://www.fluxbasedb.me',
     siteName: 'Fluxbase',
     title: 'Fluxbase — AI-Powered SQL Database Platform',
     description: 'Create, query, and manage databases with natural language and real-time collaboration.',
