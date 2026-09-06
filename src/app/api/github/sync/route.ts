@@ -224,6 +224,13 @@ export async function POST(request: NextRequest) {
             UPDATE fluxbase_global.projects SET last_synced_at = NOW() WHERE project_id = $1
         `, [projectId]);
 
+        try {
+            const { invalidateProjectCache } = await import('@/lib/data');
+            await invalidateProjectCache(projectId);
+        } catch (cacheErr) {
+            logger.warn('[GitHub Sync API] Cache invalidation warning:', cacheErr);
+        }
+
         return NextResponse.json({
             success: true,
             syncResults: {

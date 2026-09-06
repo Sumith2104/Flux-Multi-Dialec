@@ -9,7 +9,9 @@ import { TableEditorSkeleton } from '@/components/skeletons/page-skeletons';
 
 
 import { getTablesForProject, getColumnsForTable, getConstraintsForTable, getConstraintsForProject, getProjectById } from '@/lib/data';
-// ...
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 async function Editor({ projectId, tableId, tableName }: { projectId: string; tableId?: string; tableName?: string; }) {
     const { getCurrentUserId } = await import('@/lib/auth');
     const userId = await getCurrentUserId();
@@ -21,6 +23,11 @@ async function Editor({ projectId, tableId, tableName }: { projectId: string; ta
     let allTables: any[] = [];
     try {
         allTables = await getTablesForProject(projectId, userId || undefined);
+        // Resilient retry in case tenant schema was just provisioned in a background transaction
+        if (allTables.length === 0) {
+            await new Promise(resolve => setTimeout(resolve, 250));
+            allTables = await getTablesForProject(projectId, userId || undefined);
+        }
     } catch (e) {
         console.error('Failed to get tables for project:', e);
     }
@@ -29,11 +36,14 @@ async function Editor({ projectId, tableId, tableName }: { projectId: string; ta
         ? allTables.find(t => t.table_id === tableId || t.table_name === (tableName || tableId)) 
         : (tableName ? allTables.find(t => t.table_name === tableName) : null);
 
+    // If no table was specifically requested in the URL, automatically select the first table
+    const resolvedTable = currentTable || (allTables.length > 0 && !tableId && !tableName ? allTables[0] : null);
+    const effectiveTableId = resolvedTable?.table_id || tableId;
+    const effectiveTableName = resolvedTable?.table_name || tableName;
+
     let columns: any[] = [];
     let constraints: any[] = [];
     let allProjectConstraints: any[] = [];
-
-    const effectiveTableId = currentTable?.table_id || tableId;
 
     if (effectiveTableId) {
         try {
@@ -52,12 +62,12 @@ async function Editor({ projectId, tableId, tableName }: { projectId: string; ta
     return (
         <div className="h-full w-full min-h-0 flex flex-col flex-1 overflow-hidden">
             <EditorClient
-                key={`${projectId}_${activeDatabase || ''}`}
+                key={`${projectId}_${activeDatabase || ''}_${resolvedTable?.table_id || 'none'}`}
                 projectId={projectId}
-                tableId={tableId}
-                tableName={tableName}
+                tableId={effectiveTableId}
+                tableName={effectiveTableName}
                 allTables={allTables}
-                currentTable={currentTable}
+                currentTable={resolvedTable}
                 initialColumns={columns}
                 initialConstraints={constraints}
                 allProjectConstraints={allProjectConstraints}

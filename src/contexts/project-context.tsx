@@ -31,6 +31,10 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
             if (item) {
                 const parsed = JSON.parse(item);
                 setProjectState(parsed);
+                // Synchronously set cookie so immediate navigations / SSR receive the updated project
+                if (typeof document !== 'undefined') {
+                    document.cookie = `selectedProject=${encodeURIComponent(JSON.stringify(parsed))}; path=/; max-age=31536000; SameSite=Lax`;
+                }
                 // Keep cookies in sync on mount
                 import('js-cookie').then(mod => {
                     const Cookies = mod.default;
@@ -50,12 +54,18 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
         try {
             if (project) {
                 window.localStorage.setItem('selectedProject', JSON.stringify(project));
+                if (typeof document !== 'undefined') {
+                    document.cookie = `selectedProject=${encodeURIComponent(JSON.stringify(project))}; path=/; max-age=31536000; SameSite=Lax`;
+                }
                 import('js-cookie').then(mod => {
                     const Cookies = mod.default;
                     Cookies.set('selectedProject', JSON.stringify(project), { path: '/' });
                 });
             } else {
                 window.localStorage.removeItem('selectedProject');
+                if (typeof document !== 'undefined') {
+                    document.cookie = 'selectedProject=; path=/; max-age=0; SameSite=Lax';
+                }
                 import('js-cookie').then(mod => {
                     const Cookies = mod.default;
                     Cookies.remove('selectedProject', { path: '/' });

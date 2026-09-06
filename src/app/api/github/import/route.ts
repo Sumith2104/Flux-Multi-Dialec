@@ -306,6 +306,19 @@ export async function POST(request: NextRequest) {
 
         const totalExecutionTimeMs = Date.now() - startTime;
 
+        try {
+            const { invalidateProjectCache } = await import('@/lib/data');
+            await invalidateProjectCache(project.project_id);
+            if (allCreatedTables.size > 0) {
+                const { invalidateTableCache } = await import('@/lib/cache');
+                for (const tbl of allCreatedTables) {
+                    await invalidateTableCache(project.project_id, tbl);
+                }
+            }
+        } catch (cacheErr) {
+            logger.warn('[GitHub Import API] Cache invalidation warning:', cacheErr);
+        }
+
         return NextResponse.json({
             success: true,
             project,

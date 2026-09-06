@@ -274,6 +274,26 @@ export function EditorClient({
     useEffect(() => { setDeletedTableIds(new Set()); }, [allTables]);
     useEffect(() => { setDeletedColumnIds(new Set()); }, [tableId]);
 
+    // Keep browser address bar synchronized if table was auto-selected without query params
+    useEffect(() => {
+        if (typeof window !== 'undefined' && projectId && tableId && tableName) {
+            const url = new URL(window.location.href);
+            if (url.searchParams.get('tableId') !== tableId || url.searchParams.get('tableName') !== tableName) {
+                url.searchParams.set('tableId', tableId);
+                url.searchParams.set('tableName', tableName);
+                window.history.replaceState(null, '', url.toString());
+            }
+        }
+    }, [projectId, tableId, tableName]);
+
+    // Safety fallback: If tableId/currentTable is missing but localTables are loaded, auto-select first table
+    useEffect(() => {
+        if (!currentTable && !tableId && !tableName && localTables.length > 0) {
+            const first = localTables[0];
+            router.replace(`/editor?projectId=${projectId}&tableId=${first.table_id}&tableName=${encodeURIComponent(first.table_name)}`);
+        }
+    }, [currentTable, tableId, tableName, localTables, projectId, router]);
+
     useRealtimeSubscription(projectId);
 
     const {

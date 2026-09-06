@@ -2405,7 +2405,12 @@ export default function SelectProjectPage() {
                     setIsGithubModalOpen(false);
                     if (importedProject?.project_id) {
                       setProject(importedProject);
-                      router.push(`/editor?projectId=${importedProject.project_id}`);
+                      if (typeof document !== 'undefined') {
+                        document.cookie = `selectedProject=${encodeURIComponent(JSON.stringify(importedProject))}; path=/; max-age=31536000; SameSite=Lax`;
+                      }
+                      const firstTable = importResult?.tablesCreated?.[0] || '';
+                      const targetUrl = `/editor?projectId=${importedProject.project_id}${firstTable ? `&tableName=${encodeURIComponent(firstTable)}` : ''}`;
+                      window.location.href = targetUrl;
                     } else {
                       router.push('/dashboard');
                     }
