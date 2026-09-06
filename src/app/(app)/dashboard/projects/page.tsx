@@ -16,6 +16,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ProjectContext } from '@/contexts/project-context';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ProjectsPageSkeleton } from '@/components/skeletons/page-skeletons';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { createProjectAction, checkGitHubConnectionAction, disconnectGitHubAction } from '@/components/layout/actions';
@@ -740,23 +741,7 @@ export default function SelectProjectPage() {
   );
 
   if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-full bg-background p-4 animate-in fade-in duration-500">
-        <div className="w-full max-w-7xl">
-          <Card>
-            <CardHeader>
-              <Skeleton className="h-8 w-48" />
-              <Skeleton className="h-4 w-64 mt-2" />
-            </CardHeader>
-            <CardContent className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              <Skeleton className="h-36 w-full" />
-              <Skeleton className="h-36 w-full" />
-              <Skeleton className="h-36 w-full" />
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
+    return <ProjectsPageSkeleton />;
   }
 
   return (

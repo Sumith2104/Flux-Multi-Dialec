@@ -21,6 +21,7 @@ import { QueryTypeChart } from "@/components/query-type-chart";
 import { SparklineCard } from "@/components/sparkline-card";
 import { ProjectContext } from '@/contexts/project-context';
 import { Skeleton } from '@/components/ui/skeleton';
+import { DashboardPageSkeleton } from '@/components/skeletons/page-skeletons';
 import { useRealtimeAnalytics } from '@/hooks/use-realtime-analytics';
 import { useProjectHistory } from '@/hooks/use-project-history';
 import { getDashboardWidgetsAction } from './analytics-actions';
@@ -128,18 +129,7 @@ export default function DashboardPage() {
     const historyStats = useProjectHistory(selectedProject?.project_id);
 
     if (loading) {
-        return (
-            <div className="space-y-6">
-                <Skeleton className="h-10 w-48" />
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    <Skeleton className="h-28 w-full" />
-                    <Skeleton className="h-28 w-full" />
-                    <Skeleton className="h-28 w-full" />
-                </div>
-                <Skeleton className="h-72 w-full" />
-                <Skeleton className="h-48 w-full" />
-            </div>
-        )
+        return <DashboardPageSkeleton />;
     }
 
     if (!selectedProject) {

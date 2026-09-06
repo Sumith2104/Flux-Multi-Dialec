@@ -312,10 +312,11 @@ export default function ApiPage() {
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {loadingTables ? (
-                                <>
-                                    <Skeleton className="h-16 w-full" />
-                                    <Skeleton className="h-16 w-full" />
-                                </>
+                                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                    {[1, 2, 3, 4, 5, 6].map(i => (
+                                        <Skeleton key={i} className="h-14 w-full rounded-lg" />
+                                    ))}
+                                </div>
                             ) : tables.length > 0 ? (
                                 tables.map(table => (
                                     <CopyableField key={table.table_id} label={table.table_name} value={table.table_name} />

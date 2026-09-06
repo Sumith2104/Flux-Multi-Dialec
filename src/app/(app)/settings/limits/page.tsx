@@ -9,6 +9,7 @@ import { ProjectContext } from '@/contexts/project-context';
 import { useToast } from '@/hooks/use-toast';
 import { getProjectLimitsAction, updateProjectLimitsAction } from './actions';
 import { Skeleton } from '@/components/ui/skeleton';
+import { SettingsLimitsSkeleton } from '@/components/skeletons/page-skeletons';
 import { Slider } from "@/components/ui/slider"
 import { ShieldAlert } from 'lucide-react';
 
@@ -68,7 +69,7 @@ export default function LimitsSettingsPage() {
         setSaving(false);
     };
 
-    if (loading) return <div className="space-y-6"><Skeleton className="h-[400px] w-full" /></div>;
+    if (loading) return <SettingsLimitsSkeleton />;
 
     return (
         <div className="space-y-6">

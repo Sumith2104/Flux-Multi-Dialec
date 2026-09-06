@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useContext, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { getWebhooksAction, createWebhookAction, deleteWebhookAction, toggleWebhookAction } from '../actions';
 import { type Webhook, type WebhookEvent } from '@/lib/webhooks';
 import { CheckCircle2, XCircle, RefreshCw, Webhook as WebhookIcon, Activity, Loader2, RotateCcw } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
 interface DeliveryLog {
@@ -260,7 +261,20 @@ export default function WebhooksPage() {
                     </div>
 
                     {logsLoading ? (
-                        <div className="flex items-center justify-center h-32"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+                        <div className="space-y-2">
+                            {[1, 2, 3, 4].map(i => (
+                                <div key={i} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                                    <div className="flex items-center gap-3">
+                                        <Skeleton className="h-5 w-5 rounded-full" />
+                                        <div className="space-y-1">
+                                            <Skeleton className="h-4 w-40" />
+                                            <Skeleton className="h-3 w-64" />
+                                        </div>
+                                    </div>
+                                    <Skeleton className="h-5 w-16 rounded" />
+                                </div>
+                            ))}
+                        </div>
                     ) : deliveryLogs.length === 0 ? (
                         <div className="text-center py-12 text-sm text-muted-foreground border border-dashed border-border rounded-lg">
                             No delivery history yet. Events will appear here after webhooks fire.

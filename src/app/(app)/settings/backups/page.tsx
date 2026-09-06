@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Archive, Download, Clock, CheckCircle2, AlertCircle, Loader2, HardDrive, RotateCcw, Calendar, Trash2, X } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { format, formatDistanceToNow } from 'date-fns';
 
@@ -235,7 +236,23 @@ export default function BackupsPage() {
             </div>
 
             {loading ? (
-                <div className="flex items-center justify-center h-48"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+                <div className="space-y-3">
+                    {[1, 2, 3].map(i => (
+                        <div key={i} className="flex items-center justify-between p-4 rounded-lg border border-border bg-card/60">
+                            <div className="flex items-center gap-3">
+                                <Skeleton className="h-9 w-9 rounded-lg" />
+                                <div className="space-y-1.5">
+                                    <Skeleton className="h-4 w-44" />
+                                    <Skeleton className="h-3 w-56" />
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Skeleton className="h-8 w-24 rounded" />
+                                <Skeleton className="h-8 w-8 rounded" />
+                            </div>
+                        </div>
+                    ))}
+                </div>
             ) : backups.length === 0 ? (
                 <Card className="border-dashed">
                     <CardContent className="flex flex-col items-center justify-center py-16 gap-3">

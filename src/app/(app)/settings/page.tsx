@@ -439,7 +439,16 @@ export default function GeneralSettingsPage() {
                     </CardHeader>
                     <CardContent className="space-y-4">
                         {is2faLoading ? (
-                            <Skeleton className="h-20 w-full" />
+                            <div className="flex items-center justify-between p-4 bg-secondary/30 border border-border/60 rounded-lg">
+                                <div className="flex items-center gap-3">
+                                    <Skeleton className="h-9 w-9 rounded-full" />
+                                    <div className="space-y-1.5">
+                                        <Skeleton className="h-4 w-32" />
+                                        <Skeleton className="h-3 w-48" />
+                                    </div>
+                                </div>
+                                <Skeleton className="h-8 w-20 rounded" />
+                            </div>
                         ) : is2faEnabled ? (
                             <div className="flex items-center justify-between p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
                                 <div className="flex items-center gap-3">
@@ -590,9 +599,10 @@ export default function GeneralSettingsPage() {
                             Please select a project to view its tables.
                         </div>
                     ) : loadingTables ? (
-                        <div className="space-y-2">
-                            <Skeleton className="h-12 w-full" />
-                            <Skeleton className="h-12 w-full" />
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                            {[1, 2, 3, 4, 5, 6].map(i => (
+                                <Skeleton key={i} className="h-12 w-full rounded-lg" />
+                            ))}
                         </div>
                     ) : tables.length === 0 ? (
                         <div className="py-8 text-center text-sm text-muted-foreground border-2 border-dashed rounded-lg">

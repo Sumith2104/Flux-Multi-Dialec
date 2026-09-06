@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTablesForProject, getColumnsForTable, getConstraintsForProject } from '@/lib/data';
 import { Skeleton } from '@/components/ui/skeleton';
+import { DatabaseErdSkeleton } from '@/components/skeletons/page-skeletons';
 import { ErdView } from '@/components/erd-view';
 
 
@@ -36,11 +37,7 @@ async function Database({ projectId }: { projectId: string }) {
 }
 
 function DatabaseSkeleton() {
-    return (
-        <div className="w-full h-full">
-            <Skeleton className="h-full w-full" />
-        </div>
-    )
+    return <DatabaseErdSkeleton />;
 }
 
 export default async function DatabasePage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {

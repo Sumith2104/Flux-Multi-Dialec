@@ -139,11 +139,23 @@ export function QueryResults({ results, error, isGenerating, isLiveUpdating, has
 
     if (isGenerating) {
         return (
-            <div className="p-4 space-y-2 h-full">
-                <Skeleton className="h-8 w-full" />
-                <Skeleton className="h-8 w-full" />
-                <Skeleton className="h-8 w-4/5" />
-                <Skeleton className="h-8 w-2/3" />
+            <div className="p-4 space-y-3 h-full overflow-hidden font-mono text-xs">
+                <div className="grid grid-cols-4 gap-3 pb-2 border-b border-border/60">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-4 w-28" />
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-4 w-32" />
+                </div>
+                <div className="space-y-2">
+                    {[1, 2, 3, 4, 5, 6].map(i => (
+                        <div key={i} className="grid grid-cols-4 gap-3 py-1 items-center">
+                            <Skeleton className="h-4 w-3/4" />
+                            <Skeleton className="h-4 w-2/3" />
+                            <Skeleton className="h-4 w-1/2" />
+                            <Skeleton className="h-4 w-4/5" />
+                        </div>
+                    ))}
+                </div>
             </div>
         );
     }

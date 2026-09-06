@@ -24,6 +24,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Users, Plus, Trash2, Loader2, Terminal, Clock, Search } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 
@@ -217,7 +218,20 @@ export default function TeamPage() {
                     )}
 
                     {loading ? (
-                        <div className="flex items-center justify-center h-32"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+                        <div className="space-y-2">
+                            {[1, 2, 3].map(i => (
+                                <div key={i} className="flex items-center justify-between p-4 rounded-lg border border-border bg-card/60">
+                                    <div className="flex items-center gap-3">
+                                        <Skeleton className="h-9 w-9 rounded-full" />
+                                        <div className="space-y-1.5">
+                                            <Skeleton className="h-4 w-36" />
+                                            <Skeleton className="h-3 w-48" />
+                                        </div>
+                                    </div>
+                                    <Skeleton className="h-8 w-24 rounded" />
+                                </div>
+                            ))}
+                        </div>
                     ) : (
                         <div className="space-y-2">
                             {members.map(member => (
@@ -309,7 +323,17 @@ export default function TeamPage() {
                     </div>
 
                     {auditLoading ? (
-                        <div className="flex items-center justify-center h-32"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+                        <div className="space-y-2">
+                            {[1, 2, 3, 4, 5].map(i => (
+                                <div key={i} className="p-3 rounded-lg border border-border/60 bg-secondary/20 flex items-center justify-between">
+                                    <div className="space-y-1.5 flex-1 pr-4">
+                                        <Skeleton className="h-4 w-3/4" />
+                                        <Skeleton className="h-3 w-40" />
+                                    </div>
+                                    <Skeleton className="h-4 w-20" />
+                                </div>
+                            ))}
+                        </div>
                     ) : filteredLogs.length === 0 ? (
                         <Card className="border-dashed">
                             <CardContent className="flex flex-col items-center justify-center py-12 gap-2">

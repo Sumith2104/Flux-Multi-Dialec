@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Shield, Plus, Trash2, ToggleLeft, ToggleRight, Loader2, ChevronDown, ChevronRight, Info } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
 interface RLSPolicy {
@@ -138,8 +139,17 @@ export default function RLSPage() {
             </Card>
 
             {loading ? (
-                <div className="flex items-center justify-center h-48">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <div className="space-y-3">
+                    {[1, 2, 3].map(i => (
+                        <div key={i} className="flex items-center justify-between p-4 rounded-lg border border-border bg-card/60">
+                            <div className="flex items-center gap-3">
+                                <Skeleton className="h-4 w-4 rounded" />
+                                <Skeleton className="h-4 w-32" />
+                                <Skeleton className="h-5 w-16 rounded-full" />
+                            </div>
+                            <Skeleton className="h-8 w-24 rounded" />
+                        </div>
+                    ))}
                 </div>
             ) : tables.length === 0 ? (
                 <Card className="border-dashed">

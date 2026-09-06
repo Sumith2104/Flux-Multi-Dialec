@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
     Dialog,
     DialogContent,
@@ -419,9 +420,19 @@ export default function StoragePage() {
 
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
                 {loadingBuckets ? (
-                    <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground text-xs">
-                        <Loader2 className="h-5 w-5 animate-spin text-orange-400" />
-                        <span>Loading buckets...</span>
+                    <div className="space-y-2 p-1">
+                        {[1, 2, 3, 4].map(i => (
+                            <div key={i} className="p-2.5 rounded-lg border border-border/40 bg-secondary/30 space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Folder className="h-4 w-4 text-orange-400/50" />
+                                        <Skeleton className="h-4 w-24" />
+                                    </div>
+                                    <Skeleton className="h-4 w-10 rounded" />
+                                </div>
+                                <Skeleton className="h-3 w-28" />
+                            </div>
+                        ))}
                     </div>
                 ) : filteredBuckets.length === 0 ? (
                     <div className="text-center py-10 px-3 text-muted-foreground">
@@ -688,10 +699,34 @@ export default function StoragePage() {
                                     onDrop={onDrop}
                                 >
                                     {loadingFiles ? (
-                                        <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground text-xs">
-                                            <Loader2 className="h-6 w-6 animate-spin text-orange-400" />
-                                            <span>Loading files in {selectedBucket.name}...</span>
-                                        </div>
+                                        viewMode === 'grid' ? (
+                                            <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
+                                                {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+                                                    <div key={i} className="p-3 rounded-lg border border-border/50 bg-secondary/20 flex flex-col justify-between space-y-3">
+                                                        <Skeleton className="h-24 w-full rounded" />
+                                                        <div className="space-y-1.5">
+                                                            <Skeleton className="h-3.5 w-3/4" />
+                                                            <Skeleton className="h-3 w-1/2" />
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="p-3 space-y-2">
+                                                {[1, 2, 3, 4, 5, 6].map(i => (
+                                                    <div key={i} className="flex items-center justify-between p-2.5 rounded-lg border border-border/40 bg-secondary/20">
+                                                        <div className="flex items-center gap-3">
+                                                            <Skeleton className="h-6 w-6 rounded" />
+                                                            <Skeleton className="h-4 w-44" />
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <Skeleton className="h-4 w-16" />
+                                                            <Skeleton className="h-6 w-16 rounded" />
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )
                                     ) : files.length === 0 ? (
                                         <div
                                             className="flex flex-col items-center justify-center h-full p-8 text-center gap-3 cursor-pointer hover:bg-muted/10 transition-colors"

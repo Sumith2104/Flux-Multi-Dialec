@@ -18,16 +18,26 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from '@/components/ui/skeleton';
 import dynamic from 'next/dynamic';
-import { Loader2 } from 'lucide-react';
+
+const SqlEditorSkeleton = () => (
+    <div className="h-full w-full flex bg-background/40 font-mono text-xs min-h-[300px]">
+        <div className="w-10 border-r border-border/40 py-3 text-center text-muted-foreground/40 space-y-2 select-none">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map(n => <div key={n}>{n}</div>)}
+        </div>
+        <div className="flex-1 p-4 space-y-2.5">
+            <Skeleton className="h-4 w-48 bg-blue-500/15" />
+            <Skeleton className="h-4 w-32 bg-blue-500/15" />
+            <Skeleton className="h-4 w-64 bg-blue-500/15" />
+            <Skeleton className="h-4 w-40 bg-blue-500/15" />
+        </div>
+    </div>
+);
 
 const SqlEditor = dynamic(() => import('@/components/sql-editor').then(mod => mod.SqlEditor), {
     ssr: false,
-    loading: () => (
-        <div className="h-full w-full flex items-center justify-center bg-card text-muted-foreground font-mono text-sm min-h-[300px]">
-            <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading SQL Editor...
-        </div>
-    )
+    loading: () => <SqlEditorSkeleton />,
 });
 import { QueryResults } from '@/components/query-results';
 import { QueryHistory, HistoryItem } from '@/components/query-history';

@@ -61,9 +61,32 @@ import { DeleteProgress } from './delete-progress';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { ImportPreviewSidebar, type ImportPreviewData, type ImportFormat } from '@/components/import-preview-sidebar';
 
+const DataTableSkeleton = () => (
+    <div className="flex-1 flex flex-col overflow-hidden bg-background">
+        <div className="grid grid-cols-12 border-b border-border/80 bg-secondary/50 text-xs font-mono font-medium">
+            <div className="col-span-1 p-2.5 border-r border-border/50 text-center text-muted-foreground">#</div>
+            <div className="col-span-3 p-2.5 border-r border-border/50"><Skeleton className="h-4 w-28" /></div>
+            <div className="col-span-3 p-2.5 border-r border-border/50"><Skeleton className="h-4 w-32" /></div>
+            <div className="col-span-3 p-2.5 border-r border-border/50"><Skeleton className="h-4 w-24" /></div>
+            <div className="col-span-2 p-2.5"><Skeleton className="h-4 w-20" /></div>
+        </div>
+        <div className="flex-1 divide-y divide-border/40 font-mono text-xs">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map(row => (
+                <div key={row} className="grid grid-cols-12 items-center py-2.5">
+                    <div className="col-span-1 border-r border-border/40 text-center text-muted-foreground/60">{row}</div>
+                    <div className="col-span-3 px-3 border-r border-border/40"><Skeleton className="h-3.5 w-3/4" /></div>
+                    <div className="col-span-3 px-3 border-r border-border/40"><Skeleton className="h-3.5 w-2/3" /></div>
+                    <div className="col-span-3 px-3 border-r border-border/40"><Skeleton className="h-3.5 w-1/2" /></div>
+                    <div className="col-span-2 px-3"><Skeleton className="h-3.5 w-3/4" /></div>
+                </div>
+            ))}
+        </div>
+    </div>
+);
+
 const DataTable = dynamic(() => import('@/components/data-table').then(mod => mod.DataTable), {
     ssr: false,
-    loading: () => <Skeleton className="h-[600px] w-full" />,
+    loading: () => <DataTableSkeleton />,
 });
 
 interface EditorClientProps {

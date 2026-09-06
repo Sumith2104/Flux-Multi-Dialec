@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { EditorClient } from '@/components/editor-client';
 import { Skeleton } from '@/components/ui/skeleton';
+import { TableEditorSkeleton } from '@/components/skeletons/page-skeletons';
 
 
 import { getTablesForProject, getColumnsForTable, getConstraintsForTable, getConstraintsForProject, getProjectById } from '@/lib/data';
@@ -69,27 +70,7 @@ async function Editor({ projectId, tableId, tableName }: { projectId: string; ta
 }
 
 function EditorSkeleton() {
-    return (
-        <div className="flex h-full w-full">
-            <aside className="w-64 flex-shrink-0 border-r bg-background flex flex-col p-4 gap-4">
-                <Skeleton className="h-8 w-1/2" />
-                <Skeleton className="h-10 w-full" />
-                <div className="space-y-2">
-                    <Skeleton className="h-8 w-full" />
-                    <Skeleton className="h-8 w-full" />
-                    <Skeleton className="h-8 w-full" />
-                </div>
-            </aside>
-            <main className="flex-1 flex flex-col overflow-hidden">
-                <div className="flex flex-col items-center justify-center h-full text-center">
-                    <Skeleton className="h-16 w-16 rounded-full" />
-                    <Skeleton className="h-6 w-48 mt-4" />
-                    <Skeleton className="h-4 w-64 mt-2" />
-                    <Skeleton className="h-10 w-32 mt-4" />
-                </div>
-            </main>
-        </div>
-    )
+    return <TableEditorSkeleton />;
 }
 
 export default async function EditorPage({

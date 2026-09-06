@@ -72,11 +72,24 @@ export function SchemaExplorer({ projectId, onInsertQuery }: { projectId?: strin
 
     if (loading && !schema) {
         return (
-            <div className="p-4 space-y-3">
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-4 w-1/2" />
-                <Skeleton className="h-4 w-5/6" />
-                <Skeleton className="h-4 w-2/3" />
+            <div className="flex flex-col h-full overflow-hidden w-full text-sm font-mono">
+                <div className="px-3 py-2 border-b border-border/60 bg-background/95 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Database className="h-3.5 w-3.5 text-orange-400" />
+                        <span className="font-semibold text-xs tracking-tight">Database Explorer</span>
+                    </div>
+                </div>
+                <div className="p-3 space-y-2.5">
+                    <Skeleton className="h-7 w-full rounded" />
+                    <div className="space-y-1.5 pt-1">
+                        {[1, 2, 3, 4, 5].map(i => (
+                            <div key={i} className="flex items-center justify-between p-2 rounded bg-secondary/30 border border-border/40">
+                                <Skeleton className="h-3.5 w-24" />
+                                <Skeleton className="h-3.5 w-8 rounded" />
+                            </div>
+                        ))}
+                    </div>
+                </div>
             </div>
         );
     }
