@@ -63,17 +63,17 @@ import { ImportPreviewSidebar, type ImportPreviewData, type ImportFormat } from 
 
 const DataTableSkeleton = () => (
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
-        <div className="grid grid-cols-12 border-b border-border/80 bg-secondary/50 text-xs font-mono font-medium">
-            <div className="col-span-1 p-2.5 border-r border-border/50 text-center text-muted-foreground">#</div>
+        <div className="grid grid-cols-12 border-b border-border/80 bg-secondary/30 text-xs">
+            <div className="col-span-1 p-2.5 border-r border-border/50 flex justify-center"><Skeleton className="h-3.5 w-3" /></div>
             <div className="col-span-3 p-2.5 border-r border-border/50"><Skeleton className="h-4 w-28" /></div>
             <div className="col-span-3 p-2.5 border-r border-border/50"><Skeleton className="h-4 w-32" /></div>
             <div className="col-span-3 p-2.5 border-r border-border/50"><Skeleton className="h-4 w-24" /></div>
             <div className="col-span-2 p-2.5"><Skeleton className="h-4 w-20" /></div>
         </div>
-        <div className="flex-1 divide-y divide-border/40 font-mono text-xs">
+        <div className="flex-1 divide-y divide-border/40">
             {[1, 2, 3, 4, 5, 6, 7, 8].map(row => (
                 <div key={row} className="grid grid-cols-12 items-center py-2.5">
-                    <div className="col-span-1 border-r border-border/40 text-center text-muted-foreground/60">{row}</div>
+                    <div className="col-span-1 border-r border-border/40 flex justify-center"><Skeleton className="h-3.5 w-3" /></div>
                     <div className="col-span-3 px-3 border-r border-border/40"><Skeleton className="h-3.5 w-3/4" /></div>
                     <div className="col-span-3 px-3 border-r border-border/40"><Skeleton className="h-3.5 w-2/3" /></div>
                     <div className="col-span-3 px-3 border-r border-border/40"><Skeleton className="h-3.5 w-1/2" /></div>
