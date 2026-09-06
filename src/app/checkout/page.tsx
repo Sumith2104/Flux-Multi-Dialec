@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -468,7 +469,15 @@ function CheckoutContent() {
 
                                 <div className="grid grid-cols-2 gap-2 text-xs">
                                     <div className="flex items-center gap-1.5 text-muted-foreground">
-                                        <Server className="h-3.5 w-3.5 text-blue-400" />
+                                        <div className="relative w-3.5 h-3.5 shrink-0">
+                                            <Image 
+                                                src={pendingProject?.dialect === 'mysql' ? '/mysql-bg.png' : '/postgres-bg.png'} 
+                                                alt="" 
+                                                width={14} 
+                                                height={14} 
+                                                className="w-full h-full object-contain invert opacity-75 dark:invert-0 dark:opacity-85" 
+                                            />
+                                        </div>
                                         <span>Engine:</span>
                                         <strong className="text-foreground uppercase font-mono">
                                             {pendingProject?.dialect === 'mysql' ? 'MySQL' : 'PostgreSQL'}

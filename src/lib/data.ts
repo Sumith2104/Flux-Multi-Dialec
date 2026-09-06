@@ -117,6 +117,28 @@ const _tableCountCache = new LRUCache<string, number>({ max: 500, ttl: 60_000 })
 // Caches resolved schema per table
 const _schemaCache = new LRUCache<string, string>({ max: 500, ttl: 3600_000 });
 
+// Caches tables list per project (15s TTL makes switching tables in the editor instantaneous)
+const _projectTablesCache = new LRUCache<string, Table[]>({ max: 200, ttl: 15_000 });
+
+// Caches table columns (60s TTL prevents repeating column introspection queries on every page render)
+const _tableColumnsCache = new LRUCache<string, Column[]>({ max: 500, ttl: 60_000 });
+
+// Caches user projects list (15s TTL prevents repeated DB hits on rapid page reloads)
+const _userProjectsCache = new LRUCache<string, Project[]>({ max: 200, ttl: 15_000 });
+
+// Caches user pending invitations (30s TTL prevents repeated DB hits on rapid page reloads)
+const _userInvitationsCache = new LRUCache<string, any[]>({ max: 200, ttl: 30_000 });
+
+export async function invalidateUserProjectsCache(userId?: string) {
+    if (userId) {
+        _userProjectsCache.delete(userId);
+        _userInvitationsCache.delete(userId);
+    } else {
+        _userProjectsCache.clear();
+        _userInvitationsCache.clear();
+    }
+}
+
 export async function invalidateTableCountCache(tableName?: string) {
     if (tableName) {
         for (const key of Array.from(_tableCountCache.keys())) {
@@ -124,8 +146,15 @@ export async function invalidateTableCountCache(tableName?: string) {
                 _tableCountCache.delete(key);
             }
         }
+        for (const key of Array.from(_tableColumnsCache.keys())) {
+            if (key.includes(`:${tableName}`)) {
+                _tableColumnsCache.delete(key);
+            }
+        }
     } else {
         _tableCountCache.clear();
+        _projectTablesCache.clear();
+        _tableColumnsCache.clear();
     }
 }
 
@@ -163,6 +192,9 @@ export async function getProjectsForCurrentUser(overrideUserId?: string): Promis
     const userId = overrideUserId || (await getCurrentUserId());
     if (!userId) return [];
 
+    const cached = _userProjectsCache.get(userId);
+    if (cached) return cached;
+
     try {
         const pool = getPgPool();
         const sqlQuery = `
@@ -188,7 +220,7 @@ export async function getProjectsForCurrentUser(overrideUserId?: string): Promis
             }
         }
 
-        return result.rows.map(row => ({
+        const projects = result.rows.map(row => ({
             project_id: row.project_id,
             user_id: userId,
             display_name: row.display_name,
@@ -208,6 +240,8 @@ export async function getProjectsForCurrentUser(overrideUserId?: string): Promis
             is_serverless: row.is_serverless,
             github_repo: row.github_repo
         }));
+        _userProjectsCache.set(userId, projects);
+        return projects;
     } catch (error) {
         console.error("Error fetching projects:", error);
         return [];
@@ -218,29 +252,27 @@ export async function getPendingInvitationsForCurrentUser(): Promise<any[]> {
     const userId = await getCurrentUserId();
     if (!userId) return [];
 
+    const cached = _userInvitationsCache.get(userId);
+    if (cached) return cached;
+
     try {
         const pool = getPgPool();
-        // First get the user's email
-        const userRes = await pool.query('SELECT email FROM fluxbase_global.users WHERE id = $1::text', [userId]);
-        if (userRes.rows.length === 0) return [];
-        const email = userRes.rows[0].email;
-
+        // Single optimized query joining user and pending invitations in one database roundtrip
         const result = await pool.query(`
             SELECT pi.id, pi.role, pi.created_at as "invitedAt",
                    COALESCE(p.display_name, 'Unknown Project') as "projectName", 
-                   COALESCE(u.display_name, 'A team member') as "inviterName",
+                   COALESCE(u_inv.display_name, 'A team member') as "inviterName",
                    pi.status
             FROM fluxbase_global.project_invitations pi
+            JOIN fluxbase_global.users u_target ON LOWER(pi.email) = LOWER(u_target.email)
             LEFT JOIN fluxbase_global.projects p ON p.project_id = pi.project_id
-            LEFT JOIN fluxbase_global.users u ON u.id = pi.invited_by
-            WHERE LOWER(pi.email) = LOWER($1)
+            LEFT JOIN fluxbase_global.users u_inv ON u_inv.id = pi.invited_by
+            WHERE u_target.id = $1::text
             ORDER BY pi.created_at DESC
-        `, [email]);
+        `, [userId]);
 
         const pending = result.rows.filter(r => r.status === 'pending' || r.status === null);
-        console.log(`[Invitation DEBUG] Total database records for ${email}: ${result.rows.length}. Statuses: ${JSON.stringify(result.rows.map(r => r.status))}`);
-        console.log(`[Invitation DEBUG] Returning ${pending.length} results to UI (User: ${userId})`);
-
+        _userInvitationsCache.set(userId, pending);
         return pending;
     } catch (error) {
         console.error("Error fetching pending invitations:", error);
@@ -859,6 +891,9 @@ export async function deleteProject(projectId: string) {
 // --- Tables ---
 
 export async function getTablesForProject(projectId: string, explicitUserId?: string): Promise<Table[]> {
+    const cachedTables = _projectTablesCache.get(projectId);
+    if (cachedTables) return cachedTables;
+
     const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
@@ -906,7 +941,7 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
                 `);
             }
 
-            return (rows || []).map((row: any) => ({
+            const tables = (rows || []).map((row: any) => ({
                 table_id: row.TABLE_NAME || row.table_name,
                 project_id: projectId,
                 table_name: row.TABLE_NAME || row.table_name,
@@ -914,17 +949,34 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
                 created_at: project.created_at,
                 updated_at: new Date().toISOString()
             }));
+            _projectTablesCache.set(projectId, tables);
+            return tables;
 
         } else {
             const pool = await getTenantPgPool(project);
             const { schemaName } = getProjectDbAndSchema(project);
 
-            let result = await pool.query(`
-                SELECT tablename as table_name 
-                FROM pg_tables 
-                WHERE schemaname = $1
-                AND tablename NOT LIKE '_flux_%'
-            `, [schemaName]);
+            let result;
+            try {
+                result = await pool.query(`
+                    SELECT tablename as table_name 
+                    FROM pg_tables 
+                    WHERE schemaname = $1
+                    AND tablename NOT LIKE '_flux_%'
+                `, [schemaName]);
+            } catch (err: any) {
+                if (err?.message?.includes('Connection terminated') || err?.code === 'ECONNRESET') {
+                    await new Promise(r => setTimeout(r, 500));
+                    result = await pool.query(`
+                        SELECT tablename as table_name 
+                        FROM pg_tables 
+                        WHERE schemaname = $1
+                        AND tablename NOT LIKE '_flux_%'
+                    `, [schemaName]);
+                } else {
+                    throw err;
+                }
+            }
 
             // Fallback 1: If 0 tables found and schemaName is project_*, check flux_tenant_* or vice-versa
             if (result.rows.length === 0) {
@@ -963,7 +1015,7 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
                 `);
             }
 
-            return result.rows.map(row => ({
+            const tables = result.rows.map(row => ({
                 table_id: row.table_name,
                 project_id: projectId,
                 table_name: row.table_name,
@@ -971,6 +1023,8 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
                 created_at: project.created_at,
                 updated_at: new Date().toISOString()
             }));
+            _projectTablesCache.set(projectId, tables);
+            return tables;
         }
     } catch (error) {
         console.error("Error fetching tables:", error);
@@ -1179,13 +1233,17 @@ export async function deleteTable(projectId: string, tableId: string, explicitUs
 // --- Columns ---
 
 export async function getColumnsForTable(projectId: string, tableId: string, explicitUserId?: string): Promise<Column[]> {
+    const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
+    const cacheKey = `${projectId}:${safeTableName}`;
+    const cachedCols = _tableColumnsCache.get(cacheKey);
+    if (cachedCols) return cachedCols;
+
     const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
     const project = await getProjectById(projectId, userId);
     if (!project) throw new FluxbaseError("Project not found", ERROR_CODES.PROJECT_NOT_FOUND, 404);
 
-    const safeTableName = tableId.replace(/[^a-zA-Z0-9_]/g, '');
     const isExternal = project.connection_type && project.connection_type !== 'internal';
 
     try {
@@ -1221,7 +1279,7 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
                 `, [safeTableName]);
             }
 
-            return (result || []).map((row: any) => ({
+            const cols = (result || []).map((row: any) => ({
                 column_id: row.column_name,
                 table_id: safeTableName,
                 column_name: row.column_name,
@@ -1231,6 +1289,8 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
                 default_value: row.column_default,
                 created_at: new Date().toISOString()
             }));
+            _tableColumnsCache.set(cacheKey, cols);
+            return cols;
 
         } else {
             const pool = await getTenantPgPool(project);
@@ -1356,7 +1416,7 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
                 `, [safeTableName]);
             }
 
-            return result.rows.map(row => ({
+            const cols = result.rows.map(row => ({
                 column_id: row.column_name, // natively, name is ID
                 table_id: safeTableName,
                 column_name: row.column_name,
@@ -1366,6 +1426,8 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
                 default_value: row.column_default,
                 created_at: new Date().toISOString()
             }));
+            _tableColumnsCache.set(cacheKey, cols);
+            return cols;
         }
     } catch (error) {
         console.error("Native Get Columns Error:", error);
@@ -2031,12 +2093,20 @@ export async function getTableData(
             const shouldQueryCount = page === 0 && cachedCount === undefined;
 
             const countPromise = shouldQueryCount
-                ? mysqlPool.query(`SELECT COUNT(*) as count FROM ${fromTable} ${wClause}`, wParams)
-                    .then(([cnt]: any) => {
-                        const c = parseInt(cnt?.[0]?.count || '0', 10);
-                        _tableCountCache.set(countKey, c);
-                        return c;
-                    }).catch(() => 0)
+                ? (wClause
+                    ? mysqlPool.query(`SELECT COUNT(*) as count FROM ${fromTable} ${wClause}`, wParams)
+                        .then(([cnt]: any) => {
+                            const c = parseInt(cnt?.[0]?.count || '0', 10);
+                            _tableCountCache.set(countKey, c);
+                            return c;
+                        }).catch(() => 0)
+                    : mysqlPool.query(`SELECT TABLE_ROWS as count FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`, [targetDb || dbName || '', safeTableName])
+                        .then(([cnt]: any) => {
+                            const c = parseInt(cnt?.[0]?.count || '0', 10);
+                            _tableCountCache.set(countKey, c);
+                            return c;
+                        }).catch(() => 0)
+                  )
                 : Promise.resolve(cachedCount ?? 0);
 
             const [
@@ -2091,12 +2161,25 @@ export async function getTableData(
             const shouldQueryCount = page === 0 && cachedCount === undefined;
 
             const countPromise = shouldQueryCount
-                ? pool.query(`SELECT COUNT(*) FROM "${targetSchema}"."${safeTableName}" ${wClause}`, wParams)
-                    .then(r => {
-                        const c = parseInt(r.rows[0]?.count || '0', 10);
-                        _tableCountCache.set(countKey, c);
-                        return c;
-                    }).catch(() => 0)
+                ? (wClause
+                    ? pool.query(`SELECT COUNT(*) FROM "${targetSchema}"."${safeTableName}" ${wClause}`, wParams)
+                        .then(r => {
+                            const c = parseInt(r.rows[0]?.count || '0', 10);
+                            _tableCountCache.set(countKey, c);
+                            return c;
+                        }).catch(() => 0)
+                    : pool.query(`
+                        SELECT reltuples::bigint AS count
+                        FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE n.nspname = $1 AND c.relname = $2
+                      `, [targetSchema, safeTableName])
+                        .then(r => {
+                            const c = Math.max(0, parseInt(r.rows[0]?.count || '0', 10));
+                            _tableCountCache.set(countKey, c);
+                            return c;
+                        }).catch(() => 0)
+                  )
                 : Promise.resolve(cachedCount ?? 0);
 
             const [dataResult, countVal, pkName] = await Promise.all([

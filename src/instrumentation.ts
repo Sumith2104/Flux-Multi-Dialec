@@ -12,5 +12,13 @@
 // This file exists as a hook point for future Edge-safe initialization.
 
 export async function register() {
-  // Intentionally empty — see comment above.
+  if (process.env.NEXT_RUNTIME === 'nodejs') {
+    process.on('uncaughtException', (err: any) => {
+      // Safe trap for harmless socket resets or aborted requests from clients (browser/Cursor/MCP)
+      if (err?.code === 'ECONNRESET' || err?.message === 'aborted' || err?.message?.includes('aborted')) {
+        return;
+      }
+      console.error('[Process Uncaught Exception]:', err);
+    });
+  }
 }

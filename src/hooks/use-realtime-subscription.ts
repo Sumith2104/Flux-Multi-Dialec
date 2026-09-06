@@ -446,8 +446,8 @@ export function useRealtimeSubscription(projectId: string | undefined) {
             const now = Date.now();
             const lastRefetchTime = globalLastTableRefetch.get(timerKey) || 0;
             const elapsed = now - lastRefetchTime;
-            const BURST_WINDOW = 1200; // 1.2s batch window for streaming bot bursts
-            const IDLE_THRESHOLD = 3000; // If idle for > 3s, show first row instantly
+            const BURST_WINDOW = 3500; // 3.5s batch window for streaming bot bursts to protect DB from connection exhaustion
+            const IDLE_THRESHOLD = 3500; // If idle for > 3.5s, show first row instantly
 
             if (elapsed >= IDLE_THRESHOLD) {
                 // First event after an idle period: execute immediately for 0ms instant response!

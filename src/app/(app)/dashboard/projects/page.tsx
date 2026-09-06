@@ -658,7 +658,7 @@ export default function SelectProjectPage() {
                 alt="PostgreSQL Background" 
                 width={144} 
                 height={144} 
-                className="w-full h-full object-contain grayscale opacity-20 transition-all duration-300 group-hover:opacity-85 group-hover:brightness-0 group-hover:invert" 
+                className="w-full h-full object-contain grayscale invert opacity-20 group-hover:opacity-65 dark:invert-0 dark:opacity-20 dark:group-hover:opacity-85 transition-all duration-300" 
               />
             ) : (
               <Image 
@@ -666,7 +666,7 @@ export default function SelectProjectPage() {
                 alt="MySQL Background" 
                 width={144} 
                 height={144} 
-                className="w-full h-full object-contain grayscale opacity-20 transition-all duration-300 group-hover:opacity-85 group-hover:brightness-0 group-hover:invert" 
+                className="w-full h-full object-contain grayscale invert opacity-20 group-hover:opacity-65 dark:invert-0 dark:opacity-20 dark:group-hover:opacity-85 transition-all duration-300" 
               />
             )}
           </div>
@@ -678,8 +678,8 @@ export default function SelectProjectPage() {
                 <Badge variant="secondary" className={cn(
                   "text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 font-mono",
                   isPostgres 
-                    ? "bg-blue-500/10 text-blue-400 border-blue-500/20" 
-                    : "bg-orange-500/10 text-orange-400 border-orange-500/20"
+                    ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20" 
+                    : "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20"
                 )}>
                   {isPostgres ? 'PostgreSQL' : 'MySQL'}
                 </Badge>
@@ -687,9 +687,9 @@ export default function SelectProjectPage() {
                 {project.creator_role && (
                   <Badge variant="outline" className={cn(
                     "text-[10px] font-mono capitalize border",
-                    project.creator_role === 'employee' && "bg-blue-500/10 text-blue-400 border-blue-500/20",
-                    project.creator_role === 'org_owner' && "bg-purple-500/10 text-purple-400 border-purple-500/20",
-                    project.creator_role === 'student' && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                    project.creator_role === 'employee' && "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
+                    project.creator_role === 'org_owner' && "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20",
+                    project.creator_role === 'student' && "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
                   )}>
                     {project.creator_role.replace('_', ' ')}
                   </Badge>
@@ -784,10 +784,16 @@ export default function SelectProjectPage() {
             >
               <div className="p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 rounded-xl bg-secondary border border-border text-foreground">
-                    <Database className="h-6 w-6" />
+                  <div className="p-2.5 rounded-xl bg-secondary border border-border text-foreground flex items-center justify-center w-12 h-12">
+                    <Image 
+                      src="/postgres-bg.png" 
+                      alt="PostgreSQL" 
+                      width={24} 
+                      height={24} 
+                      className="w-6 h-6 object-contain invert opacity-80 dark:invert-0 dark:opacity-90" 
+                    />
                   </div>
-                  <Badge variant="secondary" className="text-[10px] font-mono uppercase bg-blue-500/10 text-blue-400 border-blue-500/20">
+                  <Badge variant="secondary" className="text-[10px] font-mono uppercase bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20">
                     PostgreSQL
                   </Badge>
                 </div>
@@ -813,10 +819,16 @@ export default function SelectProjectPage() {
             >
               <div className="p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 rounded-xl bg-secondary border border-border text-foreground">
-                    <Database className="h-6 w-6" />
+                  <div className="p-2.5 rounded-xl bg-secondary border border-border text-foreground flex items-center justify-center w-12 h-12">
+                    <Image 
+                      src="/mysql-bg.png" 
+                      alt="MySQL" 
+                      width={24} 
+                      height={24} 
+                      className="w-6 h-6 object-contain invert opacity-80 dark:invert-0 dark:opacity-90" 
+                    />
                   </div>
-                  <Badge variant="secondary" className="text-[10px] font-mono uppercase bg-orange-500/10 text-orange-400 border-orange-500/20">
+                  <Badge variant="secondary" className="text-[10px] font-mono uppercase bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20">
                     MySQL
                   </Badge>
                 </div>
@@ -914,13 +926,24 @@ export default function SelectProjectPage() {
 
             {/* ── TOP SECTION: PostgreSQL Projects ── */}
             <div className="space-y-4">
-              <div className="border-b border-border/60 pb-3">
-                <h2 className="text-base font-bold text-foreground tracking-tight">
-                  PostgreSQL Workspaces
-                </h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Serverless relational databases with JSONB, vector extensions, and automated tenant schemas
-                </p>
+              <div className="border-b border-border/60 pb-3 flex items-center gap-3">
+                <div className="relative w-8 h-8 shrink-0 p-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                  <Image 
+                    src="/postgres-bg.png" 
+                    alt="PostgreSQL" 
+                    width={20} 
+                    height={20} 
+                    className="w-5 h-5 object-contain invert opacity-85 dark:invert-0 dark:opacity-90" 
+                  />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-foreground tracking-tight">
+                    PostgreSQL Workspaces
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Serverless relational databases with JSONB, vector extensions, and automated tenant schemas
+                  </p>
+                </div>
               </div>
 
               {pgProjects.length === 0 ? (
@@ -939,13 +962,24 @@ export default function SelectProjectPage() {
 
             {/* ── DOWN SECTION: MySQL Projects ── */}
             <div className="space-y-4 pt-2">
-              <div className="border-b border-border/60 pb-3">
-                <h2 className="text-base font-bold text-foreground tracking-tight">
-                  MySQL Workspaces
-                </h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  MySQL 8 relational engines with InnoDB ACID transactions and connection pooling
-                </p>
+              <div className="border-b border-border/60 pb-3 flex items-center gap-3">
+                <div className="relative w-8 h-8 shrink-0 p-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center">
+                  <Image 
+                    src="/mysql-bg.png" 
+                    alt="MySQL" 
+                    width={20} 
+                    height={20} 
+                    className="w-5 h-5 object-contain invert opacity-85 dark:invert-0 dark:opacity-90" 
+                  />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-foreground tracking-tight">
+                    MySQL Workspaces
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    MySQL 8 relational engines with InnoDB ACID transactions and connection pooling
+                  </p>
+                </div>
               </div>
 
               {mysqlProjects.length === 0 ? (
@@ -974,7 +1008,7 @@ export default function SelectProjectPage() {
             <div className="flex items-center gap-2 mb-1">
               <Badge variant="secondary" className={cn(
                 "text-xs font-mono uppercase",
-                modalDialect === 'postgresql' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" : "bg-orange-500/10 text-orange-400 border-orange-500/20"
+                modalDialect === 'postgresql' ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20" : "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20"
               )}>
                 {modalDialect === 'postgresql' ? 'PostgreSQL' : 'MySQL'}
               </Badge>
@@ -1968,10 +2002,32 @@ export default function SelectProjectPage() {
                     </SelectTrigger>
                     <SelectContent className="rounded-none border border-border">
                       <SelectItem value="postgresql" className="text-xs font-mono">
-                        PostgreSQL (Serverless)
+                        <div className="flex items-center gap-2">
+                          <div className="relative w-3.5 h-3.5 shrink-0">
+                            <Image 
+                              src="/postgres-bg.png" 
+                              alt="PostgreSQL" 
+                              width={14} 
+                              height={14} 
+                              className="w-full h-full object-contain invert opacity-80 dark:invert-0 dark:opacity-90" 
+                            />
+                          </div>
+                          <span>PostgreSQL (Serverless)</span>
+                        </div>
                       </SelectItem>
                       <SelectItem value="mysql" className="text-xs font-mono">
-                        MySQL 8 (Serverless)
+                        <div className="flex items-center gap-2">
+                          <div className="relative w-3.5 h-3.5 shrink-0">
+                            <Image 
+                              src="/mysql-bg.png" 
+                              alt="MySQL" 
+                              width={14} 
+                              height={14} 
+                              className="w-full h-full object-contain invert opacity-80 dark:invert-0 dark:opacity-90" 
+                            />
+                          </div>
+                          <span>MySQL 8 (Serverless)</span>
+                        </div>
                       </SelectItem>
                     </SelectContent>
                   </Select>

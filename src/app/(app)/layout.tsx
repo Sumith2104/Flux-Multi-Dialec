@@ -3,6 +3,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -405,15 +406,30 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                             ? (planType === 'Max' ? 'Max' : (planType === 'Pro' ? 'Pro' : 'Free'))
                             : (billingPlan === 'pay_as_you_go' ? 'PAY-AS-YOU-GO' : (billingPlan === 'hybrid' ? 'Hybrid' : 'Fixed'));
 
+                        const isMysqlDialect = liveProject.dialect?.toLowerCase() === 'mysql';
+
                         return (
                             <div className="flex items-center gap-1.5">
+                                {/* Dialect Badge (PostgreSQL / MySQL) */}
+                                <Badge
+                                    variant="secondary"
+                                    className={cn(
+                                        "hidden sm:inline-flex transition-colors shadow-none text-[9px] uppercase font-bold tracking-wider rounded-md border font-mono",
+                                        isMysqlDialect
+                                            ? "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20"
+                                            : "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
+                                    )}
+                                >
+                                    {isMysqlDialect ? 'MySQL' : 'PostgreSQL'}
+                                </Badge>
+
                                 {/* 1. Project Role / Ownership Badge (Admin, Developer, Viewer) */}
                                 <Badge
                                     variant="secondary"
                                     className={cn(
                                         "hidden sm:inline-flex transition-colors shadow-none text-[9px] uppercase font-bold tracking-wider rounded-md border font-mono",
-                                        projectRole === 'admin' && "bg-amber-500/10 text-amber-400 border-amber-500/20",
-                                        projectRole === 'developer' && "bg-blue-500/10 text-blue-400 border-blue-500/20",
+                                        projectRole === 'admin' && "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+                                        projectRole === 'developer' && "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
                                         projectRole === 'viewer' && "bg-secondary text-muted-foreground border-border"
                                     )}
                                 >
@@ -425,9 +441,9 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                                     variant="secondary"
                                     className={cn(
                                         "hidden sm:inline-flex transition-colors shadow-none text-[9px] uppercase font-bold tracking-wider rounded-md border font-mono",
-                                        effectiveRole === 'org_owner' && "bg-purple-500/10 text-purple-400 border-purple-500/20",
-                                        effectiveRole === 'employee' && "bg-blue-500/10 text-blue-400 border-blue-500/20",
-                                        effectiveRole === 'student' && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                        effectiveRole === 'org_owner' && "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20",
+                                        effectiveRole === 'employee' && "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
+                                        effectiveRole === 'student' && "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
                                     )}
                                 >
                                     {roleLabel}
@@ -440,15 +456,15 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                                         "hidden sm:inline-flex transition-colors shadow-none text-[9px] uppercase font-bold tracking-wider rounded-md font-mono",
                                         isStudent
                                             ? (planType === 'Max'
-                                                ? "border-amber-500/50 bg-amber-500/10 text-amber-500"
+                                                ? "border-amber-500/50 bg-amber-500/10 text-amber-600 dark:text-amber-500"
                                                 : planType === 'Pro'
-                                                    ? "border-blue-500/50 bg-blue-500/10 text-blue-500"
+                                                    ? "border-blue-500/50 bg-blue-500/10 text-blue-600 dark:text-blue-500"
                                                     : "border-muted-foreground/30 bg-muted/10 text-muted-foreground")
                                             : (billingPlan === 'pay_as_you_go'
-                                                ? "border-purple-500/50 bg-purple-500/10 text-purple-400"
+                                                ? "border-purple-500/50 bg-purple-500/10 text-purple-600 dark:text-purple-400"
                                                 : billingPlan === 'hybrid'
-                                                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400"
-                                                    : "border-blue-500/50 bg-blue-500/10 text-blue-400")
+                                                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                                    : "border-blue-500/50 bg-blue-500/10 text-blue-600 dark:text-blue-400")
                                     )}
                                 >
                                     {planLabel}

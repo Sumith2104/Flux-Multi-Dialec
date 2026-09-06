@@ -19,6 +19,7 @@ import { useRouter } from 'next/navigation';
 import { useContext } from 'react';
 import { ProjectContext } from '@/contexts/project-context';
 import { cn } from '@/lib/utils';
+import Image from 'next/image';
 
 type ProjectSwitcherProps = {
   headerTitle: string;
@@ -90,8 +91,10 @@ export function ProjectSwitcher({
                 {/* Metadata Badges Container (Fixed Width/Alignment) */}
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                     <span className={cn(
-                        "text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider",
-                        project.dialect?.toLowerCase() === 'mysql' ? 'bg-orange-500/10 text-orange-400' : 'bg-blue-500/10 text-blue-400'
+                        "text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider border",
+                        project.dialect?.toLowerCase() === 'mysql' 
+                          ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20' 
+                          : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
                     )}>
                       {project.dialect?.toLowerCase() === 'mysql' ? 'MySQL' : 'PG'}
                     </span>

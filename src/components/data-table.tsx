@@ -747,6 +747,8 @@ export function DataTable({
     if (!onRowSelectionModelChange) return;
     onRowSelectionModelChange(selectionModel.includes(id) ? selectionModel.filter(s => s !== id) : [...selectionModel, id]);
   };
+  const selectionSet = React.useMemo(() => new Set(selectionModel), [selectionModel]);
+
   const toggleAll = () => {
     if (!onRowSelectionModelChange) return;
     onRowSelectionModelChange(selectionModel.length === rows.length && rows.length > 0 ? [] : rows.map(r => r.id ?? r._id));
@@ -763,17 +765,45 @@ export function DataTable({
       const rowId = row && (row.id ?? row._id);
       return (rowId && rowId === expandedRow) ? DENSITY_H[density] + EXPAND_HEIGHT : DENSITY_H[density];
     },
-    overscan: 15,
+    overscan: 8,
   });
   React.useEffect(() => {
     rowV.measure();
   }, [density, expandedRow]);
+
   const vItems = rowV.getVirtualItems();
+  const lastVirtualItem = vItems.length > 0 ? vItems[vItems.length - 1] : null;
+
+  // Track the row count for which fetchNextPage has already been dispatched to prevent duplicate calls
+  const lastPrefetchedLengthRef = React.useRef<number>(0);
+  const isFetchingLockRef = React.useRef<boolean>(false);
+
   React.useEffect(() => {
-    const [last] = [...vItems].reverse();
-    if (!last) return;
-    if (last.index >= rows.length - 15 && hasNextPage && !isFetchingNextPage && fetchNextPage) fetchNextPage();
-  }, [hasNextPage, fetchNextPage, rows.length, isFetchingNextPage, vItems]);
+    if (!isFetchingNextPage) {
+      isFetchingLockRef.current = false;
+    }
+  }, [isFetchingNextPage]);
+
+  // Proactively fetch next 50 rows when user reaches the 35th row of each 50-row batch
+  // (Leaving a 15-row buffer so next batch arrives in background before hitting the bottom)
+  React.useEffect(() => {
+    if (!lastVirtualItem || !hasNextPage || isFetchingNextPage || isFetchingLockRef.current) return;
+
+    // Guard: Prevent calling fetchNextPage multiple times for the same batch of rows
+    if (lastPrefetchedLengthRef.current === rows.length) return;
+
+    // Guard against firing on initial page mount before user has even scrolled:
+    // Only trigger if rows > 50 OR user has actually scrolled down in the container
+    const scrollTop = parentRef.current?.scrollTop || 0;
+    if (rows.length <= 50 && scrollTop < 20) return;
+
+    const triggerIndex = Math.max(34, rows.length - 16);
+    if (lastVirtualItem.index >= triggerIndex && fetchNextPage) {
+      isFetchingLockRef.current = true;
+      lastPrefetchedLengthRef.current = rows.length;
+      fetchNextPage();
+    }
+  }, [lastVirtualItem?.index, rows.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   /* ════════════════════════ RENDER ════════════════════════ */
 
@@ -784,13 +814,13 @@ export function DataTable({
   const gridCols = ['40px','40px','28px',...visibleColumns.map(c=>getW(c.field)+'px')].join(' ');
 
   return (
-    <div className="relative flex flex-col h-full min-h-[200px] w-full max-w-full flex-1 overflow-hidden rounded-lg border border-border/50 bg-white/[0.03] backdrop-blur-2xl text-foreground shadow-2xl shadow-black/40">
+    <div className="relative flex flex-col h-full min-h-[200px] w-full max-w-full flex-1 overflow-hidden rounded-lg border border-border/60 bg-card text-foreground shadow-2xl">
 
       {/* ── Scrollable area ── */}
-      <div ref={parentRef} className="flex-1 overflow-auto relative custom-scrollbar" data-scroll-container="true" style={{ willChange: 'scroll-position' }} tabIndex={0} onKeyDown={handleKeyDown}>
+      <div ref={parentRef} className="flex-1 overflow-auto relative custom-scrollbar" data-scroll-container="true" tabIndex={0} onKeyDown={handleKeyDown}>
 
         {/* ── Sticky header ── */}
-        <div className="sticky top-0 z-20 grid border-b border-border bg-secondary/80 backdrop-blur-md text-xs font-bold uppercase tracking-widest text-muted-foreground shadow-sm" style={{ gridTemplateColumns: gridCols, width: `${totalW}px`, minWidth: '100%' }}>
+        <div className="sticky top-0 z-20 grid border-b border-border bg-secondary text-xs font-bold uppercase tracking-widest text-muted-foreground shadow-sm" style={{ gridTemplateColumns: gridCols, width: `${totalW}px`, minWidth: '100%' }}>
           <div className={`flex w-10 shrink-0 items-center justify-center border-r border-border/60 bg-muted/50 ${DENSITY_HDR[density]}`}><span className="text-[10px]">#</span></div>
           <div className={`flex w-10 shrink-0 items-center justify-center border-r border-border/60 bg-secondary ${DENSITY_HDR[density]}`}><Checkbox checked={selectionModel.length === rows.length && rows.length > 0} onCheckedChange={toggleAll} /></div>
           <div className={`flex w-7 shrink-0 items-center justify-center border-r border-border/40 bg-secondary ${DENSITY_HDR[density]}`} />
@@ -832,7 +862,7 @@ export function DataTable({
             const isLoader = vRow.index > rows.length - 1;
             const row = rows[vRow.index];
             const rowId = row && (row.id ?? row._id);
-            const isSel = row && selectionModel.includes(rowId);
+            const isSel = row && selectionSet.has(rowId);
             const isExp = rowId === expandedRow;
 
             return (
@@ -869,8 +899,8 @@ export function DataTable({
                   }}
                 >
                   {isLoader ? (
-                    <div className="flex h-full w-full animate-pulse items-center justify-center gap-3 bg-secondary/40 text-sm text-muted-foreground col-span-full">
-                      <Loader2 className="h-4 w-4 animate-spin" /> Fetching more rows...
+                    <div className="flex h-full w-full items-center justify-center gap-2 bg-secondary/30 text-xs text-muted-foreground col-span-full">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> Loading next 50 rows...
                     </div>
                   ) : (
                     <>
@@ -894,7 +924,7 @@ export function DataTable({
                         const dispVal = fmt(cellVal, col.field, col.dataType);
                         const isFocused = focused?.r === vRow.index && focused?.c === ci;
                         const isDrag = inDrag(vRow.index, ci);
-                        const isJsonCell = typeof cellVal === 'string' && isJson(cellVal);
+                        const isJsonCell = typeof cellVal === 'string' && (cellVal.startsWith('{') || cellVal.startsWith('[')) && isJson(cellVal);
                         return (
                           <React.Fragment key={col.field}>
                             <div className={`relative flex h-full min-w-0 items-center overflow-hidden

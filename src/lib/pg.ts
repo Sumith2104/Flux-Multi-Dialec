@@ -8,7 +8,9 @@ declare global {
 }
 
 const isServerless = process.env.VERCEL === '1' || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
-const defaultPoolMax = isServerless ? '5' : '15';
+// AWS RDS db.t3/t4g instances have max_connections = 81. Keeping pool max at 10 leaves
+// ample capacity for other lambdas, background workers, and dev server reloads.
+const defaultPoolMax = isServerless ? '8' : '10';
 
 const connectionString = process.env.AWS_RDS_POSTGRES_URL || process.env.DATABASE_URL || process.env.POSTGRES_URL || '';
 
@@ -26,8 +28,8 @@ export const pool: Pool = global._pool || new Pool({
     connectionString,
     ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
     max: parseInt(process.env.DATABASE_POOL_MAX || defaultPoolMax, 10),
-    idleTimeoutMillis: 10000, // Reclaim idle connections after 10s
-    connectionTimeoutMillis: 10000, // 10s timeout to allow AWS RDS TLS handshake
+    idleTimeoutMillis: 5000, // Quickly reclaim idle connections after 5s to avoid exhausting RDS limits
+    connectionTimeoutMillis: 15000, // 15s timeout to withstand dev compilation latency spikes
     keepAlive: true,
 });
 

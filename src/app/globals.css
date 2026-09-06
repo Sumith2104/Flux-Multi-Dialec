@@ -8,24 +8,24 @@ body {
 
 @layer base {
   :root {
-    --background: 0 0% 7%;
-    --foreground: 0 0% 96%;
-    --card: 0 0% 10%;
-    --card-foreground: 0 0% 96%;
-    --popover: 0 0% 11%;
-    --popover-foreground: 0 0% 96%;
+    --background: 0 0% 100%;
+    --foreground: 0 0% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 9%;
     --primary: 26 100% 57%;
-    --primary-foreground: 60 3% 10%;
-    --secondary: 0 0% 12%;
-    --secondary-foreground: 0 0% 96%;
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 55%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
     --accent: 26 100% 57%;
-    --accent-foreground: 60 3% 10%;
+    --accent-foreground: 0 0% 100%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 16%;
-    --input: 0 0% 12%;
+    --border: 0 0% 89%;
+    --input: 0 0% 93%;
     --ring: 26 100% 57%;
     --chart-1: 26 100% 57%;
     --chart-2: 173 58% 39%;
@@ -33,13 +33,13 @@ body {
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --radius: 0.375rem;
-    --sidebar-background: 0 0% 7%;
-    --sidebar-foreground: 0 0% 96%;
+    --sidebar-background: 0 0% 99%;
+    --sidebar-foreground: 0 0% 9%;
     --sidebar-primary: 26 100% 57%;
-    --sidebar-primary-foreground: 60 3% 10%;
-    --sidebar-accent: 0 0% 12%;
-    --sidebar-accent-foreground: 0 0% 96%;
-    --sidebar-border: 0 0% 16%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 96%;
+    --sidebar-accent-foreground: 0 0% 9%;
+    --sidebar-border: 0 0% 89%;
     --sidebar-ring: 26 100% 57%;
   }
 
@@ -151,6 +151,12 @@ body {
 
 @layer components {
   .card {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    box-shadow: none;
+  }
+
+  .dark .card {
     background: hsl(var(--card) / 0.5);
     border: 1px solid hsl(var(--border));
     box-shadow: none;
@@ -226,14 +232,14 @@ body {
   }
 }
 
-.skeleton-shimmer {
+.dark .skeleton-shimmer {
   position: relative;
   overflow: hidden;
   background-color: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.skeleton-shimmer::after {
+.dark .skeleton-shimmer::after {
   position: absolute;
   top: 0;
   right: 0;
@@ -251,11 +257,43 @@ body {
   content: '';
 }
 
-.glass-panel {
+:root:not(.dark) .skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+:root:not(.dark) .skeleton-shimmer::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0) 0,
+    rgba(0, 0, 0, 0.02) 20%,
+    rgba(0, 0, 0, 0.05) 50%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  animation: shimmer 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  content: '';
+}
+
+.dark .glass-panel {
   background: rgba(18, 18, 20, 0.65);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+:root:not(.dark) .glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .glow-orange {

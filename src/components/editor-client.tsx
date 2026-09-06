@@ -3,6 +3,7 @@
 import { useInfiniteQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useGlobalAlert } from '@/components/global-alert-provider';
 import Link from 'next/link';
+import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Table as DbTable, Column as DbColumn, Constraint as DbConstraint } from '@/lib/data';
@@ -834,7 +835,16 @@ export function EditorClient({
     const sidebarExplorerContent = (
         <div className="flex flex-col h-full overflow-hidden">
             <div className="p-2 space-y-2">
-                <Button variant="outline" className="w-full justify-start text-muted-foreground pointer-events-none text-xs font-mono">
+                <Button variant="outline" className="w-full justify-start text-muted-foreground pointer-events-none text-xs font-mono gap-2">
+                    <div className="relative w-4 h-4 shrink-0">
+                        <Image 
+                            src={dialect.toLowerCase() === 'mysql' ? '/mysql-bg.png' : '/postgres-bg.png'} 
+                            alt="" 
+                            width={16} 
+                            height={16} 
+                            className="w-full h-full object-contain invert opacity-80 dark:invert-0 dark:opacity-90" 
+                        />
+                    </div>
                     <span className="truncate">{dialect.toUpperCase()}</span>
                 </Button>
 

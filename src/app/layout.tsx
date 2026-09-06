@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { GlobalAlertProvider } from "@/components/global-alert-provider";
 import { QueryProvider } from "@/components/query-provider";
 import ErrorBoundary from "@/components/error-boundary";
+import { ThemeProvider } from "@/components/theme-provider";
 
 export const viewport: Viewport = {
   themeColor: '#0a0a0a',
@@ -51,7 +52,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
@@ -86,6 +87,12 @@ export default function RootLayout({
         />
       </head>
       <body className="font-body antialiased" suppressHydrationWarning>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem={false}
+          disableTransitionOnChange
+        >
           <QueryProvider>
             <ErrorBoundary>
               <GlobalAlertProvider>
@@ -97,6 +104,7 @@ export default function RootLayout({
               </GlobalAlertProvider>
             </ErrorBoundary>
           </QueryProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

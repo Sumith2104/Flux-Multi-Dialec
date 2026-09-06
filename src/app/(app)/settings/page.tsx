@@ -47,6 +47,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { WebhooksManager } from '@/components/settings/webhooks-manager';
 import { PaymentsBillsManager } from '@/components/settings/payments-bills-manager';
 import { PaygMeterCard } from '@/components/billing/payg-meter-card';
+import { ThemeToggleCard } from '@/components/settings/theme-toggle-card';
 import { cn } from "@/lib/utils";
 
 const timezones = Intl.supportedValuesOf('timeZone');
@@ -571,6 +572,9 @@ export default function GeneralSettingsPage() {
                         )}
                     </CardContent>
                 </Card>
+
+                {/* Appearance & Theme Settings */}
+                <ThemeToggleCard />
 
                 {/* 28-Day Pay-As-You-Go Resource Meter */}
                 {selectedProject && (

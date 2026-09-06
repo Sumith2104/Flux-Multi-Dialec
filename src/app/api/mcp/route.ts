@@ -58,13 +58,40 @@ export async function GET(req: NextRequest) {
   // Support SSE stream for clients requesting text/event-stream
   const acceptHeader = req.headers.get('accept') || '';
   if (acceptHeader.includes('text/event-stream')) {
+    let timer: NodeJS.Timeout | null = null;
     const stream = new ReadableStream({
       start(controller) {
-        // MCP HTTP/SSE transport announcement
-        const message = `event: endpoint\ndata: /api/mcp\n\n`;
-        controller.enqueue(new TextEncoder().encode(message));
+        try {
+          // MCP HTTP/SSE transport announcement
+          const message = `event: endpoint\ndata: /api/mcp\n\n`;
+          controller.enqueue(new TextEncoder().encode(message));
+
+          // Keep-alive heartbeat comment every 15s to keep proxy alive
+          timer = setInterval(() => {
+            try {
+              if (req.signal.aborted) {
+                if (timer) clearInterval(timer);
+                try { controller.close(); } catch {}
+                return;
+              }
+              controller.enqueue(new TextEncoder().encode(': ping\n\n'));
+            } catch {
+              if (timer) clearInterval(timer);
+            }
+          }, 15000);
+        } catch {
+          if (timer) clearInterval(timer);
+        }
+      },
+      cancel() {
+        if (timer) clearInterval(timer);
       }
     });
+
+    req.signal.addEventListener('abort', () => {
+      if (timer) clearInterval(timer);
+    });
+
     return new Response(stream, {
       headers: {
         'Content-Type': 'text/event-stream',
