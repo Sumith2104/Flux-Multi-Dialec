@@ -926,24 +926,13 @@ export default function SelectProjectPage() {
 
             {/* ── TOP SECTION: PostgreSQL Projects ── */}
             <div className="space-y-4">
-              <div className="border-b border-border/60 pb-3 flex items-center gap-3">
-                <div className="relative w-8 h-8 shrink-0 p-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-                  <Image 
-                    src="/postgres-bg.png" 
-                    alt="PostgreSQL" 
-                    width={20} 
-                    height={20} 
-                    className="w-5 h-5 object-contain invert opacity-85 dark:invert-0 dark:opacity-90" 
-                  />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-foreground tracking-tight">
-                    PostgreSQL Workspaces
-                  </h2>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Serverless relational databases with JSONB, vector extensions, and automated tenant schemas
-                  </p>
-                </div>
+              <div className="border-b border-border/60 pb-3">
+                <h2 className="text-base font-bold text-foreground tracking-tight">
+                  PostgreSQL Workspaces
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Serverless relational databases with JSONB, vector extensions, and automated tenant schemas
+                </p>
               </div>
 
               {pgProjects.length === 0 ? (
@@ -962,24 +951,13 @@ export default function SelectProjectPage() {
 
             {/* ── DOWN SECTION: MySQL Projects ── */}
             <div className="space-y-4 pt-2">
-              <div className="border-b border-border/60 pb-3 flex items-center gap-3">
-                <div className="relative w-8 h-8 shrink-0 p-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center">
-                  <Image 
-                    src="/mysql-bg.png" 
-                    alt="MySQL" 
-                    width={20} 
-                    height={20} 
-                    className="w-5 h-5 object-contain invert opacity-85 dark:invert-0 dark:opacity-90" 
-                  />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-foreground tracking-tight">
-                    MySQL Workspaces
-                  </h2>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    MySQL 8 relational engines with InnoDB ACID transactions and connection pooling
-                  </p>
-                </div>
+              <div className="border-b border-border/60 pb-3">
+                <h2 className="text-base font-bold text-foreground tracking-tight">
+                  MySQL Workspaces
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  MySQL 8 relational engines with InnoDB ACID transactions and connection pooling
+                </p>
               </div>
 
               {mysqlProjects.length === 0 ? (
