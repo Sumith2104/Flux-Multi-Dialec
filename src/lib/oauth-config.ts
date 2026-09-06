@@ -23,6 +23,9 @@ export function isAllowedOrigin(origin: string): boolean {
         // 4. Render deployments
         if (hostname.endsWith('.onrender.com') || hostname.endsWith('.render.com')) return true;
 
+        // 4.5. Netlify deployments
+        if (hostname === 'netlify.app' || hostname.endsWith('.netlify.app')) return true;
+
         // 5. Explicitly listed origins in ALLOWED_ORIGINS env variable
         const envAllowed = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
         if (envAllowed.some(allowed => {

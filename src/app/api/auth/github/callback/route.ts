@@ -57,10 +57,16 @@ export async function GET(request: NextRequest) {
 
         // --- SPECIAL BRANCH: GITHUB IMPORT FLOW ---
         if (isImport) {
-            const userId = (await getCurrentUserId()) || stateUserId;
+            const activeId = await getCurrentUserId();
+            const userId = activeId || stateUserId;
             if (!userId) {
                 logger.error('[GitHub Import Callback] No authenticated user found');
                 return NextResponse.redirect(new URL('/?error=LoginRequired', destinationOrigin));
+            }
+
+            // If session cookie was missing after cross-origin OAuth redirect, restore session
+            if (!activeId && stateUserId) {
+                await createSessionCookie(stateUserId, true);
             }
 
             let githubUsername = '';

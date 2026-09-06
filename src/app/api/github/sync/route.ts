@@ -129,6 +129,7 @@ export async function POST(request: NextRequest) {
 
         let statementsExecuted = 0;
         const errors: Array<{ file: string; error: string }> = [];
+        const syncedTables: Set<string> = new Set();
 
         if (dialect === 'postgresql') {
             const pgClient = await pool.connect();
@@ -140,6 +141,8 @@ export async function POST(request: NextRequest) {
                     try {
                         const { content, sha } = await client.getFileContent(owner, repo, file.path, branch);
                         const statements = splitSqlStatements(content);
+                        const tables = parseCreateTables(content);
+                        tables.forEach(t => syncedTables.add(t.tableName));
 
                         let fileStmts = 0;
                         for (const stmt of statements) {
@@ -185,6 +188,8 @@ export async function POST(request: NextRequest) {
                     try {
                         const { content, sha } = await client.getFileContent(owner, repo, file.path, branch);
                         const statements = splitSqlStatements(content);
+                        const tables = parseCreateTables(content);
+                        tables.forEach(t => syncedTables.add(t.tableName));
 
                         let fileStmts = 0;
                         for (const stmt of statements) {
@@ -227,6 +232,12 @@ export async function POST(request: NextRequest) {
         try {
             const { invalidateProjectCache } = await import('@/lib/data');
             await invalidateProjectCache(projectId);
+            if (syncedTables.size > 0) {
+                const { invalidateTableCache } = await import('@/lib/cache');
+                for (const tbl of syncedTables) {
+                    await invalidateTableCache(projectId, tbl);
+                }
+            }
         } catch (cacheErr) {
             logger.warn('[GitHub Sync API] Cache invalidation warning:', cacheErr);
         }

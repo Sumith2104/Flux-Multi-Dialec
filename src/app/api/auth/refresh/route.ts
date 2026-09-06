@@ -35,8 +35,8 @@ export async function POST(req: NextRequest) {
             return response;
         }
 
-        // Issue new access token
-        await createSessionCookie(result.uid);
+        // Issue new access token with verified session
+        await createSessionCookie(result.uid, true);
 
         // Set new refresh token cookie
         const isProduction = process.env.NODE_ENV === 'production';

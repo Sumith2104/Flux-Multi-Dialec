@@ -40,6 +40,10 @@ class RealtimeManager extends EventEmitter {
 
     private async init() {
         if (this.destroyed) return;
+        // Do NOT start DB listener during Next.js production build, tests, or scripts
+        if (process.env.NEXT_PHASE === 'phase-production-build' || process.env.npm_lifecycle_event === 'build') {
+            return;
+        }
         if (this.isConnecting || this.client) return;
         this.isConnecting = true;
 
@@ -139,6 +143,9 @@ class RealtimeManager extends EventEmitter {
                 this.reconnectTimeout = null;
                 this.init();
             }, delay);
+            if (this.reconnectTimeout?.unref) {
+                this.reconnectTimeout.unref();
+            }
         } else {
             console.error('[RealtimeManager] Maximum reconnection attempts reached.');
         }

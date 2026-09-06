@@ -161,8 +161,12 @@ export async function GET(request: Request) {
         })();
 
         inFlightRequests.set(projectId, fetchPromise);
-        const payload = await fetchPromise;
-        inFlightRequests.delete(projectId);
+        let payload;
+        try {
+            payload = await fetchPromise;
+        } finally {
+            inFlightRequests.delete(projectId);
+        }
 
         return NextResponse.json(payload);
 

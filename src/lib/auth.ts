@@ -64,7 +64,7 @@ export async function getSessionContext(): Promise<{ uid: string; mfa?: boolean 
 /**
  * Generates a signed JWT session token for a given user ID.
  */
-export async function createSessionToken(uid: string, isMfaVerified: boolean = false): Promise<string> {
+export async function createSessionToken(uid: string, isMfaVerified: boolean = true): Promise<string> {
     return await new SignJWT({ uid, mfa: isMfaVerified })
         .setProtectedHeader({ alg: 'HS256' })
         .setIssuedAt()
@@ -77,7 +77,7 @@ export async function createSessionToken(uid: string, isMfaVerified: boolean = f
  * @param uid The user ID
  * @param isMfaVerified Whether 2FA has been completed for this session
  */
-export async function createSessionCookie(uid: string, isMfaVerified: boolean = false) {
+export async function createSessionCookie(uid: string, isMfaVerified: boolean = true) {
     try {
         const sessionCookie = await createSessionToken(uid, isMfaVerified);
 
