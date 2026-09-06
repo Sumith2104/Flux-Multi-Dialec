@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const returnTo = request.nextUrl.searchParams.get('returnTo') || '/dashboard/projects';
     const state = encodeOAuthState(origin, returnTo);
     
-    const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&prompt=select_account&state=${encodeURIComponent(state)}`;
+    const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=select_account&state=${encodeURIComponent(state)}`;
 
     return NextResponse.redirect(googleAuthUrl);
 }

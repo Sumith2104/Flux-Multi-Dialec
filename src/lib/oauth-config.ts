@@ -124,9 +124,18 @@ export function getOAuthConfig(request: NextRequest, provider: 'github' | 'googl
     }
 
     // Explicit redirect URI override if configured, otherwise dynamically match host origin
-    const explicitRedirect = provider === 'github' 
-        ? (process.env[`GITHUB_REDIRECT_URI_${envPrefix}`] || process.env.GITHUB_REDIRECT_URI_MAINAPP || process.env.GITHUB_REDIRECT_URI)
-        : (process.env[`GOOGLE_REDIRECT_URI_${envPrefix}`] || process.env.GOOGLE_REDIRECT_URI_MAINAPP || process.env.GOOGLE_REDIRECT_URI);
+    let explicitRedirect: string | undefined = undefined;
+    if (envPrefix === 'LOCAL') {
+        const localOverride = provider === 'github' ? process.env.GITHUB_REDIRECT_URI_LOCAL : process.env.GOOGLE_REDIRECT_URI_LOCAL;
+        // Only use local override if it actually targets localhost / 127.0.0.1
+        if (localOverride && (localOverride.includes('localhost') || localOverride.includes('127.0.0.1'))) {
+            explicitRedirect = localOverride;
+        }
+    } else {
+        explicitRedirect = provider === 'github' 
+            ? (process.env[`GITHUB_REDIRECT_URI_${envPrefix}`] || process.env.GITHUB_REDIRECT_URI_MAINAPP || process.env.GITHUB_REDIRECT_URI)
+            : (process.env[`GOOGLE_REDIRECT_URI_${envPrefix}`] || process.env.GOOGLE_REDIRECT_URI_MAINAPP || process.env.GOOGLE_REDIRECT_URI);
+    }
         
     const redirectUri = explicitRedirect || `${baseOrigin}/api/auth/${provider}/callback`.replace('//api', '/api');
 

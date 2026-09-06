@@ -40,7 +40,12 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
         }
     }, [open]);
 
+    const [socialLoading, setSocialLoading] = useState<'google' | 'github' | null>(null);
+
     const handleSocialLogin = (provider: 'google' | 'github') => {
+        if (socialLoading || isLoading) return;
+        setSocialLoading(provider);
+        setIsLoading(true);
         localStorage.setItem('lastLoginMethod', provider);
         window.location.href = `/api/auth/${provider}`;
     };
@@ -384,20 +389,28 @@ export function LoginDialog({ open, onOpenChange, onSwitchToSignup, isGhost }: L
                     <div className="space-y-4 pt-2">
                         {/* Social Buttons */}
                         <div className="grid grid-cols-2 gap-2 sm:gap-4">
-                            <Button onClick={() => handleSocialLogin('google')} variant="outline" type="button" disabled={isLoading} className={cn("border-border/70 relative hover:bg-secondary/40 hover:text-white transition-colors", lastMethod === 'google' && "border-primary/50 bg-primary/5")}>
+                            <Button onClick={() => handleSocialLogin('google')} variant="outline" type="button" disabled={isLoading || !!socialLoading} className={cn("border-border/70 relative hover:bg-secondary/40 hover:text-white transition-colors", lastMethod === 'google' && "border-primary/50 bg-primary/5")}>
                                 {lastMethod === 'google' && <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg whitespace-nowrap z-10">Last Used</span>}
-                                <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
-                                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                                    <path d="M5.84 14.17c-.22-.66-.35-1.36-.35-2.17s.13-1.51.35-2.17V7.01H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.99l3.66-2.82z" fill="#FBBC05" />
-                                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.01l3.66 2.82c.87-2.6 3.3-4.45 6.16-4.45z" fill="#EA4335" />
-                                </svg>
-                                Google
+                                {socialLoading === 'google' ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                    <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
+                                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                                        <path d="M5.84 14.17c-.22-.66-.35-1.36-.35-2.17s.13-1.51.35-2.17V7.01H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.99l3.66-2.82z" fill="#FBBC05" />
+                                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.01l3.66 2.82c.87-2.6 3.3-4.45 6.16-4.45z" fill="#EA4335" />
+                                    </svg>
+                                )}
+                                {socialLoading === 'google' ? 'Connecting...' : 'Google'}
                             </Button>
-                            <Button onClick={() => handleSocialLogin('github')} variant="outline" type="button" disabled={isLoading} className={cn("border-border/70 relative hover:bg-secondary/40 hover:text-white transition-colors", lastMethod === 'github' && "border-primary/50 bg-primary/5")}>
+                            <Button onClick={() => handleSocialLogin('github')} variant="outline" type="button" disabled={isLoading || !!socialLoading} className={cn("border-border/70 relative hover:bg-secondary/40 hover:text-white transition-colors", lastMethod === 'github' && "border-primary/50 bg-primary/5")}>
                                 {lastMethod === 'github' && <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg whitespace-nowrap z-10">Last Used</span>}
-                                <Github className="mr-2 h-4 w-4" />
-                                GitHub
+                                {socialLoading === 'github' ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Github className="mr-2 h-4 w-4" />
+                                )}
+                                {socialLoading === 'github' ? 'Connecting...' : 'GitHub'}
                             </Button>
                         </div>
 
