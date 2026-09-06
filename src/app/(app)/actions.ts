@@ -5,7 +5,6 @@ import { cookies } from 'next/headers';
 import { logout, getCurrentUserId } from '@/lib/auth';
 import { findUserById } from '@/lib/auth-actions';
 import { getProjectsForCurrentUser, checkDatabaseHealthAction, getPendingInvitationsForCurrentUser } from '@/lib/data';
-import { getUserPlanAction } from './settings/actions';
 
 /**
  * Server action to log out the current user.
@@ -29,9 +28,8 @@ export async function getAppLayoutBootstrapData() {
         }
 
         // Parallelize data fetching for the authenticated user
-        const [user, planRes, projects, invitations] = await Promise.all([
+        const [user, projects, invitations] = await Promise.all([
             findUserById(userId).catch(() => null),
-            getUserPlanAction().catch(() => null),
             getProjectsForCurrentUser().catch(() => []),
             getPendingInvitationsForCurrentUser().catch(() => [])
         ]);
@@ -44,12 +42,14 @@ export async function getAppLayoutBootstrapData() {
             }
         }
 
-        console.log(`[Bootstrap] User: ${userId}, Projects: ${projects?.length || 0}, Invites: ${invitations?.length || 0}`);
+        const plan = user 
+            ? { type: user.plan_type || 'free', status: (user as any).status || 'active' }
+            : null;
 
         return {
             userId,
             user,
-            plan: planRes?.success ? { type: planRes.plan, status: planRes.status } : null,
+            plan,
             projects: projects || [],
             invitations: invitations || [],
             isOffline: false

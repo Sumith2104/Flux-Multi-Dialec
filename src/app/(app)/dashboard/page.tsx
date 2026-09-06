@@ -123,7 +123,7 @@ export default function DashboardPage() {
     });
 
 
-    const loading = tablesLoading || analyticsLoading;
+    const loading = tablesLoading;
 
     const realtimeStats = useRealtimeAnalytics(selectedProject?.project_id);
     const historyStats = useProjectHistory(selectedProject?.project_id);
@@ -238,13 +238,19 @@ export default function DashboardPage() {
                                                 t => t.name.toLowerCase() === table.table_name.toLowerCase() ||
                                                      t.name.toLowerCase() === table.table_id?.toLowerCase()
                                             );
-                                            const rowCount = tableAnalytics?.rows ?? (table as any).rows ?? 0;
+                                            const rowCount = tableAnalytics?.rows ?? (table as any).rows;
                                             return (
                                                 <TableRow key={table.table_id}>
                                                     <TableCell className="font-medium">{table.table_name}</TableCell>
                                                     <TableCell>
                                                         <Badge variant="outline" className="font-mono text-xs">
-                                                            {typeof rowCount === 'number' ? rowCount.toLocaleString() : rowCount}
+                                                            {analyticsLoading && rowCount === undefined ? (
+                                                                <span className="inline-block w-8 h-3 bg-muted animate-pulse rounded" />
+                                                            ) : typeof rowCount === 'number' ? (
+                                                                rowCount.toLocaleString()
+                                                            ) : (
+                                                                rowCount ?? '0'
+                                                            )}
                                                         </Badge>
                                                     </TableCell>
                                                     <TableCell className="text-muted-foreground">{table.description}</TableCell>

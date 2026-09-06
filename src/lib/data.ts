@@ -129,6 +129,9 @@ const _userProjectsCache = new LRUCache<string, Project[]>({ max: 200, ttl: 15_0
 // Caches user pending invitations (30s TTL prevents repeated DB hits on rapid page reloads)
 const _userInvitationsCache = new LRUCache<string, any[]>({ max: 200, ttl: 30_000 });
 
+// Caches project table stats & analytics (60s TTL prevents repeating catalog introspection)
+const _projectAnalyticsCache = new LRUCache<string, ProjectAnalytics>({ max: 200, ttl: 60_000 });
+
 export async function invalidateUserProjectsCache(userId?: string) {
     if (userId) {
         _userProjectsCache.delete(userId);
@@ -2440,6 +2443,9 @@ export interface ProjectAnalytics {
 }
 
 export async function getProjectAnalytics(projectId: string): Promise<ProjectAnalytics> {
+    const cachedLocal = _projectAnalyticsCache.get(projectId);
+    if (cachedLocal) return cachedLocal;
+
     const userId = await getCurrentUserId();
     if (!userId) {
         return { totalSize: 0, totalRows: 0, tables: [] };
@@ -2449,8 +2455,13 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
 
     try {
         const { redis } = await import('@/lib/redis');
-        const cached = await redis.get<ProjectAnalytics>(cacheKey);
-        if (cached) return cached;
+        try {
+            const cached = await redis.get<ProjectAnalytics>(cacheKey);
+            if (cached) {
+                _projectAnalyticsCache.set(projectId, cached);
+                return cached;
+            }
+        } catch {}
 
         const project = await getProjectById(projectId, userId);
         if (!project) return { totalSize: 0, totalRows: 0, tables: [] };
@@ -2477,18 +2488,6 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
                 rows: Math.max(0, parseInt(r.row_count || r.rows || r.ROWS || '0', 10)),
                 size: parseInt(r.size || r.SIZE || '0', 10)
             }));
-
-            // Parallel live exact COUNT(*) for accuracy
-            await Promise.all(
-                tablesStats.map(async (t) => {
-                    try {
-                        const [cntRes]: any = await mysqlPool.query(`SELECT COUNT(*) as cnt FROM \`${targetDb}\`.\`${t.name}\``);
-                        if (cntRes && cntRes[0]?.cnt !== undefined) {
-                            t.rows = parseInt(cntRes[0].cnt, 10);
-                        }
-                    } catch {}
-                })
-            );
         } else {
             const pool = await getTenantPgPool(project);
             const { schemaName } = getProjectDbAndSchema(project);
@@ -2497,31 +2496,29 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
 
             let result = await pool.query(`
                 SELECT 
-                    t.table_name AS name,
-                    t.table_schema AS schema_name,
-                    COALESCE(c.reltuples, 0)::bigint AS rows,
+                    c.relname AS name,
+                    n.nspname AS schema_name,
+                    GREATEST(0, COALESCE(c.reltuples, 0)::bigint) AS rows,
                     COALESCE(pg_total_relation_size(c.oid), 0)::bigint AS size
-                FROM information_schema.tables t
-                LEFT JOIN pg_class c ON c.relname = t.table_name
-                LEFT JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
-                WHERE t.table_schema = $1 AND t.table_type = 'BASE TABLE'
-                AND t.table_name NOT LIKE '_flux_internal_%'
-                AND t.table_schema NOT IN ('fluxbase_global', 'pg_catalog', 'information_schema', 'cron', 'pgsodium', 'vault');
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = $1 
+                  AND c.relkind IN ('r', 'p')
+                  AND c.relname NOT LIKE '_flux_internal_%';
             `, [activeSchema]);
 
             if (isExternal && result.rows.length === 0 && activeSchema !== 'public') {
                 result = await pool.query(`
                     SELECT 
-                        t.table_name AS name,
-                        t.table_schema AS schema_name,
-                        COALESCE(c.reltuples, 0)::bigint AS rows,
+                        c.relname AS name,
+                        n.nspname AS schema_name,
+                        GREATEST(0, COALESCE(c.reltuples, 0)::bigint) AS rows,
                         COALESCE(pg_total_relation_size(c.oid), 0)::bigint AS size
-                    FROM information_schema.tables t
-                    LEFT JOIN pg_class c ON c.relname = t.table_name
-                    LEFT JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
-                    WHERE t.table_schema = 'public' AND t.table_type = 'BASE TABLE'
-                    AND t.table_name NOT LIKE '_flux_internal_%'
-                    AND t.table_schema NOT IN ('fluxbase_global', 'pg_catalog', 'information_schema', 'cron', 'pgsodium', 'vault');
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = 'public' 
+                      AND c.relkind IN ('r', 'p')
+                      AND c.relname NOT LIKE '_flux_internal_%';
                 `);
             }
 
@@ -2531,26 +2528,6 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
                 rows: Math.max(0, parseInt(r.rows || '0', 10)),
                 size: parseInt(r.size || '0', 10)
             }));
-
-            // Parallel live exact count(*) for 100% accurate rows count
-            await Promise.all(
-                tablesStats.map(async (t: any) => {
-                    try {
-                        const targetSchema = t.schemaName || activeSchema;
-                        const countRes = await pool.query(`SELECT count(*)::bigint as cnt FROM "${targetSchema}"."${t.name}"`);
-                        if (countRes.rows[0]?.cnt !== undefined) {
-                            t.rows = parseInt(countRes.rows[0].cnt, 10);
-                        }
-                    } catch {
-                        try {
-                            const directRes = await pool.query(`SELECT count(*)::bigint as cnt FROM "${t.name}"`);
-                            if (directRes.rows[0]?.cnt !== undefined) {
-                                t.rows = parseInt(directRes.rows[0].cnt, 10);
-                            }
-                        } catch {}
-                    }
-                })
-            );
         }
 
         const totalRows = tablesStats.reduce((sum, stat) => sum + stat.rows, 0);
@@ -2562,7 +2539,10 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
             tables: tablesStats
         };
 
-        await redis.set(cacheKey, analyticsResult, { ex: 15 }); // Fast 15s refresh
+        _projectAnalyticsCache.set(projectId, analyticsResult);
+        try {
+            await redis.set(cacheKey, analyticsResult, { ex: 60 });
+        } catch {}
         return analyticsResult;
 
     } catch (error) {

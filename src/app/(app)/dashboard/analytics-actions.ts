@@ -5,15 +5,27 @@ import { getCurrentUserId } from '@/lib/auth';
 import { redis } from '@/lib/redis';
 import { getDashboardWidgets } from '@/lib/dashboards';
 import logger from '@/lib/logger';
+import { LRUCache } from 'lru-cache';
+
+const _analyticsStatsCache = new LRUCache<string, any>({ max: 200, ttl: 30_000 });
+const _realtimeHistoryCache = new LRUCache<string, any>({ max: 200, ttl: 15_000 });
+const _projectHistoryCache = new LRUCache<string, any>({ max: 200, ttl: 60_000 });
 
 export async function getAnalyticsStatsAction(projectId: string) {
+    if (!projectId) return null;
+    const cachedLocal = _analyticsStatsCache.get(projectId);
+    if (cachedLocal) return cachedLocal;
+
     const userId = await getCurrentUserId();
-    if (!userId || !projectId) return null;
+    if (!userId) return null;
 
     const cacheKey = `analytics_stats_${projectId}`;
     try {
         const cached = await redis.get(cacheKey) as any;
-        if (cached) return cached;
+        if (cached) {
+            _analyticsStatsCache.set(projectId, cached);
+            return cached;
+        }
     } catch (e) {
         logger.warn('Redis read error for analytics stats:', e);
     }
@@ -125,8 +137,9 @@ export async function getAnalyticsStatsAction(projectId: string) {
             (stats as any).live_sessions = 1;
         }
 
+        _analyticsStatsCache.set(projectId, stats);
         try {
-            await redis.set(cacheKey, stats, { ex: 3 }); 
+            await redis.set(cacheKey, stats, { ex: 30 }); 
         } catch {}
 
         return stats;
@@ -138,6 +151,9 @@ export async function getAnalyticsStatsAction(projectId: string) {
 
 export async function getRealtimeHistoryAction(projectId: string) {
     if (!projectId) return [];
+    const cachedLocal = _realtimeHistoryCache.get(projectId);
+    if (cachedLocal) return cachedLocal;
+
     try {
         const now = Date.now();
         const currentMinute = Math.floor(now / 60000) * 60000;
@@ -175,15 +191,18 @@ export async function getRealtimeHistoryAction(projectId: string) {
         }
 
         const pool = getPgPool();
-        let pgRows: any[] = [];
+        const minuteCounts = new Map<number, number>();
         try {
             const pgRes = await pool.query(`
-                SELECT created_at, action
+                SELECT date_trunc('minute', created_at) as min_ts, COUNT(*) as count
                 FROM fluxbase_global.audit_logs
                 WHERE project_id = $1 AND created_at >= NOW() - INTERVAL '60 minutes'
-                ORDER BY created_at ASC
+                GROUP BY 1
             `, [projectId]);
-            pgRows = pgRes.rows || [];
+            for (const row of pgRes.rows) {
+                const ts = new Date(row.min_ts).getTime();
+                minuteCounts.set(ts, parseInt(row.count, 10) || 0);
+            }
         } catch {}
 
         for (let i = 0; i < minutesList.length; i++) {
@@ -194,14 +213,10 @@ export async function getRealtimeHistoryAction(projectId: string) {
             let apiVal = parseInt((redisValues[i * 2] as string) || '0', 10);
             let sqlVal = parseInt((redisValues[i * 2 + 1] as string) || '0', 10);
 
-            if (pgRows.length > 0) {
-                for (const row of pgRows) {
-                    const rowTime = new Date(row.created_at).getTime();
-                    if (Math.abs(rowTime - time) < 60000) {
-                        apiVal += 1;
-                        sqlVal += 1;
-                    }
-                }
+            const pgCount = minuteCounts.get(time) || 0;
+            if (pgCount > 0) {
+                apiVal += pgCount;
+                sqlVal += pgCount;
             }
 
             const totalVal = apiVal + sqlVal;
@@ -218,6 +233,7 @@ export async function getRealtimeHistoryAction(projectId: string) {
             });
         }
 
+        _realtimeHistoryCache.set(projectId, historyPoints);
         return historyPoints;
     } catch (e) {
         logger.error('getRealtimeHistoryAction error:', e);
@@ -227,11 +243,16 @@ export async function getRealtimeHistoryAction(projectId: string) {
 
 export async function getProjectHistoryAction(projectId: string) {
     if (!projectId) return null;
+    const cachedLocal = _projectHistoryCache.get(projectId);
+    if (cachedLocal) return cachedLocal;
 
     const cacheKey = `project_history_${projectId}`;
     try {
         const cached = await redis.get(cacheKey) as any;
-        if (cached) return cached;
+        if (cached) {
+            _projectHistoryCache.set(projectId, cached);
+            return cached;
+        }
     } catch (e) {
         logger.warn('Redis read error for project history:', e);
     }
@@ -245,22 +266,23 @@ export async function getProjectHistoryAction(projectId: string) {
         const apiCallsArr = Array(24).fill(0);
         const sessionsArr = Array(24).fill(1);
 
-        // 1. Fetch genuine hourly distribution from audit_logs for the last 24 hours
+        // 1. Fetch aggregated hourly distribution from audit_logs for the last 24 hours
         try {
             const auditRes = await pool.query(`
-                SELECT created_at, action
+                SELECT date_trunc('hour', created_at) as hr_ts, COUNT(*) as count
                 FROM fluxbase_global.audit_logs
                 WHERE project_id = $1 AND created_at >= NOW() - INTERVAL '24 hours'
-                ORDER BY created_at ASC
+                GROUP BY 1
             `, [projectId]);
 
             for (const row of auditRes.rows) {
-                const rowTime = new Date(row.created_at).getTime();
+                const rowTime = new Date(row.hr_ts).getTime();
                 const hoursAgo = Math.floor((now - rowTime) / (1000 * 60 * 60));
                 if (hoursAgo >= 0 && hoursAgo < 24) {
                     const index = 23 - hoursAgo;
-                    requestsArr[index] += 1;
-                    apiCallsArr[index] += 1;
+                    const cnt = parseInt(row.count, 10) || 0;
+                    requestsArr[index] += cnt;
+                    apiCallsArr[index] += cnt;
                 }
             }
         } catch (auditErr) {
@@ -342,8 +364,9 @@ export async function getProjectHistoryAction(projectId: string) {
             sessions: sessionsArr.map(val => ({ val }))
         };
 
+        _projectHistoryCache.set(projectId, payload);
         try {
-            await redis.set(cacheKey, payload, { ex: 15 });
+            await redis.set(cacheKey, payload, { ex: 60 });
         } catch {}
 
         return payload;
@@ -357,6 +380,7 @@ export async function getProjectHistoryAction(projectId: string) {
         };
     }
 }
+
 
 export async function getDashboardWidgetsAction(projectId: string) {
     const userId = await getCurrentUserId();
