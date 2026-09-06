@@ -55,14 +55,6 @@ const MCP_TOOLS = [
 ];
 
 export async function GET(req: NextRequest) {
-  const auth = await getAuthContextFromRequest(req);
-  if (!auth?.userId) {
-    return NextResponse.json({
-      jsonrpc: '2.0',
-      error: { code: -32600, message: 'Unauthorized: Valid session or Bearer API key required.' }
-    }, { status: 401 });
-  }
-
   // Support SSE stream for clients requesting text/event-stream
   const acceptHeader = req.headers.get('accept') || '';
   if (acceptHeader.includes('text/event-stream')) {
@@ -80,6 +72,14 @@ export async function GET(req: NextRequest) {
         'Connection': 'keep-alive',
       },
     });
+  }
+
+  const auth = await getAuthContextFromRequest(req);
+  if (!auth?.userId) {
+    return NextResponse.json({
+      jsonrpc: '2.0',
+      error: { code: -32600, message: 'Unauthorized: Valid session or Bearer API key required.' }
+    }, { status: 401 });
   }
 
   return NextResponse.json({
@@ -102,18 +102,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = await getAuthContextFromRequest(req);
-    if (!auth?.userId) {
-      return NextResponse.json({
-        jsonrpc: '2.0',
-        error: { code: -32600, message: 'Unauthorized: Valid session or Bearer API key required.' }
-      }, { status: 401 });
-    }
-
     const body = await req.json().catch(() => ({}));
     const { method, params, id } = body;
 
-    // 0. initialize Handshake (Crucial for Antigravity & MCP Spec)
+    // 0. initialize Handshake (Crucial for Antigravity & MCP Spec - must precede auth)
     if (method === 'initialize') {
       const clientVersion = params?.protocolVersion || '2024-11-05';
       return NextResponse.json({
@@ -146,6 +138,16 @@ export async function POST(req: NextRequest) {
         id: id ?? 1,
         result: {}
       });
+    }
+
+    // Auth check for all operational commands and tool executions
+    const auth = await getAuthContextFromRequest(req);
+    if (!auth?.userId) {
+      return NextResponse.json({
+        jsonrpc: '2.0',
+        id: id ?? 1,
+        error: { code: -32600, message: 'Unauthorized: Valid session or Bearer API key required.' }
+      }, { status: 401 });
     }
 
     // 1. tools/list

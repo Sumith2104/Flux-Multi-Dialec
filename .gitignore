@@ -74,4 +74,6 @@ scratch/
 # Security scan runs & logs
 strix_runs/
 *.log
+dummy-fluxbase-repo/
 # End
+

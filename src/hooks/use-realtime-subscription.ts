@@ -33,6 +33,7 @@ interface ConnectionState {
     retryTimer: ReturnType<typeof setTimeout> | null;
     retryCount: number;
     watchdogTimer: ReturnType<typeof setTimeout> | null;
+    useSSEOnly?: boolean;
 }
 
 const connections = new Map<string, ConnectionState>();
@@ -47,6 +48,7 @@ function getOrCreateState(projectId: string): ConnectionState {
             retryTimer: null,
             retryCount: 0,
             watchdogTimer: null,
+            useSSEOnly: false,
         });
     }
     return connections.get(projectId)!;
@@ -62,18 +64,16 @@ function notifyListeners(projectId: string, event: RealtimeEvent) {
 function scheduleReconnect(projectId: string) {
     const state = connections.get(projectId);
     if (!state) return;
+    if (state.retryTimer) {
+        clearTimeout(state.retryTimer);
+        state.retryTimer = null;
+    }
     state.status = 'closed';
     state.retryCount += 1;
 
-    // If WebSocket fails repeatedly, seamlessly fallback to SSE
-    if (state.retryCount >= 2 && state.listeners.size > 0) {
-        logger.warn(`[Realtime:${projectId}] WebSocket reconnect failed repeatedly. Falling back to SSE...`);
-        connectSSE(projectId, state);
-        return;
-    }
-
-    const delay = Math.min(1000 * Math.pow(2, state.retryCount - 1), 5000);
-    logger.info(`[Realtime:${projectId}] Reconnecting in ${delay}ms…`);
+    // Guaranteed backoff: 2.5s -> 3.75s -> 5.6s ... up to 20s (Never 0ms!)
+    const delay = Math.min(2500 * Math.pow(1.5, state.retryCount - 1), 20000);
+    logger.info(`[Realtime:${projectId}] Reconnecting in ${Math.round(delay)}ms… (attempt ${state.retryCount})`);
     state.retryTimer = setTimeout(() => {
         if (connections.has(projectId) && connections.get(projectId)!.listeners.size > 0) {
             startConnection(projectId);
@@ -110,7 +110,7 @@ async function startConnection(projectId: string) {
     state.status = 'connecting';
 
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL;
-    if (wsUrl && typeof window !== 'undefined') {
+    if (wsUrl && !state.useSSEOnly && typeof window !== 'undefined') {
         let wsOpened = false;
         try {
             const wsTarget = `${wsUrl.replace(/\/$/, '')}?projectId=${projectId}`;
@@ -174,7 +174,8 @@ async function startConnection(projectId: string) {
             ws.onclose = () => {
                 (state as any).socket = null;
                 if (!wsOpened) {
-                    logger.warn(`[Realtime] Render WebSocket failed to connect for ${projectId}, falling back to SSE...`);
+                    state.useSSEOnly = true;
+                    logger.warn(`[Realtime] Render WebSocket failed to connect for ${projectId}, staying on SSE...`);
                     connectSSE(projectId, state);
                 } else {
                     scheduleReconnect(projectId);
@@ -186,7 +187,8 @@ async function startConnection(projectId: string) {
             };
             return;
         } catch (e) {
-            logger.warn('[Realtime] WebSocket connect failed, falling back to SSE:', e);
+            state.useSSEOnly = true;
+            logger.warn('[Realtime] WebSocket connect failed, staying on SSE:', e);
         }
     }
 
@@ -383,11 +385,13 @@ export function useRealtimeSubscription(projectId: string | undefined) {
                 return;
             }
 
-            // Telemetry / internal tables should NEVER disrupt business table refetches
-            if (targetTable === 'audit_logs' || targetTable === 'api_keys' || targetTable === 'analytics_rollups') {
-                queryClient.invalidateQueries({ queryKey: ['analytics_stats', projectId] });
-                queryClient.invalidateQueries({ queryKey: ['analytics_history', projectId] });
-                queryClient.invalidateQueries({ queryKey: ['dashboard-analytics', projectId] });
+            // Telemetry / internal tables should NEVER disrupt business table refetches or trigger UI query invalidation
+            if (
+                targetTable === 'audit_logs' || 
+                targetTable === 'api_keys' || 
+                targetTable === 'analytics_rollups' ||
+                targetTable.startsWith('_flux_')
+            ) {
                 return;
             }
 
@@ -430,10 +434,13 @@ export function useRealtimeSubscription(projectId: string | undefined) {
                     type: 'active'
                 });
 
-                // Invalidate analytics lazily (stale-while-revalidate)
-                queryClient.invalidateQueries({ queryKey: ['analytics_stats', projectId] });
-                queryClient.invalidateQueries({ queryKey: ['analytics_history', projectId] });
-                queryClient.invalidateQueries({ queryKey: ['dashboard-analytics', projectId] });
+                // Invalidate analytics lazily with a 30s throttle to prevent query storms
+                const lastAnalyticsInvalidate = globalLastTableRefetch.get(`${projectId}:__analytics`) || 0;
+                if (Date.now() - lastAnalyticsInvalidate > 30000) {
+                    globalLastTableRefetch.set(`${projectId}:__analytics`, Date.now());
+                    queryClient.invalidateQueries({ queryKey: ['analytics_stats', projectId] });
+                    queryClient.invalidateQueries({ queryKey: ['dashboard-analytics', projectId] });
+                }
             };
 
             const now = Date.now();

@@ -48,25 +48,39 @@ export function AddRowDialog({
 }: AddRowDialogProps) {
   const { toast } = useToast();
   const [internalIsOpen, setInternalIsOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isOpen = propIsOpen !== undefined ? propIsOpen : internalIsOpen;
   const setIsOpen = onOpenChange || setInternalIsOpen;
 
-  const handleAction = async (formData: FormData) => {
-    const result = await addRowAction(formData);
-    if (result.success) {
-      toast({
-        title: 'Success',
-        description: 'Row added successfully.',
-      });
-      setIsOpen(false);
-      onRowAdded();
-    } else {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const formData = new FormData(e.currentTarget);
+      const result = await addRowAction(formData);
+      if (result.success) {
+        toast({
+          title: 'Success',
+          description: 'Row added successfully.',
+        });
+        setIsOpen(false);
+        onRowAdded();
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: result.error || 'Failed to add row.',
+        });
+      }
+    } catch (err: any) {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: result.error || 'Failed to add row.',
+        description: err.message || 'Failed to add row.',
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -138,7 +152,7 @@ export function AddRowDialog({
             Fill in the details for the new row. The 'id' will be generated automatically.
           </DialogDescription>
         </DialogHeader>
-        <form action={handleAction}>
+        <form onSubmit={handleSubmit}>
           <input type="hidden" name="projectId" value={projectId} />
           <input type="hidden" name="tableId" value={tableId} />
           <input type="hidden" name="tableName" value={tableName} />
@@ -155,8 +169,10 @@ export function AddRowDialog({
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>Cancel</Button>
-            <SubmitButton type="submit">Add Row</SubmitButton>
+            <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => setIsOpen(false)}>Cancel</Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Adding...' : 'Add Row'}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

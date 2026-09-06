@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
-import { createSessionCookie, createRefreshToken } from '@/lib/auth';
+import { createSessionCookie, createSessionToken, createRefreshToken } from '@/lib/auth';
 import { getBaseOrigin } from '@/lib/oauth-config';
 import crypto from 'crypto';
 import logger from '@/lib/logger';
@@ -19,13 +19,13 @@ export async function GET(req: NextRequest) {
     try {
         const pool = getPgPool();
 
-        // 1. Ensure table exists
+        // 1. Ensure table exists with TIMESTAMPTZ
         await pool.query(`
             CREATE TABLE IF NOT EXISTS fluxbase_global.magic_logins (
                 email VARCHAR(255) PRIMARY KEY,
                 otp_code VARCHAR(10) NOT NULL,
                 magic_token VARCHAR(255) NOT NULL,
-                expires_at TIMESTAMP NOT NULL,
+                expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             )
         `);
@@ -41,7 +41,13 @@ export async function GET(req: NextRequest) {
         }
 
         const record = result.rows[0];
-        if (new Date() > new Date(record.expires_at)) {
+        const rawExpiresAt = record.expires_at;
+        const expiresAt = rawExpiresAt instanceof Date 
+            ? rawExpiresAt.getTime() 
+            : new Date(typeof rawExpiresAt === 'string' && !rawExpiresAt.endsWith('Z') ? rawExpiresAt + 'Z' : rawExpiresAt).getTime();
+
+        // Allow 60-second grace window to absorb system clock drift between servers
+        if (Date.now() > expiresAt + 60 * 1000) {
             await pool.query('DELETE FROM fluxbase_global.magic_logins WHERE email = $1', [email]);
             return NextResponse.redirect(new URL('/?error=expired_token', baseUrl));
         }
@@ -78,11 +84,21 @@ export async function GET(req: NextRequest) {
 
         // 6. Create session cookie and redirect to dashboard
         await createSessionCookie(user.id, true);
-
+        const sessionToken = await createSessionToken(user.id, true);
         const refreshToken = await createRefreshToken(user.id);
         const isProd = process.env.NODE_ENV === 'production';
         const targetPath = returnTo.startsWith('/') ? returnTo : '/dashboard/projects';
         const response = NextResponse.redirect(new URL(targetPath, baseUrl));
+
+        response.cookies.set('session', sessionToken, {
+            expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            maxAge: 7 * 24 * 60 * 60,
+            httpOnly: true,
+            secure: isProd,
+            path: '/',
+            sameSite: 'lax',
+        });
+
         response.cookies.set('refresh_token', refreshToken, {
             httpOnly: true,
             secure: isProd,

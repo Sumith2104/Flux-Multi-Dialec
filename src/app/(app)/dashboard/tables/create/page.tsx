@@ -1,4 +1,4 @@
-﻿
+
 'use client';
 
 import Link from 'next/link';
@@ -215,6 +215,10 @@ export default function CreateTablePage() {
             });
             setIsSubmitting(false);
             return;
+        }
+
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('flux:schema-change', { detail: { projectId } }));
         }
 
         // Step 2: If creating from CSV, stream the file to the import API

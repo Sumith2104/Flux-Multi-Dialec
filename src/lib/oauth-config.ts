@@ -50,16 +50,17 @@ export function isAllowedOrigin(origin: string): boolean {
     }
 }
 
-export function encodeOAuthState(origin: string, returnTo?: string): string {
+export function encodeOAuthState(origin: string, returnTo?: string, extra?: Record<string, any>): string {
     const payload = JSON.stringify({
         origin,
         returnTo: returnTo || '/dashboard/projects',
-        t: Date.now()
+        t: Date.now(),
+        ...(extra || {})
     });
     return Buffer.from(payload, 'utf-8').toString('base64url');
 }
 
-export function decodeOAuthState(stateParam: string | null): { origin?: string; returnTo?: string } {
+export function decodeOAuthState(stateParam: string | null): { origin?: string; returnTo?: string; [key: string]: any } {
     if (!stateParam) return {};
     try {
         const decoded = Buffer.from(stateParam, 'base64url').toString('utf-8');
@@ -67,7 +68,7 @@ export function decodeOAuthState(stateParam: string | null): { origin?: string; 
         if (parsed && typeof parsed === 'object') {
             const origin = typeof parsed.origin === 'string' && isAllowedOrigin(parsed.origin) ? parsed.origin : undefined;
             const returnTo = typeof parsed.returnTo === 'string' && parsed.returnTo.startsWith('/') ? parsed.returnTo : undefined;
-            return { origin, returnTo };
+            return { ...parsed, origin, returnTo };
         }
     } catch {
         // Not base64url JSON, ignore
@@ -147,4 +148,35 @@ export function getOAuthConfig(request: NextRequest, provider: 'github' | 'googl
 
     return { clientId: undefined, clientSecret: undefined, redirectUri };
 }
+
+export function getGitHubImportOAuthConfig(request: NextRequest): OAuthConfig & { redirectUri: string } {
+    const baseOrigin = getBaseOrigin(request);
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
+
+    let envPrefix = 'LOCAL';
+    if (host.includes('fluxbasedb.me')) {
+        envPrefix = 'MAINAPP';
+    } else if (host.includes('vercel.app')) {
+        envPrefix = 'VERCEL';
+    } else if (host.includes('render.com')) {
+        envPrefix = 'RENDER';
+    } else if (host.includes('netlify.app')) {
+        envPrefix = 'NETLIFY';
+    }
+
+    const explicitRedirect = process.env[`GITHUB_IMPORT_REDIRECT_URI_${envPrefix}`] || 
+                             process.env.GITHUB_IMPORT_REDIRECT_URI_MAINAPP || 
+                             process.env.GITHUB_IMPORT_REDIRECT_URI;
+
+    // Default to the standard registered callback URL: ${baseOrigin}/api/auth/github/callback
+    // This allows using the existing GitHub OAuth App without requiring a 2nd OAuth App or changing GitHub Settings
+    const redirectUri = explicitRedirect || `${baseOrigin}/api/auth/github/callback`.replace('//api', '/api');
+
+    return {
+        clientId: process.env[`GITHUB_CLIENT_ID_${envPrefix}`] || process.env.GITHUB_CLIENT_ID_MAINAPP || process.env.GITHUB_CLIENT_ID_VERCEL || process.env.GITHUB_CLIENT_ID,
+        clientSecret: process.env[`GITHUB_CLIENT_SECRET_${envPrefix}`] || process.env.GITHUB_CLIENT_SECRET_MAINAPP || process.env.GITHUB_CLIENT_SECRET_VERCEL || process.env.GITHUB_CLIENT_SECRET,
+        redirectUri
+    };
+}
+
 

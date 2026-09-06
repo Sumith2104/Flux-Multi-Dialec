@@ -107,6 +107,9 @@ export async function createProjectAction(formData: FormData) {
           'UPDATE fluxbase_global.projects SET is_serverless = true, schema_name = $1 WHERE project_id = $2',
           [tenantResult.schemaName, project.project_id]
         );
+        project.schema_name = tenantResult.schemaName;
+        project.is_serverless = true;
+        project.role = 'admin';
         logger.info(`[Supabase Engine] Instant Serverless Tenant Created: ${tenantResult.schemaName} in ${tenantResult.executionTimeMs}ms`);
       } catch (tenantErr) {
         logger.error(`[Serverless Provisioning Error] Project ${project.project_id}:`, tenantErr);
@@ -256,4 +259,26 @@ export async function getProjectDatabasesAction(projectId: string) {
   }
 }
 
+export async function checkGitHubConnectionAction(): Promise<{ connected: boolean; username?: string; connectedAt?: string }> {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) return { connected: false };
+    const { getGitHubConnection } = await import('@/lib/github-token');
+    const info = await getGitHubConnection(userId);
+    return info || { connected: false };
+  } catch {
+    return { connected: false };
+  }
+}
 
+export async function disconnectGitHubAction(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) return { success: false, error: 'Unauthorized' };
+    const { revokeGitHubToken } = await import('@/lib/github-token');
+    await revokeGitHubToken(userId);
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Failed to disconnect GitHub' };
+  }
+}

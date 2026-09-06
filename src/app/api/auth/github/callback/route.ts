@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
-import { createSessionCookie, createRefreshToken } from '@/lib/auth';
+import { createSessionCookie, createSessionToken, createRefreshToken, getCurrentUserId } from '@/lib/auth';
 import { sendWelcomeEmail } from '@/lib/email';
 import { getOAuthConfig, getBaseOrigin, decodeOAuthState, isAllowedOrigin } from '@/lib/oauth-config';
+import { storeGitHubToken } from '@/lib/github-token';
 import crypto from 'crypto';
 import { logToFluxDB } from '@/lib/fluxdb-logger';
 import logger from '@/lib/logger';
@@ -12,17 +13,20 @@ export async function GET(request: NextRequest) {
     const code = searchParams.get('code');
     const stateParam = searchParams.get('state');
 
-    const { origin: targetOrigin, returnTo } = decodeOAuthState(stateParam);
+    const decoded = decodeOAuthState(stateParam);
+    const { origin: targetOrigin, returnTo, isImport, userId: stateUserId } = decoded;
     const currentOrigin = getBaseOrigin(request);
     const destinationOrigin = targetOrigin && isAllowedOrigin(targetOrigin) ? targetOrigin : currentOrigin;
     const redirectPath = returnTo || '/dashboard/projects';
 
     // Use dynamic configuration
-    const { clientId, clientSecret } = getOAuthConfig(request, 'github');
+    const { clientId, clientSecret, redirectUri } = getOAuthConfig(request, 'github');
 
     if (!code || !clientId || !clientSecret) {
         logger.error("Missing GitHub Code or Environment Variables for this platform");
-        return NextResponse.redirect(new URL('/?error=GithubAuthFailed', destinationOrigin));
+        const failDest = isImport ? redirectPath : '/';
+        const errParam = isImport ? 'GithubImportFailed' : 'GithubAuthFailed';
+        return NextResponse.redirect(new URL(`${failDest}?error=${errParam}`, destinationOrigin));
     }
 
     try {
@@ -37,6 +41,7 @@ export async function GET(request: NextRequest) {
                 client_id: clientId,
                 client_secret: clientSecret,
                 code,
+                redirect_uri: redirectUri,
             }),
         });
         
@@ -45,8 +50,47 @@ export async function GET(request: NextRequest) {
         
         if (!accessToken) {
             logger.error("GitHub OAuth Error:", tokenData);
-            return NextResponse.redirect(new URL('/?error=GithubTokenFailed', destinationOrigin));
+            const failDest = isImport ? redirectPath : '/';
+            const errParam = isImport ? 'GithubTokenExchangeFailed' : 'GithubTokenFailed';
+            return NextResponse.redirect(new URL(`${failDest}?error=${errParam}`, destinationOrigin));
         }
+
+        // --- SPECIAL BRANCH: GITHUB IMPORT FLOW ---
+        if (isImport) {
+            const userId = (await getCurrentUserId()) || stateUserId;
+            if (!userId) {
+                logger.error('[GitHub Import Callback] No authenticated user found');
+                return NextResponse.redirect(new URL('/?error=LoginRequired', destinationOrigin));
+            }
+
+            let githubUsername = '';
+            try {
+                const userRes = await fetch('https://api.github.com/user', {
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        Accept: 'application/vnd.github.v3+json',
+                        'User-Agent': 'Fluxbase-Cloud',
+                    },
+                });
+                if (userRes.ok) {
+                    const userData = await userRes.json();
+                    githubUsername = userData.login || '';
+                }
+            } catch (uErr) {
+                logger.warn('[GitHub Import Callback] Failed to fetch user profile:', uErr);
+            }
+
+            await storeGitHubToken(userId, accessToken, tokenData.scope || 'repo', githubUsername);
+            logger.info(`[GitHub Import Callback] Successfully connected GitHub repo access for user ${userId} (@${githubUsername})`);
+
+            const successUrl = new URL(redirectPath, destinationOrigin);
+            successUrl.searchParams.set('github_connected', 'true');
+            if (githubUsername) {
+                successUrl.searchParams.set('github_username', githubUsername);
+            }
+            return NextResponse.redirect(successUrl);
+        }
+        // --- END GITHUB IMPORT FLOW ---
 
         // 2. Fetch User Profile
         const userResponse = await fetch('https://api.github.com/user', {
@@ -131,14 +175,14 @@ export async function GET(request: NextRequest) {
         if (destinationOrigin !== currentOrigin) {
             const magicToken = crypto.randomBytes(32).toString('hex');
             const otpCode = crypto.randomInt(100000, 999999).toString();
-            const expiresAt = new Date(Date.now() + 2 * 60 * 1000); // 2 minutes
+            const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
             await pool.query(`
                 CREATE TABLE IF NOT EXISTS fluxbase_global.magic_logins (
                     email VARCHAR(255) PRIMARY KEY,
                     otp_code VARCHAR(10) NOT NULL,
                     magic_token VARCHAR(255) NOT NULL,
-                    expires_at TIMESTAMP NOT NULL,
+                    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 )
             `);
@@ -163,12 +207,19 @@ export async function GET(request: NextRequest) {
 
         // 7. Same domain flow: create active session cookie directly
         await createSessionCookie(userId, true);
-
-        // Set refresh token cookie
+        const sessionToken = await createSessionToken(userId, true);
         const refreshToken = await createRefreshToken(userId);
         const isProd = process.env.NODE_ENV === 'production';
 
         const response = NextResponse.redirect(new URL(redirectPath, currentOrigin));
+        response.cookies.set('session', sessionToken, {
+            expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            maxAge: 7 * 24 * 60 * 60,
+            httpOnly: true,
+            secure: isProd,
+            path: '/',
+            sameSite: 'lax',
+        });
         response.cookies.set('refresh_token', refreshToken, {
             httpOnly: true,
             secure: isProd,

@@ -114,6 +114,9 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                 const data = await res.json();
                 if (data.success && Array.isArray(data.projects)) {
                     setProjects(data.projects);
+                    if (!selectedProject && data.projects.length > 0) {
+                        setProject({ ...data.projects[0], role: data.projects[0].role || 'admin' });
+                    }
                 }
             } catch (err) {
                 console.error("[Layout] Failed to refresh projects in background:", err);
@@ -121,7 +124,11 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         };
 
         window.addEventListener('flux:project-change', handleProjectChange);
-        return () => window.removeEventListener('flux:project-change', handleProjectChange);
+        window.addEventListener('flux:projects-refresh', handleProjectChange);
+        return () => {
+            window.removeEventListener('flux:project-change', handleProjectChange);
+            window.removeEventListener('flux:projects-refresh', handleProjectChange);
+        };
     }, [selectedProject?.project_id, setProject]);
 
     useEffect(() => {
@@ -168,12 +175,31 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
                     if (selectedProject) {
                         const freshProj = data.projects?.find(p => p.project_id === selectedProject.project_id);
                         if (freshProj) {
-                            if (freshProj.billing_preference !== selectedProject.billing_preference || freshProj.creator_role !== selectedProject.creator_role) {
-                                setProject(freshProj);
+                            const enriched = {
+                                ...selectedProject,
+                                ...freshProj,
+                                role: freshProj.role || selectedProject.role || 'admin',
+                                schema_name: freshProj.schema_name || selectedProject.schema_name || `flux_tenant_${freshProj.project_id}`,
+                                is_serverless: true
+                            };
+                            if (
+                                !selectedProject.role ||
+                                !selectedProject.schema_name ||
+                                freshProj.billing_preference !== selectedProject.billing_preference ||
+                                freshProj.creator_role !== selectedProject.creator_role ||
+                                freshProj.display_name !== selectedProject.display_name
+                            ) {
+                                setProject(enriched);
                             }
                         } else if (!data.projects?.some(p => p.project_id === selectedProject.project_id)) {
-                            setProject(null);
+                            if (data.projects && data.projects.length > 0) {
+                                setProject({ ...data.projects[0], role: data.projects[0].role || 'admin' });
+                            } else {
+                                setProject(null);
+                            }
                         }
+                    } else if (data.projects && data.projects.length > 0) {
+                        setProject({ ...data.projects[0], role: data.projects[0].role || 'admin' });
                     }
                 }
 

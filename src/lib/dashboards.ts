@@ -1,5 +1,6 @@
 import { getPgPool } from '@/lib/pg';
 import { getProjectById } from '@/lib/data';
+import { quotePgProjectSchema, quoteMysqlProjectSchema } from '@/lib/sql-safety';
 import crypto from 'crypto';
 
 export interface DashboardWidget {
@@ -15,8 +16,10 @@ async function ensureTableExists(projectId: string, dialect: string) {
     if (dialect?.toLowerCase() === 'mysql') {
         const { getMysqlPool } = await import('@/lib/mysql');
         const mysqlPool = getMysqlPool();
+        const schema = quoteMysqlProjectSchema(projectId);
+        await mysqlPool.query(`CREATE DATABASE IF NOT EXISTS ${schema}`);
         await mysqlPool.query(`
-            CREATE TABLE IF NOT EXISTS \`project_${projectId}\`.\`_flux_internal_dashboards\` (
+            CREATE TABLE IF NOT EXISTS ${schema}.\`_flux_internal_dashboards\` (
                 id VARCHAR(128) PRIMARY KEY,
                 title VARCHAR(255) NOT NULL,
                 chart_type VARCHAR(50) NOT NULL,
@@ -27,8 +30,10 @@ async function ensureTableExists(projectId: string, dialect: string) {
         `);
     } else {
         const pool = getPgPool();
+        const schema = quotePgProjectSchema(projectId);
+        await pool.query(`CREATE SCHEMA IF NOT EXISTS ${schema}`);
         await pool.query(`
-            CREATE TABLE IF NOT EXISTS "project_${projectId}"."_flux_internal_dashboards" (
+            CREATE TABLE IF NOT EXISTS ${schema}."_flux_internal_dashboards" (
                 id VARCHAR(128) PRIMARY KEY,
                 title VARCHAR(255) NOT NULL,
                 chart_type VARCHAR(50) NOT NULL,
@@ -50,8 +55,9 @@ export async function getDashboardWidgets(projectId: string, userId: string): Pr
     if (isMysql) {
         const { getMysqlPool } = await import('@/lib/mysql');
         const mysqlPool = getMysqlPool();
+        const schema = quoteMysqlProjectSchema(projectId);
         const [rows]: any = await mysqlPool.query(
-            `SELECT * FROM \`project_${projectId}\`.\`_flux_internal_dashboards\` ORDER BY created_at ASC`
+            `SELECT * FROM ${schema}.\`_flux_internal_dashboards\` ORDER BY created_at ASC`
         );
         return rows.map((r: any) => ({
             ...r,
@@ -59,8 +65,9 @@ export async function getDashboardWidgets(projectId: string, userId: string): Pr
         }));
     } else {
         const pool = getPgPool();
+        const schema = quotePgProjectSchema(projectId);
         const res = await pool.query(
-            `SELECT * FROM "project_${projectId}"."_flux_internal_dashboards" ORDER BY created_at ASC`
+            `SELECT * FROM ${schema}."_flux_internal_dashboards" ORDER BY created_at ASC`
         );
         return res.rows;
     }
@@ -77,14 +84,16 @@ export async function saveDashboardWidget(projectId: string, userId: string, tit
     if (isMysql) {
         const { getMysqlPool } = await import('@/lib/mysql');
         const mysqlPool = getMysqlPool();
+        const schema = quoteMysqlProjectSchema(projectId);
         await mysqlPool.query(
-            `INSERT INTO \`project_${projectId}\`.\`_flux_internal_dashboards\` (id, title, chart_type, query, config) VALUES (?, ?, ?, ?, ?)`,
+            `INSERT INTO ${schema}.\`_flux_internal_dashboards\` (id, title, chart_type, query, config) VALUES (?, ?, ?, ?, ?)`,
             [id, title, chartType, query, JSON.stringify(config)]
         );
     } else {
         const pool = getPgPool();
+        const schema = quotePgProjectSchema(projectId);
         await pool.query(
-            `INSERT INTO "project_${projectId}"."_flux_internal_dashboards" (id, title, chart_type, query, config) VALUES ($1, $2, $3, $4, $5)`,
+            `INSERT INTO ${schema}."_flux_internal_dashboards" (id, title, chart_type, query, config) VALUES ($1, $2, $3, $4, $5)`,
             [id, title, chartType, query, config]
         );
     }
@@ -99,14 +108,16 @@ export async function deleteDashboardWidget(projectId: string, userId: string, w
     if (isMysql) {
         const { getMysqlPool } = await import('@/lib/mysql');
         const mysqlPool = getMysqlPool();
+        const schema = quoteMysqlProjectSchema(projectId);
         await mysqlPool.query(
-            `DELETE FROM \`project_${projectId}\`.\`_flux_internal_dashboards\` WHERE id = ?`,
+            `DELETE FROM ${schema}.\`_flux_internal_dashboards\` WHERE id = ?`,
             [widgetId]
         );
     } else {
         const pool = getPgPool();
+        const schema = quotePgProjectSchema(projectId);
         await pool.query(
-            `DELETE FROM "project_${projectId}"."_flux_internal_dashboards" WHERE id = $1`,
+            `DELETE FROM ${schema}."_flux_internal_dashboards" WHERE id = $1`,
             [widgetId]
         );
     }

@@ -4,6 +4,7 @@ import { getCurrentUserId } from '@/lib/auth';
 import { saveDashboardWidget, deleteDashboardWidget } from '@/lib/dashboards';
 import { getPgPool } from '@/lib/pg';
 import { getProjectById, getTablesForProject, getColumnsForTable } from '@/lib/data';
+import { quotePgProjectSchema, quoteMysqlProjectSchema } from '@/lib/sql-safety';
 import { revalidatePath } from 'next/cache';
 
 export async function createWidgetAction(projectId: string, title: string, chartType: string, query: string, config: any) {
@@ -60,14 +61,16 @@ export async function updateWidgetConfigAction(projectId: string, widgetId: stri
     if (project.dialect?.toLowerCase() === 'mysql') {
         const { getMysqlPool } = await import('@/lib/mysql');
         const mysqlPool = getMysqlPool();
+        const schema = quoteMysqlProjectSchema(projectId);
         await mysqlPool.query(
-            `UPDATE \`project_${projectId}\`.\`_flux_internal_dashboards\` SET config = ? WHERE id = ?`,
+            `UPDATE ${schema}.\`_flux_internal_dashboards\` SET config = ? WHERE id = ?`,
             [JSON.stringify(newConfig), widgetId]
         );
     } else {
         const pool = getPgPool();
+        const schema = quotePgProjectSchema(projectId);
         await pool.query(
-            `UPDATE "project_${projectId}"."_flux_internal_dashboards" SET config = $1 WHERE id = $2`,
+            `UPDATE ${schema}."_flux_internal_dashboards" SET config = $1 WHERE id = $2`,
             [newConfig, widgetId]
         );
     }

@@ -19,7 +19,7 @@ async function Editor({ projectId, tableId, tableName }: { projectId: string; ta
     const dialect = project?.dialect || 'postgresql';
     let allTables: any[] = [];
     try {
-        allTables = await getTablesForProject(projectId);
+        allTables = await getTablesForProject(projectId, userId || undefined);
     } catch (e) {
         console.error('Failed to get tables for project:', e);
     }
@@ -36,9 +36,9 @@ async function Editor({ projectId, tableId, tableName }: { projectId: string; ta
 
     if (effectiveTableId) {
         try {
-            columns = await getColumnsForTable(projectId, effectiveTableId);
-            constraints = await getConstraintsForTable(projectId, effectiveTableId);
-            allProjectConstraints = await getConstraintsForProject(projectId);
+            columns = await getColumnsForTable(projectId, effectiveTableId, userId || undefined);
+            constraints = await getConstraintsForTable(projectId, effectiveTableId, userId || undefined);
+            allProjectConstraints = await getConstraintsForProject(projectId, userId || undefined);
         } catch (e) {
             console.error('Failed to get columns/constraints for table:', e);
         }

@@ -27,6 +27,7 @@ export function useProjectHistory(projectId: string | undefined): ProjectHistory
         staleTime: 5 * 60 * 1000,    // Fresh for 5 minutes
         gcTime: 10 * 60 * 1000,       // Evict 10 min after unmount
         refetchInterval: 5 * 60 * 1000,
+        refetchOnWindowFocus: false,
         select: (raw) => ({
             ...raw,
             requests: raw?.requests || FALLBACK.requests,

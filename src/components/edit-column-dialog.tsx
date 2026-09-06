@@ -39,25 +39,40 @@ export function EditColumnDialog({
   onColumnUpdated,
 }: EditColumnDialogProps) {
   const { toast } = useToast();
-  const router = useRouter();
   const [newColumnName, setNewColumnName] = useState(column.column_name);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleAction = async (formData: FormData) => {
-    const result = await editColumnAction(formData);
-    if (result.success) {
-      toast({
-        title: 'Success',
-        description: 'Column updated successfully.',
-      });
-      setIsOpen(false);
-      onColumnUpdated?.();
-      router.refresh();
-    } else {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const formData = new FormData(e.currentTarget);
+      const result = await editColumnAction(formData);
+      if (result.success) {
+        toast({
+          title: 'Success',
+          description: 'Column updated successfully.',
+        });
+        setIsOpen(false);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('flux:schema-change', { detail: { projectId } }));
+        }
+        onColumnUpdated?.();
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: result.error || 'Failed to update column.',
+        });
+      }
+    } catch (err: any) {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: result.error || 'Failed to update column.',
+        description: err.message || 'Failed to update column.',
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -70,7 +85,7 @@ export function EditColumnDialog({
             Rename the column. Changing the data type is not yet supported.
           </DialogDescription>
         </DialogHeader>
-        <form action={handleAction}>
+        <form onSubmit={handleSubmit}>
           <input type="hidden" name="projectId" value={projectId} />
           <input type="hidden" name="tableId" value={tableId} />
           <input type="hidden" name="tableName" value={tableName} />
@@ -104,8 +119,10 @@ export function EditColumnDialog({
           </div>
 
           <DialogFooter>
-            <Button type='button' variant="outline" onClick={() => setIsOpen(false)}>Cancel</Button>
-            <SubmitButton type="submit">Save Changes</SubmitButton>
+            <Button type='button' variant="outline" disabled={isSubmitting} onClick={() => setIsOpen(false)}>Cancel</Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : 'Save Changes'}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

@@ -3,6 +3,9 @@
 import { getCurrentUserId } from '@/lib/auth';
 import { getPgPool } from '@/lib/pg';
 import logger from '@/lib/logger';
+import { LRUCache } from 'lru-cache';
+
+const _billingCache = new LRUCache<string, BillingDetails>({ max: 500, ttl: 2 * 60 * 1000 }); // 2-min cache
 
 export interface BillingDetails {
     plan: string;
@@ -54,6 +57,11 @@ export async function getBillingDetailsAction(): Promise<{ success: boolean; dat
     const userId = await getCurrentUserId();
     if (!userId) return { success: false, error: 'Unauthorized' };
 
+    const cached = _billingCache.get(userId);
+    if (cached) {
+        return { success: true, data: cached };
+    }
+
     try {
         const pool = getPgPool();
         
@@ -86,51 +94,126 @@ export async function getBillingDetailsAction(): Promise<{ success: boolean; dat
             }));
         } catch {}
 
-        // 3. Compute limits & metered usage
+        // 3. Compute limits based on active tier / plan
         let queriesLimit = 50000;
         let storageLimitGb = 0.5;
-        let queriesUsed = 12450;
-        let storageUsedGb = 0.18;
-        let unbilledAmount = 0;
 
         if (role === 'employee' || plan === 'employee') {
             queriesLimit = 500000;
             storageLimitGb = 10;
-            queriesUsed = 84200;
-            storageUsedGb = 2.4;
-            unbilledAmount = 0.00;
         } else if (role === 'org_owner' || plan === 'org_owner' || plan === 'org') {
             queriesLimit = 5000000;
             storageLimitGb = 100;
-            queriesUsed = 348100;
-            storageUsedGb = 14.8;
-            unbilledAmount = 0.00;
         } else if (plan === 'pro') {
             queriesLimit = 250000;
             storageLimitGb = 5;
-            queriesUsed = 45100;
-            storageUsedGb = 1.1;
         } else if (plan === 'max') {
             queriesLimit = 1000000;
             storageLimitGb = 20;
-            queriesUsed = 192000;
-            storageUsedGb = 4.6;
         }
+
+        // 4. Fetch user projects to use indexed queries
+        const userProjectsRes = await pool.query(
+            'SELECT project_id, dialect FROM fluxbase_global.projects WHERE user_id = $1::text',
+            [userId]
+        );
+        const userProjects = userProjectsRes.rows || [];
+        const projectIds = userProjects.map(r => r.project_id);
+
+        // 5. Fetch REAL metered query executions
+        let queriesUsed = 0;
+        if (projectIds.length > 0) {
+            try {
+                const auditRes = await pool.query(`
+                    SELECT COUNT(*) as count 
+                    FROM fluxbase_global.audit_logs 
+                    WHERE project_id = ANY($1) 
+                      AND created_at >= NOW() - INTERVAL '30 days'
+                `, [projectIds]);
+                queriesUsed = parseInt(auditRes.rows[0]?.count || '0', 10);
+            } catch (auditErr) {
+                logger.warn('[Billing] Error computing real query count:', auditErr);
+            }
+        }
+
+        let storageUsedGb = 0;
+        try {
+            let totalBytes = 0;
+
+            // A. Compute real storage of all PostgreSQL tenant schemas for this user
+            if (projectIds.length > 0) {
+                const schemaNames = projectIds.map(id => `project_${id}`);
+                const sizeRes = await pool.query(`
+                    SELECT COALESCE(SUM(pg_total_relation_size(c.oid)), 0) as total_bytes
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = ANY($1)
+                `, [schemaNames]);
+                totalBytes += parseInt(sizeRes.rows[0]?.total_bytes || '0', 10);
+            }
+
+            // B. Compute real storage of MySQL tenant schemas if MySQL configured
+            if (process.env.AWS_RDS_MYSQL_URL || process.env.MYSQL_URL) {
+                try {
+                    const { getMysqlPool } = await import('@/lib/mysql');
+                    const mysqlPool = getMysqlPool();
+                    const myProjects = await pool.query(`
+                        SELECT project_id FROM fluxbase_global.projects WHERE user_id = $1::text AND dialect = 'mysql'
+                    `, [userId]);
+                    if (myProjects.rows.length > 0) {
+                        const dbNames = myProjects.rows.map(r => `project_${r.project_id}`);
+                        const [myRows]: any = await mysqlPool.query(`
+                            SELECT COALESCE(SUM(data_length + index_length), 0) as total_bytes
+                            FROM information_schema.tables 
+                            WHERE table_schema IN (?)
+                        `, [dbNames]);
+                        if (myRows && myRows[0]) {
+                            totalBytes += parseInt(myRows[0].total_bytes || '0', 10);
+                        }
+                    }
+                } catch (myErr) {
+                    logger.warn('[Billing] Optional MySQL storage check skipped:', myErr);
+                }
+            }
+
+            storageUsedGb = Number((totalBytes / (1024 * 1024 * 1024)).toFixed(3));
+        } catch (sizeErr) {
+            logger.warn('[Billing] Error computing real storage size:', sizeErr);
+        }
+
+        // 5. Calculate real unbilled amount for excess usage
+        const queryRatePer10k = (role === 'org_owner' || plan === 'org_owner') ? 2.00 : 0.50;
+        const storageRatePerGb = (role === 'org_owner' || plan === 'org_owner') ? 15.00 : 5.00;
+
+        let unbilledAmount = 0;
+        if (queriesUsed > queriesLimit) {
+            const excessQueries = queriesUsed - queriesLimit;
+            unbilledAmount += Math.ceil(excessQueries / 10000) * queryRatePer10k;
+        }
+        if (storageUsedGb > storageLimitGb) {
+            const excessStorage = storageUsedGb - storageLimitGb;
+            unbilledAmount += excessStorage * storageRatePerGb;
+        }
+        unbilledAmount = Number(unbilledAmount.toFixed(2));
+
+        const resultData: BillingDetails = {
+            plan,
+            role,
+            billing_cycle_end: userRow.billingCycleEnd || null,
+            status: userRow.status || 'active',
+            queriesUsed,
+            queriesLimit,
+            storageUsedGb,
+            storageLimitGb,
+            unbilledAmount,
+            invoices
+        };
+
+        _billingCache.set(userId, resultData);
 
         return {
             success: true,
-            data: {
-                plan,
-                role,
-                billing_cycle_end: userRow.billingCycleEnd || null,
-                status: userRow.status || 'active',
-                queriesUsed,
-                queriesLimit,
-                storageUsedGb,
-                storageLimitGb,
-                unbilledAmount,
-                invoices
-            }
+            data: resultData
         };
 
     } catch (err: any) {

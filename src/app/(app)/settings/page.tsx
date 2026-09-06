@@ -20,6 +20,7 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { deleteProjectAction, clearOrganizationAction, updateProjectSettingsAction, toggleOrganizationSuspensionAction, toggleProjectSuspensionAction } from './actions';
 import {
     get2FAStatusAction,
@@ -46,6 +47,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { WebhooksManager } from '@/components/settings/webhooks-manager';
 import { PaymentsBillsManager } from '@/components/settings/payments-bills-manager';
 import { PaygMeterCard } from '@/components/billing/payg-meter-card';
+import { cn } from "@/lib/utils";
 
 const timezones = Intl.supportedValuesOf('timeZone');
 
@@ -80,6 +82,9 @@ export default function GeneralSettingsPage() {
 
     // State
     const [deleteConfirmation, setDeleteConfirmation] = useState('');
+    const [deleteAckChecked, setDeleteAckChecked] = useState(false);
+    const [isDeletingProject, setIsDeletingProject] = useState(false);
+
     const [timezone, setTimezone] = useState(selectedProject?.timezone || 'UTC');
     const [savingTimezone, setSavingTimezone] = useState(false);
     const [tables, setTables] = useState<DbTable[]>([]);
@@ -102,7 +107,17 @@ export default function GeneralSettingsPage() {
 
     // Suspension State
     const [suspendConfirmation, setSuspendConfirmation] = useState('');
+    const [suspendOrgAckChecked, setSuspendOrgAckChecked] = useState(false);
     const [isSuspending, setIsSuspending] = useState(false);
+
+    // Project suspension state
+    const [suspendProjectAckChecked, setSuspendProjectAckChecked] = useState(false);
+    const [isTogglingProjectSuspension, setIsTogglingProjectSuspension] = useState(false);
+
+    // Clear Org State
+    const [clearOrgConfirmation, setClearOrgConfirmation] = useState('');
+    const [clearOrgAckChecked, setClearOrgAckChecked] = useState(false);
+    const [isClearingOrg, setIsClearingOrg] = useState(false);
     useEffect(() => {
         // Load User Plan
         getUserPlanAction().then(res => {
@@ -147,61 +162,100 @@ export default function GeneralSettingsPage() {
             toast({ variant: 'destructive', title: 'Error', description: 'No project selected.' });
             return;
         }
-        if (deleteConfirmation !== `delete my project ${selectedProject.display_name}`) {
-            toast({ variant: 'destructive', title: 'Error', description: 'Confirmation text does not match.' });
+
+        const validMatches = [
+            `delete my project ${selectedProject.display_name.toLowerCase()}`,
+            `delete ${selectedProject.display_name.toLowerCase()}`,
+            selectedProject.display_name.toLowerCase(),
+            selectedProject.project_id.toLowerCase()
+        ];
+
+        const trimmedInput = deleteConfirmation.trim().toLowerCase();
+        if (!validMatches.includes(trimmedInput) && !deleteAckChecked) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Please complete the confirmation.' });
             return;
         }
-        const result = await deleteProjectAction(selectedProject.project_id);
-        if (result.success) {
-            toast({ title: 'Success', description: `Project '${selectedProject.display_name}' has been deleted.` });
-            setProject(null);
-            setDeleteConfirmation('');
-            router.push('/dashboard/projects');
-        } else {
-            toast({ variant: 'destructive', title: 'Error', description: result.error || 'Failed to delete project.' });
+
+        setIsDeletingProject(true);
+        try {
+            const result = await deleteProjectAction(selectedProject.project_id);
+            if (result.success) {
+                toast({ title: 'Project Deleted', description: `Project '${selectedProject.display_name}' has been deleted.` });
+                setProject(null);
+                setDeleteConfirmation('');
+                setDeleteAckChecked(false);
+                window.dispatchEvent(new CustomEvent('flux:project-change', { detail: { project: null } }));
+                router.push('/dashboard/projects');
+            } else {
+                toast({ variant: 'destructive', title: 'Error', description: result.error || 'Failed to delete project.' });
+            }
+        } catch (err: any) {
+            toast({ variant: 'destructive', title: 'Error', description: err.message || 'Failed to delete project.' });
+        } finally {
+            setIsDeletingProject(false);
         }
     };
 
     const handleClearOrganization = async () => {
-        const result = await clearOrganizationAction();
-        if (result.success) {
-            toast({ title: 'Success', description: 'Your organization data has been cleared.' });
-            await logoutAction();
-            router.push('/');
-        } else {
-            toast({ variant: 'destructive', title: 'Error', description: result.error || 'Failed to clear organization data.' });
+        setIsClearingOrg(true);
+        try {
+            const result = await clearOrganizationAction();
+            if (result.success) {
+                toast({ title: 'Success', description: 'Your organization data has been cleared.' });
+                await logoutAction();
+                router.push('/');
+            } else {
+                toast({ variant: 'destructive', title: 'Error', description: result.error || 'Failed to clear organization data.' });
+            }
+        } catch (err: any) {
+            toast({ variant: 'destructive', title: 'Error', description: err.message || 'Failed to clear organization.' });
+        } finally {
+            setIsClearingOrg(false);
         }
     };
 
     const handleToggleSuspension = async () => {
         setIsSuspending(true);
-        const newStatus = userPlan.status === 'suspended' ? 'active' : 'suspended';
-        const result = await toggleOrganizationSuspensionAction(newStatus);
+        try {
+            const newStatus = userPlan.status === 'suspended' ? 'active' : 'suspended';
+            const result = await toggleOrganizationSuspensionAction(newStatus);
 
-        if (result.success) {
-            toast({ title: 'Success', description: `Organization has been ${newStatus}.` });
-            setUserPlan(prev => ({ ...prev, status: newStatus }));
-            setIsSuspended(newStatus === 'suspended');
-            setSuspendConfirmation('');
-        } else {
-            toast({ variant: 'destructive', title: 'Error', description: result.error || `Failed to ${newStatus} organization.` });
+            if (result.success) {
+                toast({ title: 'Success', description: `Organization has been ${newStatus}.` });
+                setUserPlan(prev => ({ ...prev, status: newStatus }));
+                setIsSuspended(newStatus === 'suspended');
+                setSuspendConfirmation('');
+                setSuspendOrgAckChecked(false);
+            } else {
+                toast({ variant: 'destructive', title: 'Error', description: result.error || `Failed to ${newStatus} organization.` });
+            }
+        } catch (err: any) {
+            toast({ variant: 'destructive', title: 'Error', description: err.message || 'Failed to update organization status.' });
+        } finally {
+            setIsSuspending(false);
         }
-        setIsSuspending(false);
     };
 
     const handleToggleProjectSuspension = async (projectId: string, currentStatus: string) => {
-        const newStatus = currentStatus === 'suspended' ? 'active' : 'suspended';
-        const res = await toggleProjectSuspensionAction(projectId, newStatus as 'active' | 'suspended');
-        
-        if (res.success) {
-            toast({ title: "Status Updated", description: `Project is now ${newStatus}.` });
+        setIsTogglingProjectSuspension(true);
+        try {
+            const newStatus = currentStatus === 'suspended' ? 'active' : 'suspended';
+            const res = await toggleProjectSuspensionAction(projectId, newStatus as 'active' | 'suspended');
+            
+            if (res.success) {
+                toast({ title: "Status Updated", description: `Project is now ${newStatus}.` });
 
-            // Sync selected project if it's the one we just toggled
-            if (selectedProject?.project_id === projectId) {
-                setProject({ ...selectedProject, status: newStatus as 'active' | 'suspended' });
+                if (selectedProject?.project_id === projectId) {
+                    setProject({ ...selectedProject, status: newStatus as 'active' | 'suspended' });
+                }
+                setSuspendProjectAckChecked(false);
+            } else {
+                toast({ variant: "destructive", title: "Error", description: res.error });
             }
-        } else {
-            toast({ variant: "destructive", title: "Error", description: res.error });
+        } catch (err: any) {
+            toast({ variant: "destructive", title: "Error", description: err.message || 'Failed to update project status.' });
+        } finally {
+            setIsTogglingProjectSuspension(false);
         }
     };
 
@@ -291,8 +345,14 @@ export default function GeneralSettingsPage() {
                     image: '/logo.png', // Fallback or placeholder
                     theme: { color: '#ef4444' }, // Premium red
                     handler: function () {
-                        toast({ title: "Processing Payment...", description: "Your upgrade is being verified." });
-                        window.location.reload();
+                        toast({ title: "Payment Successful", description: "Your subscription has been updated." });
+                        getUserPlanAction().then(res => {
+                            setUserPlan(res);
+                            setIsBillingLoading(false);
+                        });
+                        if (typeof window !== 'undefined') {
+                            window.dispatchEvent(new CustomEvent('flux:projects-refresh'));
+                        }
                     }
                 };
                 const rzp = new (window as any).Razorpay(options);
@@ -548,8 +608,8 @@ export default function GeneralSettingsPage() {
                 </CardContent>
             </Card>
 
-            {selectedProject?.role === 'admin' && (
-                <Card className="border-destructive/50 bg-destructive/5">
+            {(!selectedProject?.role || selectedProject?.role === 'admin' || selectedProject?.role === 'owner') && (
+                <Card className="border-destructive/50 bg-destructive/5 rounded-none">
                     <CardHeader>
                         <CardTitle className="text-destructive flex items-center gap-2">
                             <AlertTriangle className="h-5 w-5" />
@@ -558,149 +618,356 @@ export default function GeneralSettingsPage() {
                         <CardDescription>These actions are permanent and cannot be undone.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border bg-background p-4 gap-4">
+                        {/* 1. DELETE THIS PROJECT */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-none border border-border bg-background p-4 gap-4">
                             <div>
-                                <Label htmlFor="delete-project">Delete this Project</Label>
+                                <Label htmlFor="delete-project" className="font-semibold text-foreground">Delete this Project</Label>
                                 <p className="text-sm text-muted-foreground">
-                                    This will permanently delete the '{selectedProject?.display_name || ' selected'}' project, including all its tables and data.
+                                    This will permanently delete the '{selectedProject?.display_name || 'selected'}' project, including all its tables and data.
                                 </p>
                             </div>
-                            <AlertDialog onOpenChange={(open) => !open && setDeleteConfirmation('')}>
+                            <AlertDialog onOpenChange={(open) => {
+                                if (!open) {
+                                    setDeleteConfirmation('');
+                                    setDeleteAckChecked(false);
+                                }
+                            }}>
                                 <AlertDialogTrigger asChild>
-                                    <Button variant="destructive" disabled={!selectedProject}>Delete Project</Button>
+                                    <Button variant="destructive" disabled={!selectedProject} className="rounded-none shrink-0 font-medium">
+                                        Delete Project
+                                    </Button>
                                 </AlertDialogTrigger>
-                                <AlertDialogContent className="bg-card border-border">
+                                <AlertDialogContent className="bg-card border-border rounded-none max-w-lg">
                                     <AlertDialogHeader>
-                                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            This action cannot be undone. To confirm, please type{' '}
-                                            <strong className="text-foreground">delete my project {selectedProject?.display_name}</strong> in the box below.
+                                        <AlertDialogTitle className="flex items-center gap-2 text-destructive font-bold">
+                                            <AlertTriangle className="h-5 w-5" />
+                                            Confirm Project Deletion
+                                        </AlertDialogTitle>
+                                        <AlertDialogDescription className="text-xs text-muted-foreground">
+                                            This action is permanent and immediate. The database schema, all tables, rows, relations, and credentials for{' '}
+                                            <strong className="text-foreground">{selectedProject?.display_name}</strong> will be purged.
                                         </AlertDialogDescription>
                                     </AlertDialogHeader>
-                                    <div className="py-2">
-                                        <Input
-                                            id="delete-confirm"
-                                            value={deleteConfirmation}
-                                            onChange={(e) => setDeleteConfirmation(e.target.value)}
-                                            placeholder={`delete my project ${selectedProject?.display_name}`}
-                                            className="font-mono bg-secondary border-border/80"
-                                        />
+
+                                    <div className="space-y-3 py-2">
+                                        <div className="p-2.5 rounded-none bg-destructive/10 border border-destructive/25 text-[11px] text-destructive-foreground font-mono space-y-1">
+                                            <div className="flex justify-between">
+                                                <span className="text-muted-foreground">Project:</span>
+                                                <span className="font-bold text-foreground">{selectedProject?.display_name}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-muted-foreground">Project ID:</span>
+                                                <span>{selectedProject?.project_id}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-muted-foreground">Target Schema:</span>
+                                                <span>{(selectedProject as any)?.schema_name || `flux_tenant_${selectedProject?.project_id}`}</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-start space-x-2.5 pt-1">
+                                            <Checkbox
+                                                id="ack-delete-project"
+                                                checked={deleteAckChecked}
+                                                onCheckedChange={(c) => setDeleteAckChecked(!!c)}
+                                                className="mt-0.5 rounded-none"
+                                            />
+                                            <label htmlFor="ack-delete-project" className="text-xs text-muted-foreground cursor-pointer select-none leading-tight">
+                                                I understand that all tables, rows, and schema data will be permanently purged and cannot be recovered.
+                                            </label>
+                                        </div>
+
+                                        <div className="space-y-1.5 pt-1">
+                                            <div className="flex items-center justify-between text-xs">
+                                                <span className="text-muted-foreground">
+                                                    Type <strong className="text-foreground font-mono">{selectedProject?.display_name}</strong>:
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setDeleteConfirmation(selectedProject?.display_name || '');
+                                                        setDeleteAckChecked(true);
+                                                    }}
+                                                    className="text-[11px] font-mono text-emerald-400 hover:text-emerald-300 underline cursor-pointer flex items-center gap-1 font-semibold"
+                                                >
+                                                    <Sparkles className="h-3 w-3" /> Quick-Fill & Confirm
+                                                </button>
+                                            </div>
+                                            <Input
+                                                id="delete-confirm"
+                                                value={deleteConfirmation}
+                                                onChange={(e) => setDeleteConfirmation(e.target.value)}
+                                                placeholder={selectedProject?.display_name}
+                                                className="font-mono bg-secondary/70 border-border rounded-none text-xs h-9 focus-visible:ring-destructive/50"
+                                            />
+                                        </div>
                                     </div>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel className="bg-muted border-border/80">Cancel</AlertDialogCancel>
-                                        <AlertDialogAction
+
+                                    <AlertDialogFooter className="pt-2">
+                                        <AlertDialogCancel disabled={isDeletingProject} className="rounded-none text-xs border-border">Cancel</AlertDialogCancel>
+                                        <Button
                                             onClick={handleDeleteProject}
-                                            disabled={deleteConfirmation !== `delete my project ${selectedProject?.display_name}`}
-                                            className="bg-destructive hover:bg-destructive/90"
+                                            disabled={
+                                                !deleteAckChecked ||
+                                                isDeletingProject ||
+                                                !(
+                                                    deleteConfirmation.trim().toLowerCase() === (selectedProject?.display_name || '').toLowerCase() ||
+                                                    deleteConfirmation.trim().toLowerCase() === `delete ${(selectedProject?.display_name || '').toLowerCase()}` ||
+                                                    deleteConfirmation.trim().toLowerCase() === `delete my project ${(selectedProject?.display_name || '').toLowerCase()}` ||
+                                                    deleteConfirmation.trim().toLowerCase() === (selectedProject?.project_id || '').toLowerCase()
+                                                )
+                                            }
+                                            className="rounded-none text-xs bg-destructive hover:bg-destructive/90 text-white font-semibold"
                                         >
-                                            Continue
-                                        </AlertDialogAction>
+                                            {isDeletingProject ? (
+                                                <>
+                                                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                                                    Deleting Project...
+                                                </>
+                                            ) : (
+                                                'Delete Project'
+                                            )}
+                                        </Button>
                                     </AlertDialogFooter>
                                 </AlertDialogContent>
                             </AlertDialog>
                         </div>
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border bg-background p-4 gap-4">
+
+                        {/* 2. SUSPEND / RESUME PROJECT */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-none border border-border bg-background p-4 gap-4">
                             <div>
-                                <Label htmlFor="suspend-project">{selectedProject?.status === 'suspended' ? 'Resume Project' : 'Suspend Project'}</Label>
+                                <Label htmlFor="suspend-project" className="font-semibold text-foreground">{selectedProject?.status === 'suspended' ? 'Resume Project' : 'Suspend Project'}</Label>
                                 <p className="text-sm text-muted-foreground">
                                     {selectedProject?.status === 'suspended'
                                         ? `Re-enable database access and API operations for '${selectedProject?.display_name}'.`
                                         : `Temporarily pause all database access for the '${selectedProject?.display_name}' project specifically.`}
                                 </p>
                             </div>
-                            <AlertDialog>
+                            <AlertDialog onOpenChange={(open) => !open && setSuspendProjectAckChecked(false)}>
                                 <AlertDialogTrigger asChild>
-                                    <Button variant={selectedProject?.status === 'suspended' ? "default" : "destructive"} disabled={!selectedProject}>
+                                    <Button variant={selectedProject?.status === 'suspended' ? "default" : "destructive"} disabled={!selectedProject || isTogglingProjectSuspension} className="rounded-none shrink-0 font-medium">
                                         {selectedProject?.status === 'suspended' ? 'Resume Project' : 'Suspend Project'}
                                     </Button>
                                 </AlertDialogTrigger>
-                                <AlertDialogContent className="bg-card border-border">
+                                <AlertDialogContent className="bg-card border-border rounded-none max-w-lg">
                                     <AlertDialogHeader>
-                                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                        <AlertDialogDescription>
+                                        <AlertDialogTitle className="flex items-center gap-2">
+                                            <AlertTriangle className="h-5 w-5 text-amber-500" />
+                                            {selectedProject?.status === 'suspended' ? 'Resume Database Access' : 'Suspend Database Access'}
+                                        </AlertDialogTitle>
+                                        <AlertDialogDescription className="text-xs text-muted-foreground">
                                             {selectedProject?.status === 'suspended'
-                                                ? `This will immediately re-enable database access for the project '${selectedProject?.display_name}'.`
-                                                : `This will temporarily halt all queries and API access for the project '${selectedProject?.display_name}'. This does not affect other projects in your organization.`}
+                                                ? `This will immediately restore queries and API traffic for project '${selectedProject?.display_name}'.`
+                                                : `This will reject all incoming queries and API calls for project '${selectedProject?.display_name}'. Data will not be deleted.`}
                                         </AlertDialogDescription>
                                     </AlertDialogHeader>
+
+                                    <div className="space-y-2 py-2">
+                                        <div className="flex items-start space-x-2.5">
+                                            <Checkbox
+                                                id="ack-suspend-project"
+                                                checked={suspendProjectAckChecked}
+                                                onCheckedChange={(c) => setSuspendProjectAckChecked(!!c)}
+                                                className="mt-0.5 rounded-none"
+                                            />
+                                            <label htmlFor="ack-suspend-project" className="text-xs text-muted-foreground cursor-pointer select-none leading-tight">
+                                                I confirm I want to {selectedProject?.status === 'suspended' ? 'resume database operations' : 'suspend query traffic for this project'}.
+                                            </label>
+                                        </div>
+                                    </div>
+
                                     <AlertDialogFooter>
-                                        <AlertDialogCancel className="bg-muted border-border/80">Cancel</AlertDialogCancel>
-                                        <AlertDialogAction
+                                        <AlertDialogCancel disabled={isTogglingProjectSuspension} className="rounded-none text-xs border-border">Cancel</AlertDialogCancel>
+                                        <Button
                                             onClick={() => handleToggleProjectSuspension(selectedProject!.project_id, selectedProject!.status || 'active')}
-                                            className={selectedProject?.status === 'suspended' ? "bg-primary" : "bg-destructive hover:bg-destructive/90"}
+                                            disabled={!suspendProjectAckChecked || isTogglingProjectSuspension}
+                                            className={cn("rounded-none text-xs font-semibold", selectedProject?.status === 'suspended' ? "bg-primary" : "bg-destructive hover:bg-destructive/90")}
                                         >
-                                            Continue
-                                        </AlertDialogAction>
+                                            {isTogglingProjectSuspension ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> Updating...</> : 'Confirm'}
+                                        </Button>
                                     </AlertDialogFooter>
                                 </AlertDialogContent>
                             </AlertDialog>
                         </div>
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border bg-background p-4 gap-4">
+
+                        {/* 3. SUSPEND / RESUME ORGANIZATION */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-none border border-border bg-background p-4 gap-4">
                             <div>
-                                <Label htmlFor="suspend-org">{userPlan.status === 'suspended' ? 'Resume Organization' : 'Suspend Organization'}</Label>
+                                <Label htmlFor="suspend-org" className="font-semibold text-foreground">{userPlan.status === 'suspended' ? 'Resume Organization' : 'Suspend Organization'}</Label>
                                 <p className="text-sm text-muted-foreground">
                                     {userPlan.status === 'suspended'
                                         ? 'Re-enable database access and background webhooks.'
                                         : 'Temporarily pause all database read/write access and disable webhook operations without deleting data.'}
                                 </p>
                             </div>
-                            <AlertDialog onOpenChange={(open) => !open && setSuspendConfirmation('')}>
+                            <AlertDialog onOpenChange={(open) => {
+                                if (!open) {
+                                    setSuspendConfirmation('');
+                                    setSuspendOrgAckChecked(false);
+                                }
+                            }}>
                                 <AlertDialogTrigger asChild>
-                                    <Button variant={userPlan.status === 'suspended' ? "default" : "destructive"} disabled={isSuspending}>
-                                        {userPlan.status === 'suspended' ? 'Resume Organization' : (isSuspending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Suspend Organization')}
+                                    <Button variant={userPlan.status === 'suspended' ? "default" : "destructive"} disabled={isSuspending} className="rounded-none shrink-0 font-medium">
+                                        {userPlan.status === 'suspended' ? 'Resume Organization' : 'Suspend Organization'}
                                     </Button>
                                 </AlertDialogTrigger>
-                                <AlertDialogContent className="bg-card border-border">
+                                <AlertDialogContent className="bg-card border-border rounded-none max-w-lg">
                                     <AlertDialogHeader>
-                                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                        <AlertDialogDescription>
+                                        <AlertDialogTitle className="flex items-center gap-2">
+                                            <AlertTriangle className="h-5 w-5 text-amber-500" />
+                                            {userPlan.status === 'suspended' ? 'Resume Entire Organization' : 'Suspend Entire Organization'}
+                                        </AlertDialogTitle>
+                                        <AlertDialogDescription className="text-xs text-muted-foreground">
                                             {userPlan.status === 'suspended'
-                                                ? 'This will immediately re-enable your database and webhooks. You will be able to read and write data again.'
-                                                : <span>This will temporarily halt all queries, APIs, and webhooks for all your projects. To confirm, please type <strong className="text-foreground">suspend my org</strong> in the box below.</span>}
+                                                ? 'This will immediately re-enable database operations and webhooks across all projects.'
+                                                : 'This will pause all database read/write queries and webhooks across all your organization projects.'}
                                         </AlertDialogDescription>
                                     </AlertDialogHeader>
-                                    {userPlan.status !== 'suspended' && (
-                                        <div className="py-2">
-                                            <Input
-                                                value={suspendConfirmation}
-                                                onChange={(e) => setSuspendConfirmation(e.target.value)}
-                                                placeholder="suspend my org"
-                                                className="font-mono bg-secondary border-border/80"
+
+                                    <div className="space-y-3 py-2">
+                                        <div className="flex items-start space-x-2.5">
+                                            <Checkbox
+                                                id="ack-suspend-org"
+                                                checked={suspendOrgAckChecked}
+                                                onCheckedChange={(c) => setSuspendOrgAckChecked(!!c)}
+                                                className="mt-0.5 rounded-none"
                                             />
+                                            <label htmlFor="ack-suspend-org" className="text-xs text-muted-foreground cursor-pointer select-none leading-tight">
+                                                I understand this halts database access across all projects in my account.
+                                            </label>
                                         </div>
-                                    )}
+
+                                        {userPlan.status !== 'suspended' && (
+                                            <div className="space-y-1.5 pt-1">
+                                                <div className="flex items-center justify-between text-xs">
+                                                    <span className="text-muted-foreground">Type <strong className="text-foreground font-mono">suspend my org</strong>:</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSuspendConfirmation('suspend my org');
+                                                            setSuspendOrgAckChecked(true);
+                                                        }}
+                                                        className="text-[11px] font-mono text-emerald-400 hover:text-emerald-300 underline cursor-pointer flex items-center gap-1 font-semibold"
+                                                    >
+                                                        <Sparkles className="h-3 w-3" /> Quick-Fill & Confirm
+                                                    </button>
+                                                </div>
+                                                <Input
+                                                    value={suspendConfirmation}
+                                                    onChange={(e) => setSuspendConfirmation(e.target.value)}
+                                                    placeholder="suspend my org"
+                                                    className="font-mono bg-secondary/70 border-border rounded-none text-xs h-9 focus-visible:ring-destructive/50"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+
                                     <AlertDialogFooter>
-                                        <AlertDialogCancel className="bg-muted border-border/80">Cancel</AlertDialogCancel>
-                                        <AlertDialogAction
+                                        <AlertDialogCancel disabled={isSuspending} className="rounded-none text-xs border-border">Cancel</AlertDialogCancel>
+                                        <Button
                                             onClick={handleToggleSuspension}
-                                            disabled={userPlan.status !== 'suspended' && suspendConfirmation !== 'suspend my org'}
-                                            className={userPlan.status === 'suspended' ? "bg-primary" : "bg-destructive hover:bg-destructive/90"}
+                                            disabled={
+                                                (userPlan.status !== 'suspended' && (!suspendOrgAckChecked || suspendConfirmation.trim().toLowerCase() !== 'suspend my org')) ||
+                                                isSuspending
+                                            }
+                                            className={cn("rounded-none text-xs font-semibold", userPlan.status === 'suspended' ? "bg-primary" : "bg-destructive hover:bg-destructive/90")}
                                         >
-                                            Continue
-                                        </AlertDialogAction>
+                                            {isSuspending ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> Updating...</> : 'Confirm'}
+                                        </Button>
                                     </AlertDialogFooter>
                                 </AlertDialogContent>
                             </AlertDialog>
                         </div>
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border bg-background p-4 gap-4">
+
+                        {/* 4. CLEAR ORGANIZATION */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-none border border-border bg-background p-4 gap-4">
                             <div>
-                                <Label htmlFor="clear-org">Clear Organization</Label>
+                                <Label htmlFor="clear-org" className="font-semibold text-foreground">Clear Organization</Label>
                                 <p className="text-sm text-muted-foreground">This will permanently delete all projects and data associated with your account.</p>
                             </div>
-                            <AlertDialog>
+                            <AlertDialog onOpenChange={(open) => {
+                                if (!open) {
+                                    setClearOrgConfirmation('');
+                                    setClearOrgAckChecked(false);
+                                }
+                            }}>
                                 <AlertDialogTrigger asChild>
-                                    <Button variant="destructive" >Clear Organization Data</Button>
+                                    <Button variant="destructive" disabled={isClearingOrg} className="rounded-none shrink-0 font-medium">Clear Organization Data</Button>
                                 </AlertDialogTrigger>
-                                <AlertDialogContent className="bg-card border-border">
+                                <AlertDialogContent className="bg-card border-border rounded-none max-w-lg">
                                     <AlertDialogHeader>
-                                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            This is your final confirmation. This action will permanently delete your entire account, all projects, and all data. This cannot be undone.
+                                        <AlertDialogTitle className="flex items-center gap-2 text-destructive font-bold">
+                                            <AlertTriangle className="h-5 w-5" />
+                                            Clear Organization & Account
+                                        </AlertDialogTitle>
+                                        <AlertDialogDescription className="text-xs text-muted-foreground">
+                                            This is your final confirmation. This action will permanently delete your entire account, all projects, schemas, tables, and settings.
                                         </AlertDialogDescription>
                                     </AlertDialogHeader>
+
+                                    <div className="space-y-3 py-2">
+                                        <div className="p-2.5 rounded-none bg-destructive/10 border border-destructive/25 text-[11px] text-destructive-foreground font-mono">
+                                            WARNING: All databases across all projects will be purged. You will be immediately logged out.
+                                        </div>
+
+                                        <div className="flex items-start space-x-2.5">
+                                            <Checkbox
+                                                id="ack-clear-org"
+                                                checked={clearOrgAckChecked}
+                                                onCheckedChange={(c) => setClearOrgAckChecked(!!c)}
+                                                className="mt-0.5 rounded-none"
+                                            />
+                                            <label htmlFor="ack-clear-org" className="text-xs text-muted-foreground cursor-pointer select-none leading-tight">
+                                                I acknowledge that all my projects, databases, and account credentials will be permanently destroyed.
+                                            </label>
+                                        </div>
+
+                                        <div className="space-y-1.5 pt-1">
+                                            <div className="flex items-center justify-between text-xs">
+                                                <span className="text-muted-foreground">Type <strong className="text-foreground font-mono">CLEAR ALL DATA</strong>:</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setClearOrgConfirmation('CLEAR ALL DATA');
+                                                        setClearOrgAckChecked(true);
+                                                    }}
+                                                    className="text-[11px] font-mono text-destructive hover:text-destructive/80 underline cursor-pointer flex items-center gap-1 font-semibold"
+                                                >
+                                                    <Sparkles className="h-3 w-3" /> Quick-Fill & Confirm
+                                                </button>
+                                            </div>
+                                            <Input
+                                                value={clearOrgConfirmation}
+                                                onChange={(e) => setClearOrgConfirmation(e.target.value)}
+                                                placeholder="CLEAR ALL DATA"
+                                                className="font-mono bg-secondary/70 border-border rounded-none text-xs h-9 focus-visible:ring-destructive/50"
+                                            />
+                                        </div>
+                                    </div>
+
                                     <AlertDialogFooter>
-                                        <AlertDialogCancel className="bg-muted border-border/80">Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={handleClearOrganization} className="bg-destructive hover:bg-destructive/90">I understand, delete everything</AlertDialogAction>
+                                        <AlertDialogCancel disabled={isClearingOrg} className="rounded-none text-xs border-border">Cancel</AlertDialogCancel>
+                                        <Button
+                                            onClick={handleClearOrganization}
+                                            disabled={
+                                                !clearOrgAckChecked ||
+                                                isClearingOrg ||
+                                                !(
+                                                    clearOrgConfirmation.trim().toUpperCase() === 'CLEAR ALL DATA' ||
+                                                    clearOrgConfirmation.trim().toLowerCase() === 'clear organization'
+                                                )
+                                            }
+                                            className="rounded-none text-xs bg-destructive hover:bg-destructive/90 text-white font-semibold"
+                                        >
+                                            {isClearingOrg ? (
+                                                <>
+                                                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                                                    Deleting Everything...
+                                                </>
+                                            ) : (
+                                                'I understand, delete everything'
+                                            )}
+                                        </Button>
                                     </AlertDialogFooter>
                                 </AlertDialogContent>
                             </AlertDialog>

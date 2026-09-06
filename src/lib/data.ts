@@ -29,9 +29,17 @@ export interface Project {
     ai_allow_destructive?: boolean;
     ai_schema_inference?: boolean;
     status?: 'active' | 'suspended';
-    connection_type?: 'internal' | 'external_db' | 'external_server';
+    connection_type?: 'internal' | 'external_db' | 'external_server' | 'serverless';
     connection_config?: any;
     active_db?: string;
+    github_repo?: string;
+    github_branch?: string;
+    github_module_path?: string;
+    imported_at?: string;
+    last_synced_at?: string;
+    import_source?: string;
+    schema_name?: string;
+    is_serverless?: boolean;
 }
 
 export interface Table {
@@ -159,6 +167,7 @@ export async function getProjectsForCurrentUser(overrideUserId?: string): Promis
         const pool = getPgPool();
         const sqlQuery = `
             SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.ai_allow_destructive, p.ai_schema_inference, p.status, p.creator_role, p.billing_preference,
+                   p.connection_type, p.connection_config, p.schema_name, p.is_serverless, p.github_repo,
                    COALESCE(pm.role, CASE WHEN p.user_id = $1::text THEN 'admin' ELSE 'developer' END) as role
             FROM fluxbase_global.projects p
             LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $1::text
@@ -192,7 +201,12 @@ export async function getProjectsForCurrentUser(overrideUserId?: string): Promis
             billing_preference: row.billing_preference || 'monthly',
             ai_allow_destructive: row.ai_allow_destructive ?? false,
             ai_schema_inference: row.ai_schema_inference ?? true,
-            status: row.status || 'active'
+            status: row.status || 'active',
+            connection_type: row.connection_type || 'internal',
+            connection_config: row.connection_config || {},
+            schema_name: row.schema_name,
+            is_serverless: row.is_serverless,
+            github_repo: row.github_repo
         }));
     } catch (error) {
         console.error("Error fetching projects:", error);
@@ -239,9 +253,44 @@ async function ensureMigration(pool: any) {
     try {
         await pool.query(`
             ALTER TABLE fluxbase_global.projects 
-            ADD COLUMN IF NOT EXISTS connection_type VARCHAR(50) DEFAULT 'internal',
-            ADD COLUMN IF NOT EXISTS connection_config JSONB DEFAULT '{}'::jsonb,
-            ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '';
+                ADD COLUMN IF NOT EXISTS is_serverless BOOLEAN DEFAULT false,
+                ADD COLUMN IF NOT EXISTS schema_name VARCHAR(128),
+                ADD COLUMN IF NOT EXISTS connection_type VARCHAR(50) DEFAULT 'internal',
+                ADD COLUMN IF NOT EXISTS connection_config JSONB DEFAULT '{}'::jsonb,
+                ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '',
+                ADD COLUMN IF NOT EXISTS github_repo VARCHAR(255),
+                ADD COLUMN IF NOT EXISTS github_branch VARCHAR(128),
+                ADD COLUMN IF NOT EXISTS github_module_path VARCHAR(255),
+                ADD COLUMN IF NOT EXISTS imported_at TIMESTAMP WITH TIME ZONE,
+                ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP WITH TIME ZONE,
+                ADD COLUMN IF NOT EXISTS import_source VARCHAR(32);
+
+            CREATE TABLE IF NOT EXISTS fluxbase_global.github_tokens (
+                user_id VARCHAR(64) PRIMARY KEY,
+                encrypted_token TEXT NOT NULL,
+                token_iv VARCHAR(32) NOT NULL,
+                scopes TEXT DEFAULT 'repo',
+                github_username VARCHAR(255),
+                connected_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                last_used_at TIMESTAMP WITH TIME ZONE
+            );
+
+            CREATE TABLE IF NOT EXISTS fluxbase_global.import_logs (
+                id SERIAL PRIMARY KEY,
+                project_id VARCHAR(32) NOT NULL,
+                user_id VARCHAR(64) NOT NULL,
+                repo_full_name VARCHAR(255) NOT NULL,
+                branch VARCHAR(128) DEFAULT 'main',
+                module_path VARCHAR(255) DEFAULT 'fluxbase',
+                file_name VARCHAR(255) NOT NULL,
+                file_sha VARCHAR(64),
+                status VARCHAR(16) NOT NULL,
+                statements_executed INTEGER DEFAULT 0,
+                error_message TEXT,
+                execution_time_ms INTEGER,
+                executed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS idx_import_logs_project ON fluxbase_global.import_logs(project_id);
 
             CREATE TABLE IF NOT EXISTS fluxbase_global.plans (
                 id SERIAL PRIMARY KEY,
@@ -379,7 +428,7 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
                 await ensureMigration(pool);
                 const result = await pool.query(`
                     SELECT p.project_id, p.display_name, p.created_at, p.dialect, p.timezone, p.user_id as owner_id, p.ai_allow_destructive, p.ai_schema_inference, p.status, p.creator_role, p.billing_preference,
-                           p.connection_type, p.connection_config,
+                           p.connection_type, p.connection_config, p.schema_name, p.is_serverless, p.github_repo, p.github_branch, p.github_module_path, p.imported_at, p.last_synced_at, p.import_source,
                            COALESCE(pm.role, CASE WHEN p.user_id = $2::text THEN 'admin' ELSE NULL END) as role
                     FROM fluxbase_global.projects p
                     LEFT JOIN fluxbase_global.project_members pm ON p.project_id = pm.project_id AND pm.user_id = $2::text
@@ -405,7 +454,15 @@ export async function getProjectById(projectId: string, explicitUserId?: string)
                     ai_schema_inference: row.ai_schema_inference ?? true,
                     status: row.status || 'active',
                     connection_type: row.connection_type || 'internal',
-                    connection_config: row.connection_config || {}
+                    connection_config: row.connection_config || {},
+                    schema_name: row.schema_name,
+                    is_serverless: row.is_serverless,
+                    github_repo: row.github_repo,
+                    github_branch: row.github_branch,
+                    github_module_path: row.github_module_path,
+                    imported_at: row.imported_at ? row.imported_at.toISOString() : undefined,
+                    last_synced_at: row.last_synced_at ? row.last_synced_at.toISOString() : undefined,
+                    import_source: row.import_source
                 };
                 _projectCache.set(cacheKey, newProject);
                 await redis.set(redisKey, newProject, { ex: 300 }); // Cache in Redis for 5 minutes
@@ -645,7 +702,10 @@ export async function createProject(
         dialect: dialect as any,
         timezone: finalTimezone,
         connection_type: connectionType,
-        connection_config: connectionConfig
+        connection_config: connectionConfig,
+        role: 'admin',
+        schema_name: `flux_tenant_${projectId}`,
+        is_serverless: true
     };
 
     // [AWS NATIVE MIGRATION] Automatically provision a dedicated Schema/DB for this tenant.
@@ -752,9 +812,17 @@ export async function deleteProject(projectId: string) {
             await mysqlPool.query(safeSql`DROP DATABASE IF EXISTS ${safeDbName}`);
         }
     } else {
-        if (project.connection_type === 'internal') {
+        if (project.connection_type === 'internal' || (project as any).is_serverless || (project as any).schema_name) {
             const safeSchemaName = quotePgProjectSchemaSafe(projectId);
             await pool.query(safeSql`DROP SCHEMA IF EXISTS ${safeSchemaName} CASCADE`);
+
+            if ((project as any).schema_name) {
+                const targetSafe = `"${(project as any).schema_name.replace(/"/g, '""')}"`;
+                await pool.query(`DROP SCHEMA IF EXISTS ${targetSafe} CASCADE`);
+            }
+
+            const tenantSchema = `flux_tenant_${projectId}`;
+            await pool.query(`DROP SCHEMA IF EXISTS "${tenantSchema}" CASCADE`);
         }
     }
 
@@ -855,15 +923,43 @@ export async function getTablesForProject(projectId: string, explicitUserId?: st
                 SELECT tablename as table_name 
                 FROM pg_tables 
                 WHERE schemaname = $1
-                AND tablename NOT LIKE '_flux_internal_%'
+                AND tablename NOT LIKE '_flux_%'
             `, [schemaName]);
+
+            // Fallback 1: If 0 tables found and schemaName is project_*, check flux_tenant_* or vice-versa
+            if (result.rows.length === 0) {
+                const altSchema = schemaName.startsWith('project_')
+                    ? `flux_tenant_${project.project_id}`
+                    : `project_${project.project_id}`;
+                if (altSchema !== schemaName) {
+                    const altResult = await pool.query(`
+                        SELECT tablename as table_name 
+                        FROM pg_tables 
+                        WHERE schemaname = $1
+                        AND tablename NOT LIKE '_flux_%'
+                    `, [altSchema]);
+                    if (altResult.rows.length > 0) {
+                        result = altResult;
+                        try {
+                            const globalPool = getPgPool();
+                            await globalPool.query(
+                                'UPDATE fluxbase_global.projects SET schema_name = $1 WHERE project_id = $2',
+                                [altSchema, project.project_id]
+                            );
+                            project.schema_name = altSchema;
+                        } catch (syncErr) {
+                            console.warn('Failed to sync schema_name:', syncErr);
+                        }
+                    }
+                }
+            }
 
             if (isExternal && result.rows.length === 0 && schemaName !== 'public') {
                 result = await pool.query(`
                     SELECT tablename as table_name 
                     FROM pg_tables 
                     WHERE schemaname = 'public'
-                    AND tablename NOT LIKE '_flux_internal_%'
+                    AND tablename NOT LIKE '_flux_%'
                 `);
             }
 
@@ -1186,6 +1282,34 @@ export async function getColumnsForTable(projectId: string, tableId: string, exp
                 `, [schemaName, safeTableName]);
             }
 
+            if (result.rows.length === 0) {
+                const altSchema = schemaName.startsWith('project_')
+                    ? `flux_tenant_${project.project_id}`
+                    : `project_${project.project_id}`;
+                if (altSchema !== schemaName) {
+                    try {
+                        const altResult = await pool.query(`
+                            SELECT
+                                a.attname AS column_name,
+                                format_type(a.atttypid, a.atttypmod) AS data_type,
+                                NOT a.attnotnull AS is_nullable,
+                                pg_get_expr(d.adbin, d.adrelid) AS column_default,
+                                COALESCE(i.indisprimary, false) AS is_primary_key
+                            FROM pg_attribute a
+                            JOIN pg_class c ON c.oid = a.attrelid
+                            JOIN pg_namespace n ON n.oid = c.relnamespace
+                            LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+                            LEFT JOIN pg_index i ON i.indrelid = a.attrelid AND a.attnum = ANY(i.indkey) AND i.indisprimary
+                            WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped
+                            ORDER BY a.attnum
+                        `, [altSchema, safeTableName]);
+                        if (altResult.rows.length > 0) {
+                            result = altResult;
+                        }
+                    } catch {}
+                }
+            }
+
             if (isExternal && result.rows.length === 0 && schemaName !== 'public') {
                 result = await pool.query(`
                     SELECT 
@@ -1415,8 +1539,8 @@ export async function updateColumn(projectId: string, tableId: string, columnId:
 
 // --- Constraints ---
 
-export async function getConstraintsForProject(projectId: string): Promise<Constraint[]> {
-    const userId = await getCurrentUserId();
+export async function getConstraintsForProject(projectId: string, explicitUserId?: string): Promise<Constraint[]> {
+    const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
     const project = await getProjectById(projectId, userId);
@@ -1466,7 +1590,33 @@ export async function getConstraintsForProject(projectId: string): Promise<Const
                 WHERE tc.table_schema = $1 AND tc.constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY')
             `, [schemaName]);
 
-            return result.rows;
+            let rows = result.rows;
+            if (rows.length === 0) {
+                const altSchema = schemaName.startsWith('project_')
+                    ? `flux_tenant_${project.project_id}`
+                    : `project_${project.project_id}`;
+                if (altSchema !== schemaName) {
+                    try {
+                        const altResult = await pool.query(`
+                            SELECT 
+                                tc.table_name as table_id,
+                                tc.constraint_name as constraint_id, 
+                                tc.constraint_type as type,
+                                kcu.column_name as column_names, 
+                                ccu.table_name AS referenced_table_id,
+                                ccu.column_name AS referenced_column_names
+                            FROM information_schema.table_constraints AS tc 
+                            JOIN information_schema.key_column_usage AS kcu
+                              ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+                            LEFT JOIN information_schema.constraint_column_usage AS ccu
+                              ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
+                            WHERE tc.table_schema = $1 AND tc.constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY')
+                        `, [altSchema]);
+                        if (altResult.rows.length > 0) rows = altResult.rows;
+                    } catch {}
+                }
+            }
+            return rows;
         }
     } catch (error) {
         console.error("Native Get Project Constraints Error:", error);
@@ -1474,8 +1624,8 @@ export async function getConstraintsForProject(projectId: string): Promise<Const
     }
 }
 
-export async function getConstraintsForTable(projectId: string, tableId: string): Promise<Constraint[]> {
-    const userId = await getCurrentUserId();
+export async function getConstraintsForTable(projectId: string, tableId: string, explicitUserId?: string): Promise<Constraint[]> {
+    const userId = explicitUserId || await getCurrentUserId();
     if (!userId) throw new FluxbaseError("Unauthorized", ERROR_CODES.UNAUTHORIZED, 401);
 
     const project = await getProjectById(projectId, userId);
@@ -1519,7 +1669,7 @@ export async function getConstraintsForTable(projectId: string, tableId: string)
         } else {
             const pool = await getTenantPgPool(project);
             const { schemaName } = getProjectDbAndSchema(project);
-            const result = await pool.query(`
+            let result = await pool.query(`
                 SELECT 
                     tc.constraint_name as constraint_id,
                     tc.constraint_type as type,
@@ -1538,6 +1688,36 @@ export async function getConstraintsForTable(projectId: string, tableId: string)
                 WHERE tc.table_schema = $1 AND tc.table_name = $2
                   AND tc.constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY')
             `, [schemaName, safeTableName]);
+
+            if (result.rows.length === 0) {
+                const altSchema = schemaName.startsWith('project_')
+                    ? `flux_tenant_${project.project_id}`
+                    : `project_${project.project_id}`;
+                if (altSchema !== schemaName) {
+                    try {
+                        const altResult = await pool.query(`
+                            SELECT 
+                                tc.constraint_name as constraint_id,
+                                tc.constraint_type as type,
+                                kcu.column_name as column_names,
+                                ccu.table_name as referenced_table_id,
+                                ccu.column_name as referenced_column_names,
+                                rc.delete_rule as on_delete,
+                                rc.update_rule as on_update
+                            FROM information_schema.table_constraints tc
+                            JOIN information_schema.key_column_usage kcu
+                              ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema AND tc.table_name = kcu.table_name
+                            LEFT JOIN information_schema.referential_constraints rc
+                              ON tc.constraint_name = rc.constraint_name AND tc.table_schema = rc.constraint_schema
+                            LEFT JOIN information_schema.constraint_column_usage ccu
+                              ON rc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema
+                            WHERE tc.table_schema = $1 AND tc.table_name = $2
+                              AND tc.constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY')
+                        `, [altSchema, safeTableName]);
+                        if (altResult.rows.length > 0) result = altResult;
+                    } catch {}
+                }
+            }
 
             return result.rows.map(row => ({
                 constraint_id: row.constraint_id,

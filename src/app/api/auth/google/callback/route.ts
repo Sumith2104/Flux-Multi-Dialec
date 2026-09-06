@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPgPool } from '@/lib/pg';
-import { createSessionCookie, createRefreshToken } from '@/lib/auth';
+import { createSessionCookie, createSessionToken, createRefreshToken } from '@/lib/auth';
 import { sendWelcomeEmail } from '@/lib/email';
 import { getOAuthConfig, getBaseOrigin, decodeOAuthState, isAllowedOrigin } from '@/lib/oauth-config';
 import crypto from 'crypto';
@@ -108,14 +108,14 @@ export async function GET(request: NextRequest) {
         if (destinationOrigin !== currentOrigin) {
             const magicToken = crypto.randomBytes(32).toString('hex');
             const otpCode = crypto.randomInt(100000, 999999).toString();
-            const expiresAt = new Date(Date.now() + 2 * 60 * 1000); // 2 minutes
+            const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
             await pool.query(`
                 CREATE TABLE IF NOT EXISTS fluxbase_global.magic_logins (
                     email VARCHAR(255) PRIMARY KEY,
                     otp_code VARCHAR(10) NOT NULL,
                     magic_token VARCHAR(255) NOT NULL,
-                    expires_at TIMESTAMP NOT NULL,
+                    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 )
             `);
@@ -140,13 +140,20 @@ export async function GET(request: NextRequest) {
 
         // 6. Same domain flow: create active session cookie identically to native login systems
         await createSessionCookie(userId, true);
-
-        // Set refresh token cookie
+        const sessionToken = await createSessionToken(userId, true);
         const refreshToken = await createRefreshToken(userId);
         const isProd = process.env.NODE_ENV === 'production';
 
         // Redirect seamlessly to projects dashboard
         const response = NextResponse.redirect(new URL(redirectPath, currentOrigin));
+        response.cookies.set('session', sessionToken, {
+            expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            maxAge: 7 * 24 * 60 * 60,
+            httpOnly: true,
+            secure: isProd,
+            path: '/',
+            sameSite: 'lax',
+        });
         response.cookies.set('refresh_token', refreshToken, {
             httpOnly: true,
             secure: isProd,

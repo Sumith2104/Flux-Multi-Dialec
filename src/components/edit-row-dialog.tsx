@@ -1,6 +1,7 @@
 
 'use client';
 
+import { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -47,22 +48,36 @@ export function EditRowDialog({
   constraints,
 }: EditRowDialogProps) {
   const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleAction = async (formData: FormData) => {
-    const result = await editRowAction(formData);
-    if (result.success) {
-      toast({
-        title: 'Success',
-        description: 'Row updated successfully.',
-      });
-      setIsOpen(false);
-      onRowUpdated();
-    } else {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const formData = new FormData(e.currentTarget);
+      const result = await editRowAction(formData);
+      if (result.success) {
+        toast({
+          title: 'Success',
+          description: 'Row updated successfully.',
+        });
+        setIsOpen(false);
+        onRowUpdated();
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: result.error || 'Failed to update row.',
+        });
+      }
+    } catch (err: any) {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: result.error || 'Failed to update row.',
+        description: err.message || 'Failed to update row.',
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -143,7 +158,7 @@ export function EditRowDialog({
             Modify the values and click save.
           </DialogDescription>
         </DialogHeader>
-        <form action={handleAction}>
+        <form onSubmit={handleSubmit}>
           <input type="hidden" name="projectId" value={projectId} />
           <input type="hidden" name="tableId" value={tableId} />
           <input type="hidden" name="tableName" value={tableName} />
@@ -164,8 +179,10 @@ export function EditRowDialog({
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsOpen(false)}>Cancel</Button>
-            <SubmitButton type="submit">Save Changes</SubmitButton>
+            <Button variant="outline" disabled={isSubmitting} onClick={() => setIsOpen(false)}>Cancel</Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : 'Save Changes'}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

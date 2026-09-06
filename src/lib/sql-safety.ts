@@ -23,14 +23,20 @@ export function quotePgProjectSchema(projectId: string): string {
     if (typeof projectId !== 'string' || !PG_PROJECT_ID_RE.test(projectId)) {
         throw new FluxbaseError('Invalid projectId.', ERROR_CODES.BAD_REQUEST, 400);
     }
-    return `"project_${projectId.replace(/"/g, '""')}"`;
+    const schema = projectId.startsWith('flux_tenant_') || projectId.startsWith('project_')
+        ? projectId
+        : `project_${projectId}`;
+    return `"${schema.replace(/"/g, '""')}"`;
 }
 
 export function quoteMysqlProjectSchema(projectId: string): string {
     if (typeof projectId !== 'string' || !PG_PROJECT_ID_RE.test(projectId)) {
         throw new FluxbaseError('Invalid projectId.', ERROR_CODES.BAD_REQUEST, 400);
     }
-    return `\`project_${projectId.replace(/`/g, '``')}\``;
+    const schema = projectId.startsWith('flux_tenant_') || projectId.startsWith('project_')
+        ? projectId
+        : `project_${projectId}`;
+    return `\`${schema.replace(/`/g, '``')}\``;
 }
 
 export function validateRlsCommand(command: unknown): string {

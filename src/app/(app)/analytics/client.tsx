@@ -219,7 +219,6 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
             toast({ title: 'Success', description: `Generated ${json.widgets.length} widget(s) successfully!` });
             setAiOpen(false);
             setAiPrompt('');
-            router.refresh(); 
         } catch (e: any) {
             toast({ title: 'Generation Failed', description: e.message, variant: 'destructive' });
         } finally {
@@ -280,7 +279,15 @@ export default function AnalyticsDashboardClient({ projectId, initialWidgets }: 
                 </div>
                 
                 <div className="flex items-center gap-2">
-                    <ManualBuilder projectId={projectId} onSaved={() => router.refresh()} />
+                    <ManualBuilder 
+                        projectId={projectId} 
+                        onSaved={(newWidget) => {
+                            if (newWidget) {
+                                const cfg = typeof newWidget.config === 'string' ? JSON.parse(newWidget.config) : newWidget.config;
+                                setWidgets(prev => [...prev, { ...newWidget, configObj: cfg }]);
+                            }
+                        }} 
+                    />
                     <Dialog open={aiOpen} onOpenChange={setAiOpen}>
                         <DialogTrigger asChild>
                             <Button className="gap-2">

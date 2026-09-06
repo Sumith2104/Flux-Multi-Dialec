@@ -98,6 +98,7 @@ export default function DashboardPage() {
         enabled: !!selectedProject,
         staleTime: 60 * 1000,
         gcTime: 10 * 60 * 1000,
+        refetchOnWindowFocus: false,
     });
 
     // Analytics: stale for 30s, evicted after 5 min
@@ -107,6 +108,7 @@ export default function DashboardPage() {
         enabled: !!selectedProject,
         staleTime: 30 * 1000,
         gcTime: 5 * 60 * 1000,
+        refetchOnWindowFocus: false,
     });
 
     // Custom Pinned Widgets
@@ -116,6 +118,7 @@ export default function DashboardPage() {
         enabled: !!selectedProject,
         staleTime: 30 * 1000,
         gcTime: 5 * 60 * 1000,
+        refetchOnWindowFocus: false,
     });
 
 

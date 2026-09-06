@@ -66,10 +66,14 @@ export async function middleware(request: NextRequest) {
         }
     }
 
-    // 1. Global API Rate Limiting for all /api/ endpoints
-    if (pathname.startsWith('/api/') && !pathname.startsWith('/api/realtime/subscribe') && ratelimit) {
+    // 1. Global API Rate Limiting for all /api/ endpoints (Production Only)
+    // Bypasses remote Upstash HTTPS round-trips for local development and loopback
+    const isProd = process.env.NODE_ENV === 'production';
+    const ip = (request as any).ip || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+    const isLoopback = ip === '127.0.0.1' || ip === '::1' || ip.startsWith('192.168.') || ip === 'localhost';
+
+    if (isProd && !isLoopback && pathname.startsWith('/api/') && !pathname.startsWith('/api/realtime/subscribe') && ratelimit) {
         try {
-            const ip = (request as any).ip || request.headers.get('x-forwarded-for') || '127.0.0.1';
             const { success, limit, reset, remaining } = await ratelimit.limit(`global_api_${ip}`);
             
             if (!success) {

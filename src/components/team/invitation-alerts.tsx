@@ -65,7 +65,10 @@ export function InvitationAlerts({ initialInvites }: { initialInvites?: Invite[]
 
             setInvites(prev => prev.filter(i => i.id !== inviteId));
             if (status === 'accepted') {
-                window.location.reload(); // Reload to update project list in context
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('flux:project-change', { detail: { action: 'INSERT' } }));
+                    window.dispatchEvent(new CustomEvent('flux:projects-refresh'));
+                }
             }
         } catch (e: any) {
             toast({

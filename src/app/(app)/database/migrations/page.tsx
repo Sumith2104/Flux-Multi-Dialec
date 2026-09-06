@@ -77,6 +77,9 @@ export default function MigrationsPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ projectId, migrationId: migration.id, direction }),
             });
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('flux:schema-change', { detail: { projectId } }));
+            }
             load();
         } catch (e) { console.error(e); }
         finally { setRunningId(null); }

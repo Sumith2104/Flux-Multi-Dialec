@@ -51,8 +51,9 @@ export function getProjectDbAndSchema(project: Project) {
 
   const isMysql = project.dialect?.toLowerCase() === 'mysql';
 
-  if (!project.connection_type || project.connection_type === 'internal') {
-    const targetSchema = (project as any).schema_name || `project_${project.project_id}`;
+  if (!project.connection_type || project.connection_type === 'internal' || project.connection_type === 'serverless' || project.is_serverless) {
+    const targetSchema = (project as any).schema_name 
+      || ((project as any).is_serverless ? `flux_tenant_${project.project_id}` : `project_${project.project_id}`);
     return {
       dbName: targetSchema,
       schemaName: targetSchema
@@ -78,7 +79,7 @@ export function getProjectDbAndSchema(project: Project) {
  * Dynamically resolves and caches the PostgreSQL pool for a project.
  */
 export async function getTenantPgPool(project: Project): Promise<Pool> {
-  if (!project.connection_type || project.connection_type === 'internal') {
+  if (!project.connection_type || project.connection_type === 'internal' || project.connection_type === 'serverless' || project.is_serverless) {
     const { getPgPool } = await import('./pg');
     return getPgPool();
   }
@@ -128,7 +129,7 @@ export async function getTenantPgPool(project: Project): Promise<Pool> {
  * Dynamically resolves and caches the MySQL pool for a project.
  */
 export async function getTenantMysqlPool(project: Project): Promise<mysql.Pool> {
-  if (!project.connection_type || project.connection_type === 'internal') {
+  if (!project.connection_type || project.connection_type === 'internal' || project.connection_type === 'serverless' || project.is_serverless) {
     const { getMysqlPool } = await import('./mysql');
     return getMysqlPool();
   }

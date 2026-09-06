@@ -8,7 +8,7 @@ import { LayoutGrid, Save, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { createWidgetAction, getProjectTablesAction, getTableColumnsAction } from '@/app/(app)/analytics/actions';
 
-export function ManualBuilder({ projectId, onSaved }: { projectId: string; onSaved: () => void }) {
+export function ManualBuilder({ projectId, onSaved }: { projectId: string; onSaved: (widget?: any) => void }) {
     const [open, setOpen] = useState(false);
     const [title, setTitle] = useState('');
     const [chartType, setChartType] = useState('bar');
@@ -59,11 +59,11 @@ export function ManualBuilder({ projectId, onSaved }: { projectId: string; onSav
                 finalQuery = `SELECT ${xAxis} as name, ${aggregation}(${yAxis}) as value FROM ${selectedTable.name} GROUP BY ${xAxis}`;
             }
 
-            await createWidgetAction(projectId, title, chartType, finalQuery, { xAxisKey: 'name', dataKeys: ['value'] });
+            const created = await createWidgetAction(projectId, title, chartType, finalQuery, { xAxisKey: 'name', dataKeys: ['value'] });
             
             toast({ title: 'Success', description: 'Manual widget built and saved.' });
             setOpen(false);
-            onSaved();
+            onSaved(created);
         } catch (e: any) {
             toast({ title: 'Error', description: e.message, variant: 'destructive' });
         } finally {
